@@ -15,6 +15,7 @@ import sys
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from motionflow_mv.data.voxelpose_loader import VoxelPoseShelfLoader
+from motionflow_mv.pipeline_utils import select_best_person_group
 
 
 def reprojection_error(pred_3d: np.ndarray, points_2d: np.ndarray, camera) -> np.ndarray:
@@ -45,16 +46,19 @@ def main():
         if frame_idx not in results:
             continue
         pred_3d = results[frame_idx]
-        for cid in camera_ids:
-            preds = loader.get_frame_predictions(cid, frame_idx)
-            if len(preds) == 0:
-                continue
-            p = preds[0]
-            if p.shape[-1] == 3:
-                pts_2d = p[:, :2]
-            else:
-                pts_2d = p
-            err = reprojection_error(pred_3d, pts_2d, loader.get_camera(cid))
+
+        frame_predictions = {cid: loader.get_frame_predictions(cid, frame_idx) for cid in camera_ids}
+        if any(len(p) == 0 for p in frame_predictions.values()):
+            continue
+        try:
+            _, points_2d, _ = select_best_person_group(
+                frame_predictions, loader.cameras, camera_ids
+            )
+        except ValueError:
+            continue
+
+        for i, cid in enumerate(camera_ids):
+            err = reprojection_error(pred_3d, points_2d[i], loader.get_camera(cid))
             all_errors.append(err)
 
     if all_errors:

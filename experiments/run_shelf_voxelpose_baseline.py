@@ -20,6 +20,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from motionflow_mv.data.voxelpose_loader import VoxelPoseShelfLoader
 from motionflow_mv.pipeline import MultiViewPipeline
+from motionflow_mv.pipeline_utils import select_best_person_group
 
 
 def main():
@@ -40,32 +41,23 @@ def main():
     results = {}
 
     for frame_idx in range(args.frame_start, args.frame_end + 1):
-        # collect per-view predictions for the first detected person
-        points_2d = []
-        confidences = []
-        valid_views = []
-        for cid in camera_ids:
-            preds = loader.get_frame_predictions(cid, frame_idx)
-            if len(preds) == 0:
-                continue
-            p = preds[0]
-            if p.shape[-1] == 3:
-                points_2d.append(p[:, :2])
-                confidences.append(p[:, 2])
-            else:
-                points_2d.append(p[:, :2])
-                confidences.append(np.ones(p.shape[0]))
-            valid_views.append(cid)
-
-        if len(valid_views) < 2:
+        # collect per-view predictions and match the same person across views
+        frame_predictions = {cid: loader.get_frame_predictions(cid, frame_idx) for cid in camera_ids}
+        # skip if any view has no detections
+        if any(len(p) == 0 for p in frame_predictions.values()):
             continue
 
-        points_2d = np.stack(points_2d, axis=0)
-        confidences = np.stack(confidences, axis=0)
+        try:
+            _, points_2d, confidences = select_best_person_group(
+                frame_predictions, loader.cameras, camera_ids
+            )
+        except ValueError:
+            continue
+
         pred_3d = pipeline.fuse_frame(
             points_2d,
             confidences,
-            [loader.get_camera(cid) for cid in camera_ids if cid in valid_views],
+            cameras,
         )
         results[frame_idx] = pred_3d
 
