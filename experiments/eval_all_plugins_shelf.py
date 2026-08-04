@@ -86,6 +86,7 @@ def main():
     parser.add_argument("--frame_start", type=int, default=300)
     parser.add_argument("--frame_end", type=int, default=600)
     parser.add_argument("--shelf_checkpoints", action="store_true", help="Use Shelf-finetuned checkpoints where available.")
+    parser.add_argument("--detailed", action="store_true", help="Print per-joint and per-view breakdown.")
     args = parser.parse_args()
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -98,6 +99,8 @@ def main():
     cameras = [loader.get_camera(cid) for cid in camera_ids]
 
     per_plugin_errors = {name: [] for name in FUSION_REGISTRY.names()}
+    per_plugin_joint_errors = {name: [] for name in FUSION_REGISTRY.names()}
+    per_plugin_view_errors = {name: {cid: [] for cid in camera_ids} for name in FUSION_REGISTRY.names()}
 
     for frame_idx in range(args.frame_start, args.frame_end + 1):
         frame_predictions = {cid: loader.get_frame_predictions(cid, frame_idx) for cid in camera_ids}
@@ -137,9 +140,13 @@ def main():
                 if pred_3d.ndim == 3:
                     pred_3d = pred_3d[0]
                 pred_3d_mm = pred_3d * output_scale
+                per_joint_frame = np.zeros((len(camera_ids), pred_3d_mm.shape[0]))
                 for i, cid in enumerate(camera_ids):
                     err = reprojection_error(pred_3d_mm, points_2d[i], loader.get_camera(cid))
                     per_plugin_errors[name].append(err)
+                    per_joint_frame[i] = err
+                    per_plugin_view_errors[name][cid].append(err)
+                per_plugin_joint_errors[name].append(per_joint_frame)
                 if torch.cuda.is_available():
                     torch.cuda.empty_cache()
             except Exception as e:
@@ -154,6 +161,20 @@ def main():
             print(f"{name:<20} {errors.mean():>10.2f} {np.median(errors):>10.2f} {errors.max():>10.2f}")
         else:
             print(f"{name:<20} {'N/A':>10} {'N/A':>10} {'N/A':>10}")
+
+    if args.detailed:
+        for name in sorted(FUSION_REGISTRY.names()):
+            if not per_plugin_joint_errors[name]:
+                continue
+            print(f"\n{name} per-joint mean reprojection error (px)")
+            per_joint = np.concatenate(per_plugin_joint_errors[name], axis=0).mean(axis=0)
+            for j_idx, err in enumerate(per_joint):
+                print(f"  joint {j_idx:2d}: {err:7.2f}")
+
+            print(f"\n{name} per-view mean reprojection error (px)")
+            for cid in camera_ids:
+                errors = np.concatenate(per_plugin_view_errors[name][cid])
+                print(f"  view {cid}: {errors.mean():7.2f}")
 
 
 if __name__ == "__main__":
