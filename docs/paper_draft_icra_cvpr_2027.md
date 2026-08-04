@@ -156,6 +156,14 @@ We introduced a residual refinement head on top of temporal ray-attention fusion
 
 ---
 
+## Tracking
+
+- GitHub Issue: #16
+- Pull Request: #17
+- Branch: `multiview-residual-exploration`
+
+---
+
 **Figures included in this draft:**
 1. `docs/figures/architecture.png` — architecture diagram.
 2. `docs/figures/mpi_mpjpe_bar.png` — MPI-INF-3DHP MPJPE comparison.

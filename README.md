@@ -109,6 +109,11 @@ If you only need CPU, install the CPU wheel manually:
     - TemporalRefinerModel (A800-D): mean 9.97 px / median 5.49 px / max 1044.66 px
   - 结论：继续扩大模型容量和时序窗口只能带来边际收益，**仍未显著击败 DLT**。这进一步确认瓶颈不在算力/容量，而在缺少 3D 监督和强运动先验。
   - 下一步（Iteration 10 待探索）：接入带 3D GT 的真实数据集，或完成与 MotionFlow 单目模块的工程集成。
+- ✅ Iteration 10 open (#16): temporal ray-attention residual fusion for multi-view pose.
+  - Branch: `multiview-residual-exploration`
+  - PR: #17
+  - Key result on MPI-INF-3DHP cross-subject: MPJPE **11.17 mm**, PA-MPJPE **8.24 mm**, AUC 0.9256.
+  - Key result on Human3.6M: MPJPE **5.74 mm**, PA-MPJPE **3.99 mm**.
 
 Recent additions:
   - `motionflow_mv/pipeline_utils.py::select_best_person_group`: match the same person across views by minimal reprojection error.
