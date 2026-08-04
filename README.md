@@ -51,9 +51,11 @@ python3 -m venv .venv
 ## Current status
 
 - ✅ Iteration 1 closed (#1): 20 parallel research notes, v1 design doc, minimal DLT skeleton.
-  - Issue: https://github.com/adjcjh777/motionflow-multiview-kimiswarm/issues/1
 - 🔄 Iteration 2 open (#2): end-to-end baseline on Shelf/Campus.
-  - Issue: https://github.com/adjcjh777/motionflow-multiview-kimiswarm/issues/2
+- Recent additions:
+  - `motionflow_mv/fusion/attention.py` + `attention_model.py`: lightweight trainable view-attention fusion.
+  - `experiments/train_attention_fusion.py`: sanity-check training on synthetic multi-view data.
+  - `tests/test_pipeline_synthetic.py`: end-to-end DLT pipeline test with synthetic data.
 
 ## Iteration workflow
 
