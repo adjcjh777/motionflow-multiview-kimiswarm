@@ -5,6 +5,7 @@ import pytest
 
 from motionflow_mv.calibration.camera import Camera
 from motionflow_mv.fusion.fusion_module import DLTFusion, FUSION_REGISTRY
+from motionflow_mv.fusion.attention_fusion_module import AttentionFusionModule
 from motionflow_mv.ir.gvhmr_adapter import gvhmr_pt_to_ir
 from motionflow_mv.ir.human_motion_ir import HumanMotionIR
 from motionflow_mv.ir.multiview_adapter import fuse_multiple_irs
@@ -65,6 +66,12 @@ def test_registry_has_dlt():
     assert "dlt" in FUSION_REGISTRY.names()
     module = FUSION_REGISTRY.get("dlt")
     assert isinstance(module, DLTFusion)
+
+
+def test_registry_has_attention():
+    assert "attention" in FUSION_REGISTRY.names()
+    module = FUSION_REGISTRY.get("attention")
+    assert isinstance(module, AttentionFusionModule)
 
 
 def test_dlt_fusion_with_perfect_point(tmp_path):
