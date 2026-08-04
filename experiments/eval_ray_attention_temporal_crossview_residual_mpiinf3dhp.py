@@ -114,12 +114,14 @@ def main():
     model.load_state_dict(torch.load(args.checkpoint, map_location="cpu", weights_only=True))
 
     pred, gt = evaluate(model, loader, device)
-    err = mpjpe(pred, gt)
-    pa_err = pa_mpjpe(pred, gt)
-    pck_50 = pck(pred, gt, 50.0)
-    pck_100 = pck(pred, gt, 100.0)
-    pck_150 = pck(pred, gt, 150.0)
-    auc, _, _ = pck_auc(pred, gt, max_threshold=150.0)
+    # Infer unit: if GT is in meters (typical for _m.npz), scale to millimetres.
+    scale = 1000.0 if gt.max() < 10.0 else 1.0
+    err = mpjpe(pred, gt) * scale
+    pa_err = pa_mpjpe(pred, gt) * scale
+    pck_50 = pck(pred, gt, 50.0 / scale)
+    pck_100 = pck(pred, gt, 100.0 / scale)
+    pck_150 = pck(pred, gt, 150.0 / scale)
+    auc, _, _ = pck_auc(pred, gt, max_threshold=150.0 / scale)
 
     print(f"MPJPE:     {err:.4f} mm")
     print(f"PA-MPJPE:  {pa_err:.4f} mm")
