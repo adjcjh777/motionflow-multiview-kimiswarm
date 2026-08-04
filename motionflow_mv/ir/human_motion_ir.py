@@ -7,7 +7,7 @@ MotionFlow pipeline.
 """
 
 from dataclasses import dataclass, field
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 import numpy as np
 
 
@@ -29,6 +29,11 @@ class HumanMotionIR:
             - betas: (T, B) or (B,)
         coordinate_system: dict describing the world coordinate system.
             - up_axis, forward_axis, length_unit, world_from_reference (4x4)
+        views: list of view identifiers (e.g. camera names) used for multi-view fusion.
+        camera_parameters: per-view camera parameters (optional).
+        per_view_2d: per-view 2D keypoint observations (optional), keyed by view id.
+        per_view_confidence: per-view 2D confidence scores (optional), keyed by view id.
+        fusion_method: name of the fusion method used to produce this IR.
         uncertainty: dict of optional quality/uncertainty fields.
         quality: dict of quality flags and summary metrics.
         provenance: dict of version/lineage metadata.
@@ -42,6 +47,11 @@ class HumanMotionIR:
     human_model: str
     pose: Dict[str, np.ndarray]
     coordinate_system: Dict[str, Any]
+    views: List[str] = field(default_factory=list)
+    camera_parameters: Dict[str, Dict[str, Any]] = field(default_factory=dict)
+    per_view_2d: Optional[Dict[str, np.ndarray]] = None
+    per_view_confidence: Optional[Dict[str, np.ndarray]] = None
+    fusion_method: str = "single_view"
     uncertainty: Dict[str, Optional[np.ndarray]] = field(default_factory=dict)
     quality: Dict[str, Any] = field(default_factory=dict)
     provenance: Dict[str, Any] = field(default_factory=dict)
