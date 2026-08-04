@@ -10,3 +10,4 @@ data/
 *.pkl
 *.npz
 .DS_Store
+tmp/
