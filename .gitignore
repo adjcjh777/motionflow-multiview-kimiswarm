@@ -4,7 +4,7 @@ __pycache__/
 .pytest_cache/
 .venv/
 venv/
-data/
+/data/
 *.mp4
 *.avi
 *.pkl

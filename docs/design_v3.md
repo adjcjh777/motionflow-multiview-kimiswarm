@@ -44,7 +44,12 @@ Key observations:
 * `robust_triangulation` originally used SVD and got stuck at ~445 px on
   Shelf. Replacing the SVD with a stable inhomogeneous pseudo-inverse let it
   converge; the Shelf checkpoint now reaches **10.65 px**, close to DLT
-  (9.88 px).
+  (9.88 px).  Cross-dataset zero-shot evaluation on CampusSeq1 gives DLT
+  **1.52 px**, `robust_triangulation` **1.55 px**, and `temporal_refiner`
+  **1.52 px**, confirming the geometric plugins generalize to a different
+  calibration.  The learned `attention` model still fails to cross-dataset
+  generalize (318 px), while `residual_refiner` transfers reasonably
+  (8.26 px).
 
 ## 2. Design refinement for v3
 
@@ -86,8 +91,8 @@ To reach CVPR/ICRA-level numbers we need:
 
 ## 3. Immediate next steps
 
-1. **Add a Campus dataset loader** and cross-dataset validation (train on Shelf,
-   validate on Campus) to test generalization beyond Shelf calibration.
+1. **Train/fine-tune `attention` and `residual_refiner` on Campus** to see if a
+   multi-dataset trained model improves cross-calibration generalization.
 2. **GVHMR + SMPL multi-view projection demo**: use read-only A800-D
    Docker/vendor data to validate the `HumanMotionIR` end-to-end path.
 3. **Per-joint/per-view breakdown** in `eval_all_plugins_shelf.py` to locate
