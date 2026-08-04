@@ -176,7 +176,8 @@ was built to unblock training and validate the end-to-end loop:
   length, principal point, and height. Each frame also gets random Gaussian
   noise, per-joint occlusion, and occasional 2D outliers.
 * `experiments/train_ray_attention_synthetic.py`: trains `ray_attention` on the
-  synthetic data with a 3D MSE loss.
+  synthetic data with a 3D MSE loss. Supports batched per-sample camera tensors
+  so training runs at `batch_size=32`.
 * `experiments/eval_ray_attention_robustness.py`: controlled occlusion/outlier
   evaluation on 200 synthetic trials.
 
@@ -188,6 +189,12 @@ MPJPE (m)
   1 view occluded:      0.0042
   2 views occluded:     0.0057
   1 view outlier:       0.0043
+```
+
+Training metrics (`batch_size=32`, 30 epochs, 6000 synthetic frames):
+
+```text
+val_MPJPE = 0.0112 m
 ```
 
 These numbers confirm that the ray-aware attention head learns to down-weight
@@ -217,18 +224,13 @@ Therefore, the current realistic data path is:
 
 ### 5.6 Next steps
 
-1. **Enable batched per-sample cameras**: the current `RayAttentionFusionModel`
-   accepts a single `List[Camera]` for the whole batch, so synthetic training
-   currently runs with `batch_size=1`. Refactor the forward pass to accept
-   `(K, R, t)` tensors with batch dimension so larger batches can be used on
-   Shelf/H36M.
-2. **Acquire raw multi-view data**: locate `data/Shelf` locally or access the
+1. **Acquire raw multi-view data**: locate `data/Shelf` locally or access the
    A800-D read-only projects directory to obtain Shelf/Campus/VoxelPose files.
-3. **Run `prepare_shelf_dataset.py` and `train_ray_attention_shelf.py`** to train
-   the first ray-aware checkpoint.
-4. **Add Human3.6M data loader** (`motionflow_mv/data/human36m_loader.py`) and
+2. **Run `prepare_shelf_dataset.py` and `train_ray_attention_shelf.py`** to train
+   the first ray-aware checkpoint on real data.
+3. **Add Human3.6M data loader** (`motionflow_mv/data/human36m_loader.py`) and
    train with real 3D GT; this is the only path to clearly beat DLT.
-5. **Add epipolar loss** to the ray-aware trainer to improve cross-dataset
+4. **Add epipolar loss** to the ray-aware trainer to improve cross-dataset
    generalization.
-6. **Controlled ablation**: raw flattened `P` vs. ray embeddings, direct 3D
+5. **Controlled ablation**: raw flattened `P` vs. ray embeddings, direct 3D
    regression vs. weighted DLT, DLT pseudo-GT vs. 3D GT.
