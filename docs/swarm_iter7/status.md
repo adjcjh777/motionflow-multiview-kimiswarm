@@ -23,11 +23,11 @@
 
 | Task | Status | Output |
 |---|---|---|
-| Full 5-epoch uncertainty-aware residual | running (solo) | `outputs/ray_attention_temporal_residual_uncertainty_full5.pth` |
-| Longer temporal window (clip_len=27) smoke | queued after uncertainty | `outputs/ray_attention_temporal_residual_clip27_smoke.pth` |
-| Cross-view scaled full run | planned | `docs/swarm_iter7/plan_crossview_residual_scaled_mpi_run.md` |
-| Iterative residual refinement | planned | `docs/swarm_iter7/plan_iterative_residual_unrolled_damping.md` |
-| Real-world GVHMR demo | planned | `docs/swarm_iter7/plan_real-world_GVHMR_demo.md` |
+| Cross-view scaled full run | running (RTX 4090) | `outputs/crossview_residual_d128_h256_nst3_full.pth` |
+| H36M WebBridge batch conversion | running (RTX 4090) | `data/webbridge/h36m/` |
+| Intermediate eval on MPI test | running | `experiments/eval_ray_attention_temporal_crossview_residual_mpiinf3dhp.py` |
+| Reprojection auxiliary loss | implemented | `motionflow_mv/losses/reprojection.py` |
+| H36M cross-view residual launcher | ready | `scripts/run_h36m_crossview_residual.sh` |
 
 ## Artifacts
 
