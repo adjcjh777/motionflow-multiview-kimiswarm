@@ -38,16 +38,21 @@ def main():
 
     # AttentionFusion plugin loaded from checkpoint (if available).
     attention_module = FUSION_REGISTRY.get("attention")
-    checkpoint_path = Path("outputs") / "attention_fusion_synthetic.pth"
-    if checkpoint_path.exists():
-        state = torch.load(checkpoint_path, map_location=device, weights_only=True)
-        attention_module.model.load_state_dict(state)
-        attention_module.model.to(device)
-        attention_module.model.eval()
-        pred_attention = attention_module.fuse(points_2d, confidences, cameras)
+    checkpoint_paths = [
+        Path("outputs") / "attention_fusion_synthetic_plugin.pth",
+        Path("outputs") / "attention_fusion_synthetic.pth",
+    ]
+    pred_attention = None
+    for checkpoint_path in checkpoint_paths:
+        if checkpoint_path.exists():
+            state = torch.load(checkpoint_path, map_location=device, weights_only=True)
+            attention_module.model.load_state_dict(state)
+            attention_module.model.to(device)
+            attention_module.model.eval()
+            pred_attention = attention_module.fuse(points_2d, confidences, cameras)
+            break
     else:
-        print(f"Checkpoint not found at {checkpoint_path}; train with train_attention_fusion.py first.")
-        pred_attention = None
+        print("No attention checkpoint found; run train_fusion_plugin_3d_synthetic.py or train_attention_fusion.py first.")
 
     # Report metrics in the same arbitrary units as the synthetic data.
     target_np = targets.numpy()
