@@ -61,7 +61,7 @@ def main():
 
     # Optionally load trained plugin checkpoints.
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    _load_plugin_if_exists("attention", "outputs/attention_fusion_synthetic_plugin.pth", device)
+    _load_plugin_if_exists("attention", "outputs/attention_fusion_synthetic_shared.pth", device)
     _load_plugin_if_exists("temporal_refiner", "outputs/temporal_refiner_synthetic.pth", device)
     _load_plugin_if_exists("robust_triangulation", "outputs/robust_triangulation_synthetic.pth", device)
     _load_plugin_if_exists("residual_refiner", "outputs/residual_refiner_synthetic.pth", device)
