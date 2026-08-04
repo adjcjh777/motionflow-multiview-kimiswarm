@@ -52,11 +52,15 @@ python3 -m venv .venv
 ## Current status
 
 - ✅ Iteration 1 closed (#1): 20 parallel research notes, v1 design doc, minimal DLT skeleton.
-- 🔄 Iteration 2 open (#2): end-to-end baseline on Shelf/Campus.
-- Recent additions:
-  - `motionflow_mv/fusion/attention.py` + `attention_model.py`: lightweight trainable view-attention fusion.
-  - `experiments/train_attention_fusion.py`: sanity-check training on synthetic multi-view data.
-  - `tests/test_pipeline_synthetic.py`: end-to-end DLT pipeline test with synthetic data.
+- ✅ Iteration 2 closed (#2): end-to-end DLT on real Shelf/VoxelPose data + AttentionFusion sanity training.
+  - Tests: 4/4 passed.
+  - Shelf 300–600: 301 frames triangulated; reprojection error mean 199 px (median 115 px) — mismatch indicates cross-view person-ID alignment is the next bottleneck.
+- 🔄 Iteration 3 open (#3): cross-view person matching + DLT/Attention comparison.
+
+Recent additions:
+  - `motionflow_mv/data/voxelpose_loader.py`: load VoxelPose Shelf calibration and 2D predictions.
+  - `experiments/run_shelf_voxelpose_baseline.py`: real-data DLT pipeline.
+  - `experiments/eval_shelf_voxelpose.py`: reprojection-error evaluation.
 
 ## Iteration workflow
 
