@@ -95,9 +95,11 @@ def main():
             "robust_triangulation": "outputs/robust_triangulation_shelf.pth",
             "residual_refiner": "outputs/residual_refiner_shelf.pth",
             "temporal_refiner": "outputs/temporal_refiner_synthetic.pth",
+            "ray_attention": "outputs/ray_attention_shelf.pth",
         }
         kwargs = {
             "attention": {"d": 64, "n_views": args.n_views},
+            "ray_attention": {"d": 64, "n_views": args.n_views},
         }
         for name, path in checkpoints.items():
             if not Path(path).exists():
@@ -105,6 +107,10 @@ def main():
             if name == "attention":
                 from motionflow_mv.fusion.attention_fusion_module import AttentionFusionModule
                 module = AttentionFusionModule(j=17, **kwargs[name])
+                FUSION_REGISTRY._modules[name] = module
+            if name == "ray_attention":
+                from motionflow_mv.fusion.ray_attention_module import RayAttentionFusionModule
+                module = RayAttentionFusionModule(j=17, **kwargs[name])
                 FUSION_REGISTRY._modules[name] = module
             module = FUSION_REGISTRY.get(name)
             state = torch.load(path, map_location="cpu", weights_only=True)
@@ -154,9 +160,9 @@ def main():
         for name in sorted(FUSION_REGISTRY.names()):
             module = FUSION_REGISTRY.get(name)
             try:
-                if name in ("attention", "attention_v2"):
-                    input_2d = points_2d_norm
-                    output_scale = 1000.0
+                if name in ("attention", "attention_v2", "ray_attention"):
+                    input_2d = points_2d_norm if name == "attention" else points_2d_px
+                    output_scale = 1.0
                 elif name == "robust_triangulation":
                     input_2d = points_2d_px
                     output_scale = 1.0
@@ -166,12 +172,12 @@ def main():
                 pred_3d = module.fuse(input_2d, confidences_batch, cameras)
                 if pred_3d.ndim == 3:
                     pred_3d = pred_3d[0]
-                pred_3d_mm = pred_3d * output_scale
-                # joints_3d is in meters; convert mm -> m.
-                if name in ("attention", "attention_v2"):
+                # joints_3d is in meters; ray_attention/attention already output meters,
+                # the other plugins output millimeters.
+                if name in ("attention", "attention_v2", "ray_attention"):
                     pred_3d_m = pred_3d
                 else:
-                    pred_3d_m = pred_3d_mm / 1000.0
+                    pred_3d_m = pred_3d / 1000.0
                 err = mpjpe(pred_3d_m[None], joints_3d[None])
                 per_plugin_errors[name].append(err)
             except Exception as e:
