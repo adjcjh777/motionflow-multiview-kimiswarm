@@ -52,10 +52,25 @@ The MLP has two hidden layers of size `residual_hidden` (default 128) and ReLU a
 End-to-end 3D MSE loss:
 
 ```
-L = || X - X_gt ||_2^2
+L_3D = || X - X_gt ||_2^2
 ```
 
-No auxiliary reprojection or bone-length losses are used. The model is trained with Adam, a clip length of 13 frames, and early stopping on validation MPJPE.
+Optionally, a calibrated reprojection loss can be added:
+
+```
+L_reproj = sum_{v} || proj_v(X) - x_v ||_2^2
+L = L_3D + lambda_reproj * L_reproj
+```
+
+The reprojection term does not require skeleton topology and directly enforces multi-view consistency. The model is trained with Adam, a clip length of 13 frames, and early stopping on validation MPJPE.
+
+### 3.4 Cross-view spatio-temporal attention
+
+A more expressive variant replaces the temporal-only transformer with a single transformer that attends jointly over time and views for each joint. The input tokens are arranged on a (time, view) grid, so each token can aggregate information from all views at any frame within the clip. A residual refinement head is added on top of the weighted DLT triangulation as before. This variant increases capacity modestly (~350–400 k parameters for d=128, n_st_layers=3) while preserving the same plug-in interface.
+
+### 3.5 Quality gating and system integration
+
+The fusion module is exposed as a `MultiViewFusionPlugin` inside MotionFlow. It outputs a `HumanMotionIR` containing the fused 3D pose, per-joint confidence, and view-support count, which downstream quality gating can use to fall back to the best single view when fusion disagreement is high.
 
 ## 4. Experiments
 
@@ -113,6 +128,10 @@ The model is almost unaffected by 50% random joint occlusion, confirming that th
 | 16 | 82.1 | 194.8 |
 
 A single clip (13 frames, 14 views, 28 joints) takes 78 ms, and batching increases throughput to 195 clips/s, sufficient for many robotics applications.
+
+### 5.5 Ongoing experiments
+
+A scaled cross-view spatio-temporal residual model (d=128, n_st_layers=3, residual_hidden=256, ~1.06 M parameters) is training on MPI-INF-3DHP with the reprojection auxiliary loss. A full Human3.6M training corpus is also being assembled from the Hugging Face preprocessed archive. Results will be added to this draft once training converges.
 
 ## 6. MotionFlow System Integration
 
