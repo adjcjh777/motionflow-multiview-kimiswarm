@@ -90,7 +90,14 @@ If you only need CPU, install the CPU wheel manually:
     - DLT: mean 9.88 px / median 5.52 px / max 1044.68 px
     - TemporalRefinerModel（Bi-GRU over 5 frames, per-joint features）：mean 9.89 px / median 5.49 px / max 1044.45 px
   - 结论：时序模型在 median 上略有提升（5.49 vs 5.52），mean 与 DLT 持平，max 几乎不变。**仍未显著击败 DLT**。说明当前 2D 检测噪声和重投影 loss 下，时序信息只能带来边际收益。
-  - 下一步（Iteration 8 待探索）：需要引入更强的 3D 监督（3D pseudo-label / GT）或多帧光流/运动先验，才能建立稳定优势。
+- ✅ Iteration 8 closed: synthetic pre-training + fine-tuning of `TemporalRefinerModel`.
+  - 先用 500 组合成 9 帧序列训练 Bi-GRU（3D MSE loss，收敛到 ~0）。
+  - 再用 Shelf 真实数据微调（reprojection loss, window=9, lr=1e-4）。
+  - 真实 Shelf 重投影误差对比（300–600 帧，5 视图）：
+    - DLT: mean 9.94 px / median 5.53 px / max 1044.68 px
+    - TemporalRefinerModel (fine-tuned): mean 9.94 px / median 5.53 px / max 1044.67 px
+  - 结论：合成预训练也无法让模型在真实 Shelf 上超越 DLT。纯重投影 loss + 合成数据无法提供足够强的 3D 监督来克服 DLT 的几何先验。
+  - 下一步（Iteration 9 待探索）：必须使用带 3D GT 的真实数据集（如 Human3.6M 或 Campus GT）或引入显式的人体骨骼 / 运动先验，才能建立可发表论文的优势。
 
 Recent additions:
   - `motionflow_mv/pipeline_utils.py::select_best_person_group`: match the same person across views by minimal reprojection error.
@@ -110,6 +117,7 @@ Recent additions:
   - `motionflow_mv/fusion/temporal_refiner.py`: Bi-GRU temporal refiner over a window of frames.
   - `experiments/train_temporal_refiner_shelf.py`: train the temporal refiner.
   - `experiments/eval_temporal_refiner_shelf.py`: evaluate the temporal refiner vs DLT.
+  - `experiments/train_temporal_synthetic.py`: pre-train the temporal refiner on synthetic 3D sequences.
 
 ## Iteration workflow
 

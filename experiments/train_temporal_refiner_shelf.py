@@ -88,6 +88,7 @@ def main():
     parser.add_argument("--batch_size", type=int, default=16)
     parser.add_argument("--val_split", type=float, default=0.2)
     parser.add_argument("--output", type=str, default="outputs/temporal_refiner_shelf.pth")
+    parser.add_argument("--pretrained", type=str, default=None)
     args = parser.parse_args()
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -128,6 +129,9 @@ def main():
     )
 
     model = TemporalRefinerModel(j=17, d=args.d, n_views=len(cameras), hidden=args.hidden).to(device)
+    if args.pretrained is not None:
+        print(f"Loading pretrained weights from {args.pretrained}")
+        model.load_state_dict(torch.load(args.pretrained, map_location=device, weights_only=True))
     optimizer = optim.Adam(model.parameters(), lr=args.lr)
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=20, factor=0.5)
 
