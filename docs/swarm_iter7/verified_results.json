@@ -1,0 +1,66 @@
+{
+  "date": "2026-08-04",
+  "best_mpiinf3dhp": {
+    "model": "RayAttentionFusionModelTemporalResidual",
+    "checkpoint": "outputs/ray_attention_temporal_residual_final5.pth",
+    "d": 64,
+    "residual_hidden": 128,
+    "params": 243428,
+    "mpjpe_mm": 11.1687,
+    "pa_mpjpe_mm": 8.2393,
+    "pck_50mm": 1.0000,
+    "pck_100mm": 1.0000,
+    "pck_150mm": 1.0000,
+    "pck_auc_150mm": 0.9256
+  },
+  "best_mpiinf3dhp_lightweight": {
+    "model": "RayAttentionFusionModelTemporalResidual",
+    "checkpoint": "outputs/ray_attention_temporal_residual_mpi_d32_h64.pth",
+    "d": 32,
+    "residual_hidden": 64,
+    "params": 66420,
+    "mpjpe_mm": 13.2203,
+    "pa_mpjpe_mm": 11.7746,
+    "pck_50mm": 0.9974,
+    "pck_100mm": 1.0000,
+    "pck_150mm": 1.0000,
+    "pck_auc_150mm": 0.9119
+  },
+  "h36m": {
+    "h64": {
+      "checkpoint": "outputs/ray_attention_temporal_residual_h36m_h64.pth",
+      "residual_hidden": 64,
+      "mpjpe_mm": 5.7140,
+      "pa_mpjpe_mm": 5.3317,
+      "pck_50mm": 0.9976,
+      "pck_100mm": 0.9996,
+      "pck_150mm": 0.9998,
+      "pck_auc_150mm": 0.9620
+    },
+    "h128": {
+      "checkpoint": "outputs/ray_attention_temporal_residual_h36m.pth",
+      "residual_hidden": 128,
+      "mpjpe_mm": 5.7422,
+      "pa_mpjpe_mm": 3.9870,
+      "pck_50mm": 0.9980,
+      "pck_100mm": 0.9995,
+      "pck_150mm": 0.9998,
+      "pck_auc_150mm": 0.9618
+    }
+  },
+  "visualization": {
+    "final5": "outputs/visualize_residual_mpi_final5",
+    "raw_mpjpe_mm": 29.66,
+    "refined_mpjpe_mm": 8.18
+  },
+  "benchmark_rtx4090": {
+    "file": "outputs/benchmark_residual_temporal_4090.json",
+    "latency_ms_b1": 78.32,
+    "throughput_clips_per_s_b16": 194.82
+  },
+  "ongoing": {
+    "robustness_final5": "bash-e1xeccng -> outputs/robustness_residual_final5",
+    "smoke_clip_len_27": "bash-03qj49wp -> outputs/ray_attention_temporal_residual_clip27_smoke.pth",
+    "uncertainty_full5": "bash-sk20bukz -> outputs/ray_attention_temporal_residual_uncertainty_full5.pth"
+  }
+}
