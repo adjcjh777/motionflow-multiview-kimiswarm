@@ -16,6 +16,7 @@ Extend the existing MotionFlow pipeline (monocular video → human motion) to ac
 
 - `docs/design_v1.md`: initial multi-view fusion design.
 - `docs/design_v2.md`: paper direction v2 — why DLT is hard to beat and how to frame the contribution.
+- `docs/phase0_literature_audit.md`: audit of ScoreHMR, EasyMocap, and candidate multi-view methods.
 
 ## Roadmap (draft)
 
