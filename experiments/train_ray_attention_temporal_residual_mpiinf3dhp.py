@@ -26,6 +26,7 @@ import torch.optim as optim
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from motionflow_mv.fusion.ray_attention_temporal_residual_model import RayAttentionFusionModelTemporalResidual
+from motionflow_mv.losses import reprojection_loss
 
 
 def set_seed(seed: int):
@@ -150,6 +151,7 @@ def main():
     parser.add_argument("--lr", type=float, default=1e-3)
     parser.add_argument("--batch_size", type=int, default=8)
     parser.add_argument("--train_samples", type=int, default=4000, help="Random clips per train sequence")
+    parser.add_argument("--reproj_weight", type=float, default=0.0, help="Weight for reprojection auxiliary loss")
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--output", type=str, default="outputs/ray_attention_temporal_residual_mpiinf3dhp.pth")
     args = parser.parse_args()
@@ -199,6 +201,11 @@ def main():
             optimizer.zero_grad()
             pred, _ = model(xb, K=K, R=R, t=t)
             loss = criterion(pred, yb)
+            if args.reproj_weight > 0.0:
+                points_2d = xb[..., :2]
+                conf = xb[..., 2]
+                loss_reproj = reprojection_loss(pred, points_2d, K, R, t, confidences=conf)
+                loss = loss + args.reproj_weight * loss_reproj
             loss.backward()
             optimizer.step()
             train_loss += loss.item() * xb.size(0)
