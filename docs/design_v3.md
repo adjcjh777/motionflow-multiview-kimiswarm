@@ -171,12 +171,29 @@ design is better conditioned for calibrated multi-view fusion.
 Because raw Shelf/Campus/H36M data is not in the workspace, a synthetic pipeline
 was built to unblock training and validate the end-to-end loop:
 
-* `experiments/generate_synthetic_multiview_dataset.py`: 100 sequences × 30
-  frames × 4 views, random SMPL poses projected through a calibrated virtual
-  rig with 0.5 px Gaussian noise.
+* `experiments/generate_synthetic_multiview_dataset.py`: generates random SMPL
+  poses projected through calibrated virtual rigs with randomized radius, focal
+  length, principal point, and height. Each frame also gets random Gaussian
+  noise, per-joint occlusion, and occasional 2D outliers.
 * `experiments/train_ray_attention_synthetic.py`: trains `ray_attention` on the
   synthetic data with a 3D MSE loss.
-* Result after 50 epochs: **val_MPJPE = 0.0022 m** (2.2 mm).
+* `experiments/eval_ray_attention_robustness.py`: controlled occlusion/outlier
+  evaluation on 200 synthetic trials.
+
+Results (200 synthetic trials, 4 views, 0.8 px noise, 10% occlusion, 2% outliers):
+
+```text
+MPJPE (m)
+  Clean 4 views:        0.0036
+  1 view occluded:      0.0042
+  2 views occluded:     0.0057
+  1 view outlier:       0.0043
+```
+
+These numbers confirm that the ray-aware attention head learns to down-weight
+occluded and corrupted views while preserving metric scale. The remaining error
+is dominated by the synthetic noise floor.
+
 * When the synthetic checkpoint is loaded into the GVHMR projection demo,
   `ray_attention` achieves **0.0021 m MPJPE**, confirming the model preserves
   metric scale and triangulates correctly on unseen SMPL motion.
@@ -200,13 +217,18 @@ Therefore, the current realistic data path is:
 
 ### 5.6 Next steps
 
-1. **Acquire raw multi-view data**: locate `data/Shelf` locally or access the
+1. **Enable batched per-sample cameras**: the current `RayAttentionFusionModel`
+   accepts a single `List[Camera]` for the whole batch, so synthetic training
+   currently runs with `batch_size=1`. Refactor the forward pass to accept
+   `(K, R, t)` tensors with batch dimension so larger batches can be used on
+   Shelf/H36M.
+2. **Acquire raw multi-view data**: locate `data/Shelf` locally or access the
    A800-D read-only projects directory to obtain Shelf/Campus/VoxelPose files.
-2. **Run `prepare_shelf_dataset.py` and `train_ray_attention_shelf.py`** to train
+3. **Run `prepare_shelf_dataset.py` and `train_ray_attention_shelf.py`** to train
    the first ray-aware checkpoint.
-3. **Add Human3.6M data loader** (`motionflow_mv/data/human36m_loader.py`) and
+4. **Add Human3.6M data loader** (`motionflow_mv/data/human36m_loader.py`) and
    train with real 3D GT; this is the only path to clearly beat DLT.
-4. **Add epipolar loss** to the ray-aware trainer to improve cross-dataset
+5. **Add epipolar loss** to the ray-aware trainer to improve cross-dataset
    generalization.
-5. **Controlled ablation**: raw flattened `P` vs. ray embeddings, direct 3D
+6. **Controlled ablation**: raw flattened `P` vs. ray embeddings, direct 3D
    regression vs. weighted DLT, DLT pseudo-GT vs. 3D GT.
