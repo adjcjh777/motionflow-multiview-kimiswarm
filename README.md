@@ -102,7 +102,12 @@ If you only need CPU, install the CPU wheel manually:
     - DLT: mean 9.94 px / median 5.53 px / max 1044.68 px
     - TemporalRefinerModel (fine-tuned): mean 9.94 px / median 5.53 px / max 1044.67 px
   - 结论：合成预训练也无法让模型在真实 Shelf 上超越 DLT。纯重投影 loss + 合成数据无法提供足够强的 3D 监督来克服 DLT 的几何先验。
-  - 下一步（Iteration 9 待探索）：必须使用带 3D GT 的真实数据集（如 Human3.6M 或 Campus GT）或引入显式的人体骨骼 / 运动先验，才能建立可发表论文的优势。
+- ✅ Iteration 9 closed: scale temporal model on A800-D (larger hidden=256, d=128, window=15).
+  - 真实 Shelf 重投影误差对比（300–600 帧，5 视图）：
+    - DLT: mean 9.98 px / median 5.52 px / max 1044.68 px
+    - TemporalRefinerModel (A800-D): mean 9.97 px / median 5.49 px / max 1044.66 px
+  - 结论：继续扩大模型容量和时序窗口只能带来边际收益，**仍未显著击败 DLT**。这进一步确认瓶颈不在算力/容量，而在缺少 3D 监督和强运动先验。
+  - 下一步（Iteration 10 待探索）：接入带 3D GT 的真实数据集，或完成与 MotionFlow 单目模块的工程集成。
 
 Recent additions:
   - `motionflow_mv/pipeline_utils.py::select_best_person_group`: match the same person across views by minimal reprojection error.

@@ -35,12 +35,14 @@ Optionally: temporal smoothing / learned refinement
 | 7 | TemporalRefinerModel (window=5) | 9.89 | 5.49 | 1044.45 |
 | 7 | TemporalRefinerModel (window=9) | 9.89 | 5.49 | 1044.35 |
 | 8 | Temporal (synthetic pre-train + fine-tune) | 9.94 | 5.53 | 1044.67 |
+| 9 | Temporal (A800-D, hidden=256, d=128, window=15) | 9.97 | 5.49 | 1044.66 |
 
 ## Key findings
 1. **Geometric DLT is a very strong baseline**. Any learned fusion model must provide a value beyond pure triangulation.
 2. **Reprojection-only supervision is insufficient**. Learned models can match DLT but not beat it, because DLT already minimizes a related geometric objective.
 3. **Temporal consistency gives marginal gains**. Median improves slightly, but outliers remain.
 4. **Synthetic pre-training does not transfer**. Domain gap and lack of real 3D labels limit transfer.
+5. **Scaling up model/capacity on A800-D does not help**. A much larger temporal model (hidden=256, d=128, window=15) still only matches DLT, confirming the bottleneck is supervision, not compute.
 
 ## Paper-worthy contribution
 Instead of claiming to beat DLT on reprojection error, frame the paper around:
