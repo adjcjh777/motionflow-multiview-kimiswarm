@@ -1,5 +1,6 @@
 numpy>=1.24.0
 pytest>=7.0.0
-# CPU-only torch; replace with CUDA version if training on GPU
---extra-index-url https://download.pytorch.org/whl/cpu
-torch==2.13.0+cpu
+
+# CUDA 12.1 torch for WSL 4090. For CPU-only, install from https://download.pytorch.org/whl/cpu
+--extra-index-url https://download.pytorch.org/whl/cu121
+torch==2.4.0+cu121

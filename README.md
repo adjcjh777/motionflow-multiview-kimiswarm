@@ -39,14 +39,19 @@ motionflow-multiview-kimiswarm/
 └── README.md
 ```
 
-## Quick start
+## Quick start (WSL + RTX 4090)
 
 ```bash
 cd /path/to/repo
 python3 -m venv .venv
-# Default requirements install CPU-only torch (smaller). For CUDA training, install torch separately.
-.venv/bin/pip install -r requirements.txt
+.venv/bin/pip install -r requirements.txt      # installs torch 2.4.0+cu121
+.venv/bin/python scripts/check_gpu.py          # verify 4090 is visible
 .venv/bin/python -m pytest tests/ -v
+```
+
+If you only need CPU, install the CPU wheel manually:
+```bash
+.venv/bin/pip install torch==2.4.0+cpu --index-url https://download.pytorch.org/whl/cpu
 ```
 
 ## Current status
