@@ -33,22 +33,21 @@ def reprojection_loss(
     Returns:
         Scalar reprojection MSE.
     """
-    B, T, J, _ = pred_3d.shape
-    V = K.shape[1]
-
     # Expand camera matrices over the temporal dimension.
-    K = K.unsqueeze(1).expand(-1, T, -1, -1, -1)  # (B,T,V,3,3)
-    R = R.unsqueeze(1).expand(-1, T, -1, -1, -1)
-    t = t.unsqueeze(1).expand(-1, T, -1, -1)
+    K = K.unsqueeze(1)  # (B,1,V,3,3)
+    R = R.unsqueeze(1)
+    t = t.unsqueeze(1)
 
-    # pred_3d: (B, T, J, 3) -> (B, T, 1, J, 3)
-    X = pred_3d.unsqueeze(2)
+    # pred_3d: (B, T, J, 3) -> (B, T, 1, J, 3, 1) to broadcast over views.
+    X = pred_3d.unsqueeze(2).unsqueeze(-1)
+    # R: (B,1,V,3,3) -> (B,1,V,1,3,3) to broadcast over joints.
+    R = R.unsqueeze(3)
     # Transform to camera space: X_cam = R @ X + t
-    X_cam = torch.einsum("btvij,btvjk->btvik", R, X) + t.unsqueeze(-2)  # (B,T,V,J,3)
+    X_cam = (R @ X).squeeze(-1) + t.unsqueeze(-2)  # (B,T,V,J,3)
 
     # Project: x = K @ X_cam / z
     z = X_cam[..., 2:3]  # (B,T,V,J,1)
-    proj = torch.einsum("btvij,btvjk->btvik", K, X_cam)  # (B,T,V,J,3)
+    proj = (K.unsqueeze(3) @ X_cam.unsqueeze(-1)).squeeze(-1)  # (B,T,V,J,3)
     proj_2d = proj[..., :2] / (z.clamp(min=eps))
 
     diff = proj_2d - points_2d  # (B,T,V,J,2)
@@ -60,8 +59,5 @@ def reprojection_loss(
     if mask is not None:
         weight = weight * mask.float()
 
-    if weight is not None:
-        loss = (sq * weight).sum() / (weight.sum() + eps)
-    else:
-        loss = sq.mean()
+    loss = (sq * weight).sum() / (weight.sum() + eps)
     return loss
