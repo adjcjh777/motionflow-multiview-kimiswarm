@@ -36,6 +36,9 @@ class ResidualRefinerModel(nn.Module):
 
     def forward(self, x: torch.Tensor, baseline_3d: torch.Tensor) -> torch.Tensor:
         B, V, J, _ = x.shape
+        # Normalize 2D coordinates to avoid dominating the 3D baseline features.
+        x = x.clone()
+        x[..., :2] = x[..., :2] / 1000.0
         x_emb = self.lift(x)  # (B, V, J, D)
         x_emb = x_emb.permute(0, 2, 1, 3).reshape(B * J, V, self.d)
         attn_out, _ = self.attn(x_emb, x_emb, x_emb)  # (B*J, V, D)
