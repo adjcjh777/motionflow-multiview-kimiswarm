@@ -125,6 +125,10 @@ def main():
     body_pose = torch.from_numpy(ir.pose["body_pose"]).float()
     global_orient = torch.from_numpy(ir.pose["global_orient"]).float()
     transl = torch.from_numpy(ir.pose["transl"]).float()
+    # GVHMR may emit 21 body-joint pose (63 dims). Pad to 23 body joints (69 dims)
+    # so the standard SMPL model can consume it.
+    if body_pose.shape[-1] == 63:
+        body_pose = torch.cat([body_pose, torch.zeros(body_pose.shape[0], 6)], dim=-1)
 
     cameras = make_cameras_on_circle(args.n_views)
     K, R, t = cameras_to_tensors(cameras, device)
