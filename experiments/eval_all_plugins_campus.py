@@ -40,7 +40,7 @@ def load_plugin_checkpoints(device, use_shelf: bool = False):
         "temporal_refiner": "outputs/temporal_refiner_synthetic.pth",
     }
     shelf_overrides = {
-        "attention": "outputs/attention_fusion_shelf.pth",
+        "attention": "outputs/attention_fusion_campus.pth",
         "residual_refiner": "outputs/residual_refiner_shelf.pth",
         "robust_triangulation": "outputs/robust_triangulation_shelf.pth",
     }

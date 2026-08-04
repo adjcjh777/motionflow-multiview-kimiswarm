@@ -37,8 +37,10 @@ Key observations:
 * The geometry-based plugins (`dlt`, `temporal_refiner`) give sub-pixel to
   ~10 px reprojection, confirming the per-plugin scaling fix in
   `experiments/eval_all_plugins_shelf.py`.
-* Shelf-finetuned `attention` drops from 429 px to 80 px once the architecture
-  and scale are matched, showing the value of real-data fine-tuning.
+* Shelf-finetuned `attention` drops from 429 px to 80 px, and
+  Campus-trained `attention` drops the Campus zero-shot error from 318 px to
+  **110.55 px**.  Dataset-specific training helps, but pure attention still
+  lags far behind geometry.
 * `residual_refiner` is comparable with its synthetic and Shelf checkpoints,
   slightly behind `dlt`; a larger model or joint loss may be needed.
 * `robust_triangulation` originally used SVD and got stuck at ~445 px on
