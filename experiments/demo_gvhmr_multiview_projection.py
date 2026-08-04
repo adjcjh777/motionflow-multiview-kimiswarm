@@ -95,7 +95,7 @@ def main():
             "robust_triangulation": "outputs/robust_triangulation_shelf.pth",
             "residual_refiner": "outputs/residual_refiner_shelf.pth",
             "temporal_refiner": "outputs/temporal_refiner_synthetic.pth",
-            "ray_attention": "outputs/ray_attention_shelf.pth",
+            "ray_attention": "outputs/ray_attention_synthetic.pth",
         }
         kwargs = {
             "attention": {"d": 64, "n_views": args.n_views},
