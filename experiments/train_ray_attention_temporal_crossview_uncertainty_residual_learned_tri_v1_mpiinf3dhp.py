@@ -39,14 +39,14 @@ def set_seed(seed: int):
 class TemporalClipDataset(torch.utils.data.Dataset):
     """Yield clips (T, V, J, 3) from a long canonical .npz sequence."""
 
-    def __init__(self, npz_path: str, clip_len: int, stride: int = 1):
+    def __init__(self, npz_path: str, clip_len: int, stride: int = 1, gt_scale: float = 1.0):
         data = np.load(npz_path)
         self.points_2d = torch.from_numpy(data["points_2d"]).float()
         self.confidences = torch.from_numpy(data["confidences"]).float()
-        self.joints_3d = torch.from_numpy(data["joints_3d"]).float()
+        self.joints_3d = torch.from_numpy(data["joints_3d"]).float() * gt_scale
         self.K = torch.from_numpy(data["camera_K"]).float()
         self.R = torch.from_numpy(data["camera_R"]).float()
-        self.t = torch.from_numpy(data["camera_t"]).float()
+        self.t = torch.from_numpy(data["camera_t"]).float() * gt_scale
 
         self.clip_len = clip_len
         self.stride = stride
@@ -71,14 +71,14 @@ class TemporalClipDataset(torch.utils.data.Dataset):
 class RandomClipDataset(torch.utils.data.Dataset):
     """Sample random clips from a sequence; useful for train set augmentation."""
 
-    def __init__(self, npz_path: str, clip_len: int, n_samples: int = 2000):
+    def __init__(self, npz_path: str, clip_len: int, n_samples: int = 2000, gt_scale: float = 1.0):
         data = np.load(npz_path)
         self.points_2d = torch.from_numpy(data["points_2d"]).float()
         self.confidences = torch.from_numpy(data["confidences"]).float()
-        self.joints_3d = torch.from_numpy(data["joints_3d"]).float()
+        self.joints_3d = torch.from_numpy(data["joints_3d"]).float() * gt_scale
         self.K = torch.from_numpy(data["camera_K"]).float()
         self.R = torch.from_numpy(data["camera_R"]).float()
-        self.t = torch.from_numpy(data["camera_t"]).float()
+        self.t = torch.from_numpy(data["camera_t"]).float() * gt_scale
         self.clip_len = clip_len
         self.n_samples = n_samples
         self.total_frames = self.points_2d.shape[0]
@@ -153,6 +153,7 @@ def main():
     parser.add_argument("--batch_size", type=int, default=8)
     parser.add_argument("--train_samples", type=int, default=4000, help="Random clips per train sequence")
     parser.add_argument("--reproj_weight", type=float, default=0.0, help="Weight for reprojection auxiliary loss")
+    parser.add_argument("--gt_scale", type=float, default=1.0, help="Scale factor for ground-truth 3D joints and camera translation (e.g. 0.001 for H36M mm-to-m)")
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--output", type=str, default="outputs/ray_attention_temporal_crossview_uncertainty_residual_learned_tri_v1_mpiinf3dhp.pth")
     args = parser.parse_args()
@@ -163,9 +164,9 @@ def main():
 
     train_datasets = []
     for tp in args.train:
-        train_datasets.append(RandomClipDataset(tp, args.clip_len, n_samples=args.train_samples))
+        train_datasets.append(RandomClipDataset(tp, args.clip_len, n_samples=args.train_samples, gt_scale=args.gt_scale))
     train_dataset = torch.utils.data.ConcatDataset(train_datasets)
-    val_dataset = TemporalClipDataset(args.val, args.clip_len)
+    val_dataset = TemporalClipDataset(args.val, args.clip_len, gt_scale=args.gt_scale)
 
     train_loader = torch.utils.data.DataLoader(
         train_dataset, batch_size=args.batch_size, shuffle=True, collate_fn=collate_fn, num_workers=0,
