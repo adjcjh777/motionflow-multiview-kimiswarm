@@ -61,11 +61,39 @@ If you only need CPU, install the CPU wheel manually:
   - Tests: 4/4 passed.
   - Shelf 300–600: 301 frames triangulated; reprojection error mean 199 px (median 115 px) — mismatch indicates cross-view person-ID alignment is the next bottleneck.
 - 🔄 Iteration 3 open (#3): cross-view person matching + DLT/Attention comparison.
+  - Cross-view person matching implemented; reprojection error dropped to mean 9.88 px / median 5.52 px.
+  - GPU-aware training scripts added for synthetic and real Shelf data.
+  - ✅ WSL RTX 4090 PyTorch verification passed; pytest 4/4 passed.
+  - ✅ Synthetic GPU training converges (val_MPJPE 1.54 after 50 epochs, checkpoint at `outputs/attention_fusion_synthetic.pth`).
+  - ✅ Synthetic comparison: AttentionFusion (MPJPE 2.31) outperforms DLT (MPJPE 7.93) on noisy synthetic data, showing learned fusion is more robust to noise.
+  - ✅ Real Shelf data training/eval run on RTX 4090 (data found at `tmp/voxelpose-pytorch/data/Shelf`).
+  - ✅ 真实 Shelf 重投影误差对比（300-600 帧，5 视图）：
+    - DLT: mean 9.88 px / median 5.52 px
+    - AttentionFusionV1（MSE on DLT pseudo-GT）: mean 81.70 px / median 62.42 px
+    - AttentionFusionV1（combined MSE+MPJPE loss, d=64）: mean 80.42 px / median 58.90 px
+    - AttentionFusionV2（camera params input, normalized）: mean 184.29 px / median 173.01 px
+    - Fine-tune from synthetic: mean 125.87 px / median 103.80 px
+    - Residual/refine + reprojection loss: failed
+  - 当前结论：DLT 在该真实数据集上非常强，最小可学习融合模型还无法超越；单纯增大模型、加入相机参数、或微调合成模型均未能追平 DLT，需要更深度架构或 3D 监督。
+- ✅ Iteration 5 closed: learned confidence-weighted DLT (`RobustTriangulationModel`).
+  - 真实 Shelf 重投影误差对比（300–600 帧，5 视图）：
+    - DLT: mean 9.88 px / median 5.52 px
+    - RobustTriangulationModel（学习每视角权重 + 可微分 DLT，reprojection loss）：mean 11.64 px / median 5.98 px
+  - 结论：可学习权重能接近 DLT（median 仅高 0.46 px），但 mean 因少量离群帧而更高，未能超过 DLT。这说明仅依赖重投影 loss 的自适应权重在缺少 3D 监督时难以超越几何 DLT。
+  - 下一步（Iteration 6 待探索）：引入时序一致性、3D 伪标签 / GT 监督、或在 DLT 基础上做残差校正。
 
 Recent additions:
+  - `motionflow_mv/pipeline_utils.py::select_best_person_group`: match the same person across views by minimal reprojection error.
   - `motionflow_mv/data/voxelpose_loader.py`: load VoxelPose Shelf calibration and 2D predictions.
   - `experiments/run_shelf_voxelpose_baseline.py`: real-data DLT pipeline.
-  - `experiments/eval_shelf_voxelpose.py`: reprojection-error evaluation.
+  - `experiments/eval_shelf_voxelpose.py`: reprojection-error evaluation for DLT.
+  - `experiments/train_attention_fusion.py`: GPU-aware synthetic training.
+  - `experiments/train_attention_fusion_shelf.py`: train AttentionFusion on real matched Shelf data (DLT as pseudo-GT).
+  - `experiments/eval_attention_fusion_shelf.py`: evaluate trained AttentionFusion on Shelf via reprojection error.
+  - `experiments/compare_dlt_attention_synthetic.py`: compare DLT vs trained AttentionFusion on synthetic noisy data.
+  - `motionflow_mv/fusion/robust_triangulation.py`: differentiable confidence-weighted DLT triangulation.
+  - `experiments/train_robust_triangulation_shelf.py`: train learned per-view weights for triangulation on Shelf.
+  - `experiments/eval_robust_triangulation_shelf.py`: evaluate learned triangulation vs DLT.
 
 ## Iteration workflow
 
