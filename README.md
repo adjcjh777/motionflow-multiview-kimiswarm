@@ -48,12 +48,12 @@ python3 -m venv .venv
 .venv/bin/python -m pytest tests/ -v
 ```
 
-## Current status (Iteration 1)
+## Current status
 
-- ✅ 20 parallel research notes on baselines, fusion, datasets, metrics, and environments.
-- ✅ v1 design doc: `docs/design_v1.md`
-- ✅ Minimal code skeleton: camera model, DLT triangulation, metrics, pipeline.
-- 🔄 Next: run the confidence-weighted DLT baseline on Shelf / Campus.
+- ✅ Iteration 1 closed (#1): 20 parallel research notes, v1 design doc, minimal DLT skeleton.
+  - Issue: https://github.com/adjcjh777/motionflow-multiview-kimiswarm/issues/1
+- 🔄 Iteration 2 open (#2): end-to-end baseline on Shelf/Campus.
+  - Issue: https://github.com/adjcjh777/motionflow-multiview-kimiswarm/issues/2
 
 ## Iteration workflow
 
