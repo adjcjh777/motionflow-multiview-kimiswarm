@@ -116,3 +116,77 @@ To reach CVPR/ICRA-level numbers we need:
   another unless the network is scale/camera invariant or fine-tuned.
 * **A800-D read-only constraint**: we can inspect Docker/vendor data and golden
   artifacts, but cannot modify containers or launch training there.
+
+## 5. Phase 3 iteration — ray-aware attention fusion (this turn)
+
+### 5.1 Swarm findings
+
+A 20-agent research swarm produced reports in `docs/swarm_iter3/`. The most
+actionable conclusion is that `attention_v2` is unstable because it flattens the
+raw 12-D projection matrix and directly regresses 3D coordinates. The swarm
+converged on a cleaner geometry-aware design:
+
+* Use **ray directions + camera centers** instead of flattened `P`.
+* Predict **per-view weights**, then feed them into a **differentiable weighted DLT**
+  layer rather than regressing 3D coordinates end-to-end.
+* Add **reprojection / epipolar losses** and train on real 3D GT (Human3.6M)
+  whenever possible.
+
+References: `docs/swarm_iter3/attention_fusion_v2_instability.md`,
+`docs/swarm_iter3/geometry_aware_attention.md`,
+`docs/swarm_iter3/epipolar_constraints.md`.
+
+### 5.2 New plugin: `ray_attention`
+
+Implemented:
+
+* `motionflow_mv/fusion/ray_attention_model.py` — `RayAttentionFusionModel`:
+  computes camera rays via `K^{-1}`, embeds `(x, y, conf)` + `(camera_center,
+  ray_dir)`, runs multi-head self-attention over views per joint, predicts
+  per-view weights, and triangulates with differentiable weighted DLT.
+* `motionflow_mv/fusion/ray_attention_module.py` — `RayAttentionFusionModule`
+  wrapper registered as a `FusionModule` plugin.
+* `experiments/train_ray_attention_shelf.py` — training script for Shelf data.
+* `tests/test_ray_attention.py` — unit tests (14 tests passing).
+
+### 5.3 Initial validation
+
+GVHMR multi-view projection demo (`experiments/demo_gvhmr_multiview_projection.py`)
+now includes `ray_attention`. On 4 virtual cameras with 0.5 px Gaussian noise:
+
+```text
+Plugin                    MPJPE
+--------------------------------
+attention                3.6807
+ray_attention            0.0021
+```
+
+`ray_attention` produces a near-perfect metric triangulation because the DLT
+layer enforces the correct geometric inductive bias; the remaining error is in
+the order of the synthetic noise. The gap to `attention` confirms that the new
+design is better conditioned for calibrated multi-view fusion.
+
+### 5.4 Blockers
+
+* Real training data is not present in the workspace (`data/Shelf` missing).
+  Only the pre-computed `outputs/shelf_matched_dataset.pkl` exists, and it does
+  not store camera parameters, so the new ray-aware trainer cannot yet use it
+  without re-running `prepare_shelf_dataset.py` with the raw Shelf/VoxelPose
+  files.
+* Human3.6M / CMU Panoptic / 3DPW are not yet ingested. These are needed for
+  3D-supervised training that can exceed the DLT pseudo-label ceiling.
+* A800-D SSH credentials are not available in this session; the read-only data
+  on `A800-D/mnt/nvme0n1/zhangzy/projects` could not be accessed.
+
+### 5.5 Next steps
+
+1. **Acquire raw multi-view data**: locate `data/Shelf` locally or access the
+   A800-D read-only projects directory to obtain Shelf/Campus/VoxelPose files.
+2. **Run `prepare_shelf_dataset.py` and `train_ray_attention_shelf.py`** to train
+   the first ray-aware checkpoint.
+3. **Add Human3.6M data loader** (`motionflow_mv/data/human36m_loader.py`) and
+   train with real 3D GT; this is the only path to clearly beat DLT.
+4. **Add epipolar loss** to the ray-aware trainer to improve cross-dataset
+   generalization.
+5. **Controlled ablation**: raw flattened `P` vs. ray embeddings, direct 3D
+   regression vs. weighted DLT, DLT pseudo-GT vs. 3D GT.
