@@ -11,3 +11,4 @@ data/
 *.npz
 .DS_Store
 tmp/
+outputs/
