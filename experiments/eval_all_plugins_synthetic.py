@@ -59,10 +59,12 @@ def main():
     n_views, j, t = 5, 17, 30
     points_2d, confidences, cameras, joints_3d_gt = generate_sequence(n_views, j, t)
 
-    # Optionally load trained attention / temporal plugin checkpoints.
+    # Optionally load trained plugin checkpoints.
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     _load_plugin_if_exists("attention", "outputs/attention_fusion_synthetic_plugin.pth", device)
     _load_plugin_if_exists("temporal_refiner", "outputs/temporal_refiner_synthetic.pth", device)
+    _load_plugin_if_exists("robust_triangulation", "outputs/robust_triangulation_synthetic.pth", device)
+    _load_plugin_if_exists("residual_refiner", "outputs/residual_refiner_synthetic.pth", device)
 
     print("Plugin comparison on synthetic 3D GT")
     print(f"{'Plugin':<20} {'MPJPE':>10} {'PA-MPJPE':>10}")
