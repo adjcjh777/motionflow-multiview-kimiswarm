@@ -1,8 +1,8 @@
-"""Generate synthetic multi-view 3D pose training data from SMPL.
+"""Generate synthetic multi-view 3D pose training data from SMPL with randomized rigs.
 
 Usage:
     /d/anaconda3/envs/jz_py310/python.exe experiments/generate_synthetic_multiview_dataset.py \
-        --n_sequences 500 --frames_per_seq 30 --n_views 4 --output outputs/synthetic_multiview_dataset.npz
+        --n_sequences 500 --frames_per_seq 30 --output outputs/synthetic_multiview_dataset.npz
 """
 
 import argparse
@@ -18,16 +18,23 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from motionflow_mv.calibration.camera import Camera
 
 
-def make_cameras_on_circle(n_views: int = 4, radius: float = 4.0, height: float = 1.5):
-    """Return a list of calibrated cameras looking at the origin."""
+def make_random_cameras(rng, n_views: int = 4):
+    """Return a randomized calibrated camera rig."""
+    radius = rng.uniform(3.0, 6.0)
+    height = rng.uniform(0.5, 2.5)
+    focal = rng.uniform(600.0, 1200.0)
+    cx = rng.uniform(300.0, 340.0)
+    cy = rng.uniform(220.0, 260.0)
+    phi_base = rng.uniform(np.pi / 6, np.pi / 3)
+
     cameras = []
     for i in range(n_views):
-        theta = 2 * np.pi * i / n_views
-        phi = np.pi / 3
+        theta = 2 * np.pi * i / n_views + rng.uniform(-0.1, 0.1)
+        phi = phi_base + rng.uniform(-0.1, 0.1)
         K = np.eye(3, dtype=np.float64)
-        K[0, 0] = K[1, 1] = 900.0
-        K[0, 2] = 320.0
-        K[1, 2] = 240.0
+        K[0, 0] = K[1, 1] = focal
+        K[0, 2] = cx
+        K[1, 2] = cy
 
         c = radius * np.array([
             np.sin(phi) * np.cos(theta),
@@ -55,7 +62,17 @@ def project_points(points_3d: np.ndarray, camera: Camera):
     return x
 
 
-def generate_sequence(smpl_model, betas, cameras, n_frames: int, rng: np.random.Generator, noise_std: float = 0.5, device: torch.device = None):
+def generate_sequence(
+    smpl_model,
+    betas,
+    cameras,
+    n_frames: int,
+    rng: np.random.Generator,
+    noise_std: float = 0.5,
+    device: torch.device = None,
+    occlusion_rate: float = 0.1,
+    outlier_rate: float = 0.02,
+):
     """Generate one synthetic sequence of SMPL motion."""
     n_views = len(cameras)
     J = 17
@@ -90,11 +107,27 @@ def generate_sequence(smpl_model, betas, cameras, n_frames: int, rng: np.random.
 
         points_2d_v = []
         confidences_v = []
-        for cam in cameras:
+        for v, cam in enumerate(cameras):
             x = project_points(joints_3d, cam)
             x += rng.normal(0, noise_std, size=x.shape)
+
+            # Occlusion: randomly drop some joints in this view
+            if occlusion_rate > 0:
+                occ_mask = rng.random(J) < occlusion_rate
+                x[occ_mask] = 0.0
+                conf = rng.uniform(0.8, 1.0, size=J)
+                conf[occ_mask] = 0.0
+            else:
+                conf = rng.uniform(0.8, 1.0, size=J)
+
+            # Outliers: occasional wild keypoints
+            if outlier_rate > 0:
+                outlier_mask = rng.random(J) < outlier_rate
+                x[outlier_mask] += rng.normal(0, 50.0, size=(outlier_mask.sum(), 2))
+                conf[outlier_mask] = 0.0
+
             points_2d_v.append(x)
-            confidences_v.append(rng.uniform(0.8, 1.0, size=J))
+            confidences_v.append(conf)
         points_2d_list.append(np.stack(points_2d_v, axis=0))  # (V, J, 2)
         confidences_list.append(np.stack(confidences_v, axis=0))  # (V, J)
 
@@ -110,6 +143,8 @@ def main():
     parser.add_argument("--frames_per_seq", type=int, default=30)
     parser.add_argument("--n_views", type=int, default=4)
     parser.add_argument("--noise_std", type=float, default=0.5)
+    parser.add_argument("--occlusion_rate", type=float, default=0.1)
+    parser.add_argument("--outlier_rate", type=float, default=0.02)
     parser.add_argument("--output", type=str, default="outputs/synthetic_multiview_dataset.npz")
     args = parser.parse_args()
 
@@ -118,21 +153,32 @@ def main():
 
     smpl_model = smplx.SMPL("data/smpl/SMPL_NEUTRAL.pkl", batch_size=1).to(device)
     betas0 = torch.randn(1, 10).to(device) * 0.1
-    cameras = make_cameras_on_circle(args.n_views)
 
     rng = np.random.default_rng(2025)
 
     all_joints_3d = []
     all_points_2d = []
     all_confidences = []
+    all_camera_K = []
+    all_camera_R = []
+    all_camera_t = []
 
     for seq_idx in range(args.n_sequences):
+        cameras = make_random_cameras(rng, n_views=args.n_views)
         joints_3d, points_2d, confidences = generate_sequence(
-            smpl_model, betas0, cameras, args.frames_per_seq, rng, args.noise_std, device
+            smpl_model, betas0, cameras, args.frames_per_seq, rng,
+            args.noise_std, device, args.occlusion_rate, args.outlier_rate
         )
+        n_frames = joints_3d.shape[0]
+        K_arr = np.stack([cam.K for cam in cameras], axis=0)  # (V, 3, 3)
+        R_arr = np.stack([cam.R for cam in cameras], axis=0)
+        t_arr = np.stack([cam.t for cam in cameras], axis=0)
         all_joints_3d.append(joints_3d)
         all_points_2d.append(points_2d)
         all_confidences.append(confidences)
+        all_camera_K.append(np.tile(K_arr[None], (n_frames, 1, 1, 1)))
+        all_camera_R.append(np.tile(R_arr[None], (n_frames, 1, 1, 1)))
+        all_camera_t.append(np.tile(t_arr[None], (n_frames, 1, 1)))
         if (seq_idx + 1) % 50 == 0:
             print(f"Generated {seq_idx + 1}/{args.n_sequences} sequences")
 
@@ -140,9 +186,9 @@ def main():
         "joints_3d": np.concatenate(all_joints_3d, axis=0),  # (T_total, J, 3)
         "points_2d": np.concatenate(all_points_2d, axis=0),  # (T_total, V, J, 2)
         "confidences": np.concatenate(all_confidences, axis=0),  # (T_total, V, J)
-        "camera_K": np.stack([cam.K for cam in cameras], axis=0),
-        "camera_R": np.stack([cam.R for cam in cameras], axis=0),
-        "camera_t": np.stack([cam.t for cam in cameras], axis=0),
+        "camera_K": np.concatenate(all_camera_K, axis=0),  # (T_total, V, 3, 3)
+        "camera_R": np.concatenate(all_camera_R, axis=0),  # (T_total, V, 3, 3)
+        "camera_t": np.concatenate(all_camera_t, axis=0),  # (T_total, V, 3)
     }
 
     output_path = Path(args.output)

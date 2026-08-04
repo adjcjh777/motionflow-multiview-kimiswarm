@@ -21,6 +21,41 @@ from motionflow_mv.calibration.camera import Camera
 from motionflow_mv.fusion.ray_attention_model import RayAttentionFusionModel
 
 
+class CameraDataset(torch.utils.data.Dataset):
+    """Dataset that yields per-sample cameras alongside points and targets."""
+
+    def __init__(self, data: dict):
+        self.x = torch.from_numpy(data["points_2d"]).float()
+        self.conf = torch.from_numpy(data["confidences"]).float()
+        self.y = torch.from_numpy(data["joints_3d"]).float()
+        self.camera_K = data["camera_K"]
+        self.camera_R = data["camera_R"]
+        self.camera_t = data["camera_t"]
+        self.n = self.x.shape[0]
+
+    def __len__(self):
+        return self.n
+
+    def __getitem__(self, idx):
+        cameras = []
+        for v in range(self.camera_K.shape[1]):
+            cameras.append(Camera(
+                K=self.camera_K[idx, v],
+                R=self.camera_R[idx, v],
+                t=self.camera_t[idx, v],
+            ))
+        x = torch.cat([self.x[idx], self.conf[idx, ..., None]], dim=-1)  # (V, J, 3)
+        return x, self.y[idx], cameras
+
+
+def collate_fn(batch):
+    """Collate variable camera lists by returning them as a list."""
+    xb = torch.stack([b[0] for b in batch], dim=0)
+    yb = torch.stack([b[1] for b in batch], dim=0)
+    cameras_list = [b[2] for b in batch]
+    return xb, yb, cameras_list
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--dataset", type=str, default="outputs/synthetic_multiview_dataset.npz")
@@ -35,36 +70,24 @@ def main():
     print(f"Device: {device}")
 
     data = np.load(args.dataset)
-    points_2d = torch.from_numpy(data["points_2d"]).float()  # (T, V, J, 2)
-    confidences = torch.from_numpy(data["confidences"]).float()  # (T, V, J)
-    joints_3d = torch.from_numpy(data["joints_3d"]).float()  # (T, J, 3)
-
-    # Build Camera objects
-    camera_K = data["camera_K"]
-    camera_R = data["camera_R"]
-    camera_t = data["camera_t"]
-    cameras = [Camera(K=camera_K[v], R=camera_R[v], t=camera_t[v]) for v in range(camera_K.shape[0])]
-
-    # Build model input: (x, y, confidence)
-    x = torch.cat([points_2d, confidences[..., None]], dim=-1)  # (T, V, J, 3)
-
-    # Temporal shuffle
-    n = x.shape[0]
+    n = data["joints_3d"].shape[0]
     n_val = int(n * args.val_ratio)
-    perm = torch.randperm(n)
-    x = x[perm]
-    joints_3d = joints_3d[perm]
+    perm = np.random.permutation(n)
 
-    train_x, val_x = x[n_val:], x[:n_val]
-    train_y, val_y = joints_3d[n_val:], joints_3d[:n_val]
+    # Simple in-memory split
+    train_idx = perm[n_val:]
+    val_idx = perm[:n_val]
 
-    train_dataset = torch.utils.data.TensorDataset(train_x, train_y)
-    val_dataset = torch.utils.data.TensorDataset(val_x, val_y)
-    train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True)
-    val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=args.batch_size)
+    train_data = {k: v[train_idx] for k, v in data.items()}
+    val_data = {k: v[val_idx] for k, v in data.items()}
 
-    n_views = x.shape[1]
-    j = x.shape[2]
+    train_dataset = CameraDataset(train_data)
+    val_dataset = CameraDataset(val_data)
+    train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, collate_fn=collate_fn)
+    val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=args.batch_size, collate_fn=collate_fn)
+
+    n_views = data["camera_K"].shape[1]
+    j = data["points_2d"].shape[2]
     model = RayAttentionFusionModel(j=j, d=args.d, n_views=n_views).to(device)
     optimizer = optim.Adam(model.parameters(), lr=args.lr)
     criterion = nn.MSELoss()
@@ -78,10 +101,13 @@ def main():
     for epoch in range(1, args.epochs + 1):
         model.train()
         train_loss = 0.0
-        for xb, yb in train_loader:
+        for xb, yb, cameras_list in train_loader:
             xb, yb = xb.to(device), yb.to(device)
             optimizer.zero_grad()
-            pred, _ = model(xb, cameras)
+            # Use the first sample's cameras for the whole batch (all samples in
+            # this synthetic dataset share the same rig per sequence, but in
+            # general each batch element could use its own cameras).
+            pred, _ = model(xb, cameras_list[0])
             loss = criterion(pred, yb)
             loss.backward()
             optimizer.step()
@@ -92,9 +118,9 @@ def main():
         val_loss = 0.0
         val_mpjpe = 0.0
         with torch.no_grad():
-            for xb, yb in val_loader:
+            for xb, yb, cameras_list in val_loader:
                 xb, yb = xb.to(device), yb.to(device)
-                pred, _ = model(xb, cameras)
+                pred, _ = model(xb, cameras_list[0])
                 loss = criterion(pred, yb)
                 val_loss += loss.item() * xb.size(0)
                 val_mpjpe += (pred - yb).norm(dim=-1).mean().item() * xb.size(0)
