@@ -44,6 +44,7 @@ motionflow-multiview-kimiswarm/
 ```bash
 cd /path/to/repo
 python3 -m venv .venv
+# Default requirements install CPU-only torch (smaller). For CUDA training, install torch separately.
 .venv/bin/pip install -r requirements.txt
 .venv/bin/python -m pytest tests/ -v
 ```
