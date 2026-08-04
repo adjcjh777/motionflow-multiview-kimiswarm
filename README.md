@@ -123,6 +123,7 @@ Recent additions:
   - `experiments/train_temporal_refiner_shelf.py`: train the temporal refiner.
   - `experiments/eval_temporal_refiner_shelf.py`: evaluate the temporal refiner vs DLT.
   - `experiments/train_temporal_synthetic.py`: pre-train the temporal refiner on synthetic 3D sequences.
+  - `experiments/run_multiview_pipeline_shelf.py`: end-to-end multi-view pipeline demo on Shelf.
 
 ## Iteration workflow
 

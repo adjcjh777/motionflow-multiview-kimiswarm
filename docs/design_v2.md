@@ -66,3 +66,5 @@ Instead of claiming to beat DLT on reprojection error, frame the paper around:
 
 ## Proposed next step (Iteration 9)
 Run the pipeline end-to-end on a small multi-view video set (or Shelf frames) using the existing 2D predictions, produce 3D skeletons, and demonstrate integration with MotionFlow's output format.
+
+A first demo is provided in `experiments/run_multiview_pipeline_shelf.py`, which triangulates all matched Shelf frames and saves the 3D skeletons to `outputs/shelf_pipeline_3d.pkl`.
