@@ -154,6 +154,9 @@ def main():
     parser.add_argument("--train_samples", type=int, default=4000, help="Random clips per train sequence")
     parser.add_argument("--reproj_weight", type=float, default=0.0, help="Weight for reprojection auxiliary loss")
     parser.add_argument("--gt_scale", type=float, default=1.0, help="Scale factor for ground-truth 3D joints and camera translation (e.g. 0.001 for H36M mm-to-m)")
+    parser.add_argument("--start_epoch", type=int, default=1, help="Epoch to resume from (1-based)")
+    parser.add_argument("--end_epoch", type=int, default=None, help="Epoch to stop at (1-based, inclusive)")
+    parser.add_argument("--resume", type=str, default=None, help="Checkpoint to resume from")
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--output", type=str, default="outputs/ray_attention_temporal_crossview_uncertainty_residual_learned_tri_v1_mpiinf3dhp.pth")
     args = parser.parse_args()
@@ -196,7 +199,13 @@ def main():
     output_path = Path(args.output)
     output_path.parent.mkdir(exist_ok=True, parents=True)
 
-    for epoch in range(1, args.epochs + 1):
+    if args.resume:
+        model.load_state_dict(torch.load(args.resume, map_location="cpu", weights_only=True))
+        print(f"Resumed from {args.resume}")
+
+    start_epoch = args.start_epoch
+    end_epoch = args.end_epoch if args.end_epoch is not None else args.epochs
+    for epoch in range(start_epoch, end_epoch + 1):
         model.train()
         train_loss = 0.0
         for xb, yb, K, R, t in train_loader:
