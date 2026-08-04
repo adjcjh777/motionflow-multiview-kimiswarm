@@ -166,19 +166,39 @@ layer enforces the correct geometric inductive bias; the remaining error is in
 the order of the synthetic noise. The gap to `attention` confirms that the new
 design is better conditioned for calibrated multi-view fusion.
 
-### 5.4 Blockers
+### 5.4 Synthetic training workaround
 
-* Real training data is not present in the workspace (`data/Shelf` missing).
-  Only the pre-computed `outputs/shelf_matched_dataset.pkl` exists, and it does
-  not store camera parameters, so the new ray-aware trainer cannot yet use it
-  without re-running `prepare_shelf_dataset.py` with the raw Shelf/VoxelPose
-  files.
-* Human3.6M / CMU Panoptic / 3DPW are not yet ingested. These are needed for
-  3D-supervised training that can exceed the DLT pseudo-label ceiling.
-* A800-D SSH credentials are not available in this session; the read-only data
-  on `A800-D/mnt/nvme0n1/zhangzy/projects` could not be accessed.
+Because raw Shelf/Campus/H36M data is not in the workspace, a synthetic pipeline
+was built to unblock training and validate the end-to-end loop:
 
-### 5.5 Next steps
+* `experiments/generate_synthetic_multiview_dataset.py`: 100 sequences × 30
+  frames × 4 views, random SMPL poses projected through a calibrated virtual
+  rig with 0.5 px Gaussian noise.
+* `experiments/train_ray_attention_synthetic.py`: trains `ray_attention` on the
+  synthetic data with a 3D MSE loss.
+* Result after 50 epochs: **val_MPJPE = 0.0022 m** (2.2 mm).
+* When the synthetic checkpoint is loaded into the GVHMR projection demo,
+  `ray_attention` achieves **0.0021 m MPJPE**, confirming the model preserves
+  metric scale and triangulates correctly on unseen SMPL motion.
+
+### 5.5 A800-D read-only audit
+
+SSH access to `a800-D` (user `zhangzy`) succeeded. Relevant findings:
+
+* `/mnt/nvme0n1/zhangzy/projects` contains motionflow-related projects and a
+  running Docker container `motionflow`, but no readily accessible Shelf/Campus
+  or Human3.6M raw data.
+* `/mnt/nvme1n1p1/datas/zhangzy/motionflow-runtime/data` holds SQLite task
+  databases, not pose datasets.
+* GVHMR single-view videos and SMPL assets are available under the vendor trees.
+
+Therefore, the current realistic data path is:
+1. Use the synthetic generator for fast model validation (done).
+2. Download Shelf/Campus via the Google Drive mirror documented in
+   `docs/swarm_iter2/shelf_campus_source.md` and train on real data.
+3. Apply for Human3.6M for 3D-supervised training.
+
+### 5.6 Next steps
 
 1. **Acquire raw multi-view data**: locate `data/Shelf` locally or access the
    A800-D read-only projects directory to obtain Shelf/Campus/VoxelPose files.
