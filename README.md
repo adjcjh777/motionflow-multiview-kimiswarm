@@ -85,7 +85,12 @@ If you only need CPU, install the CPU wheel manually:
     - DLT: mean 9.88 px / median 5.52 px / max 1044.68 px
     - ResidualRefinerModel（DLT + 可学习残差，L1 reprojection loss）：mean 9.90 px / median 5.52 px / max 1038.20 px
   - 结论：残差校正基本复现了 DLT 的性能，mean/median 与 DLT 持平，max 略有下降，但**仍未统计意义上击败 DLT**。简单的单帧残差网络无法克服 DLT 的强几何先验。
-  - 下一步（Iteration 7 待探索）：引入时序一致性（LSTM / Transformer over frames）或 3D GT 监督，才能真正压过 DLT。
+- ✅ Iteration 7 closed: temporal refinement over a 5-frame window (`TemporalRefinerModel`).
+  - 真实 Shelf 重投影误差对比（300–600 帧，5 视图）：
+    - DLT: mean 9.88 px / median 5.52 px / max 1044.68 px
+    - TemporalRefinerModel（Bi-GRU over 5 frames, per-joint features）：mean 9.89 px / median 5.49 px / max 1044.45 px
+  - 结论：时序模型在 median 上略有提升（5.49 vs 5.52），mean 与 DLT 持平，max 几乎不变。**仍未显著击败 DLT**。说明当前 2D 检测噪声和重投影 loss 下，时序信息只能带来边际收益。
+  - 下一步（Iteration 8 待探索）：需要引入更强的 3D 监督（3D pseudo-label / GT）或多帧光流/运动先验，才能建立稳定优势。
 
 Recent additions:
   - `motionflow_mv/pipeline_utils.py::select_best_person_group`: match the same person across views by minimal reprojection error.
@@ -102,6 +107,9 @@ Recent additions:
   - `motionflow_mv/fusion/residual_refiner.py`: per-frame residual refinement on top of DLT output.
   - `experiments/train_residual_refiner_shelf.py`: train the residual refiner with reprojection loss.
   - `experiments/eval_residual_refiner_shelf.py`: evaluate the residual refiner vs DLT.
+  - `motionflow_mv/fusion/temporal_refiner.py`: Bi-GRU temporal refiner over a window of frames.
+  - `experiments/train_temporal_refiner_shelf.py`: train the temporal refiner.
+  - `experiments/eval_temporal_refiner_shelf.py`: evaluate the temporal refiner vs DLT.
 
 ## Iteration workflow
 

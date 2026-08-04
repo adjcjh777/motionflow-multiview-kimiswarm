@@ -17,6 +17,7 @@ from motionflow_mv.data.voxelpose_loader import VoxelPoseShelfLoader
 from motionflow_mv.fusion.attention_model import AttentionFusionModel
 from motionflow_mv.fusion.robust_triangulation import RobustTriangulationModel
 from motionflow_mv.fusion.residual_refiner import ResidualRefinerModel
+from motionflow_mv.fusion.temporal_refiner import TemporalRefinerModel
 
 
 def reprojection_error(pred_3d: np.ndarray, points_2d: np.ndarray, camera) -> np.ndarray:
@@ -120,6 +121,35 @@ def main():
                     all_errors.append(err)
         all_errors_arr = np.concatenate(all_errors)
         print(f"residual_refiner_shelf.pth | {all_errors_arr.mean():.2f} | {np.median(all_errors_arr):.2f} | {all_errors_arr.max():.2f}")
+
+    # TemporalRefinerModel
+    temporal_path = Path("outputs") / "temporal_refiner_shelf.pth"
+    if temporal_path.exists():
+        model = TemporalRefinerModel(j=17, d=64, n_views=5, hidden=128).to(device)
+        model.load_state_dict(torch.load(temporal_path, map_location=device, weights_only=True))
+        model.eval()
+        all_errors = []
+        with torch.no_grad():
+            frames = sorted(dataset.keys())
+            half = 2
+            for i in range(half, len(frames) - half):
+                w = frames[i - half:i + half + 1]
+                inputs, baselines = [], []
+                for f in w:
+                    item = dataset[f]
+                    points_2d = item["points_2d"]
+                    conf = item["input"][..., 2]
+                    inputs.append(np.concatenate([points_2d, conf[..., None]], axis=-1))
+                    baselines.append(item["target_3d"])
+                inp = torch.tensor(np.stack(inputs, axis=0), dtype=torch.float32).unsqueeze(0).to(device)
+                baseline = torch.tensor(np.stack(baselines, axis=0), dtype=torch.float32).unsqueeze(0).to(device)
+                pred_3d = model(inp, baseline).squeeze(0).cpu().numpy()
+                center_item = dataset[frames[i]]
+                for j, cid in enumerate(camera_ids):
+                    err = reprojection_error(pred_3d, center_item["points_2d"][j], loader.get_camera(cid))
+                    all_errors.append(err)
+        all_errors_arr = np.concatenate(all_errors)
+        print(f"temporal_refiner_shelf.pth | {all_errors_arr.mean():.2f} | {np.median(all_errors_arr):.2f} | {all_errors_arr.max():.2f}")
 
 
 if __name__ == "__main__":
