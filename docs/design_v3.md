@@ -39,8 +39,10 @@ Key observations:
   and scale are matched, showing the value of real-data fine-tuning.
 * `residual_refiner` is comparable with its synthetic and Shelf checkpoints,
   slightly behind `dlt`; a larger model or joint loss may be needed.
-* `robust_triangulation` still relies on synthetic calibration and needs
-  Shelf fine-tuning or camera-invariant design.
+* `robust_triangulation` was fine-tuned on Shelf but did not improve beyond the
+  synthetic baseline (still ~445 px). The differentiable SVD layer appears to
+  get stuck near a degenerate solution, so a reparameterization or
+  reprojection-only training with better initialization is needed.
 
 ## 2. Design refinement for v3
 
@@ -82,14 +84,15 @@ To reach CVPR/ICRA-level numbers we need:
 
 ## 3. Immediate next steps
 
-1. Fine-tune `robust_triangulation` on Shelf using `dlt` pseudo-labels and
-   evaluate it under the same per-plugin scaling.
-2. Add a Campus dataset loader and cross-dataset validation (train on Shelf,
-   validate on Campus).
-3. Begin the GVHMR + SMPL multi-view projection demo using read-only A800-D
+1. **Robust triangulation redesign**: replace the differentiable SVD with a
+   stable weighted pseudo-inverse or reparameterize the per-view weights with a
+   softmax + entropy regularizer, then retrain on Shelf.
+2. **Add a Campus dataset loader** and cross-dataset validation (train on Shelf,
+   validate on Campus) to test generalization beyond Shelf calibration.
+3. **GVHMR + SMPL multi-view projection demo**: use read-only A800-D
    Docker/vendor data to validate the `HumanMotionIR` end-to-end path.
-4. Add per-joint and per-view breakdown to `eval_all_plugins_shelf.py` so we
-   can identify which joints/views hurt each plugin.
+4. **Per-joint/per-view breakdown** in `eval_all_plugins_shelf.py` to locate
+   remaining failure modes.
 
 ## 4. Risk register
 

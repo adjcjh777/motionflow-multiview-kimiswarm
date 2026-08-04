@@ -1,11 +1,11 @@
-"""Train the confidence-weighted DLT triangulation model on Shelf data.
+"""Train RobustTriangulationModel on Shelf DLT pseudo-labels.
 
-The model predicts per-view weights and triangulates 3D joints in a fully
-differentiable way.  We train it on the matched Shelf dataset created by
-``run_shelf_voxelpose_baseline.py`` using reprojection loss.
+The model learns per-view weights for differentiable DLT using real Shelf
+2D keypoints and camera projection matrices.  Because no 3D GT is available,
+the DLT triangulated skeleton is used as the pseudo-target.
 
 Usage:
-    /d/anaconda3/envs/mf/python.exe experiments/train_robust_triangulation_shelf.py
+    /d/anaconda3/envs/jz_py310/python.exe experiments/train_robust_triangulation_shelf.py
 """
 
 import argparse
@@ -22,6 +22,21 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from motionflow_mv.data.voxelpose_loader import VoxelPoseShelfLoader
 from motionflow_mv.fusion.robust_triangulation import RobustTriangulationModel
+
+
+def reprojection_loss(pred_3d, points_2d, proj_matrices):
+    """Mean per-joint reprojection error (L2 distance in pixels)."""
+    B, J = pred_3d.shape[:2]
+    V = proj_matrices.shape[0]
+    X_h = torch.cat([pred_3d, torch.ones(B, J, 1, device=pred_3d.device)], dim=-1)
+    loss = 0.0
+    for v in range(V):
+        P = proj_matrices[v]
+        x_h = torch.einsum("ik,bjk->bji", P, X_h)
+        x = x_h[..., :2] / (x_h[..., 2:3] + 1e-6)
+        diff = x - points_2d[:, v]
+        loss += diff.norm(dim=-1).sum()
+    return loss / (B * V * J)
 
 
 DATA_ROOT = "tmp/voxelpose-pytorch/data/Shelf"
@@ -48,55 +63,6 @@ def collate_dataset(dataset: dict, camera_ids):
         torch.tensor(np.stack(inputs, axis=0), dtype=torch.float32),
         torch.tensor(np.stack(targets, axis=0), dtype=torch.float32),
     )
-
-
-def reprojection_loss(pred_3d, points_2d, proj_matrices, confidences):
-    """Compute confidence-weighted reprojection error.
-
-    Args:
-        pred_3d:    (B, J, 3)
-        points_2d:  (B, V, J, 2) pixel coordinates
-        proj_matrices: (V, 3, 4)
-        confidences: (B, V, J)
-
-    Returns:
-        Scalar loss.
-    """
-    B, J = pred_3d.shape[:2]
-    V = proj_matrices.shape[0]
-    # Homogeneous 3D points
-    X_h = torch.cat([pred_3d, torch.ones(B, J, 1, device=pred_3d.device)], dim=-1)
-
-    loss = 0.0
-    total_weight = 0.0
-    for v in range(V):
-        P = proj_matrices[v]  # (3, 4)
-        x_h = torch.einsum("ik,bjk->bji", P, X_h)  # (B, J, 3)
-        x = x_h[..., :2] / (x_h[..., 2:3] + 1e-6)
-        diff = x - points_2d[:, v]  # (B, J, 2)
-        w = confidences[:, v]  # (B, J)
-        loss += (w * (diff ** 2).sum(dim=-1)).sum()
-        total_weight += w.sum()
-
-    return loss / (total_weight + 1e-8)
-
-
-def evaluate(model, loader, proj_matrices, device):
-    """Return mean reprojection error (pixels) and 3D error (mm)."""
-    model.eval()
-    reproj_errors = []
-    mse_3d_errors = []
-    with torch.no_grad():
-        for xb, yb in loader:
-            xb = xb.to(device)
-            yb = yb.to(device)
-            pred = model(xb, proj_matrices)
-            # Reprojection loss
-            loss = reprojection_loss(pred, xb[..., :2], proj_matrices, xb[..., 2])
-            reproj_errors.append(loss.item())
-            # 3D MSE against DLT target
-            mse_3d_errors.append(torch.mean((pred - yb) ** 2).item())
-    return np.mean(reproj_errors), np.mean(mse_3d_errors)
 
 
 def main():
@@ -132,47 +98,52 @@ def main():
     n_train = n_total - n_val
     train_inputs, train_targets = inputs[:n_train], targets[:n_train]
     val_inputs, val_targets = inputs[n_train:], targets[n_train:]
+
     print(f"Train: {n_train}, Val: {n_val}")
 
-    train_loader = torch.utils.data.DataLoader(
-        torch.utils.data.TensorDataset(train_inputs, train_targets),
-        batch_size=args.batch_size,
-        shuffle=True,
-    )
-    val_loader = torch.utils.data.DataLoader(
-        torch.utils.data.TensorDataset(val_inputs, val_targets),
-        batch_size=args.batch_size,
-    )
+    train_dataset = torch.utils.data.TensorDataset(train_inputs, train_targets)
+    val_dataset = torch.utils.data.TensorDataset(val_inputs, val_targets)
+    train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True)
+    val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=args.batch_size)
 
-    model = RobustTriangulationModel(j=17, d=args.d, n_views=len(cameras)).to(device)
-    # Initialize close to equal weights (sigmoid(2.0) ~ 0.88)
-    with torch.no_grad():
-        nn.init.zeros_(model.weight_head.weight)
-        nn.init.constant_(model.weight_head.bias, 2.0)
-
+    n_views = len(cameras)
+    j = inputs.shape[2]
+    model = RobustTriangulationModel(j=j, d=args.d, n_views=n_views).to(device)
     optimizer = optim.Adam(model.parameters(), lr=args.lr)
-    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=20, factor=0.5)
 
-    best_val = float("inf")
     output_path = Path(args.output)
     output_path.parent.mkdir(parents=True, exist_ok=True)
+    best_val = float("inf")
 
     for epoch in range(1, args.epochs + 1):
         model.train()
-        train_loss = 0.0
+        train_reproj = 0.0
+        train_mse = 0.0
         for xb, yb in train_loader:
-            xb = xb.to(device)
-            yb = yb.to(device)
+            xb, yb = xb.to(device), yb.to(device)
             optimizer.zero_grad()
             pred = model(xb, proj_matrices)
-            loss = reprojection_loss(pred, xb[..., :2], proj_matrices, xb[..., 2])
+            reproj = reprojection_loss(pred, xb[..., :2], proj_matrices)
+            mse = torch.mean((pred - yb) ** 2)
+            loss = reproj + 1e-4 * mse
             loss.backward()
             optimizer.step()
-            train_loss += loss.item() * xb.size(0)
-        train_loss /= n_train
+            train_reproj += reproj.item() * xb.size(0)
+            train_mse += mse.item() * xb.size(0)
+        train_reproj /= n_train
+        train_mse /= n_train
 
-        val_reproj, val_mse = evaluate(model, val_loader, proj_matrices, device)
-        scheduler.step(val_reproj)
+        model.eval()
+        val_reproj = 0.0
+        val_mse = 0.0
+        with torch.no_grad():
+            for xb, yb in val_loader:
+                xb, yb = xb.to(device), yb.to(device)
+                pred = model(xb, proj_matrices)
+                val_reproj += reprojection_loss(pred, xb[..., :2], proj_matrices).item() * xb.size(0)
+                val_mse += torch.mean((pred - yb) ** 2).item() * xb.size(0)
+        val_reproj /= n_val
+        val_mse /= n_val
 
         if val_reproj < best_val:
             best_val = val_reproj
@@ -180,12 +151,11 @@ def main():
 
         if epoch % 10 == 0 or epoch == 1:
             print(
-                f"Epoch {epoch:03d}: train_reproj={train_loss:.2f}px, "
-                f"val_reproj={val_reproj:.2f}px, val_3d_mse={val_mse:.2f}"
+                f"Epoch {epoch:03d}: train_reproj={train_reproj:.2f}px, "
+                f"val_reproj={val_reproj:.2f}px, val_mse={val_mse:.2f}"
             )
 
-    print(f"Best val reprojection error: {best_val:.2f}px")
-    print(f"Checkpoint saved to {output_path}")
+    print(f"Best val_loss={best_val:.4f}, checkpoint: {output_path}")
 
 
 if __name__ == "__main__":

@@ -42,6 +42,7 @@ def load_plugin_checkpoints(device, use_shelf: bool = False):
     shelf_overrides = {
         "attention": "outputs/attention_fusion_shelf.pth",
         "residual_refiner": "outputs/residual_refiner_shelf.pth",
+        "robust_triangulation": "outputs/robust_triangulation_shelf.pth",
     }
     # Model kwargs needed to match the Shelf-trained checkpoints.
     shelf_kwargs = {
@@ -115,9 +116,14 @@ def main():
         for name in sorted(FUSION_REGISTRY.names()):
             module = FUSION_REGISTRY.get(name)
             try:
-                if name in ("attention", "robust_triangulation"):
+                if name == "attention":
                     input_2d = points_2d_norm
                     output_scale = 1000.0
+                elif name == "robust_triangulation":
+                    # RobustTriangulation uses the real camera projection matrices,
+                    # so it must receive original pixels; output is in the dataset unit (mm).
+                    input_2d = points_2d_px
+                    output_scale = 1.0
                 else:
                     input_2d = points_2d_px
                     output_scale = 1.0
