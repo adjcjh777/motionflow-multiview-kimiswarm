@@ -31,22 +31,46 @@ def reprojection_error(pred_3d: np.ndarray, points_2d: np.ndarray, camera) -> np
     return np.linalg.norm(x - points_2d, axis=-1)
 
 
-def load_plugin_checkpoints(device):
-    """Optionally load locally trained synthetic checkpoints into plugins."""
-    checkpoints = {
+def load_plugin_checkpoints(device, use_shelf: bool = False):
+    """Optionally load locally trained checkpoints into plugins."""
+    synthetic = {
         "attention": "outputs/attention_fusion_synthetic_shared.pth",
         "robust_triangulation": "outputs/robust_triangulation_synthetic.pth",
         "residual_refiner": "outputs/residual_refiner_synthetic.pth",
         "temporal_refiner": "outputs/temporal_refiner_synthetic.pth",
     }
+    shelf_overrides = {
+        "attention": "outputs/attention_fusion_shelf.pth",
+        "residual_refiner": "outputs/residual_refiner_shelf.pth",
+    }
+    # Model kwargs needed to match the Shelf-trained checkpoints.
+    shelf_kwargs = {
+        "attention": {"d": 64, "n_views": 5},
+    }
+    checkpoints = {}
+    for name, path in synthetic.items():
+        if use_shelf and name in shelf_overrides:
+            path = shelf_overrides[name]
+        checkpoints[name] = path
+
     for name, path in checkpoints.items():
         checkpoint_path = Path(path)
-        if checkpoint_path.exists():
-            module = FUSION_REGISTRY.get(name)
-            state = torch.load(checkpoint_path, map_location=device, weights_only=True)
-            module.model.load_state_dict(state)
-            module.model.to(device)
-            module.model.eval()
+        if not checkpoint_path.exists():
+            continue
+        module = FUSION_REGISTRY.get(name)
+        if use_shelf and name in shelf_kwargs:
+            from motionflow_mv.fusion import FusionModuleRegistry
+            # Re-create the plugin with the architecture used during Shelf training.
+            if name == "attention":
+                from motionflow_mv.fusion.attention_fusion_module import AttentionFusionModule
+                module = AttentionFusionModule(j=17, **shelf_kwargs[name])
+                FUSION_REGISTRY._modules[name] = module
+        # Load to CPU first to avoid a transient GPU memory spike.
+        state = torch.load(checkpoint_path, map_location="cpu", weights_only=True)
+        module.model.load_state_dict(state)
+        module.model.to(device)
+        module.model.eval()
+        print(f"Loaded {path} for {name}")
 
 
 def main():
@@ -54,12 +78,13 @@ def main():
     parser.add_argument("--data_root", type=str, default="tmp/voxelpose-pytorch/data/Shelf")
     parser.add_argument("--frame_start", type=int, default=300)
     parser.add_argument("--frame_end", type=int, default=600)
+    parser.add_argument("--shelf_checkpoints", action="store_true", help="Use Shelf-finetuned checkpoints where available.")
     args = parser.parse_args()
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Device: {device}")
 
-    load_plugin_checkpoints(device)
+    load_plugin_checkpoints(device, use_shelf=args.shelf_checkpoints)
 
     loader = VoxelPoseShelfLoader(args.data_root)
     camera_ids = sorted(loader.cameras.keys(), key=lambda x: int(x))
@@ -103,6 +128,8 @@ def main():
                 for i, cid in enumerate(camera_ids):
                     err = reprojection_error(pred_3d_mm, points_2d[i], loader.get_camera(cid))
                     per_plugin_errors[name].append(err)
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
             except Exception as e:
                 print(f"Plugin {name} failed on frame {frame_idx}: {e}")
 

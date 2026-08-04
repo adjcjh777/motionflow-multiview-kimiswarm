@@ -7,7 +7,9 @@ data and the real Shelf multi-view dataset. Five plugins are registered:
 `dlt`, `attention`, `robust_triangulation`, `residual_refiner`,
 `temporal_refiner`.
 
-Shelf reprojection error (px), frames 300–600, synthetic checkpoints:
+Shelf reprojection error (px), frames 300–600:
+
+**Synthetic checkpoints**
 
 ```text
 Plugin                     Mean     Median        Max
@@ -19,16 +21,26 @@ dlt                        9.88       5.52    1044.68
 temporal_refiner           9.88       5.52    1044.68
 ```
 
+**Shelf-trained checkpoints** (`attention` d=64, `residual_refiner` d=64)
+
+```text
+Plugin                     Mean     Median        Max
+----------------------------------------------------
+attention                 80.42      58.90     781.02
+residual_refiner          13.11       9.79    1027.26
+```
+
 Key observations:
 
-* The geometry-based plugins (`dlt`, `temporal_refiner`) now give sub-pixel to
+* The geometry-based plugins (`dlt`, `temporal_refiner`) give sub-pixel to
   ~10 px reprojection, confirming the per-plugin scaling fix in
   `experiments/eval_all_plugins_shelf.py`.
-* `residual_refiner` is slightly worse than `dlt` with the synthetic checkpoint,
-  but its shelf-trained checkpoint exists and should be tested next.
-* Pure learned fusion (`attention`, `robust_triangulation`) is still around
-  400 px because the models were trained on synthetic meters and have not seen
-  real Shelf distribution.
+* Shelf-finetuned `attention` drops from 429 px to 80 px once the architecture
+  and scale are matched, showing the value of real-data fine-tuning.
+* `residual_refiner` is comparable with its synthetic and Shelf checkpoints,
+  slightly behind `dlt`; a larger model or joint loss may be needed.
+* `robust_triangulation` still relies on synthetic calibration and needs
+  Shelf fine-tuning or camera-invariant design.
 
 ## 2. Design refinement for v3
 
@@ -70,14 +82,14 @@ To reach CVPR/ICRA-level numbers we need:
 
 ## 3. Immediate next steps
 
-1. Load and evaluate the shelf-trained residual refiner checkpoint
-   (`outputs/residual_refiner_shelf.pth`) in `eval_all_plugins_shelf.py`.
-2. Add a shelf fine-tune script for `attention` and `robust_triangulation` using
-   `dlt` pseudo-labels.
-3. Re-run the full comparison and track per-plugin mean/median/max plus
-   per-joint breakdown.
-4. Begin the GVHMR + SMPL multi-view projection demo using read-only A800-D
+1. Fine-tune `robust_triangulation` on Shelf using `dlt` pseudo-labels and
+   evaluate it under the same per-plugin scaling.
+2. Add a Campus dataset loader and cross-dataset validation (train on Shelf,
+   validate on Campus).
+3. Begin the GVHMR + SMPL multi-view projection demo using read-only A800-D
    Docker/vendor data to validate the `HumanMotionIR` end-to-end path.
+4. Add per-joint and per-view breakdown to `eval_all_plugins_shelf.py` so we
+   can identify which joints/views hurt each plugin.
 
 ## 4. Risk register
 
