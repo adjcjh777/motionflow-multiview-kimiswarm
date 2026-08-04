@@ -1,12 +1,22 @@
-"""Synthetic multi-view projection demo from a single-view GVHMR output.
+"""GVHMR multi-view projection demo integrating the metric ray-attention v1 plugin.
 
-Loads a GVHMR hmr4d_results.pt, generates N virtual calibrated cameras,
-projects the SMPL 3D joints into each view, adds a little noise, and runs the
-FusionModule plugins to recover the 3D pose.  Reports MPJPE w.r.t. the GVHMR
-world joints.
+Loads a GVHMR hmr4d_results.pt, runs SMPL forward to obtain the single-view
+world 3D joints, and treats these as the per-view SMPL joints for a set of
+virtual calibrated cameras.  Each per-view joint set is projected into its
+camera, perturbed by noise, and fed into the learned fusion plugins.
+
+This lets us compare the fused multi-view output against the original
+single-view GVHMR output (used here as the world-coordinate reference).
 
 Usage:
     /d/anaconda3/envs/jz_py310/python.exe experiments/demo_gvhmr_multiview_projection.py
+    /d/anaconda3/envs/jz_py310/python.exe experiments/demo_gvhmr_multiview_projection.py --max_frames 10
+
+Note:
+    The default run loads the metric-normalised ``RayAttentionFusionModule``
+    (v1) checkpoint and uses ``input_scale`` to express the camera units in
+    meters.  Projection and MPJPE are computed with PyTorch to work around a
+    broken NumPy BLAS backend in this Windows Anaconda environment.
 """
 
 import argparse
@@ -20,8 +30,8 @@ import torch
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from motionflow_mv.calibration.camera import Camera
-from motionflow_mv.eval.metrics import mpjpe
 from motionflow_mv.fusion import FUSION_REGISTRY
+from motionflow_mv.fusion.ray_attention_v3_model import RayAttentionFusionModelV3
 from motionflow_mv.ir.gvhmr_adapter import gvhmr_pt_to_ir
 
 
@@ -52,13 +62,62 @@ def make_cameras_on_circle(n_views: int = 4, radius: float = 4.0):
     return cameras
 
 
-def project_points(points_3d: np.ndarray, camera: Camera):
-    """Project (J, 3) to (J, 2) using camera projection matrix."""
-    P = camera.projection_matrix
-    X_h = np.hstack([points_3d, np.ones((points_3d.shape[0], 1))])
-    x_h = (P @ X_h.T).T
+def camera_projection_tensor(camera: Camera, device: torch.device):
+    """Return the 3x4 projection matrix as a torch tensor without NumPy matmul."""
+    Rt = torch.cat(
+        [torch.from_numpy(camera.R).float(), torch.from_numpy(camera.t.reshape(3, 1)).float()],
+        dim=1,
+    )
+    K = torch.from_numpy(camera.K).float()
+    P = K @ Rt  # torch handles this on CPU then we move to device
+    return P.to(device)
+
+
+def project_points(points_3d: np.ndarray, P: torch.Tensor):
+    """Project (J, 3) to (J, 2) using a torch projection matrix.
+
+    Avoids NumPy matrix-matrix multiplication, which is currently broken in the
+    Windows Anaconda environment used for this demo.
+    """
+    X = torch.from_numpy(points_3d).float().to(P.device)
+    J = X.shape[0]
+    ones = torch.ones(J, 1, device=P.device)
+    X_h = torch.cat([X, ones], dim=1)  # (J, 4)
+    x_h = X_h @ P.T  # (J, 3)
     x = x_h[:, :2] / x_h[:, 2:3]
-    return x
+    return x.cpu().numpy()
+
+
+def mpjpe_m(pred: np.ndarray, gt: np.ndarray) -> float:
+    """Mean per-joint position error in meters, computed with torch."""
+    pred_t = torch.from_numpy(pred).float()
+    gt_t = torch.from_numpy(gt).float()
+    return float(torch.mean(torch.norm(pred_t - gt_t, dim=-1)))
+
+
+def load_ray_attention_v3(checkpoint_path: str | None, n_views: int, device: torch.device):
+    """Instantiate RayAttentionFusionModelV3 and optionally load trained weights."""
+    model = RayAttentionFusionModelV3(j=17, d=64, n_views=n_views).to(device)
+    if checkpoint_path is not None:
+        checkpoint_path = Path(checkpoint_path)
+        if checkpoint_path.exists():
+            state = torch.load(checkpoint_path, map_location="cpu", weights_only=True)
+            model.load_state_dict(state)
+            print(f"Loaded ray-attention v3 checkpoint: {checkpoint_path}")
+        else:
+            print(f"Warning: checkpoint not found, using random weights: {checkpoint_path}")
+    else:
+        print("No ray-attention v3 checkpoint provided; using random weights.")
+    model.eval()
+    return model
+
+
+def cameras_to_tensors(cameras, device):
+    """Convert a list of Camera objects to (K, R, t) tensors on device."""
+    K = torch.from_numpy(np.stack([cam.K for cam in cameras], axis=0)).float().to(device)
+    R = torch.from_numpy(np.stack([cam.R for cam in cameras], axis=0)).float().to(device)
+    t = torch.from_numpy(np.stack([cam.t for cam in cameras], axis=0)).float().to(device)
+    return K, R, t
 
 
 def main():
@@ -67,6 +126,15 @@ def main():
     parser.add_argument("--n_views", type=int, default=4)
     parser.add_argument("--noise_std", type=float, default=0.5)
     parser.add_argument("--shelf_checkpoints", action="store_true")
+    parser.add_argument("--ray_v3_checkpoint", type=str, default=None,
+                        help="Path to a RayAttentionFusionModelV3 checkpoint. If omitted, random weights are used.")
+    parser.add_argument("--max_frames", type=int, default=None,
+                        help="Process only the first N frames for a quick test.")
+    parser.add_argument("--ray_v1_checkpoint", type=str,
+                        default="outputs/ray_attention_v1_s_01_acts_02_03_04_05_06_07_08_09_10_11_12_13_14_15_16_multiview_m.pth",
+                        help="Path to the metric-normalised RayAttentionFusionModel v1 checkpoint.")
+    parser.add_argument("--ray_v1_input_scale", type=float, default=1.0,
+                        help="Scale factor to convert input camera units to meters (e.g. 1000 for mm, 100 for cm, 1 for m).")
     args = parser.parse_args()
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -77,6 +145,8 @@ def main():
     smpl_model = smplx.SMPL("data/smpl/SMPL_NEUTRAL.pkl", batch_size=1)
 
     T = len(ir.timestamps)
+    if args.max_frames is not None:
+        T = min(T, args.max_frames)
     print(f"Loaded {T} frames from {args.input}")
 
     # Use mean betas over time to keep a single shape.
@@ -85,21 +155,44 @@ def main():
     global_orient = torch.from_numpy(ir.pose["global_orient"]).float()
     transl = torch.from_numpy(ir.pose["transl"]).float()
 
-    # Generate virtual cameras.
+    # Generate virtual cameras and precompute torch projection matrices.
     cameras = make_cameras_on_circle(args.n_views)
+    K, R, t = cameras_to_tensors(cameras, device)
+    P_list = [camera_projection_tensor(cam, device) for cam in cameras]
 
-    # Load plugin checkpoints.
+    # Load optional ray-attention v3 model.
+    ray_v3 = None
+    if args.ray_v3_checkpoint is not None:
+        ray_v3 = load_ray_attention_v3(args.ray_v3_checkpoint, args.n_views, device)
+
+    # Load metric-normalised ray-attention v1 plugin.
+    if Path(args.ray_v1_checkpoint).exists():
+        from motionflow_mv.fusion.ray_attention_module import RayAttentionFusionModule
+        ray_v1_module = RayAttentionFusionModule(
+            j=17,
+            d=64,
+            n_views=args.n_views,
+            checkpoint_path=args.ray_v1_checkpoint,
+            input_scale=args.ray_v1_input_scale,
+        )
+        ray_v1_module.model.to(device)
+        ray_v1_module.model.eval()
+        FUSION_REGISTRY._modules["ray_attention"] = ray_v1_module
+        print(f"Loaded metric ray-attention v1 checkpoint: {args.ray_v1_checkpoint} "
+              f"(input_scale={args.ray_v1_input_scale})")
+    else:
+        print(f"Warning: ray-attention v1 checkpoint not found: {args.ray_v1_checkpoint}")
+
+    # Load optional legacy plugin checkpoints for comparison.
     if args.shelf_checkpoints:
         checkpoints = {
             "attention": "outputs/attention_fusion_shelf.pth",
             "robust_triangulation": "outputs/robust_triangulation_shelf.pth",
             "residual_refiner": "outputs/residual_refiner_shelf.pth",
             "temporal_refiner": "outputs/temporal_refiner_synthetic.pth",
-            "ray_attention": "outputs/ray_attention_synthetic.pth",
         }
         kwargs = {
             "attention": {"d": 64, "n_views": args.n_views},
-            "ray_attention": {"d": 64, "n_views": args.n_views},
         }
         for name, path in checkpoints.items():
             if not Path(path).exists():
@@ -107,10 +200,6 @@ def main():
             if name == "attention":
                 from motionflow_mv.fusion.attention_fusion_module import AttentionFusionModule
                 module = AttentionFusionModule(j=17, **kwargs[name])
-                FUSION_REGISTRY._modules[name] = module
-            if name == "ray_attention":
-                from motionflow_mv.fusion.ray_attention_module import RayAttentionFusionModule
-                module = RayAttentionFusionModule(j=17, **kwargs[name])
                 FUSION_REGISTRY._modules[name] = module
             module = FUSION_REGISTRY.get(name)
             state = torch.load(path, map_location="cpu", weights_only=True)
@@ -120,13 +209,15 @@ def main():
             print(f"Loaded {path} for {name}")
 
     per_plugin_errors = {name: [] for name in FUSION_REGISTRY.names()}
+    per_plugin_errors["ray_attention_v3"] = []
     gt_joints_all = []
+    single_view_errors = []
 
     rng = np.random.default_rng(2025)
-    for t in range(T):
+    for t_idx in range(T):
         # SMPL forward to get 3D joints (world coordinates, meters).
         # Pad body_pose to smplx expected length (69) if it comes from GVHMR (63).
-        bp = body_pose[t:t + 1]
+        bp = body_pose[t_idx:t_idx + 1]
         if bp.shape[1] < 69:
             bp_padded = torch.zeros(1, 69)
             bp_padded[:, :bp.shape[1]] = bp
@@ -136,8 +227,8 @@ def main():
             output = smpl_model(
                 betas=betas,
                 body_pose=bp_padded,
-                global_orient=global_orient[t:t + 1],
-                transl=transl[t:t + 1],
+                global_orient=global_orient[t_idx:t_idx + 1],
+                transl=transl[t_idx:t_idx + 1],
             )
         joints_3d = output.joints[0, :17].cpu().numpy()  # (17, 3)
         gt_joints_all.append(joints_3d)
@@ -145,8 +236,8 @@ def main():
         # Project to each view and add noise.
         points_2d_list = []
         confidences_list = []
-        for cam in cameras:
-            x = project_points(joints_3d, cam)
+        for P_cam in P_list:
+            x = project_points(joints_3d, P_cam)
             x += rng.normal(0, args.noise_std, size=x.shape)
             points_2d_list.append(x)
             confidences_list.append(rng.uniform(0.8, 1.0, size=joints_3d.shape[0]))
@@ -158,17 +249,19 @@ def main():
         confidences_batch = confidences[None]
 
         for name in sorted(FUSION_REGISTRY.names()):
+            # Only run the learned attention/ray-attention plugins.  The other
+            # built-ins (DLT, residual/temporal refiner, etc.) rely on NumPy
+            # linear algebra that segfaults in this Anaconda environment.
+            if name not in ("attention", "ray_attention"):
+                continue
             module = FUSION_REGISTRY.get(name)
             try:
                 if name in ("attention", "attention_v2", "ray_attention"):
                     input_2d = points_2d_norm if name == "attention" else points_2d_px
-                    output_scale = 1.0
                 elif name == "robust_triangulation":
                     input_2d = points_2d_px
-                    output_scale = 1.0
                 else:
                     input_2d = points_2d_px
-                    output_scale = 1.0
                 pred_3d = module.fuse(input_2d, confidences_batch, cameras)
                 if pred_3d.ndim == 3:
                     pred_3d = pred_3d[0]
@@ -178,20 +271,46 @@ def main():
                     pred_3d_m = pred_3d
                 else:
                     pred_3d_m = pred_3d / 1000.0
-                err = mpjpe(pred_3d_m[None], joints_3d[None])
+                err = mpjpe_m(pred_3d_m[None], joints_3d[None])
                 per_plugin_errors[name].append(err)
             except Exception as e:
-                print(f"Plugin {name} failed on frame {t}: {e}")
+                print(f"Plugin {name} failed on frame {t_idx}: {e}")
 
-    print("\nMPJPE (m) vs GVHMR world joints")
-    print(f"{'Plugin':<20} {'MPJPE':>10}")
-    print("-" * 32)
+        # Ray-attention v3 direct inference (camera-conditioned embeddings + view/joint attention + weighted DLT).
+        if ray_v3 is not None:
+            try:
+                x = np.concatenate([points_2d[None], confidences_batch[..., None]], axis=-1)  # (1, V, J, 3)
+                x_tensor = torch.from_numpy(x).float().to(device)
+                with torch.no_grad():
+                    pred_v3, _ = ray_v3(x_tensor, K=K, R=R, t=t)
+                    pred_v3 = pred_v3.cpu().numpy()[0]  # (J, 3)
+                err_v3 = mpjpe_m(pred_v3[None], joints_3d[None])
+                per_plugin_errors["ray_attention_v3"].append(err_v3)
+            except Exception as e:
+                print(f"ray_attention_v3 failed on frame {t_idx}: {e}")
+
+        # Single-view baseline: use the original GVHMR world joints (the same reference we triangulate against).
+        # This is zero by construction but is recorded explicitly for comparison.
+        single_view_errors.append(0.0)
+
+    print("\nMPJPE (m) vs GVHMR single-view world joints")
+    print(f"{'Method':<25} {'MPJPE':>10}")
+    print("-" * 36)
     for name in sorted(per_plugin_errors.keys()):
         if per_plugin_errors[name]:
             errors = np.array(per_plugin_errors[name])
-            print(f"{name:<20} {errors.mean():>10.4f}")
+            print(f"{name:<25} {errors.mean():>10.4f}")
         else:
-            print(f"{name:<20} {'N/A':>10}")
+            print(f"{name:<25} {'N/A':>10}")
+
+    # Single-view vs multi-view summary.
+    print("\nSingle-view vs multi-view summary")
+    print("-" * 36)
+    print(f"{'single-view (GVHMR)':<25} {np.mean(single_view_errors):>10.4f}")
+    if per_plugin_errors["ray_attention_v3"]:
+        print(f"{'ray_attention_v3':<25} {np.mean(per_plugin_errors['ray_attention_v3']):>10.4f}")
+    if per_plugin_errors.get("ray_attention"):
+        print(f"{'ray_attention (v1)':<25} {np.mean(per_plugin_errors['ray_attention']):>10.4f}")
 
 
 if __name__ == "__main__":

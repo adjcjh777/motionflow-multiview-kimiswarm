@@ -1,5 +1,6 @@
 """FusionModule wrapper around the ray-aware attention model."""
 
+from pathlib import Path
 from typing import List
 
 import numpy as np
@@ -15,13 +16,31 @@ class RayAttentionFusionModule(FusionModule):
 
     Uses per-view 2D keypoints, confidences and calibrated cameras to compute
     camera rays, then predicts per-view weights and triangulates.
+
+    The model expects all inputs in a consistent metric unit (default meters).
+    Use ``input_scale`` to tell the plugin the unit of the input cameras;
+    outputs are always in meters.
     """
 
     name = "ray_attention"
 
-    def __init__(self, model: RayAttentionFusionModel | None = None, j: int = 17, d: int = 64, n_views: int = 4):
+    def __init__(
+        self,
+        model: RayAttentionFusionModel | None = None,
+        j: int = 17,
+        d: int = 64,
+        n_views: int = 4,
+        checkpoint_path: str | None = None,
+        input_scale: float = 1.0,
+    ):
         super().__init__()
-        self.model = model or RayAttentionFusionModel(j=j, d=d, n_views=n_views)
+        self.input_scale = input_scale
+        if model is not None:
+            self.model = model
+        else:
+            self.model = RayAttentionFusionModel(j=j, d=d, n_views=n_views)
+            if checkpoint_path is not None:
+                self.model.load_state_dict(torch.load(checkpoint_path, map_location="cpu"))
         self.model.eval()
 
     def fuse(
@@ -37,6 +56,17 @@ class RayAttentionFusionModule(FusionModule):
             points_2d = points_2d[None]
         if confidences.ndim == 2:
             confidences = confidences[None]
+
+        # Normalise cameras to meters.
+        if self.input_scale != 1.0:
+            cameras = [
+                Camera(
+                    K=cam.K.copy(),
+                    R=cam.R.copy(),
+                    t=cam.t.copy() / self.input_scale,
+                )
+                for cam in cameras
+            ]
 
         T, V, J, _ = points_2d.shape
         x = np.concatenate([points_2d, confidences[..., None]], axis=-1)  # (T, V, J, 3)
