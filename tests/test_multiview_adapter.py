@@ -74,6 +74,11 @@ def test_registry_has_attention():
     assert isinstance(module, AttentionFusionModule)
 
 
+def test_registry_has_all_plugins():
+    expected = {"dlt", "attention", "robust_triangulation", "residual_refiner", "temporal_refiner"}
+    assert expected.issubset(set(FUSION_REGISTRY.names()))
+
+
 def test_dlt_fusion_with_perfect_point(tmp_path):
     """Triangulate a single perfect 3D point observed by two cameras."""
     T, J = 1, 1
