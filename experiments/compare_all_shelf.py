@@ -16,6 +16,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from motionflow_mv.data.voxelpose_loader import VoxelPoseShelfLoader
 from motionflow_mv.fusion.attention_model import AttentionFusionModel
 from motionflow_mv.fusion.robust_triangulation import RobustTriangulationModel
+from motionflow_mv.fusion.residual_refiner import ResidualRefinerModel
 
 
 def reprojection_error(pred_3d: np.ndarray, points_2d: np.ndarray, camera) -> np.ndarray:
@@ -98,6 +99,27 @@ def main():
                     all_errors.append(err)
         all_errors_arr = np.concatenate(all_errors)
         print(f"robust_triangulation_shelf.pth | {all_errors_arr.mean():.2f} | {np.median(all_errors_arr):.2f} | {all_errors_arr.max():.2f}")
+
+    # ResidualRefinerModel
+    residual_path = Path("outputs") / "residual_refiner_shelf.pth"
+    if residual_path.exists():
+        model = ResidualRefinerModel(j=17, d=64, n_views=5).to(device)
+        model.load_state_dict(torch.load(residual_path, map_location=device, weights_only=True))
+        model.eval()
+        all_errors = []
+        with torch.no_grad():
+            for item in dataset.values():
+                points_2d = item["points_2d"]
+                confidence = item["input"][..., 2]
+                inp = np.concatenate([points_2d, confidence[..., None]], axis=-1)
+                inp = torch.tensor(inp, dtype=torch.float32).unsqueeze(0).to(device)
+                baseline = torch.tensor(item["target_3d"], dtype=torch.float32).unsqueeze(0).to(device)
+                pred_3d = model(inp, baseline).squeeze(0).cpu().numpy()
+                for i, cid in enumerate(camera_ids):
+                    err = reprojection_error(pred_3d, points_2d[i], loader.get_camera(cid))
+                    all_errors.append(err)
+        all_errors_arr = np.concatenate(all_errors)
+        print(f"residual_refiner_shelf.pth | {all_errors_arr.mean():.2f} | {np.median(all_errors_arr):.2f} | {all_errors_arr.max():.2f}")
 
 
 if __name__ == "__main__":

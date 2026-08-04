@@ -80,7 +80,12 @@ If you only need CPU, install the CPU wheel manually:
     - DLT: mean 9.88 px / median 5.52 px
     - RobustTriangulationModel（学习每视角权重 + 可微分 DLT，reprojection loss）：mean 11.64 px / median 5.98 px
   - 结论：可学习权重能接近 DLT（median 仅高 0.46 px），但 mean 因少量离群帧而更高，未能超过 DLT。这说明仅依赖重投影 loss 的自适应权重在缺少 3D 监督时难以超越几何 DLT。
-  - 下一步（Iteration 6 待探索）：引入时序一致性、3D 伪标签 / GT 监督、或在 DLT 基础上做残差校正。
+- ✅ Iteration 6 closed: residual refinement on top of DLT (`ResidualRefinerModel`).
+  - 真实 Shelf 重投影误差对比（300–600 帧，5 视图）：
+    - DLT: mean 9.88 px / median 5.52 px / max 1044.68 px
+    - ResidualRefinerModel（DLT + 可学习残差，L1 reprojection loss）：mean 9.90 px / median 5.52 px / max 1038.20 px
+  - 结论：残差校正基本复现了 DLT 的性能，mean/median 与 DLT 持平，max 略有下降，但**仍未统计意义上击败 DLT**。简单的单帧残差网络无法克服 DLT 的强几何先验。
+  - 下一步（Iteration 7 待探索）：引入时序一致性（LSTM / Transformer over frames）或 3D GT 监督，才能真正压过 DLT。
 
 Recent additions:
   - `motionflow_mv/pipeline_utils.py::select_best_person_group`: match the same person across views by minimal reprojection error.
@@ -94,6 +99,9 @@ Recent additions:
   - `motionflow_mv/fusion/robust_triangulation.py`: differentiable confidence-weighted DLT triangulation.
   - `experiments/train_robust_triangulation_shelf.py`: train learned per-view weights for triangulation on Shelf.
   - `experiments/eval_robust_triangulation_shelf.py`: evaluate learned triangulation vs DLT.
+  - `motionflow_mv/fusion/residual_refiner.py`: per-frame residual refinement on top of DLT output.
+  - `experiments/train_residual_refiner_shelf.py`: train the residual refiner with reprojection loss.
+  - `experiments/eval_residual_refiner_shelf.py`: evaluate the residual refiner vs DLT.
 
 ## Iteration workflow
 
