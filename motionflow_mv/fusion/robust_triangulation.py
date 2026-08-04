@@ -46,32 +46,32 @@ class RobustTriangulationModel(nn.Module):
         return pred_3d
 
     def _triangulate(self, points_2d: torch.Tensor, weights: torch.Tensor, proj_matrices: torch.Tensor):
-        """Differentiable weighted DLT for a single joint.
+        """Differentiable weighted DLT for a single joint using a stable
+        inhomogeneous pseudo-inverse.
 
         points_2d: (B, V, 2)
         weights: (B, V)
         proj_matrices: (V, 3, 4)
         """
         B, V, _ = points_2d.shape
-        # Build A (B, V, 4) and b (B, V, 3)
+        # Build A (B, 2V, 4) for the DLT equations.
         A = []
-        b = []
         for v in range(V):
             P = proj_matrices[v]  # (3, 4)
             x = points_2d[:, v, 0]  # (B,)
             y = points_2d[:, v, 1]  # (B,)
-            # Equations: x * P[2] - P[0], y * P[2] - P[1]
             A.append(x[:, None] * P[2:3, :] - P[0:1, :])  # (B, 4)
             A.append(y[:, None] * P[2:3, :] - P[1:2, :])
-            b.append(torch.zeros(B, 3, device=points_2d.device))
-            b.append(torch.zeros(B, 3, device=points_2d.device))
         A = torch.stack(A, dim=1)  # (B, 2V, 4)
-        # Weighted least squares: minimize ||sqrt(W) A X = 0||
-        # Use SVD on weighted A
-        w_exp = weights.unsqueeze(-1).repeat(1, 1, 2).view(B, 2 * V, 1)  # (B, 2V, 1)
-        A_weighted = A * w_exp  # (B, 2V, 4)
-        # SVD
-        U, S, Vh = torch.linalg.svd(A_weighted, full_matrices=False)
-        X = Vh[:, -1, :]  # (B, 4)
-        X = X / (X[:, 3:4] + 1e-6)
-        return X[:, :3]
+
+        # Inhomogeneous weighted least squares: fix last coordinate to 1 and
+        # solve A[:, :, :3] X' = -A[:, :, 3] with weights.
+        A3 = A[:, :, :3]  # (B, 2V, 3)
+        a4 = A[:, :, 3:]  # (B, 2V, 1)
+        w = weights.unsqueeze(-1).repeat(1, 1, 2).view(B, 2 * V, 1)  # (B, 2V, 1)
+        Aw = A3 * torch.sqrt(w + 1e-6)
+        bw = -a4 * torch.sqrt(w + 1e-6)
+        # lstsq is differentiable and more stable than SVD for small systems.
+        X, *_ = torch.linalg.lstsq(Aw, bw)
+        X = X.squeeze(-1)  # (B, 3)
+        return X

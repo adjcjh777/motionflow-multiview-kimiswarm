@@ -21,13 +21,15 @@ dlt                        9.88       5.52    1044.68
 temporal_refiner           9.88       5.52    1044.68
 ```
 
-**Shelf-trained checkpoints** (`attention` d=64, `residual_refiner` d=64)
+**Shelf-trained checkpoints** (`attention` d=64, `residual_refiner` d=64,
+`robust_triangulation` d=32)
 
 ```text
 Plugin                     Mean     Median        Max
 ----------------------------------------------------
 attention                 80.42      58.90     781.02
 residual_refiner          13.11       9.79    1027.26
+robust_triangulation      10.65       5.97     507.22
 ```
 
 Key observations:
@@ -39,10 +41,10 @@ Key observations:
   and scale are matched, showing the value of real-data fine-tuning.
 * `residual_refiner` is comparable with its synthetic and Shelf checkpoints,
   slightly behind `dlt`; a larger model or joint loss may be needed.
-* `robust_triangulation` was fine-tuned on Shelf but did not improve beyond the
-  synthetic baseline (still ~445 px). The differentiable SVD layer appears to
-  get stuck near a degenerate solution, so a reparameterization or
-  reprojection-only training with better initialization is needed.
+* `robust_triangulation` originally used SVD and got stuck at ~445 px on
+  Shelf. Replacing the SVD with a stable inhomogeneous pseudo-inverse let it
+  converge; the Shelf checkpoint now reaches **10.65 px**, close to DLT
+  (9.88 px).
 
 ## 2. Design refinement for v3
 
@@ -84,14 +86,11 @@ To reach CVPR/ICRA-level numbers we need:
 
 ## 3. Immediate next steps
 
-1. **Robust triangulation redesign**: replace the differentiable SVD with a
-   stable weighted pseudo-inverse or reparameterize the per-view weights with a
-   softmax + entropy regularizer, then retrain on Shelf.
-2. **Add a Campus dataset loader** and cross-dataset validation (train on Shelf,
+1. **Add a Campus dataset loader** and cross-dataset validation (train on Shelf,
    validate on Campus) to test generalization beyond Shelf calibration.
-3. **GVHMR + SMPL multi-view projection demo**: use read-only A800-D
+2. **GVHMR + SMPL multi-view projection demo**: use read-only A800-D
    Docker/vendor data to validate the `HumanMotionIR` end-to-end path.
-4. **Per-joint/per-view breakdown** in `eval_all_plugins_shelf.py` to locate
+3. **Per-joint/per-view breakdown** in `eval_all_plugins_shelf.py` to locate
    remaining failure modes.
 
 ## 4. Risk register
