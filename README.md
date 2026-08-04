@@ -12,6 +12,11 @@ Extend the existing MotionFlow pipeline (monocular video → human motion) to ac
 - **Iterative evolution**: design → train → validate → feedback → next round.
 - **Open by default**: track everything via GitHub Issues / PRs.
 
+## Design docs
+
+- `docs/design_v1.md`: initial multi-view fusion design.
+- `docs/design_v2.md`: paper direction v2 — why DLT is hard to beat and how to frame the contribution.
+
 ## Roadmap (draft)
 
 1. **Baseline**: identify MotionFlow architecture and output format.
