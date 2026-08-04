@@ -52,6 +52,10 @@ Key observations:
   calibration.  The learned `attention` model still fails to cross-dataset
   generalize (318 px), while `residual_refiner` transfers reasonably
   (8.26 px).
+* A GVHMR-to-`HumanMotionIR` converter is now available via
+  `motionflow_mv.ir.gvhmr_adapter.gvhmr_pt_to_ir`. It loads a single-view
+  `hmr4d_results.pt` and produces a stable `HumanMotionIR` artifact with SMPL
+  pose parameters and provenance.
 
 ## 2. Design refinement for v3
 
@@ -93,12 +97,14 @@ To reach CVPR/ICRA-level numbers we need:
 
 ## 3. Immediate next steps
 
-1. **Train/fine-tune `attention` and `residual_refiner` on Campus** to see if a
-   multi-dataset trained model improves cross-calibration generalization.
-2. **GVHMR + SMPL multi-view projection demo**: use read-only A800-D
-   Docker/vendor data to validate the `HumanMotionIR` end-to-end path.
-3. **Per-joint/per-view breakdown** in `eval_all_plugins_shelf.py` to locate
+1. **GVHMR + SMPL multi-view projection demo**: run GVHMR on multiple views of
+   the same action, convert each per-view `HumanMotionIR` to 2D keypoints, then
+   fuse with the plugin pipeline and compare to the single-view GVHMR output.
+2. **Per-joint/per-view breakdown** in `eval_all_plugins_shelf.py` to locate
    remaining failure modes.
+3. **Train a geometry-aware `attention` variant** that receives normalized ray
+   directions or projection-matrix embeddings; the current `attention_v2`
+   geometry-aware attempt is unstable and needs better normalization.
 
 ## 4. Risk register
 

@@ -41,12 +41,14 @@ def load_plugin_checkpoints(device, use_shelf: bool = False):
     }
     shelf_overrides = {
         "attention": "outputs/attention_fusion_shelf.pth",
+        "attention_v2": "outputs/attention_fusion_v2_shelf.pth",
         "residual_refiner": "outputs/residual_refiner_shelf.pth",
         "robust_triangulation": "outputs/robust_triangulation_shelf.pth",
     }
     # Model kwargs needed to match the Shelf-trained checkpoints.
     shelf_kwargs = {
         "attention": {"d": 64, "n_views": 5},
+        "attention_v2": {"d": 64, "n_views": 5},
     }
     checkpoints = {}
     for name, path in synthetic.items():
@@ -65,6 +67,10 @@ def load_plugin_checkpoints(device, use_shelf: bool = False):
             if name == "attention":
                 from motionflow_mv.fusion.attention_fusion_module import AttentionFusionModule
                 module = AttentionFusionModule(j=17, **shelf_kwargs[name])
+                FUSION_REGISTRY._modules[name] = module
+            elif name == "attention_v2":
+                from motionflow_mv.fusion.attention_fusion_v2_module import AttentionFusionV2Module
+                module = AttentionFusionV2Module(j=17, **shelf_kwargs[name])
                 FUSION_REGISTRY._modules[name] = module
         # Load to CPU first to avoid a transient GPU memory spike.
         state = torch.load(checkpoint_path, map_location="cpu", weights_only=True)
@@ -116,7 +122,7 @@ def main():
         for name in sorted(FUSION_REGISTRY.names()):
             module = FUSION_REGISTRY.get(name)
             try:
-                if name == "attention":
+                if name in ("attention", "attention_v2"):
                     input_2d = points_2d_norm
                     output_scale = 1000.0
                 elif name == "robust_triangulation":
