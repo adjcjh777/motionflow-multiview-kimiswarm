@@ -58,6 +58,8 @@ def generate_sample(n_views: int = 4, j: int = 17, rng: np.random.Generator = No
         x = x_h[:, :2] / x_h[:, 2:3]
         # Add small image noise
         x += rng.normal(0, 0.5, size=x.shape)
+        # Normalize 2D by approximate image scale to avoid huge input values
+        x /= 1000.0
         proj.append(x)
         conf.append(rng.uniform(0.5, 1.0, size=j))
     input_tensor = np.concatenate([np.stack(proj, axis=0), np.stack(conf, axis=0)[..., None]], axis=-1)
@@ -84,6 +86,9 @@ def main():
     parser.add_argument("--batch_size", type=int, default=16)
     args = parser.parse_args()
 
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print(f"Device: {device}")
+
     print("Generating synthetic dataset...")
     X_train, y_train = generate_dataset(200, args.n_views, args.j, seed=0)
     X_val, y_val = generate_dataset(40, args.n_views, args.j, seed=9999)
@@ -95,7 +100,7 @@ def main():
         torch.utils.data.TensorDataset(X_val, y_val), batch_size=args.batch_size
     )
 
-    model = AttentionFusionModel(j=args.j, d=args.d, n_views=args.n_views)
+    model = AttentionFusionModel(j=args.j, d=args.d, n_views=args.n_views).to(device)
     optimizer = optim.Adam(model.parameters(), lr=args.lr)
     criterion = nn.MSELoss()
 
@@ -109,6 +114,7 @@ def main():
         model.train()
         train_loss = 0.0
         for xb, yb in train_loader:
+            xb, yb = xb.to(device), yb.to(device)
             optimizer.zero_grad()
             pred = model(xb)
             loss = criterion(pred, yb)
@@ -122,10 +128,11 @@ def main():
         val_mpjpe = 0.0
         with torch.no_grad():
             for xb, yb in val_loader:
+                xb, yb = xb.to(device), yb.to(device)
                 pred = model(xb)
                 loss = criterion(pred, yb)
                 val_loss += loss.item() * xb.size(0)
-                val_mpjpe += np.linalg.norm(pred.numpy() - yb.numpy(), axis=-1).mean() * xb.size(0)
+                val_mpjpe += (pred - yb).norm(dim=-1).mean().item() * xb.size(0)
         val_loss /= len(val_loader.dataset)
         val_mpjpe /= len(val_loader.dataset)
 
