@@ -59,6 +59,76 @@ def per_joint_mpjpe(pred: np.ndarray, gt: np.ndarray) -> np.ndarray:
     return dists.reshape(-1, dists.shape[-1]).mean(axis=0)  # (J,)
 
 
+def root_relative_mpjpe(pred: np.ndarray, gt: np.ndarray, root_idx: int = 0) -> float:
+    """Root-relative MPJPE.
+
+    Subtracts the root (pelvis) joint from both predictions and ground truth
+    before computing MPJPE.  This removes absolute translation ambiguity.
+
+    Args:
+        pred: (..., J, 3) predicted joints.
+        gt: (..., J, 3) ground-truth joints.
+        root_idx: index of the root joint (default 0 for pelvis).
+
+    Returns:
+        Scalar mean error.
+    """
+    pred, gt = _to_array(pred, gt)
+    pred_rel = pred - pred[..., root_idx : root_idx + 1, :]
+    gt_rel = gt - gt[..., root_idx : root_idx + 1, :]
+    return mpjpe_batch(pred_rel, gt_rel)
+
+
+def velocity_mpjpe(pred: np.ndarray, gt: np.ndarray) -> float:
+    """MPJPE on first-order temporal velocities.
+
+    Args:
+        pred: (B, J, 3) or (T, J, 3) predicted joints.
+        gt: same shape.
+
+    Returns:
+        Scalar mean velocity error.
+    """
+    pred, gt = _to_array(pred, gt)
+    if pred.ndim == 2:
+        pred = pred[None, ...]
+        gt = gt[None, ...]
+    pred_v = pred[1:] - pred[:-1]
+    gt_v = gt[1:] - gt[:-1]
+    return mpjpe_batch(pred_v, gt_v)
+
+
+def bone_length_error(
+    pred: np.ndarray,
+    gt: np.ndarray,
+    parents: np.ndarray,
+) -> float:
+    """Mean absolute error in bone lengths.
+
+    Args:
+        pred: (B, J, 3) predicted joints.
+        gt: (B, J, 3) ground-truth joints.
+        parents: (J,) parent array; -1 for root.
+
+    Returns:
+        Scalar mean absolute bone-length error.
+    """
+    pred, gt = _to_array(pred, gt)
+    parents = np.asarray(parents)
+    bone_pairs = [(p, i) for i, p in enumerate(parents) if p >= 0]
+    if not bone_pairs:
+        return float("nan")
+    pred_lengths = np.stack(
+        [np.linalg.norm(pred[:, c] - pred[:, p], axis=-1) for p, c in bone_pairs],
+        axis=1,
+    )
+    gt_lengths = np.stack(
+        [np.linalg.norm(gt[:, c] - gt[:, p], axis=-1) for p, c in bone_pairs],
+        axis=1,
+    )
+    return float(np.mean(np.abs(pred_lengths - gt_lengths)))
+
+
 def per_view_mpjpe(pred: np.ndarray, gt: np.ndarray) -> np.ndarray:
     """Per-view MPJPE.
 
@@ -246,6 +316,7 @@ def compute_all_metrics(
     pck_thresholds: np.ndarray = None,
     pck_auc_max: float = 150.0,
     pck_auc_points: int = 100,
+    parents: np.ndarray = None,
 ) -> Dict[str, ScalarOrArray]:
     """Compute a full metrics report for a batch of 3D predictions.
 
@@ -274,7 +345,12 @@ def compute_all_metrics(
     report: Dict[str, ScalarOrArray] = {
         "mpjpe": mpjpe_batch(pred, gt),
         "pa_mpjpe": pa_mpjpe(pred, gt),
+        "root_rel_mpjpe": root_relative_mpjpe(pred, gt),
+        "velocity_mpjpe": velocity_mpjpe(pred, gt),
     }
+
+    if parents is not None:
+        report["bone_length_error"] = bone_length_error(pred, gt, parents)
 
     for name, thr in pck_thresholds.items():
         report[f"pck@{name}"] = pck_batch(pred, gt, thr)
@@ -296,7 +372,11 @@ def summarize_metrics(report: Dict[str, ScalarOrArray]) -> str:
     lines = [
         f"MPJPE: {report['mpjpe']:.4f}",
         f"PA-MPJPE: {report['pa_mpjpe']:.4f}",
+        f"Root-Rel MPJPE: {report.get('root_rel_mpjpe', float('nan')):.4f}",
+        f"Velocity MPJPE: {report.get('velocity_mpjpe', float('nan')):.4f}",
     ]
+    if "bone_length_error" in report:
+        lines.append(f"Bone-Length Error: {report['bone_length_error']:.4f}")
     for key in sorted(report):
         if key.startswith("pck@") and "_per_joint" not in key:
             lines.append(f"{key.upper()}: {report[key]:.4f}")
