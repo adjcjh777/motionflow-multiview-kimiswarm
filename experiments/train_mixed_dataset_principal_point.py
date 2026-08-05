@@ -1,0 +1,173 @@
+"""Train mixed-dataset temporal residual model with principal-point correction.
+
+Extends ``train_mixed_dataset.py`` by adding camera-perturbation augmentation and
+an explicit principal-point offset supervision loss.
+"""
+
+import argparse
+import random
+import sys
+from pathlib import Path
+
+import numpy as np
+import torch
+import torch.optim as optim
+
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+from motionflow_mv.calibration.perturb import perturb_cameras_with_delta
+from motionflow_mv.data.mixed_dataset import DATASET_REGISTRY, build_mixed_dataloaders
+from motionflow_mv.data.temporal_clip_dataset import set_seed
+from motionflow_mv.fusion.ray_attention_temporal_mixed_residual_principal_point_model import RayAttentionFusionModelTemporalMixedResidualPrincipalPoint
+
+
+def augment_clip(x: torch.Tensor, noise_std: float = 0.5, dropout_rate: float = 0.1) -> torch.Tensor:
+    if noise_std > 0:
+        x[..., :2] = x[..., :2] + torch.randn_like(x[..., :2]) * noise_std
+    if dropout_rate > 0:
+        mask = (torch.rand(x.shape[0], x.shape[1], x.shape[2], x.shape[3], device=x.device) > dropout_rate).float()
+        x[..., 2] = x[..., 2] * mask
+    return x
+
+
+@torch.no_grad()
+def evaluate(model, loader, device):
+    model.eval()
+    total_err = 0.0
+    total_count = 0
+    for xb, yb, K, R, t, ids in loader:
+        xb, yb = xb.to(device), yb.to(device)
+        K, R, t = K.to(device), R.to(device), t.to(device)
+        ids = ids.to(device)
+        outputs = model(xb, K=K, R=R, t=t, dataset_ids=ids)
+        pred, mask = outputs[0], outputs[1]
+        err = (pred - yb).norm(dim=-1) * mask.float()
+        total_err += err.sum().item()
+        total_count += mask.sum().item()
+    return total_err / total_count
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="Train mixed-dataset temporal ray-attention fusion with principal-point correction"
+    )
+    parser.add_argument("--mpi_train", type=str, nargs="+", default=[], help="MPI-INF-3DHP train .npz files")
+    parser.add_argument("--aist_train", type=str, nargs="+", default=[], help="AIST++ train .npz files")
+    parser.add_argument("--h36m_train", type=str, nargs="+", default=[], help="Human3.6M train .npz files")
+    parser.add_argument("--val", type=str, required=True, help="Validation .npz file")
+    parser.add_argument("--val_dataset", type=str, required=True, choices=list(DATASET_REGISTRY.keys()))
+    parser.add_argument("--clip_len", type=int, default=13)
+    parser.add_argument("--d", type=int, default=32)
+    parser.add_argument("--n_temporal_layers", type=int, default=2)
+    parser.add_argument("--residual_hidden", type=int, default=128)
+    parser.add_argument("--principal_point_hidden", type=int, default=64)
+    parser.add_argument("--principal_point_max_offset", type=float, default=20.0)
+    parser.add_argument("--epochs", type=int, default=10)
+    parser.add_argument("--lr", type=float, default=1e-3)
+    parser.add_argument("--batch_size", type=int, default=8)
+    parser.add_argument("--train_samples", type=int, default=500)
+    parser.add_argument("--val_stride", type=int, default=1)
+    parser.add_argument("--num_workers", type=int, default=0)
+    parser.add_argument("--pp_loss_weight", type=float, default=0.1)
+    parser.add_argument("--reproj_weight", type=float, default=0.0)
+    parser.add_argument("--noise_std", type=float, default=0.5)
+    parser.add_argument("--dropout_rate", type=float, default=0.1)
+    parser.add_argument("--cam_aug_rot", type=float, default=0.5)
+    parser.add_argument("--cam_aug_trans", type=float, default=0.005)
+    parser.add_argument("--cam_aug_focal", type=float, default=0.01)
+    parser.add_argument("--cam_aug_pp", type=float, default=5.0)
+    parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--output", type=str, default="outputs/ray_attention_temporal_mixed_pp.pth")
+    args = parser.parse_args()
+
+    set_seed(args.seed)
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print(f"Device: {device}")
+
+    train_paths = {"mpi": args.mpi_train, "aist": args.aist_train, "h36m": args.h36m_train}
+
+    train_loader, val_loader = build_mixed_dataloaders(
+        train_paths=train_paths,
+        val_path=args.val,
+        val_dataset=args.val_dataset,
+        clip_len=args.clip_len,
+        batch_size=args.batch_size,
+        train_samples=args.train_samples,
+        val_stride=args.val_stride,
+        num_workers=args.num_workers,
+    )
+
+    model = RayAttentionFusionModelTemporalMixedResidualPrincipalPoint(
+        d=args.d,
+        n_temporal_layers=args.n_temporal_layers,
+        residual_hidden=args.residual_hidden,
+        principal_point_hidden=args.principal_point_hidden,
+        principal_point_max_offset=args.principal_point_max_offset,
+        return_pp_delta=args.pp_loss_weight > 0.0,
+    ).to(device)
+    print(f"Model params: {sum(p.numel() for p in model.parameters()):,}")
+
+    optimizer = optim.Adam(model.parameters(), lr=args.lr)
+    criterion = torch.nn.MSELoss()
+
+    best_val = float("inf")
+    output_path = Path(args.output)
+    output_path.parent.mkdir(exist_ok=True, parents=True)
+
+    for epoch in range(1, args.epochs + 1):
+        model.train()
+        train_loss = 0.0
+        train_count = 0
+        for xb, yb, K, R, t, ids in train_loader:
+            xb, yb = xb.to(device), yb.to(device)
+            K, R, t = K.to(device), R.to(device), t.to(device)
+            ids = ids.to(device)
+            xb = augment_clip(xb, noise_std=args.noise_std, dropout_rate=args.dropout_rate)
+
+            # Apply camera perturbation.
+            K_pert, R_pert, t_pert, true_pp_delta = perturb_cameras_with_delta(
+                K, R, t,
+                rot_std=args.cam_aug_rot,
+                trans_std=args.cam_aug_trans,
+                focal_std=args.cam_aug_focal,
+                pp_std=args.cam_aug_pp,
+            )
+
+            outputs = model(xb, K=K_pert, R=R_pert, t=t_pert, dataset_ids=ids)
+            pred, mask = outputs[0], outputs[1]
+
+            loss = (((pred - yb) ** 2).sum(dim=-1) * mask.float()).sum() / mask.sum()
+
+            if args.pp_loss_weight > 0.0:
+                pred_pp_delta = outputs[2]  # (B*T, V, 2)
+                B, T = yb.shape[:2]
+                true_pp_delta = true_pp_delta.to(device).unsqueeze(1).expand(B, T, -1, -1).reshape(B * T, -1, 2)
+                # Correction layer adds predicted delta to perturbed principal point;
+                # target is the negative of the applied offset.
+                loss = loss + args.pp_loss_weight * criterion(pred_pp_delta, -true_pp_delta)
+
+            if args.reproj_weight > 0.0:
+                # TODO: implement mixed-dataset reprojection loss
+                pass
+
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+
+            train_loss += loss.item() * mask.sum().item()
+            train_count += mask.sum().item()
+
+        train_loss /= train_count
+        val_err = evaluate(model, val_loader, device)
+        if val_err < best_val:
+            best_val = val_err
+            torch.save(model.state_dict(), output_path)
+            print(f"Epoch {epoch}: train_loss={train_loss:.6f}, val_MPJPE={val_err*1000:.2f}mm (saved)")
+        else:
+            print(f"Epoch {epoch}: train_loss={train_loss:.6f}, val_MPJPE={val_err*1000:.2f}mm")
+
+    print(f"Best val MPJPE: {best_val*1000:.2f}mm -> {output_path}")
+
+
+if __name__ == "__main__":
+    main()
