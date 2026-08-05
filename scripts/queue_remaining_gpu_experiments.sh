@@ -3,6 +3,10 @@
 set -e
 cd "$(dirname "$0")/.."
 
+echo "[queue] waiting for visibility v2 training to start..."
+while ! pgrep -f "train_crossview_residual_visibility_v2_mpiinf3dhp.py" > /dev/null; do
+    sleep 60
+done
 echo "[queue] waiting for visibility v2 training to finish..."
 while pgrep -f "train_crossview_residual_visibility_v2_mpiinf3dhp.py" > /dev/null; do
     sleep 60

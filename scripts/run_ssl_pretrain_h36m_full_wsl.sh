@@ -17,7 +17,7 @@ python experiments/pretrain_ray_attention_ssl.py \
         ${TRAIN_DIR}/s_07_acts_*_multiview.npz \
         ${TRAIN_DIR}/s_08_acts_*_multiview.npz \
     --val \
-        ${TRAIN_DIR}/s_09_acts_*_multiview.npz \
+        ${TRAIN_DIR}/s_09_acts_02_multiview.npz \
     --clip_len 13 --d 64 --n_st_layers 2 --residual_hidden 128 \
     --epochs 30 --batch_size 16 --train_samples 4000 --val_stride 10 \
     --mask_ratio 0.25 --mask_mode mixed \
