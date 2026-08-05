@@ -39,6 +39,7 @@ class RayAttentionFusionModelTemporalCrossviewResidualPrincipalPoint(RayAttentio
         principal_point_max_offset: float = 20.0,
         focal_max_scale: float = 0.0,
         return_pp_delta: bool = False,
+        return_visibility: bool = False,
     ):
         super().__init__(
             j=j,
@@ -51,6 +52,7 @@ class RayAttentionFusionModelTemporalCrossviewResidualPrincipalPoint(RayAttentio
             residual_hidden=residual_hidden,
         )
         self.return_pp_delta = return_pp_delta
+        self.return_visibility = return_visibility
         self.correct_focal = focal_max_scale > 0.0
         self.principal_point_correction = PrincipalPointCorrection(
             d=d,
@@ -58,6 +60,14 @@ class RayAttentionFusionModelTemporalCrossviewResidualPrincipalPoint(RayAttentio
             max_offset=principal_point_max_offset,
             max_focal_scale=focal_max_scale,
         )
+
+    def _visibility_multiplier(self, feat, confidences):
+        """Return a per-view/per-joint visibility multiplier in [0, 1].
+
+        Override this in subclasses to implement explicit occlusion/visibility
+        gating. The base model returns 1 so behavior is unchanged.
+        """
+        return 1.0
 
     def forward(self, x, cameras=None, K=None, R=None, t=None):
         squeeze_output = False
@@ -116,11 +126,14 @@ class RayAttentionFusionModelTemporalCrossviewResidualPrincipalPoint(RayAttentio
             feat = layer(feat)
         feat = feat.view(B, J, T, V, self.d).permute(0, 2, 3, 1, 4).reshape(B * T, V, J, self.d)
 
+        # Optional visibility-aware weighting (base returns 1).
+        visibility = self._visibility_multiplier(feat, confidences)  # (B*T, V, J)
+
         # Per-frame weight prediction and triangulation with corrected intrinsics.
         feat_for_weight = feat.permute(0, 2, 1, 3)  # (B*T, J, V, d)
         w_logits = self.weight_head(feat_for_weight).squeeze(-1)  # (B*T, J, V)
         weights = torch.sigmoid(w_logits).permute(0, 2, 1)  # (B*T, V, J)
-        weights = weights * confidences  # (B*T, V, J)
+        weights = weights * confidences * visibility  # (B*T, V, J)
         weights = weights.clamp(min=1e-4)
 
         from .ray_attention_model import _triangulate_weighted_dlt
@@ -136,13 +149,19 @@ class RayAttentionFusionModelTemporalCrossviewResidualPrincipalPoint(RayAttentio
 
         pred_3d = pred_3d.view(B, T, J, 3)
         weights = weights.view(B, T, V, J)
+        if self.return_visibility:
+            visibility = visibility.view(B, T, V, J)
 
         if squeeze_output:
             pred_3d = pred_3d.squeeze(1)
             weights = weights.squeeze(1)
+            if self.return_visibility:
+                visibility = visibility.squeeze(1)
 
         if self.return_pp_delta:
             if self.correct_focal:
                 return pred_3d, weights, pp_delta, focal_scale
             return pred_3d, weights, pp_delta
+        if self.return_visibility:
+            return pred_3d, weights, visibility
         return pred_3d, weights
