@@ -50,15 +50,27 @@ class PrincipalPointCorrection(nn.Module):
         self.max_focal_scale = max_focal_scale
         self.use_confidence = use_confidence
 
-        out_dim = 3 if max_focal_scale > 0 else 2
         self.mlp = nn.Sequential(
             nn.Linear(d, hidden),
             nn.ReLU(),
             nn.Linear(hidden, hidden),
             nn.ReLU(),
-            nn.Linear(hidden, out_dim),
+            nn.Linear(hidden, 2),
             nn.Tanh(),
         )
+
+        # Dedicated focal-length correction head, sharing the same pooled features.
+        if max_focal_scale > 0:
+            self.focal_mlp = nn.Sequential(
+                nn.Linear(d, hidden),
+                nn.ReLU(),
+                nn.Linear(hidden, hidden),
+                nn.ReLU(),
+                nn.Linear(hidden, 1),
+                nn.Tanh(),
+            )
+        else:
+            self.focal_mlp = None
 
         # Fallback projector for the raw-observation path (8-D descriptor -> d).
         self.fallback_projector = nn.Linear(8, d)
@@ -108,7 +120,7 @@ class PrincipalPointCorrection(nn.Module):
         cx = K[..., 0, 2] + delta[..., 0]
         cy = K[..., 1, 2] + delta[..., 1]
         if self.max_focal_scale > 0:
-            focal_scale = 1.0 + out[..., 2] * self.max_focal_scale  # (N, V)
+            focal_scale = 1.0 + self.focal_mlp(pooled).squeeze(-1) * self.max_focal_scale  # (N, V)
             fx = K[..., 0, 0] * focal_scale
             fy = K[..., 1, 1] * focal_scale
         else:
