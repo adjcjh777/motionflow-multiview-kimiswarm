@@ -157,6 +157,20 @@ Implemented non-GPU components:
 - `motionflow_mv/eval/metrics.py`: added `root_rel_mpjpe`, `velocity_mpjpe`, and `bone_length_error`.
 - Started CPU background jobs: WebBridge cross-dataset benchmark and variable-view MPJPE@k curve on the crossview-residual baseline.
 
+## 2026-08-06 (continued) — Variable-view, WebBridge v2, and swarm tooling landed
+
+Completed background runs:
+
+- **Variable-view inference (smoke)**: `outputs/variable_views_crossview_residual_smoke.log`
+  - MPJPE@k (mm): k=2:101.2, 3:84.8, 4:73.9, 5:60.8, 6:50.2, 7:41.4, 8:34.2, 9:30.4, 10:30.7, 11:31.2, 12:33.9, 13:38.0, 14:14.0.
+  - Plot saved to `docs/figures/variable_views_crossview_residual_smoke.png`.
+- **WebBridge benchmark v2**: `outputs/webbridge_benchmark_crossview_residual_smoke_v2.json`
+  - mpi_s2_seq1_v14: MPJPE 14.71 / PA 13.86 mm
+  - mpi_s3_seq1_v14: MPJPE 14.70 / PA 11.41 mm
+  - mpi_s1_seq1_v4: MPJPE 27.95 / PA 19.10 mm
+- **Commit/push**: `2683a17` on `multiview-residual-exploration`.
+- **Issue/PR comments**: Updated GitHub issue #21 and PR #17.
+
 ## Next directions
 
 1. Evaluate the calibration curriculum checkpoint (clean + robustness matrix) once GPU training finishes.

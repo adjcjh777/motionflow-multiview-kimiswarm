@@ -53,6 +53,34 @@
 | Cross-view CamPE v2 full | **done** (val 10.53 mm) | dropped |
 | Calibration curriculum + view dropout | **training** | evaluate clean + robustness once finished |
 | Visibility-gated fusion v2 | queued | start after curriculum |
+| Variable-view MPJPE@k (smoke) | **done** | `docs/figures/variable_views_crossview_residual_smoke.png` |
+| WebBridge benchmark v2 (smoke) | **done** | s2/v14 14.71, s3/v14 14.70, s1/v4 27.95 mm MPJPE |
+
+## Variable-view MPJPE@k (smoke, crossview-residual baseline)
+
+| k | MPJPE (mm) | std | subsets |
+|---|-----------:|---:|---:|
+| 2 | 101.22 | 10.34 | 50 |
+| 3 | 84.81 | 5.66 | 50 |
+| 4 | 73.90 | 5.59 | 50 |
+| 5 | 60.83 | 4.37 | 50 |
+| 6 | 50.20 | 4.65 | 50 |
+| 7 | 41.42 | 3.13 | 50 |
+| 8 | 34.24 | 2.59 | 50 |
+| 9 | 30.42 | 1.76 | 50 |
+| 10 | 30.71 | 2.10 | 50 |
+| 11 | 31.23 | 1.78 | 50 |
+| 12 | 33.88 | 2.14 | 50 |
+| 13 | 37.96 | 1.97 | 14 |
+| 14 | 14.01 | 0.00 | 1 |
+
+## WebBridge cross-dataset benchmark v2 (smoke)
+
+| Dataset | MPJPE (mm) | PA-MPJPE (mm) | PCK@50 | PCK@100 | PCK AUC |
+|---|---:|---:|---:|---:|---:|
+| mpi_s2_seq1_v14 | 14.71 | 13.86 | 0.997 | 1.000 | 0.902 |
+| mpi_s3_seq1_v14 | 14.70 | 11.41 | 0.998 | 1.000 | 0.902 |
+| mpi_s1_seq1_v4 | 27.95 | 19.10 | 0.888 | 0.981 | 0.814 |
 
 ## Planned next directions
 
