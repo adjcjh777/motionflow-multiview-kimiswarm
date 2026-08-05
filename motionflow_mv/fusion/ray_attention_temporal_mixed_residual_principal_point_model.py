@@ -91,6 +91,8 @@ class RayAttentionFusionModelTemporalMixedResidualPrincipalPoint(RayAttentionFus
             feat = layer(feat)
         feat = feat.view(B, V, J, T, self.d).permute(0, 3, 1, 2, 4).reshape(B * T, V, J, self.d)
 
+        if self.correct_focal:
+            return feat, K_corrected, pp_delta, focal_scale
         return feat, K_corrected, pp_delta
 
     def forward(self, x, K, R, t, dataset_ids):
@@ -105,7 +107,11 @@ class RayAttentionFusionModelTemporalMixedResidualPrincipalPoint(RayAttentionFus
         confidences = x_flat[..., 2]
 
         # Shared temporal features (uses corrected intrinsics).
-        feat, K_corrected, pp_delta = self._temporal_features(x, K, R, t)
+        temporal_outputs = self._temporal_features(x, K, R, t)
+        feat = temporal_outputs[0]
+        K_corrected = temporal_outputs[1]
+        pp_delta = temporal_outputs[2]
+        focal_scale = temporal_outputs[3] if self.correct_focal else None
 
         # Projection matrices from corrected intrinsics (expand over time).
         R_flat = R.unsqueeze(1).expand(B, T, V, 3, 3).reshape(B * T, V, 3, 3)
