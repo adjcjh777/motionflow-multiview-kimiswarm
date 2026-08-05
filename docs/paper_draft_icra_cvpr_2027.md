@@ -159,6 +159,7 @@ The full 20-epoch residual model cuts the raw DLT error by **59%** and the 5-epo
 
 | Model | Clean | focal_1pct | focal_2pct | cxcy_3px | cxcy_5px |
 |---|---:|---:|---:|---:|---:|
+| Baseline small (no correction) | 14.97 | 14.95 | 15.35 | 1592.69 | 1894.61 |
 | PP-only small | 10.54 | 18.41 | 29.97 | 13.84 | 17.05 |
 | Focal-aware small | 12.82 | 18.29 | 28.42 | 14.31 | 16.51 |
 | PP-only full | 10.97 | 13.25 | 23.02 | 13.03 | 15.26 |
