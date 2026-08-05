@@ -14,37 +14,9 @@ import torch
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from motionflow_mv.data.mixed_dataset import DATASET_REGISTRY
+from motionflow_mv.data.mixed_dataset import DATASET_REGISTRY, MixedDataset
 from motionflow_mv.eval.metrics import compute_all_metrics
 from motionflow_mv.fusion.ray_attention_temporal_mixed_residual_principal_point_model import RayAttentionFusionModelTemporalMixedResidualPrincipalPoint
-
-
-class TemporalClipDataset(torch.utils.data.Dataset):
-    def __init__(self, npz_path: str, clip_len: int, stride: int = 1):
-        data = np.load(npz_path)
-        self.points_2d = torch.from_numpy(data["points_2d"]).float()
-        self.confidences = torch.from_numpy(data["confidences"]).float()
-        self.joints_3d = torch.from_numpy(data["joints_3d"]).float()
-        self.camera_K = torch.from_numpy(data["camera_K"]).float()
-        self.camera_R = torch.from_numpy(data["camera_R"]).float()
-        self.camera_t = torch.from_numpy(data["camera_t"]).float()
-        self.clip_len = clip_len
-        self.stride = stride
-        self.total_frames = self.points_2d.shape[0]
-        self.num_clips = max(1, (self.total_frames - self.clip_len) // stride + 1)
-
-    def __len__(self):
-        return self.num_clips
-
-    def __getitem__(self, idx):
-        start = idx * self.stride
-        end = start + self.clip_len
-        x = torch.cat(
-            [self.points_2d[start:end], self.confidences[start:end].unsqueeze(-1)],
-            dim=-1,
-        )
-        y = self.joints_3d[start:end]
-        return x, y, self.camera_K, self.camera_R, self.camera_t
 
 
 def collate_fn(batch):
@@ -110,7 +82,13 @@ def main():
     model.load_state_dict(torch.load(args.checkpoint, map_location="cpu", weights_only=True))
     model.eval()
 
-    dataset = TemporalClipDataset(args.dataset, args.clip_len, stride=args.val_stride)
+    dataset = MixedDataset(
+        npz_path=args.dataset,
+        dataset_name=args.val_dataset,
+        clip_len=args.clip_len,
+        n_samples=None,
+        stride=args.val_stride,
+    )
     loader = torch.utils.data.DataLoader(
         dataset, batch_size=args.batch_size, shuffle=False, collate_fn=collate_fn, num_workers=0
     )
