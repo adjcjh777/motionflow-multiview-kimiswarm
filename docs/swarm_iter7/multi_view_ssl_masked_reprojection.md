@@ -109,3 +109,4 @@ The loss values are large because the synthetic skeleton is random and only a si
 
 - No existing training script was modified; only a new launcher sketch is proposed.
 - GPU pre-training must wait for the currently running cross-view PP curriculum job to free the RTX 4090.
+- Status: CPU smoke passed; GPU pre-training queued.
