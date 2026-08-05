@@ -183,6 +183,8 @@ def main():
     parser.add_argument("--cam_aug_trans", type=float, default=0.005, help="Camera translation augmentation std in meters")
     parser.add_argument("--cam_aug_focal", type=float, default=0.01, help="Camera focal length augmentation std (relative)")
     parser.add_argument("--cam_aug_pp", type=float, default=2.0, help="Camera principal point augmentation std in pixels")
+    parser.add_argument("--cam_aug_schedule", type=str, default="flat", choices=["flat", "extrinsic_curriculum"], help="Camera augmentation schedule")
+    parser.add_argument("--cam_aug_ramp_epochs", type=int, default=10, help="Number of epochs over which to ramp extrinsic augmentation for extrinsic_curriculum")
     parser.add_argument("--view_dropout_rate", type=float, default=0.0, help="Probability of dropping an entire camera view during training (0 disables)")
     parser.add_argument("--min_views", type=int, default=2, help="Minimum number of views kept when view_dropout_rate > 0")
     parser.add_argument("--seed", type=int, default=42)
@@ -233,14 +235,21 @@ def main():
     for epoch in range(1, args.epochs + 1):
         model.train()
         train_loss = 0.0
+        if args.cam_aug_schedule == "extrinsic_curriculum":
+            ramp = min(1.0, epoch / max(1, args.cam_aug_ramp_epochs))
+            schedule_rot = args.cam_aug_rot * ramp
+            schedule_trans = args.cam_aug_trans * ramp
+        else:
+            schedule_rot = args.cam_aug_rot
+            schedule_trans = args.cam_aug_trans
         for xb, yb, K, R, t in train_loader:
             xb, yb = xb.to(device), yb.to(device)
             K, R, t = K.to(device), R.to(device), t.to(device)
             xb = augment_clip(xb, view_dropout_rate=args.view_dropout_rate, min_views=args.min_views)
             K, R, t, true_pp_delta, true_focal_scale = perturb_cameras_with_delta(
                 K, R, t,
-                rot_std=args.cam_aug_rot,
-                trans_std=args.cam_aug_trans,
+                rot_std=schedule_rot,
+                trans_std=schedule_trans,
                 focal_std=args.cam_aug_focal,
                 pp_std=args.cam_aug_pp,
             )
