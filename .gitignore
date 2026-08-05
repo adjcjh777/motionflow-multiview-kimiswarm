@@ -12,3 +12,8 @@ venv/
 .DS_Store
 tmp/
 outputs/
+oa*.json
+oa*.xml
+lt.json
+arx.xml
+tmpmpi_advanced_v1_train.log
