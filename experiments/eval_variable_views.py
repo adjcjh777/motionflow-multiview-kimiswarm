@@ -172,7 +172,7 @@ def evaluate_variable_views(
                     x_clip, K, R, t, active, n_views_max=V
                 )
                 with torch.no_grad():
-                    pred, _ = wrapper.model(x_clip.unsqueeze(0), K=Kp, R=Rp, t=tp)
+                    pred = wrapper.model(x_clip.unsqueeze(0), K=Kp, R=Rp, t=tp)[0]
                 pred = pred.squeeze(0).cpu().numpy()  # (T_clip, J, 3)
                 clip_preds.append(pred)
                 clip_gts.append(joints_3d[start:end])
