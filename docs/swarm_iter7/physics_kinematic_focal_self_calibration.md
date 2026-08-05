@@ -135,5 +135,5 @@ The supervised focal loss is numerically stable and trains a tiny network to rec
 ## Commit
 
 - Local commit created with the report and the new launcher script.
-- Commit hash: TBD after this report is committed.
+- Commit hash: `569a2cc` (also includes `experiments/prepare_ssl_data_efficiency_mpiinf3dhp.py` which was staged by another agent before this commit).
 - Push was not attempted because the GPU training is queued locally; the commit remains on branch `multiview-residual-exploration`.
