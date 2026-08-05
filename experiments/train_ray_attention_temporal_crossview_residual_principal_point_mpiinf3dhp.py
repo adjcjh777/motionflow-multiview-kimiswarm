@@ -116,7 +116,8 @@ def collate_fn(batch):
 
 
 def augment_clip(x, noise_std: float = 0.5, dropout_rate: float = 0.1,
-                 outlier_rate: float = 0.02, outlier_scale: float = 100.0):
+                 outlier_rate: float = 0.02, outlier_scale: float = 100.0,
+                 view_dropout_rate: float = 0.0, min_views: int = 2):
     """Lightweight per-clip augmentation."""
     if noise_std > 0:
         x[..., :2] = x[..., :2] + torch.randn_like(x[..., :2]) * noise_std
@@ -127,6 +128,20 @@ def augment_clip(x, noise_std: float = 0.5, dropout_rate: float = 0.1,
         outlier_mask = torch.rand(x.shape[0], x.shape[1], x.shape[2], x.shape[3], device=x.device) < outlier_rate
         outlier = (torch.rand(x.shape[0], x.shape[1], x.shape[2], x.shape[3], 2, device=x.device) - 0.5) * 2 * outlier_scale
         x[..., :2] = torch.where(outlier_mask[..., None], outlier, x[..., :2])
+    if view_dropout_rate > 0:
+        B = x.shape[0]
+        V = x.shape[2]
+        view_mask = (torch.rand(B, V, device=x.device) > view_dropout_rate).float()  # 1 = keep
+        for i in range(B):
+            kept = view_mask[i].nonzero(as_tuple=True)[0]
+            if kept.numel() < min_views:
+                dropped = (view_mask[i] == 0).nonzero(as_tuple=True)[0]
+                needed = min_views - kept.numel()
+                if needed > 0 and dropped.numel() > 0:
+                    perm = torch.randperm(dropped.numel())
+                    extra = dropped[perm[:needed]]
+                    view_mask[i, extra] = 1.0
+        x[..., 2] = x[..., 2] * view_mask.view(B, 1, V, 1, 1)
     return x
 
 
@@ -168,6 +183,8 @@ def main():
     parser.add_argument("--cam_aug_trans", type=float, default=0.005, help="Camera translation augmentation std in meters")
     parser.add_argument("--cam_aug_focal", type=float, default=0.01, help="Camera focal length augmentation std (relative)")
     parser.add_argument("--cam_aug_pp", type=float, default=2.0, help="Camera principal point augmentation std in pixels")
+    parser.add_argument("--view_dropout_rate", type=float, default=0.0, help="Probability of dropping an entire camera view during training (0 disables)")
+    parser.add_argument("--min_views", type=int, default=2, help="Minimum number of views kept when view_dropout_rate > 0")
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--output", type=str, default="outputs/ray_attention_temporal_crossview_residual_principal_point_mpiinf3dhp.pth")
     args = parser.parse_args()
@@ -219,7 +236,7 @@ def main():
         for xb, yb, K, R, t in train_loader:
             xb, yb = xb.to(device), yb.to(device)
             K, R, t = K.to(device), R.to(device), t.to(device)
-            xb = augment_clip(xb)
+            xb = augment_clip(xb, view_dropout_rate=args.view_dropout_rate, min_views=args.min_views)
             K, R, t, true_pp_delta, true_focal_scale = perturb_cameras_with_delta(
                 K, R, t,
                 rot_std=args.cam_aug_rot,
