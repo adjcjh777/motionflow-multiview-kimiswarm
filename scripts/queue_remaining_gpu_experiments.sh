@@ -12,6 +12,14 @@ while pgrep -f "train_crossview_residual_visibility_v2_mpiinf3dhp.py" > /dev/nul
     sleep 60
 done
 
+echo "[queue] starting PP robust re-train (reproj + stronger PP supervision)"
+bash scripts/run_crossview_pp_robust_retrain_wsl.sh
+
+echo "[queue] waiting for PP robust re-train to finish..."
+while pgrep -f "train_ray_attention_temporal_crossview_residual_principal_point_mpiinf3dhp.py" > /dev/null; do
+    sleep 60
+done
+
 echo "[queue] starting SSL pre-training on H36M"
 bash scripts/run_ssl_pretrain_h36m_full_wsl.sh
 
