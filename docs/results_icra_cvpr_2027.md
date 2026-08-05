@@ -49,9 +49,10 @@
 | Experiment | Status | Next action |
 |---|---|---|
 | Mixed-dataset PP small (MPI + H36M, pp_w=0.05) | **done** (best val 11.64 mm) | MPI clean 11.64/7.45; H36M clean 101.02/35.64 (poor cross-dataset generalization) |
-| Cross-view CamPE v2 small | **done** (clean 14.39 mm) | negative result; try full model or drop |
-| Adaptive view selection small | training | evaluate once finished |
-| Variable-view inference benchmark | deferred (GPU contention) | re-run after GPU is free |
+| Cross-view CamPE v2 small | **done** (clean 14.39 mm) | negative result; full model also negative (10.53 mm) |
+| Cross-view CamPE v2 full | **done** (val 10.53 mm) | dropped |
+| Calibration curriculum + view dropout | **training** | evaluate clean + robustness once finished |
+| Visibility-gated fusion v2 | queued | start after curriculum |
 
 ## Planned next directions
 
