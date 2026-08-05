@@ -236,7 +236,28 @@ Note: mixed training lags MPI-only (11.16 vs 10.46 mm) but demonstrates cross-da
 - Principal-point robustness is strong: cxcy_3px only rises to 13.77 mm, cxcy_5px to 16.67 mm, confirming the correction layer works.
 - The cross-view model appears to need more capacity or a different PP feature representation to match its no-PP clean accuracy while retaining PP robustness.
 
+### Full model results (d=64, residual_hidden=128)
+- Best val MPJPE: **10.09 mm** (epoch 8).
+- Clean eval: MPJPE=10.09 mm, PA-MPJPE=5.00 mm.
+- Calibration robustness:
+  | Condition | MPJPE (mm) | PA-MPJPE (mm) |
+  |---|---:|---:|
+  | clean | 10.09 | 5.00 |
+  | rot_0.5_deg | 16.89 | 8.11 |
+  | rot_1.0_deg | 27.45 | 13.50 |
+  | trans_5mm | 10.61 | 5.20 |
+  | trans_10mm | 11.23 | 5.44 |
+  | focal_1pct | 19.13 | 8.07 |
+  | focal_2pct | 30.41 | 12.18 |
+  | cxcy_3px | **11.41** | 5.75 |
+  | cxcy_5px | **13.87** | 6.61 |
+
+### Observations
+- Full model improves over small model on clean (10.09 vs 10.97 mm) and all robustness conditions, especially principal-point drift (cxcy_3px 11.41 vs 13.77 mm).
+- Clean accuracy now matches or exceeds the no-PP cross-view residual small baseline (~10.20 mm), while adding PP robustness.
+- PA-MPJPE drops dramatically from 7.97 mm (small) to 5.00 mm (full), indicating better pose alignment.
+
 ### Next steps
-1. Scale to full model (d=64, residual_hidden=128) to see if capacity restores clean accuracy.
-2. Tune pp_loss_weight (0.01, 0.05) to reduce the clean-accuracy gap.
-3. Consider predicting PP correction from the pooled spatio-temporal features instead of raw observations.
+1. Scale to mixed-dataset training (MPI-INF-3DHP + H36M) for cross-dataset generalization.
+2. Tune pp_loss_weight (0.01, 0.05) and train longer to see if clean accuracy can improve further.
+3. Consider predicting PP correction from pooled spatio-temporal features for a tighter integration.
