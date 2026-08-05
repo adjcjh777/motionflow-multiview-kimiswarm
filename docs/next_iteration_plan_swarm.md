@@ -71,6 +71,19 @@
 4. Prepare code skeletons for SSL pre-training, action-aware, multi-person synthetic, and spatial pyramid (no training yet).
 5. Update paper materials: robustness table, variable-view curve sketch, failure-case heatmap.
 
+## GPU queue (single RTX 4090, sequential)
+
+1. **Cross-view PP curriculum + view dropout** (running since 2026-08-06 04:27).
+2. **Visibility-gated fusion v2** (`scripts/run_crossview_residual_visibility_v2_wsl.sh`) — queued.
+3. **SSL pre-training on H36M** (`scripts/run_ssl_pretrain_h36m_full_wsl.sh`) — pending.
+4. **Spatiotemporal (T x V x J) PP model** (`scripts/run_spatiotemporal_principal_point_wsl.sh`) — pending.
+
+## CPU work in progress
+
+- Full variable-view MPJPE@k curve on baseline (WSL, 10 subsets/k).
+- Full WebBridge benchmark on all available MPI v4/v14 sequences (queued after variable-view).
+- Robustness matrix plot generated; final plot after curriculum checkpoint is ready.
+
 ## Success criteria for next review
 
 - Calibration robustness direction provides an updated rot/trans/focal/pp matrix.
