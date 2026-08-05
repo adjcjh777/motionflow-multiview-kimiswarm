@@ -34,6 +34,36 @@ from motionflow_mv.fusion.variable_view_inference import (
     VariableViewInferenceWrapper,
     prepare_variable_view_input,
 )
+from motionflow_mv.calibration.camera import Camera
+
+
+def _make_synthetic_cameras(n_views: int = 4):
+    cameras = []
+    for i in range(n_views):
+        theta = 2 * np.pi * i / n_views
+        c = np.array([3 * np.cos(theta), 3 * np.sin(theta), 1.0])
+        forward = -c / (np.linalg.norm(c) + 1e-8)
+        up = np.array([0.0, 0.0, 1.0])
+        right = np.cross(forward, up)
+        right /= np.linalg.norm(right) + 1e-8
+        up = np.cross(right, forward)
+        R = np.stack([right, up, -forward], axis=0)
+        t_vec = -R @ c
+        K = np.eye(3)
+        K[0, 0] = K[1, 1] = 800.0
+        K[0, 2] = 320.0
+        K[1, 2] = 240.0
+        cameras.append(Camera(K=K, R=R, t=t_vec))
+    return cameras
+
+
+def _make_synthetic_dataset(n_views: int, j: int, n_frames: int):
+    rng = np.random.default_rng(2024)
+    cameras = _make_synthetic_cameras(n_views)
+    points_2d = rng.uniform(0, 1, size=(n_frames, n_views, j, 2)).astype(np.float32)
+    confidences = np.ones((n_frames, n_views, j), dtype=np.float32)
+    joints_3d = rng.uniform(-1, 1, size=(n_frames, j, 3)).astype(np.float32)
+    return points_2d, confidences, joints_3d, cameras
 
 
 MODEL_CLASSES = {
@@ -172,6 +202,8 @@ def main():
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--output_json", type=str, default=None)
     parser.add_argument("--output_csv", type=str, default=None)
+    parser.add_argument("--n_frames", type=int, default=36,
+                        help="Synthetic frame count when --dataset is not given")
     args = parser.parse_args()
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -182,7 +214,6 @@ def main():
         confidences = data["confidences"]
         joints_3d = data["joints_3d"]
         n_views = data["camera_K"].shape[0]
-        from motionflow_mv.calibration.camera import Camera
         cameras = []
         for v in range(n_views):
             cameras.append(Camera(
@@ -191,7 +222,9 @@ def main():
                 t=data["camera_t"][v],
             ))
     else:
-        raise ValueError("--dataset is required")
+        n_views = args.n_views
+        points_2d, confidences, joints_3d, cameras = _make_synthetic_dataset(
+            n_views, args.j, args.n_frames)
 
     model = _build_model(args.j, n_views, args.d, args.n_temporal_layers,
                          args.checkpoint, args.model_class, args.residual_hidden).to(device)
