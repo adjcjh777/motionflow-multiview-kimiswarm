@@ -208,10 +208,35 @@ Note: mixed training lags MPI-only (11.16 vs 10.46 mm) but demonstrates cross-da
 3. With v2 working, scale to d=64/h=128 and mixed WebBridge datasets.
 4. Extending the correction layer to focal length should improve focal_1pct/focal_2pct without degrading clean accuracy.
 
-## Cross-view temporal residual + principal-point correction (in progress)
+## Cross-view temporal residual + principal-point correction
 - After focal-aware experiments underperformed PP-only, pivot to combining the strongest clean model (cross-view temporal residual, ~10.2 mm) with PP correction.
 - New training script: `experiments/train_ray_attention_temporal_crossview_residual_principal_point_mpiinf3dhp.py`.
 - New eval script: `experiments/eval_ray_attention_temporal_crossview_residual_principal_point_mpiinf3dhp.py`.
 - WSL runner: `scripts/run_crossview_pp_small_wsl.sh`.
 - Small model: d=32, residual_hidden=64, n_st_layers=2, pp_loss_weight=0.1, cam_aug_pp=5.0, cam_aug_focal=0.01, 10 epochs, train on S1/S3, val on S2/Seq1.
-- Hypothesis: cross-view attention + PP correction should give both high clean accuracy and principal-point robustness.
+
+### Results (small model)
+- Best val MPJPE: **10.94 mm** (epoch 5).
+- Clean eval: MPJPE=10.97 mm, PA-MPJPE=7.97 mm.
+- Calibration robustness:
+  | Condition | MPJPE (mm) | PA-MPJPE (mm) |
+  |---|---:|---:|
+  | clean | 10.97 | 7.97 |
+  | rot_0.5_deg | 17.20 | 10.52 |
+  | rot_1.0_deg | 29.65 | 15.79 |
+  | trans_5mm | 11.49 | 8.07 |
+  | trans_10mm | 12.23 | 8.12 |
+  | focal_1pct | 19.88 | 11.04 |
+  | focal_2pct | 31.73 | 14.98 |
+  | cxcy_3px | **13.77** | 8.90 |
+  | cxcy_5px | **16.67** | 9.60 |
+
+### Observations
+- Clean accuracy (10.97 mm) is slightly worse than the no-PP cross-view residual baseline (~10.20 mm) and the PP-only temporal baseline (10.54 mm).
+- Principal-point robustness is strong: cxcy_3px only rises to 13.77 mm, cxcy_5px to 16.67 mm, confirming the correction layer works.
+- The cross-view model appears to need more capacity or a different PP feature representation to match its no-PP clean accuracy while retaining PP robustness.
+
+### Next steps
+1. Scale to full model (d=64, residual_hidden=128) to see if capacity restores clean accuracy.
+2. Tune pp_loss_weight (0.01, 0.05) to reduce the clean-accuracy gap.
+3. Consider predicting PP correction from the pooled spatio-temporal features instead of raw observations.
