@@ -163,13 +163,9 @@ def main():
             vis_loss = F.binary_cross_entropy(visibility, visible_target)
             loss = loss + args.visibility_loss_weight * vis_loss
 
-            if args.pp_loss_weight > 0.0:
-                pred_pp_delta = model.pp_correction(model.K_embed(K))
-                # Not used directly; the base visibility model returns pp_delta via parent forward.
-                # For simplicity, keep the same as the PP script: use outputs if needed.
-                # The current model already computes pp_delta inside forward, so we skip here
-                # to avoid duplicated code. Visibility loss is the v2-specific addition.
-                pass
+            # PP correction is handled inside the parent model's forward pass.
+            # The v2-specific addition is the visibility BCE loss below.
+            pass
 
             loss.backward()
             optimizer.step()
