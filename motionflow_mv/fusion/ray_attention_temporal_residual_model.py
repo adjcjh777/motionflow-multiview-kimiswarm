@@ -62,6 +62,7 @@ class RayAttentionFusionModelTemporalResidual(RayAttentionFusionModelTemporal):
         n_temporal_layers: int = 2,
         max_temporal_len: int = 256,
         residual_hidden: int = 128,
+        use_reproj_gate: bool = False,
     ):
         super().__init__(
             j=j,
@@ -73,6 +74,7 @@ class RayAttentionFusionModelTemporalResidual(RayAttentionFusionModelTemporal):
             max_temporal_len=max_temporal_len,
         )
         self.residual_hidden = residual_hidden
+        self.use_reproj_gate = use_reproj_gate
 
         # Residual refinement head: input is per-joint pooled temporal feature
         # concatenated with the raw triangulated 3D joint.
@@ -83,6 +85,16 @@ class RayAttentionFusionModelTemporalResidual(RayAttentionFusionModelTemporal):
             nn.ReLU(),
             nn.Linear(residual_hidden, 3),
         )
+
+        if self.use_reproj_gate:
+            # Small gate that scales the residual correction using a 4-D
+            # reprojection-error summary (mean, std, max, inlier fraction).
+            self.reproj_gate = nn.Sequential(
+                nn.Linear(d + 3 + 4, residual_hidden),
+                nn.ReLU(),
+                nn.Linear(residual_hidden, 1),
+                nn.Sigmoid(),
+            )
 
     def _triangulate(
         self,
@@ -105,6 +117,47 @@ class RayAttentionFusionModelTemporalResidual(RayAttentionFusionModelTemporal):
             X: (N, J, 3)
         """
         return _triangulate_weighted_dlt(points_2d, weights, P)
+
+    @staticmethod
+    def _reprojection_error_summary(
+        X: torch.Tensor,
+        points_2d: torch.Tensor,
+        P: torch.Tensor,
+        inlier_thresh: float = 10.0,
+    ) -> torch.Tensor:
+        """Compute a per-joint reprojection-error summary.
+
+        Args:
+            X: (N, J, 3) predicted world joints.
+            points_2d: (N, V, J, 2) input 2D keypoints (pixels).
+            P: (N, V, 3, 4) projection matrices.
+            inlier_thresh: Pixel threshold for inlier fraction.
+
+        Returns:
+            summary: (N, J, 4) with [mean, std, max, inlier_fraction] over views.
+        """
+        N, J, _ = X.shape
+        V = points_2d.shape[1]
+        device = X.device
+
+        # Homogeneous coordinates.
+        ones = torch.ones(N, J, 1, device=device, dtype=X.dtype)
+        X_h = torch.cat([X, ones], dim=-1)  # (N, J, 4)
+
+        # Project: (N, V, J, 3) = P @ X_h^T over the 4-D homogeneous vector.
+        # P: (N, V, 3, 4), X_h: (N, J, 4)
+        proj_h = torch.einsum("nvik,nfk->nvfi", P, X_h)  # (N, V, J, 3)
+        z = proj_h[..., 2:3].clamp(min=1e-6)
+        proj_2d = proj_h[..., :2] / z  # (N, V, J, 2)
+
+        err = (proj_2d - points_2d).norm(dim=-1)  # (N, V, J)
+
+        mean = err.mean(dim=1)  # (N, J)
+        std = err.std(dim=1, unbiased=False)
+        max_err = err.max(dim=1)[0]
+        inlier_frac = (err < inlier_thresh).float().mean(dim=1)
+
+        return torch.stack([mean, std, max_err, inlier_frac], dim=-1)  # (N, J, 4)
 
     def forward(
         self,
@@ -173,6 +226,13 @@ class RayAttentionFusionModelTemporalResidual(RayAttentionFusionModelTemporal):
         for _ in range(max(1, int(n_iter))):
             residual_input = torch.cat([feat_pooled, pred_3d], dim=-1)  # (B*T, J, d+3)
             delta = self.residual_mlp(residual_input)  # (B*T, J, 3)
+            if self.use_reproj_gate:
+                summary = self._reprojection_error_summary(
+                    pred_3d, points_2d, P, inlier_thresh=10.0
+                )
+                gate_input = torch.cat([residual_input, summary], dim=-1)
+                gate = self.reproj_gate(gate_input)  # (B*T, J, 1)
+                delta = gate * delta
             pred_3d = pred_3d + delta
 
         pred_3d = pred_3d.view(B, T, J, 3)

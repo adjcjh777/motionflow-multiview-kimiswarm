@@ -7,6 +7,7 @@ MotionFlow currently operates on monocular video. Real-world capture, however, i
 - Implemented `RayAttentionFusionModelTemporalResidual` as a `FusionModule` plugin.
 - Verified on MPI-INF-3DHP and Human3.6M.
 - Best verified numbers:
+  - MPI-INF-3DHP (S1→S2/Seq1): **10.46 mm** MPJPE (20 epochs), 243 k parameters (`d=64, h=128`).
   - MPI-INF-3DHP (S1→S2/Seq1): **11.17 mm** MPJPE / **8.24 mm** PA-MPJPE, 243 k parameters (`d=64, h=128`, 5 epochs).
   - MPI-INF-3DHP lightweight (`d=32, h=64`): **13.22 mm** MPJPE / **11.77 mm** PA-MPJPE, 66 k parameters.
   - Human3.6M (S1→S5): **5.74 mm** MPJPE / **3.99 mm** PA-MPJPE.

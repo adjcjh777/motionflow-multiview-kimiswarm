@@ -1,0 +1,19 @@
+\begin{table}[t]
+  \centering
+  \caption{MPI-INF-3DHP cross-subject results.}
+  \label{tab:main_results}
+  \begin{tabular}{lrrrrrrrr}
+    \toprule
+    Model & Params & MPJPE & PA-MPJPE & PCK@50 & PCK@100 & PCK@150 & AUC \\
+    \midrule
+    metrics_residual_mpiinf3dhp & 0 & 10.46 & 8.93 & 1.000 & 1.000 & 1.000 & 0.930 \\
+    eval_residual_final5 & 0 & 11.17 & 8.24 & 1.000 & 1.000 & 1.000 & 0.926 \\
+    eval_crossview_residual_d64_h128 & 0 & 15.29 & 13.49 & 0.997 & 1.000 & 1.000 & 0.898 \\
+    eval_ray_attention_temporal_residual_mpiinf3dhp_eval & 0 & 19.49 & 19.16 & 0.994 & 1.000 & 1.000 & 0.870 \\
+    metrics_campe_mpiinf3dhp & 0 & 11.25 & 9.14 & 1.000 & 1.000 & 1.000 & 0.925 \\
+    metrics_adaptive_mpiinf3dhp & 0 & 12.73 & 9.14 & 1.000 & 1.000 & 1.000 & 0.915 \\
+    eval_residual_h36m_h128 & 0 & 5.74 & 3.99 & 0.998 & 0.999 & 1.000 & 0.962 \\
+    metrics_campegraph_h36m_s5a02 & 0 & 0.62 & 0.70 & 0.999 & 1.000 & 1.000 & 0.994 \\
+    \bottomrule
+  \end{tabular}
+\end{table}

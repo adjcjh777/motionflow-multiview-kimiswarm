@@ -82,8 +82,10 @@ def triangulate_dlt(points_2d: np.ndarray, proj_matrices: np.ndarray, weights: n
         A.append(w * (v * P[2] - P[1]))
     A = np.stack(A)  # (2*N, 4)
 
-    _, _, vt = np.linalg.svd(A)
-    X = vt[-1]
+    # Use torch SVD to avoid Windows/OpenBLAS crashes with numpy.linalg.svd.
+    A_t = torch.from_numpy(A)
+    _, _, Vh = torch.linalg.svd(A_t)
+    X = Vh[-1].numpy()
     return (X[:3] / X[3]).astype(np.float64)
 
 

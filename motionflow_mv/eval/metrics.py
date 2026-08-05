@@ -8,6 +8,7 @@ Summary (2025-08-04 swarm task):
 
 from typing import Dict, Tuple, Union
 import numpy as np
+import torch
 
 
 ScalarOrArray = Union[float, np.ndarray]
@@ -74,18 +75,24 @@ def per_view_mpjpe(pred: np.ndarray, gt: np.ndarray) -> np.ndarray:
 
 
 def _align_rigid(X: np.ndarray, Y: np.ndarray) -> np.ndarray:
-    """Align X to Y using rigid Procrustes (translation + rotation, no scale)."""
+    """Align X to Y using rigid Procrustes (translation + rotation, no scale).
+
+    Uses PyTorch for the SVD to avoid Windows/OpenBLAS crashes with numpy SVD.
+    """
     X = np.asarray(X, dtype=np.float64)
     Y = np.asarray(Y, dtype=np.float64)
-    Xc = X - X.mean(axis=0)
-    Yc = Y - Y.mean(axis=0)
+    X_t = torch.from_numpy(X)
+    Y_t = torch.from_numpy(Y)
+    Xc = X_t - X_t.mean(dim=0, keepdim=True)
+    Yc = Y_t - Y_t.mean(dim=0, keepdim=True)
     H = Xc.T @ Yc
-    U, _, Vt = np.linalg.svd(H)
+    U, _, Vt = torch.linalg.svd(H)
     R = Vt.T @ U.T
-    if np.linalg.det(R) < 0:
+    if torch.linalg.det(R) < 0:
         Vt[-1, :] *= -1
         R = Vt.T @ U.T
-    return (Xc @ R) + Y.mean(axis=0)
+    aligned = (Xc @ R) + Y_t.mean(dim=0, keepdim=True)
+    return aligned.numpy(force=True)
 
 
 def _align_rigid_batch(pred: np.ndarray, gt: np.ndarray) -> np.ndarray:
@@ -225,11 +232,11 @@ def pck_auc(
         pcks = np.empty((dists_flat.shape[1], len(thresholds)), dtype=np.float64)
         for t_idx, thr in enumerate(thresholds):
             pcks[:, t_idx] = np.mean(dists_flat < thr, axis=0)
-        aucs = np.trapz(pcks, thresholds, axis=1) / (thresholds[-1] - thresholds[0])
+        aucs = np.trapezoid(pcks, thresholds, axis=1) / (thresholds[-1] - thresholds[0])
         return aucs, thresholds, pcks
 
     pcks = np.asarray([np.mean(dists < thr) for thr in thresholds])
-    auc = np.trapz(pcks, thresholds) / (thresholds[-1] - thresholds[0])
+    auc = np.trapezoid(pcks, thresholds) / (thresholds[-1] - thresholds[0])
     return auc, thresholds, pcks
 
 

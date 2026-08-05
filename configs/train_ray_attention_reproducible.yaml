@@ -1,0 +1,30 @@
+# Reproducible training config for RayAttentionFusionModelV3
+# Usage: python experiments/train_ray_attention_reproducible.py --config configs/train_ray_attention_reproducible.yaml
+
+# Path to the H36M multi-view NPZ (or synthetic equivalent).
+dataset: data/h36m_hf/s_01_acts_02_03_04_05_06_07_08_09_10_11_12_13_14_15_16_multiview.npz
+
+training:
+  d: 64
+  epochs: 50
+  lr: 1.0e-3
+  batch_size: 32
+  val_ratio: 0.1
+  seed: 42
+
+augmentation:
+  noise_std: 0.5
+  dropout_rate: 0.1
+  outlier_rate: 0.02
+  outlier_scale: 100.0
+
+# Optional Weights & Biases logging
+wandb:
+  enabled: false
+  project: motionflow-multiview
+  entity: null
+  run_name: ray_attention_v3_reproducible
+
+output:
+  dir: outputs
+  checkpoint_name: ray_attention_v3_reproducible.pth

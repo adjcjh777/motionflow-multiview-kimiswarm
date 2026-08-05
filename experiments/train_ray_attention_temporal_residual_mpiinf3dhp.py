@@ -25,8 +25,10 @@ import torch.optim as optim
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+from motionflow_mv.calibration.perturb import perturb_cameras
 from motionflow_mv.fusion.ray_attention_temporal_residual_model import RayAttentionFusionModelTemporalResidual
-from motionflow_mv.losses import reprojection_loss
+from motionflow_mv.fusion.graph_joint_relation import MPI_INF_3DHP_28_PARENTS
+from motionflow_mv.losses import bone_length_loss, reprojection_loss
 
 
 def set_seed(seed: int):
@@ -151,7 +153,17 @@ def main():
     parser.add_argument("--lr", type=float, default=1e-3)
     parser.add_argument("--batch_size", type=int, default=8)
     parser.add_argument("--train_samples", type=int, default=4000, help="Random clips per train sequence")
+    parser.add_argument("--val_stride", type=int, default=1, help="Stride for validation clips (higher = faster)")
     parser.add_argument("--reproj_weight", type=float, default=0.0, help="Weight for reprojection auxiliary loss")
+    parser.add_argument("--bone_weight", type=float, default=0.0, help="Weight for bone-length auxiliary loss")
+    parser.add_argument("--use_reproj_gate", action="store_true", help="Use reprojection-error gate in the residual head")
+    parser.add_argument("--cam_aug_rot", type=float, default=0.5, help="Camera rotation augmentation std in degrees")
+    parser.add_argument("--cam_aug_trans", type=float, default=0.005, help="Camera translation augmentation std in meters")
+    parser.add_argument("--cam_aug_focal", type=float, default=0.01, help="Camera focal length augmentation std (relative)")
+    parser.add_argument("--cam_aug_pp", type=float, default=2.0, help="Camera principal point augmentation std in pixels")
+    parser.add_argument("--start_epoch", type=int, default=1, help="Epoch to resume from (1-based)")
+    parser.add_argument("--end_epoch", type=int, default=None, help="Epoch to stop at (1-based, inclusive)")
+    parser.add_argument("--resume", type=str, default=None, help="Checkpoint to resume from")
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--output", type=str, default="outputs/ray_attention_temporal_residual_mpiinf3dhp.pth")
     args = parser.parse_args()
@@ -164,7 +176,7 @@ def main():
     for tp in args.train:
         train_datasets.append(RandomClipDataset(tp, args.clip_len, n_samples=args.train_samples))
     train_dataset = torch.utils.data.ConcatDataset(train_datasets)
-    val_dataset = TemporalClipDataset(args.val, args.clip_len)
+    val_dataset = TemporalClipDataset(args.val, args.clip_len, stride=args.val_stride)
 
     train_loader = torch.utils.data.DataLoader(
         train_dataset, batch_size=args.batch_size, shuffle=True, collate_fn=collate_fn, num_workers=0,
@@ -181,6 +193,7 @@ def main():
     model = RayAttentionFusionModelTemporalResidual(
         j=j, d=args.d, n_views=n_views, n_temporal_layers=args.n_temporal_layers,
         residual_hidden=args.residual_hidden,
+        use_reproj_gate=args.use_reproj_gate,
     ).to(device)
     print(f"Model params: {sum(p.numel() for p in model.parameters())}")
 
@@ -191,13 +204,26 @@ def main():
     output_path = Path(args.output)
     output_path.parent.mkdir(exist_ok=True, parents=True)
 
-    for epoch in range(1, args.epochs + 1):
+    if args.resume:
+        model.load_state_dict(torch.load(args.resume, map_location="cpu", weights_only=True))
+        print(f"Resumed from {args.resume}")
+
+    start_epoch = args.start_epoch
+    end_epoch = args.end_epoch if args.end_epoch is not None else args.epochs
+    for epoch in range(start_epoch, end_epoch + 1):
         model.train()
         train_loss = 0.0
         for xb, yb, K, R, t in train_loader:
             xb, yb = xb.to(device), yb.to(device)
             K, R, t = K.to(device), R.to(device), t.to(device)
             xb = augment_clip(xb)
+            K, R, t = perturb_cameras(
+                K, R, t,
+                rot_std=args.cam_aug_rot,
+                trans_std=args.cam_aug_trans,
+                focal_std=args.cam_aug_focal,
+                pp_std=args.cam_aug_pp,
+            )
             optimizer.zero_grad()
             pred, _ = model(xb, K=K, R=R, t=t)
             loss = criterion(pred, yb)
@@ -206,6 +232,9 @@ def main():
                 conf = xb[..., 2]
                 loss_reproj = reprojection_loss(pred, points_2d, K, R, t, confidences=conf)
                 loss = loss + args.reproj_weight * loss_reproj
+            if args.bone_weight > 0.0:
+                loss_bone = bone_length_loss(pred, yb, MPI_INF_3DHP_28_PARENTS)
+                loss = loss + args.bone_weight * loss_bone
             loss.backward()
             optimizer.step()
             train_loss += loss.item() * xb.size(0)
