@@ -32,6 +32,9 @@ from motionflow_mv.fusion.ray_attention_temporal_crossview_residual_model import
 from motionflow_mv.fusion.ray_attention_temporal_crossview_residual_campe_v2_model import (
     RayAttentionFusionModelTemporalCrossviewResidualCamPEV2,
 )
+from motionflow_mv.fusion.ray_attention_temporal_crossview_residual_adaptive_view_selection_model import (
+    RayAttentionFusionModelTemporalCrossviewResidualAdaptiveViewSelection,
+)
 from motionflow_mv.losses import reprojection_loss
 
 
@@ -159,8 +162,9 @@ def main():
     parser.add_argument("--train_samples", type=int, default=4000, help="Random clips per train sequence")
     parser.add_argument("--reproj_weight", type=float, default=0.0, help="Weight for reprojection auxiliary loss")
     parser.add_argument("--model_class", type=str, default="crossview_residual",
-                        choices=["crossview_residual", "crossview_residual_campe_v2"],
+                        choices=["crossview_residual", "crossview_residual_campe_v2", "crossview_residual_adaptive"],
                         help="Model architecture to train")
+    parser.add_argument("--selector_k", type=int, default=4, help="Number of views to select for adaptive view selection model")
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--output", type=str, default="outputs/ray_attention_temporal_crossview_residual_mpiinf3dhp.pth")
     args = parser.parse_args()
@@ -192,10 +196,16 @@ def main():
             j=j, d=args.d, n_views=n_views, n_st_layers=args.n_st_layers,
             residual_hidden=args.residual_hidden,
         ).to(device)
-    else:
+    elif args.model_class == "crossview_residual_campe_v2":
         model = RayAttentionFusionModelTemporalCrossviewResidualCamPEV2(
             j=j, d=args.d, n_views=n_views, n_st_layers=args.n_st_layers,
             residual_hidden=args.residual_hidden,
+        ).to(device)
+    else:
+        model = RayAttentionFusionModelTemporalCrossviewResidualAdaptiveViewSelection(
+            j=j, d=args.d, n_views=n_views, n_st_layers=args.n_st_layers,
+            residual_hidden=args.residual_hidden,
+            selector_k=min(args.selector_k, n_views),
         ).to(device)
     print(f"Model params: {sum(p.numel() for p in model.parameters())}")
 
