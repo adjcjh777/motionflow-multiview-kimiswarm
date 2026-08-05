@@ -167,6 +167,17 @@ The full 20-epoch residual model cuts the raw DLT error by **59%** and the 5-epo
 
 All numbers are MPJPE in millimetres on MPI-INF-3DHP S2/Seq1. The focal-aware small model shows the expected focal-length gain at the cost of clean accuracy. The full model, however, does not yet improve focal robustness. We therefore introduced a dedicated focal-length MLP head; the resulting model reaches 12.73 mm validation MPJPE but still does not beat the shared-head focal_1pct/focal_2pct numbers (18.41 vs 20.25 mm and 28.42 vs 31.40 mm). Increasing the training focal perturbation to 5% made validation diverge (25.89 mm in epoch 1, 43.67 mm in epoch 2). This suggests focal-length correction requires a different supervision target or a camera-normalized feature representation, not simply more capacity or stronger perturbations.
 
+#### Cross-view spatio-temporal + principal-point correction
+
+The cross-view spatio-temporal model is combined with the learned principal-point correction layer. On MPI-INF-3DHP it reaches the best clean accuracy among intrinsic-correction variants while retaining strong principal-point robustness. On Human3.6M it achieves sub-5.5 mm MPJPE with 4 views.
+
+| Model | Dataset | Clean | PA-MPJPE | cxcy_3px | cxcy_5px |
+|---|---|---:|---:|---:|---:|
+| Cross-view + PP small | MPI | 10.97 | 7.97 | 13.77 | 16.67 |
+| **Cross-view + PP full** | **MPI** | **10.09** | **5.00** | **11.41** | **13.87** |
+| Cross-view + PP small | H36M | 6.20 | 4.26 | 16.20 | 25.04 |
+| **Cross-view + PP full** | **H36M** | **5.24** | **4.84** | **15.17** | **23.86** |
+
 ### 5.2 Human3.6M cross-subject
 
 | Model | Params | MPJPE (mm) | PA-MPJPE (mm) | PCK@50 | AUC |
