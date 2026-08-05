@@ -173,10 +173,12 @@ The cross-view spatio-temporal model is combined with the learned principal-poin
 
 | Model | Dataset | Clean | PA-MPJPE | cxcy_3px | cxcy_5px |
 |---|---|---:|---:|---:|---:|
-| Cross-view + PP small | MPI | 10.97 | 7.97 | 13.77 | 16.67 |
-| **Cross-view + PP full** | **MPI** | **10.09** | **5.00** | **11.41** | **13.87** |
-| Cross-view + PP small | H36M | 6.20 | 4.26 | 16.20 | 25.04 |
-| **Cross-view + PP full** | **H36M** | **5.24** | **4.84** | **15.17** | **23.86** |
+| Cross-view + PP small (ppw 0.10) | MPI | 10.97 | 7.97 | 13.77 | 16.67 |
+| Cross-view + PP full (ppw 0.10) | MPI | 10.09 | 5.00 | 11.41 | 13.87 |
+| Cross-view + PP small (ppw 0.05) | MPI | 10.34 | 6.28 | 11.29 | 13.13 |
+| **Cross-view + PP full 20ep (ppw 0.05)** | **MPI** | **9.32** | **5.37** | **11.18** | **13.78** |
+| Cross-view + PP small (ppw 0.05) | H36M | 6.20 | 4.26 | 16.20 | 25.04 |
+| **Cross-view + PP full (ppw 0.05)** | **H36M** | **5.24** | **4.84** | **15.17** | **23.86** |
 
 ### 5.2 Human3.6M cross-subject
 
