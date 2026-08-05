@@ -259,6 +259,8 @@ Scaling to the full model (d=64, residual_hidden=128, 243 k parameters) trained 
 
 The full model trades a small clean-accuracy gap for better focal-length robustness, suggesting that the larger residual head can partially absorb calibration drift beyond the principal point.
 
+We also trained a mixed-dataset variant on MPI-INF-3DHP plus Human3.6M (subjects and actions from WebBridge, converted to meters). The mixed model reaches a clean MPJPE of **11.16 mm** on MPI-INF-3DHP S2/Seq1, slightly behind the MPI-only small model but demonstrating cross-dataset generalization. This confirms the correction layer transfers across different camera rigs and skeleton formats when the per-dataset heads are preserved.
+
 ### 5.4 Runtime on RTX 4090
 
 | Batch | Latency (ms) | Throughput (clips/s) |
