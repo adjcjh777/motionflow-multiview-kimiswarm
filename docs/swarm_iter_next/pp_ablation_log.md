@@ -157,10 +157,21 @@ Note: mixed training lags MPI-only (11.16 vs 10.46 mm) but demonstrates cross-da
   | focal_2pct | 32.48 | 13.71 |
   | cxcy_3px | 16.00 | 9.59 |
   | cxcy_5px | 17.79 | 10.06 |
+- Full model after 15 total epochs:
+  - Best val MPJPE: **12.11 mm**, clean eval: 12.21 mm / PA-MPJPE 6.94 mm.
+  - Robustness:
+    | Condition | MPJPE (mm) | PA-MPJPE (mm) |
+    |---|---:|---:|
+    | clean | 12.21 | 6.94 |
+    | focal_1pct | 20.24 | 9.42 |
+    | focal_2pct | 31.04 | 12.81 |
+    | cxcy_3px | 12.91 | 7.21 |
+    | cxcy_5px | 14.40 | 7.69 |
 - Observations:
-  - The full model trained for only 5 epochs performs *worse* than the small model trained for 10 epochs, suggesting under-training.
-  - Focal-length robustness did not improve with extra capacity in this short run, contrary to expectation.
-  - Next: continue training the full model for 10–15 epochs, and/or reduce focal_max_scale to 0.05.
+  - Full focal-aware model still underperforms PP-only full model on clean (12.21 vs 10.97 mm) and focal robustness (focal_1pct 20.24 vs 13.25 mm; focal_2pct 31.04 vs 23.02 mm).
+  - Principal-point robustness is slightly better (cxcy_3px 12.91 vs 13.03; cxcy_5px 14.40 vs 15.26).
+  - Shared PP/focal MLP and identical loss weight may under-resource the focal task; a dedicated focal head or separate loss weight may help.
+  - Next: try separate focal loss weight and/or mixed-dataset training to improve generalization.
 
 ## Key hypotheses
 1. Explicit PP supervision alone can teach the correction head, but too high a weight harms the main task.
