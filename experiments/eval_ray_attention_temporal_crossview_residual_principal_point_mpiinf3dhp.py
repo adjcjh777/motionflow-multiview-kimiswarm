@@ -22,6 +22,7 @@ from motionflow_mv.eval.metrics import compute_all_metrics
 from motionflow_mv.fusion.ray_attention_temporal_crossview_residual_principal_point_model import RayAttentionFusionModelTemporalCrossviewResidualPrincipalPoint
 from motionflow_mv.fusion.ray_attention_temporal_crossview_residual_model import RayAttentionFusionModelTemporalCrossviewResidual
 from motionflow_mv.fusion.ray_attention_temporal_crossview_residual_campe_v2_model import RayAttentionFusionModelTemporalCrossviewResidualCamPEV2
+from motionflow_mv.fusion.ray_attention_temporal_crossview_residual_adaptive_view_selection_model import RayAttentionFusionModelTemporalCrossviewResidualAdaptiveViewSelection
 
 
 class TemporalClipDataset(torch.utils.data.Dataset):
@@ -111,6 +112,8 @@ def build_model(args, n_views, j):
         return RayAttentionFusionModelTemporalCrossviewResidual(**common)
     elif args.model_class == "crossview_residual_campe_v2":
         return RayAttentionFusionModelTemporalCrossviewResidualCamPEV2(**common)
+    elif args.model_class == "crossview_residual_adaptive":
+        return RayAttentionFusionModelTemporalCrossviewResidualAdaptiveViewSelection(**common, selector_k=min(args.selector_k, n_views))
     else:
         raise ValueError(f"Unknown model_class: {args.model_class}")
 
@@ -170,8 +173,9 @@ def main():
     parser.add_argument("--out_json", type=str, default="outputs/crossview_principal_point_model_eval.json")
     parser.add_argument("--focal_max_scale", type=float, default=0.0, help="Maximum predicted focal-length scale; 0 disables focal correction")
     parser.add_argument("--model_class", type=str, default="crossview_residual_principal_point",
-                        choices=["crossview_residual_principal_point", "crossview_residual", "crossview_residual_campe_v2"],
+                        choices=["crossview_residual_principal_point", "crossview_residual", "crossview_residual_campe_v2", "crossview_residual_adaptive"],
                         help="Model architecture to evaluate")
+    parser.add_argument("--selector_k", type=int, default=4, help="Number of views to select for adaptive model")
     args = parser.parse_args()
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
