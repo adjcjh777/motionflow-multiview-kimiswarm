@@ -40,6 +40,10 @@
 - Clean MPJPE 14.39 mm, PA 12.13 mm (vs base cross-view small 10.25/8.60 mm).
 - Underperforms the base cross-view model. Likely needs larger capacity (d=64/h=128) or the geometry-based camera PE needs tighter integration (e.g., replace view_pos_embed).
 
+### Cross-view CamPE v2 full (d=64, h=128)
+- Best val MPJPE **10.53 mm** (full MPI S1/S3, 10 epochs) vs current best **9.32 mm**.
+- Confirmed negative result: full capacity does not close the gap. CamPE direction dropped.
+
 ## Ongoing experiments
 
 | Experiment | Status | Next action |
