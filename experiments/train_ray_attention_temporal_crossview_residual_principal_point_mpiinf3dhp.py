@@ -141,7 +141,7 @@ def augment_clip(x, noise_std: float = 0.5, dropout_rate: float = 0.1,
                     perm = torch.randperm(dropped.numel())
                     extra = dropped[perm[:needed]]
                     view_mask[i, extra] = 1.0
-        x[..., 2] = x[..., 2] * view_mask.view(B, 1, V, 1, 1)
+        x[..., 2] = x[..., 2] * view_mask.view(B, 1, V, 1)
     return x
 
 
