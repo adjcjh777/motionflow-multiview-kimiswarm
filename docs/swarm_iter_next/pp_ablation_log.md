@@ -147,6 +147,21 @@ Note: mixed training lags MPI-only (11.16 vs 10.46 mm) but demonstrates cross-da
   - Clean accuracy drops by ~2.3 mm vs PP-only, and principal-point robustness is slightly worse.
   - The focal correction task is harder with the small model; extra capacity or a tighter focal_max_scale may restore clean accuracy.
 
+### Full focal-aware model (d=64, h=128, focal_max_scale=0.1)
+- Best val MPJPE: **14.71 mm** (epoch 5). Clean eval: 14.88 mm / PA-MPJPE 9.37 mm.
+- Robustness:
+  | Condition | MPJPE (mm) | PA-MPJPE (mm) |
+  |---|---:|---:|
+  | clean | 14.88 | 9.37 |
+  | focal_1pct | 21.97 | 10.89 |
+  | focal_2pct | 32.48 | 13.71 |
+  | cxcy_3px | 16.00 | 9.59 |
+  | cxcy_5px | 17.79 | 10.06 |
+- Observations:
+  - The full model trained for only 5 epochs performs *worse* than the small model trained for 10 epochs, suggesting under-training.
+  - Focal-length robustness did not improve with extra capacity in this short run, contrary to expectation.
+  - Next: continue training the full model for 10–15 epochs, and/or reduce focal_max_scale to 0.05.
+
 ## Key hypotheses
 1. Explicit PP supervision alone can teach the correction head, but too high a weight harms the main task.
 2. Adding reprojection consistency requires careful normalization; current implementation explodes with weight 0.5.

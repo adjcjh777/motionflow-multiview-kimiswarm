@@ -281,7 +281,7 @@ Extending the correction layer to also predict a per-view focal-length scale (`m
 | Principal point ±3 px | 14.31 | 8.88 |
 | Principal point ±5 px | 16.51 | 8.86 |
 
-The focal-aware variant improves focal-length robustness (18.41→18.29 mm at 1%, 29.97→28.42 mm at 2%) at the cost of a small clean-accuracy drop. The clean gap suggests the small model has insufficient capacity to learn both PP and focal corrections simultaneously; scaling to the full model is the next step.
+The focal-aware variant improves focal-length robustness (18.41→18.29 mm at 1%, 29.97→28.42 mm at 2%) at the cost of a small clean-accuracy drop. A full-model run (d=64, h=128) trained for only 5 epochs achieved 14.71 mm validation MPJPE, worse than the small 10-epoch model, indicating that the larger model needs more epochs to converge. Continuing the full-model run is ongoing.
 
 We also trained a mixed-dataset variant on MPI-INF-3DHP plus Human3.6M (subjects and actions from WebBridge, converted to meters). The mixed model reaches a clean MPJPE of **11.16 mm** on MPI-INF-3DHP S2/Seq1, slightly behind the MPI-only small model but demonstrating cross-dataset generalization. This confirms the correction layer transfers across different camera rigs and skeleton formats when the per-dataset heads are preserved.
 
