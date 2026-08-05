@@ -77,6 +77,24 @@ Run the CPU-only script with synthetic data:
 python experiments/prepare_ssl_data_efficiency_mpiinf3dhp.py --smoke
 ```
 
-Expected output: a manifest with total clips and per-fraction clip counts, plus
-launcher scripts in `outputs/ssl_data_efficiency_smoke/`.
+Output (CPU-only, no GPU):
+
+```
+SSL data-efficiency split manifest prepared.
+  train files: ['tmp\\ssl_data_efficiency_smoke\\s_01_seq_01_multiview_m.npz',
+                'tmp\\ssl_data_efficiency_smoke\\s_01_seq_02_multiview_m.npz']
+  val file: tmp\ssl_data_efficiency_smoke\s_02_seq_01_multiview_m.npz
+  total possible train clips (non-overlapping, clip_len=13): 976
+  splits:
+    10pct: 98 clips
+    25pct: 244 clips
+    50pct: 488 clips
+    100pct: 976 clips
+
+Manifest: outputs/ssl_data_efficiency_smoke/manifest.json
+Launchers: outputs/ssl_data_efficiency_smoke/run_ssl_finetune_10pct.sh, ...
+```
+
+Generated launchers use LF line endings and are marked ASCII text by `file`.
+No GPU training was started.
 
