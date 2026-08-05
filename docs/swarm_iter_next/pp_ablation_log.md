@@ -131,7 +131,21 @@ Note: mixed training lags MPI-only (11.16 vs 10.46 mm) but demonstrates cross-da
     --pp_loss_weight 0.1 --focal_max_scale 0.1 \
     --cam_aug_rot 0.5 --cam_aug_trans 0.005 --cam_aug_focal 0.01 --cam_aug_pp 5.0
   ```
-- Epoch 1: val_MPJPE = 18.16 mm (training in progress; results TBD).
+- Best val MPJPE: **12.90 mm** (epoch 10), clean eval: MPJPE 12.82 mm / PA-MPJPE 9.36 mm.
+- Robustness (vs PP-only v2 in parentheses):
+  | Condition | MPJPE (mm) | PA-MPJPE (mm) |
+  |---|---:|---:|
+  | clean | 12.82 (10.54) | 9.36 (7.02) |
+  | rot_0.5_deg | 18.07 (17.76) | 10.81 (9.55) |
+  | rot_1.0_deg | 28.94 (29.96) | 14.23 (14.48) |
+  | focal_1pct | **18.29** (18.41) | 10.35 (10.39) |
+  | focal_2pct | **28.42** (29.97) | 12.65 (14.45) |
+  | cxcy_3px | 14.31 (13.84) | 8.88 (7.66) |
+  | cxcy_5px | **16.51** (17.05) | 8.86 (8.25) |
+- Observations:
+  - Focal-length robustness improves modestly at 1%/2% focal error (18.41→18.29, 29.97→28.42), validating the idea.
+  - Clean accuracy drops by ~2.3 mm vs PP-only, and principal-point robustness is slightly worse.
+  - The focal correction task is harder with the small model; extra capacity or a tighter focal_max_scale may restore clean accuracy.
 
 ## Key hypotheses
 1. Explicit PP supervision alone can teach the correction head, but too high a weight harms the main task.

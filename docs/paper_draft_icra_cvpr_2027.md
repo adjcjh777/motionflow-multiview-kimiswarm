@@ -265,6 +265,24 @@ Scaling to the full model (d=64, residual_hidden=128, 243 k parameters) trained 
 
 The full model trades a small clean-accuracy gap for better focal-length robustness, suggesting that the larger residual head can partially absorb calibration drift beyond the principal point.
 
+#### Focal-aware intrinsic correction
+
+Extending the correction layer to also predict a per-view focal-length scale (`max_focal_scale=0.1`) and supervising it against the inverse of the applied focal perturbation yields the following robustness on the small model:
+
+| Condition | MPJPE (mm) | PA-MPJPE (mm) |
+|---|---:|---:|
+| Clean | 12.82 | 9.36 |
+| Rotation ±0.5° | 18.07 | 10.81 |
+| Rotation ±1.0° | 28.94 | 14.23 |
+| Translation ±5 mm | 13.13 | 9.42 |
+| Translation ±10 mm | 13.95 | 9.47 |
+| Focal length ±1% | **18.29** | 10.35 |
+| Focal length ±2% | **28.42** | 12.65 |
+| Principal point ±3 px | 14.31 | 8.88 |
+| Principal point ±5 px | 16.51 | 8.86 |
+
+The focal-aware variant improves focal-length robustness (18.41→18.29 mm at 1%, 29.97→28.42 mm at 2%) at the cost of a small clean-accuracy drop. The clean gap suggests the small model has insufficient capacity to learn both PP and focal corrections simultaneously; scaling to the full model is the next step.
+
 We also trained a mixed-dataset variant on MPI-INF-3DHP plus Human3.6M (subjects and actions from WebBridge, converted to meters). The mixed model reaches a clean MPJPE of **11.16 mm** on MPI-INF-3DHP S2/Seq1, slightly behind the MPI-only small model but demonstrating cross-dataset generalization. This confirms the correction layer transfers across different camera rigs and skeleton formats when the per-dataset heads are preserved.
 
 ### 5.4 Runtime on RTX 4090
