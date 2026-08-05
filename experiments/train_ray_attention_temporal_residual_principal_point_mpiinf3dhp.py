@@ -155,6 +155,7 @@ def main():
     parser.add_argument("--reproj_weight", type=float, default=0.0, help="Weight for reprojection auxiliary loss")
     parser.add_argument("--bone_weight", type=float, default=0.0, help="Weight for bone-length auxiliary loss")
     parser.add_argument("--pp_loss_weight", type=float, default=0.0, help="Weight for principal-point offset supervision loss")
+    parser.add_argument("--focal_loss_weight", type=float, default=None, help="Weight for focal scale supervision loss (defaults to pp_loss_weight)")
     parser.add_argument("--focal_max_scale", type=float, default=0.0, help="Maximum predicted focal-length scale (relative); 0 disables focal correction")
     parser.add_argument("--use_reproj_gate", action="store_true", help="Use reprojection-error gate in the residual head")
     parser.add_argument("--cam_aug_rot", type=float, default=0.5, help="Camera rotation augmentation std in degrees")
@@ -251,7 +252,8 @@ def main():
                     # corrected focal length matches the original calibration.
                     true_focal_scale = true_focal_scale.to(device).squeeze(-1).unsqueeze(1).expand(B, T, -1)
                     target_focal_scale = 1.0 / true_focal_scale.reshape(B * T, -1)
-                    loss = loss + args.pp_loss_weight * criterion(pred_focal_scale, target_focal_scale)
+                    focal_loss_weight = args.focal_loss_weight if args.focal_loss_weight is not None else args.pp_loss_weight
+                    loss = loss + focal_loss_weight * criterion(pred_focal_scale, target_focal_scale)
             if args.reproj_weight > 0.0:
                 points_2d = xb[..., :2]
                 conf = xb[..., 2]

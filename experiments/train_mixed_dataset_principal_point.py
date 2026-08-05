@@ -69,6 +69,7 @@ def main():
     parser.add_argument("--val_stride", type=int, default=1)
     parser.add_argument("--num_workers", type=int, default=0)
     parser.add_argument("--pp_loss_weight", type=float, default=0.1)
+    parser.add_argument("--focal_loss_weight", type=float, default=None, help="Weight for focal scale supervision loss (defaults to pp_loss_weight)")
     parser.add_argument("--focal_max_scale", type=float, default=0.0, help="Maximum predicted focal-length scale; 0 disables focal correction")
     parser.add_argument("--reproj_weight", type=float, default=0.0)
     parser.add_argument("--noise_std", type=float, default=0.5)
@@ -151,7 +152,8 @@ def main():
                     pred_focal_scale = outputs[3]  # (B*T, V)
                     true_focal_scale = true_focal_scale.to(device).squeeze(-1).unsqueeze(1).expand(B, T, -1)
                     target_focal_scale = 1.0 / true_focal_scale.reshape(B * T, -1)
-                    loss = loss + args.pp_loss_weight * criterion(pred_focal_scale, target_focal_scale)
+                    focal_loss_weight = args.focal_loss_weight if args.focal_loss_weight is not None else args.pp_loss_weight
+                    loss = loss + focal_loss_weight * criterion(pred_focal_scale, target_focal_scale)
 
             if args.reproj_weight > 0.0:
                 # TODO: implement mixed-dataset reprojection loss
