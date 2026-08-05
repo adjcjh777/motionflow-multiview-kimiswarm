@@ -207,3 +207,11 @@ Note: mixed training lags MPI-only (11.16 vs 10.46 mm) but demonstrates cross-da
 2. Adding reprojection consistency requires careful normalization; current implementation explodes with weight 0.5.
 3. With v2 working, scale to d=64/h=128 and mixed WebBridge datasets.
 4. Extending the correction layer to focal length should improve focal_1pct/focal_2pct without degrading clean accuracy.
+
+## Cross-view temporal residual + principal-point correction (in progress)
+- After focal-aware experiments underperformed PP-only, pivot to combining the strongest clean model (cross-view temporal residual, ~10.2 mm) with PP correction.
+- New training script: `experiments/train_ray_attention_temporal_crossview_residual_principal_point_mpiinf3dhp.py`.
+- New eval script: `experiments/eval_ray_attention_temporal_crossview_residual_principal_point_mpiinf3dhp.py`.
+- WSL runner: `scripts/run_crossview_pp_small_wsl.sh`.
+- Small model: d=32, residual_hidden=64, n_st_layers=2, pp_loss_weight=0.1, cam_aug_pp=5.0, cam_aug_focal=0.01, 10 epochs, train on S1/S3, val on S2/Seq1.
+- Hypothesis: cross-view attention + PP correction should give both high clean accuracy and principal-point robustness.
