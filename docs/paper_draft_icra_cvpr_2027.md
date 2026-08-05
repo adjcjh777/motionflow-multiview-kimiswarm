@@ -100,17 +100,23 @@ The dense joint-level transformer in the base model treats all joints equally an
 
 A more expressive variant replaces the temporal-only transformer with a single transformer that attends jointly over time and views for each joint. The input tokens are arranged on a (time, view) grid, so each token can aggregate information from all views at any frame within the clip. A residual refinement head is added on top of the weighted DLT triangulation as before. This variant increases capacity modestly (~350–400 k parameters for d=128, n_st_layers=3) while preserving the same plug-in interface.
 
-### 3.7 Learned principal-point correction
+### 3.7 Learned intrinsic correction (principal point + focal length)
 
-Small errors in the principal point `(cx, cy)` of the intrinsic matrix `K` are common in practice (off-center calibration, checkerboard drift, or simply assuming the image center). Because they shift the back-projected rays before triangulation, the residual head alone cannot correct them. We therefore add a lightweight `PrincipalPointCorrection` layer that predicts a bounded per-view offset `(dx, dy)` from the pooled temporal features and applies it to `K` before triangulation:
+Small errors in the intrinsic matrix `K` are common in practice: principal-point offsets from checkerboard drift or off-center calibration, and focal-length drift from lens zooms or imprecise camera models. Because these errors shift the back-projected rays before triangulation, the residual head alone cannot correct them. We therefore add a lightweight `IntrinsicCorrection` layer that predicts a bounded per-view correction from the pooled temporal features or raw 2D observations and applies it to `K` before triangulation.
+
+The layer first predicts a principal-point offset `(dx, dy)` and, optionally, a focal-length scale `s`:
 
 ```
-Δ = tanh(MLP(pool(feat))) * max_offset   # (N, V, 2)
+out  = tanh(MLP(pool(feat)))              # (N, V, 3)
+Δ    = out[..., :2] * max_offset          # (N, V, 2)
+s    = 1 + out[..., 2] * max_focal_scale  # (N, V)
 K_corrected[..., 0, 2] += Δ[..., 0]
 K_corrected[..., 1, 2] += Δ[..., 1]
+K_corrected[..., 0, 0] *= s
+K_corrected[..., 1, 1] *= s
 ```
 
-The offset is initialized near zero and limited to ±20 px by default, so the layer is transparent when calibration is accurate and only activates when principal-point drift is detected. During training, the input cameras are perturbed with realistic principal-point noise so the layer learns to invert the drift.
+All corrections are initialized near zero and bounded, so the layer is transparent when calibration is accurate and only activates when drift is detected. During training, the input cameras are perturbed with realistic rotation, translation, focal-length, and principal-point noise; the correction head is supervised with the inverse of the applied perturbation so it learns to restore the true calibration.
 
 ### 3.8 Quality gating and system integration
 

@@ -117,7 +117,24 @@ Note: mixed training lags MPI-only (11.16 vs 10.46 mm) but demonstrates cross-da
 - A5 (explicit + reprojection, weight=0.5) failed: loss exploded to ~1e12, val_MPJPE >500 mm. Scale analysis shows reprojection MSE is ~3.5M× larger than 3D MSE for the same geometry; a useful weight would be ~1e-6, not 0.5.
 - Decision: use v2 (explicit PP only, weight=0.1) as the best small configuration and scale it to full model and mixed data.
 
+## Focal-aware intrinsic correction (in progress)
+- Added `max_focal_scale` to `PrincipalPointCorrection`; MLP output dim grows from 2 to 3 and predicts `(dx, dy, s)`.
+- Supervision: predicted focal scale targets `1 / true_focal_scale`.
+- Functional construction of corrected `K` avoids autograd in-place errors.
+- Training command (WSL RTX 4090):
+  ```bash
+  python experiments/train_ray_attention_temporal_residual_principal_point_mpiinf3dhp.py \
+    --train data/webbridge/mpi_inf_3dhp/s_01_seq_01_v14_multiview_m.npz ... s_03_seq_02_v14_multiview_m.npz \
+    --val data/webbridge/mpi_inf_3dhp/s_02_seq_01_v14_multiview_m.npz \
+    --clip_len 13 --d 32 --residual_hidden 64 --principal_point_hidden 64 \
+    --epochs 10 --train_samples 500 --val_stride 50 --batch_size 8 \
+    --pp_loss_weight 0.1 --focal_max_scale 0.1 \
+    --cam_aug_rot 0.5 --cam_aug_trans 0.005 --cam_aug_focal 0.01 --cam_aug_pp 5.0
+  ```
+- Epoch 1: val_MPJPE = 18.16 mm (training in progress; results TBD).
+
 ## Key hypotheses
 1. Explicit PP supervision alone can teach the correction head, but too high a weight harms the main task.
 2. Adding reprojection consistency requires careful normalization; current implementation explodes with weight 0.5.
 3. With v2 working, scale to d=64/h=128 and mixed WebBridge datasets.
+4. Extending the correction layer to focal length should improve focal_1pct/focal_2pct without degrading clean accuracy.
