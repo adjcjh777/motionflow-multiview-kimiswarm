@@ -36,12 +36,17 @@
 - Clean MPJPE 14.53 mm (vs 10.34 mm non-refined).
 - Dropped; two-stage residual refinement hurts both accuracy and robustness.
 
+### Cross-view CamPE v2 small (d=32, h=64)
+- Clean MPJPE 14.39 mm, PA 12.13 mm (vs base cross-view small 10.25/8.60 mm).
+- Underperforms the base cross-view model. Likely needs larger capacity (d=64/h=128) or the geometry-based camera PE needs tighter integration (e.g., replace view_pos_embed).
+
 ## Ongoing experiments
 
 | Experiment | Status | Next action |
 |---|---|---|
 | Mixed-dataset PP small (MPI + H36M, pp_w=0.05) | **done** (best val 11.64 mm) | MPI clean 11.64/7.45; H36M clean 101.02/35.64 (poor cross-dataset generalization) |
-| Cross-view CamPE v2 small | code ready, smoke passed | **start training now** |
+| Cross-view CamPE v2 small | **done** (clean 14.39 mm) | negative result; try full model or drop |
+| Adaptive view selection small | training | evaluate once finished |
 | Variable-view inference benchmark | deferred (GPU contention) | re-run after GPU is free |
 
 ## Planned next directions
