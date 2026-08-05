@@ -12,6 +12,7 @@ venv/
 .DS_Store
 tmp/
 outputs/
+tools/
 oa*.json
 oa*.xml
 lt.json
