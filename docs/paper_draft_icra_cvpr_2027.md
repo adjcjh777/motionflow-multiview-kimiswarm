@@ -116,7 +116,7 @@ K_corrected[..., 0, 0] *= s
 K_corrected[..., 1, 1] *= s
 ```
 
-All corrections are initialized near zero and bounded, so the layer is transparent when calibration is accurate and only activates when drift is detected. During training, the input cameras are perturbed with realistic rotation, translation, focal-length, and principal-point noise; the correction head is supervised with the inverse of the applied perturbation so it learns to restore the true calibration.
+All corrections are initialized near zero and bounded, so the layer is transparent when calibration is accurate and only activates when drift is detected. During training, the input cameras are perturbed with realistic rotation, translation, focal-length, and principal-point noise; the correction head is supervised with the inverse of the applied perturbation so it learns to restore the true calibration. The same correction layer is applied both to the temporal-only model (Section 3.2) and to the cross-view spatio-temporal variant (Section 3.6), with identical training and inference overhead.
 
 ### 3.8 Quality gating and system integration
 
