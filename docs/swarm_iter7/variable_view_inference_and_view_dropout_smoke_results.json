@@ -1,0 +1,12 @@
+{
+  "command": "bash scripts/eval_variable_views_smoke_cpu.sh",
+  "environment": "CPU only, KMP_DUPLICATE_LIB_OK=TRUE, torch 2.13.0+cpu",
+  "note": "Synthetic 2D/3D data; absolute MPJPE is geometrically meaningless. The run verifies that the fixed-slot model accepts k=2..6 without error.",
+  "results": {
+    "2": {"mean_mm": 2020.1679809570312, "std_mm": 437.1298396767845, "n_subsets": 10},
+    "3": {"mean_mm": 1813.8223388671875, "std_mm": 158.17190599115452, "n_subsets": 10},
+    "4": {"mean_mm": 1557.0694213867187, "std_mm": 183.2161993623783, "n_subsets": 10},
+    "5": {"mean_mm": 1484.3504231770833, "std_mm": 27.8795976011598, "n_subsets": 6},
+    "6": {"mean_mm": 1405.263427734375, "std_mm": 0.0, "n_subsets": 1}
+  }
+}
