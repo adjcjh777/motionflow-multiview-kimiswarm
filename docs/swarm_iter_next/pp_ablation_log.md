@@ -182,9 +182,20 @@ Note: mixed training lags MPI-only (11.16 vs 10.46 mm) but demonstrates cross-da
 - Perturbation-trained residual small (d=32, h=64): clean 14.97 mm, focal_1pct 14.95 mm, focal_2pct 15.35 mm, cxcy_3px 1592.69 mm, cxcy_5px 1894.61 mm.
 - Confirms the learned correction layer removes the catastrophic principal-point failure.
 
-### Next iteration: dedicated focal head
-- Implemented a separate `focal_mlp` in `PrincipalPointCorrection` so focal length gets its own capacity.
-- Training a new small MPI-only model with the dedicated head is in progress.
+### Dedicated focal head (small MPI-only)
+- Best val MPJPE: **12.73 mm**, clean eval: 12.81 mm / PA-MPJPE 9.80 mm.
+- Robustness vs shared head:
+  | Condition | Dedicated head | Shared head |
+  |---|---:|---:|
+  | clean | 12.81 | 12.82 |
+  | focal_1pct | 20.25 | 18.29 |
+  | focal_2pct | 31.40 | 28.42 |
+  | cxcy_3px | 13.89 | 14.31 |
+  | cxcy_5px | 16.21 | 16.51 |
+- Observations:
+  - Dedicated focal head did **not** improve focal-length robustness; it made it slightly worse.
+  - Principal-point robustness marginally improved.
+  - The problem is likely not head capacity. Possible causes: focal perturbation std (1%) is too small to learn a strong signal, or the correction should operate on normalized intrinsics / camera-independent features.
 
 ## Key hypotheses
 1. Explicit PP supervision alone can teach the correction head, but too high a weight harms the main task.
