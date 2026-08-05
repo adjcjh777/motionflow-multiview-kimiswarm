@@ -299,6 +299,14 @@ Note: mixed training lags MPI-only (11.16 vs 10.46 mm) but demonstrates cross-da
 
 Reducing the PP supervision weight from 0.1 to 0.05 improves both clean accuracy and principal-point robustness, suggesting 0.1 was overly regularizing the correction head. The full model with pp_loss_weight=0.05 reaches the best clean MPJPE (9.41 mm) and strong PP robustness.
 
+### Longer training (full MPI, pp_loss_weight=0.05)
+| Epochs | Best val MPJPE | Clean MPJPE | Clean PA-MPJPE | cxcy_3px | cxcy_5px |
+|---:|---:|---:|---:|---:|---:|
+| 10 | 9.41 | 9.41 | 5.66 | 10.93 | 13.47 |
+| **20** | **9.32** | **9.32** | **5.37** | **11.18** | **13.78** |
+
+Training for 20 epochs gives a marginal clean improvement (9.41 → 9.32 mm) but slightly worse principal-point robustness, suggesting the model begins to overfit or the optimal stopping point is around 10–16 epochs.
+
 ### Next steps
 1. Scale to mixed-dataset training (MPI-INF-3DHP + H36M) for cross-dataset generalization.
 2. Consider predicting PP correction from pooled spatio-temporal features for a tighter integration.
