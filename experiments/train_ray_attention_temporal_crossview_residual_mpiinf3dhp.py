@@ -29,6 +29,9 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from motionflow_mv.fusion.ray_attention_temporal_crossview_residual_model import (
     RayAttentionFusionModelTemporalCrossviewResidual,
 )
+from motionflow_mv.fusion.ray_attention_temporal_crossview_residual_campe_v2_model import (
+    RayAttentionFusionModelTemporalCrossviewResidualCamPEV2,
+)
 from motionflow_mv.losses import reprojection_loss
 
 
@@ -155,6 +158,9 @@ def main():
     parser.add_argument("--batch_size", type=int, default=8)
     parser.add_argument("--train_samples", type=int, default=4000, help="Random clips per train sequence")
     parser.add_argument("--reproj_weight", type=float, default=0.0, help="Weight for reprojection auxiliary loss")
+    parser.add_argument("--model_class", type=str, default="crossview_residual",
+                        choices=["crossview_residual", "crossview_residual_campe_v2"],
+                        help="Model architecture to train")
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--output", type=str, default="outputs/ray_attention_temporal_crossview_residual_mpiinf3dhp.pth")
     args = parser.parse_args()
@@ -181,10 +187,16 @@ def main():
     j = sample["points_2d"].shape[2]
     print(f"n_views={n_views}, j={j}, clip_len={args.clip_len}, d={args.d}, n_st_layers={args.n_st_layers}, residual_hidden={args.residual_hidden}")
 
-    model = RayAttentionFusionModelTemporalCrossviewResidual(
-        j=j, d=args.d, n_views=n_views, n_st_layers=args.n_st_layers,
-        residual_hidden=args.residual_hidden,
-    ).to(device)
+    if args.model_class == "crossview_residual":
+        model = RayAttentionFusionModelTemporalCrossviewResidual(
+            j=j, d=args.d, n_views=n_views, n_st_layers=args.n_st_layers,
+            residual_hidden=args.residual_hidden,
+        ).to(device)
+    else:
+        model = RayAttentionFusionModelTemporalCrossviewResidualCamPEV2(
+            j=j, d=args.d, n_views=n_views, n_st_layers=args.n_st_layers,
+            residual_hidden=args.residual_hidden,
+        ).to(device)
     print(f"Model params: {sum(p.numel() for p in model.parameters())}")
 
     optimizer = optim.Adam(model.parameters(), lr=args.lr)
