@@ -99,3 +99,8 @@ files and produce a summary Markdown table.
 
 - Meter conversion + audit: **CPU-only**, safe to run while the RTX 4090 trains.
 - Benchmark smoke: **GPU**, queued as a shell skeleton only; not launched.
+
+## Repo State
+
+The new converter, benchmark manifest, launcher skeleton, and this report are
+committed to branch `multiview-residual-exploration`.
