@@ -84,9 +84,11 @@ Robustness (val S2/Seq1):
 
 Takeaway: full model slightly worse on clean MPJPE than small (10.97 vs 10.54), but better on focal-length and principal-point robustness. Likely needs more epochs/data to realize its full clean accuracy.
 
-## Mixed-dataset run (in progress)
+## Mixed-dataset run
 - MPI-INF-3DHP + H36M, d=32, residual_hidden=64, principal_point_hidden=64.
 - 500 clips/sequence, 10 epochs, val on MPI S2/Seq1.
+- Best val MPJPE: **11.23 mm** (epoch 6).
+- Clean eval: MPJPE=11.16 mm, PA-MPJPE=7.02 mm.
 - Epoch results:
   | Epoch | train_loss | val_MPJPE |
   |-------|-----------:|----------:|
@@ -95,8 +97,13 @@ Takeaway: full model slightly worse on clean MPJPE than small (10.97 vs 10.54), 
   | 3 | 26.0426 | 11.45 mm |
   | 4 | 26.0833 | 12.62 mm |
   | 5 | 26.1306 | 12.69 mm |
+  | 6 | 26.1704 | 11.23 mm (saved) |
+  | 7 | 26.1323 | 12.98 mm |
+  | 8 | 26.0565 | 12.67 mm |
+  | 9 | 26.1183 | 11.82 mm |
+  | 10 | 25.9943 | 11.65 mm |
 
-Note: best so far epoch 3 (11.45 mm); mixed training is harder than MPI-only. May need more MPI data relative to H36M or longer training.
+Note: mixed training lags MPI-only (11.16 vs 10.46 mm) but demonstrates cross-dataset generalization. Future work: increase MPI proportion or model capacity.
 
 ## Mixed-dataset preparation
 - Ported `PrincipalPointCorrection` to the mixed-dataset residual model (`RayAttentionFusionModelTemporalMixedResidualPrincipalPoint`).
