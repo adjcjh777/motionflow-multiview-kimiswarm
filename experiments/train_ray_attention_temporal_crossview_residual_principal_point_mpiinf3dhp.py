@@ -32,7 +32,7 @@ from motionflow_mv.calibration.perturb import perturb_cameras_with_delta
 from motionflow_mv.fusion.ray_attention_temporal_crossview_residual_principal_point_model import (
     RayAttentionFusionModelTemporalCrossviewResidualPrincipalPoint,
 )
-from motionflow_mv.losses import reprojection_loss
+from motionflow_mv.losses import reprojection_loss, velocity_loss
 
 
 def set_seed(seed: int):
@@ -175,6 +175,7 @@ def main():
     parser.add_argument("--batch_size", type=int, default=8)
     parser.add_argument("--train_samples", type=int, default=4000, help="Random clips per train sequence")
     parser.add_argument("--val_stride", type=int, default=1, help="Stride for validation clips (higher = faster)")
+    parser.add_argument("--velocity_loss_weight", type=float, default=0.0, help="Weight for temporal velocity consistency auxiliary loss (requires clip_len >= 2)")
     parser.add_argument("--reproj_weight", type=float, default=0.0, help="Weight for reprojection auxiliary loss")
     parser.add_argument("--pp_loss_weight", type=float, default=0.0, help="Weight for principal-point offset supervision loss")
     parser.add_argument("--focal_loss_weight", type=float, default=None, help="Weight for focal scale supervision loss (defaults to pp_loss_weight)")
@@ -284,6 +285,8 @@ def main():
                 conf = xb[..., 2]
                 loss_reproj = reprojection_loss(pred, points_2d, K, R, t, confidences=conf)
                 loss = loss + args.reproj_weight * loss_reproj
+            if args.velocity_loss_weight > 0.0:
+                loss = loss + args.velocity_loss_weight * velocity_loss(pred, yb)
             loss.backward()
             optimizer.step()
             train_loss += loss.item() * xb.size(0)
