@@ -69,6 +69,7 @@ def main():
     parser.add_argument("--val_stride", type=int, default=1)
     parser.add_argument("--num_workers", type=int, default=0)
     parser.add_argument("--pp_loss_weight", type=float, default=0.1)
+    parser.add_argument("--focal_max_scale", type=float, default=0.0, help="Maximum predicted focal-length scale; 0 disables focal correction")
     parser.add_argument("--reproj_weight", type=float, default=0.0)
     parser.add_argument("--noise_std", type=float, default=0.5)
     parser.add_argument("--dropout_rate", type=float, default=0.1)
@@ -103,7 +104,8 @@ def main():
         residual_hidden=args.residual_hidden,
         principal_point_hidden=args.principal_point_hidden,
         principal_point_max_offset=args.principal_point_max_offset,
-        return_pp_delta=args.pp_loss_weight > 0.0,
+        focal_max_scale=args.focal_max_scale,
+        return_pp_delta=args.pp_loss_weight > 0.0 or args.focal_max_scale > 0.0,
     ).to(device)
     print(f"Model params: {sum(p.numel() for p in model.parameters()):,}")
 
@@ -125,7 +127,7 @@ def main():
             xb = augment_clip(xb, noise_std=args.noise_std, dropout_rate=args.dropout_rate)
 
             # Apply camera perturbation.
-            K_pert, R_pert, t_pert, true_pp_delta = perturb_cameras_with_delta(
+            K_pert, R_pert, t_pert, true_pp_delta, true_focal_scale = perturb_cameras_with_delta(
                 K, R, t,
                 rot_std=args.cam_aug_rot,
                 trans_std=args.cam_aug_trans,
@@ -145,6 +147,11 @@ def main():
                 # Correction layer adds predicted delta to perturbed principal point;
                 # target is the negative of the applied offset.
                 loss = loss + args.pp_loss_weight * criterion(pred_pp_delta, -true_pp_delta)
+                if args.focal_max_scale > 0.0:
+                    pred_focal_scale = outputs[3]  # (B*T, V)
+                    true_focal_scale = true_focal_scale.to(device).squeeze(-1).unsqueeze(1).expand(B, T, -1)
+                    target_focal_scale = 1.0 / true_focal_scale.reshape(B * T, -1)
+                    loss = loss + args.pp_loss_weight * criterion(pred_focal_scale, target_focal_scale)
 
             if args.reproj_weight > 0.0:
                 # TODO: implement mixed-dataset reprojection loss

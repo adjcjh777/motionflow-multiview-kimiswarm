@@ -89,6 +89,7 @@ def main():
     parser.add_argument("--batch_size", type=int, default=8)
     parser.add_argument("--val_stride", type=int, default=1)
     parser.add_argument("--out_json", type=str, default="outputs/mixed_pp_eval.json")
+    parser.add_argument("--focal_max_scale", type=float, default=0.0, help="Maximum predicted focal-length scale; 0 disables focal correction")
     args = parser.parse_args()
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -104,6 +105,7 @@ def main():
         residual_hidden=args.residual_hidden,
         principal_point_hidden=args.principal_point_hidden,
         principal_point_max_offset=args.principal_point_max_offset,
+        focal_max_scale=args.focal_max_scale,
     ).to(device)
     model.load_state_dict(torch.load(args.checkpoint, map_location="cpu", weights_only=True))
     model.eval()

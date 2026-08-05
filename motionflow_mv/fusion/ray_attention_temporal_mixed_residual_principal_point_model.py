@@ -33,6 +33,7 @@ class RayAttentionFusionModelTemporalMixedResidualPrincipalPoint(RayAttentionFus
         residual_hidden: int = 128,
         principal_point_hidden: int = 64,
         principal_point_max_offset: float = 20.0,
+        focal_max_scale: float = 0.0,
         return_pp_delta: bool = False,
     ):
         # Store before super().__init__ because the parent reads _DATASET_SPECS.
@@ -40,6 +41,8 @@ class RayAttentionFusionModelTemporalMixedResidualPrincipalPoint(RayAttentionFus
         self.return_pp_delta = return_pp_delta
         self.principal_point_hidden = principal_point_hidden
         self.principal_point_max_offset = principal_point_max_offset
+        self.focal_max_scale = focal_max_scale
+        self.correct_focal = focal_max_scale > 0.0
 
         super().__init__(
             d=d,
@@ -52,6 +55,7 @@ class RayAttentionFusionModelTemporalMixedResidualPrincipalPoint(RayAttentionFus
             d=d,
             hidden=principal_point_hidden,
             max_offset=principal_point_max_offset,
+            max_focal_scale=focal_max_scale,
         )
 
     def _temporal_features(self, x, K, R, t):
@@ -65,13 +69,16 @@ class RayAttentionFusionModelTemporalMixedResidualPrincipalPoint(RayAttentionFus
         R = R.unsqueeze(1).expand(B, T, V, 3, 3).reshape(B * T, V, 3, 3)
         t = t.unsqueeze(1).expand(B, T, V, 3).reshape(B * T, V, 3)
 
-        # Principal-point correction before ray embedding.
+        # Intrinsic correction before ray embedding.
         confidences = x_flat[..., 2]
-        K_corrected, pp_delta = self.principal_point_correction(
+        correction_outputs = self.principal_point_correction(
             K=K,
             x=x_flat,
             weights=confidences,
         )
+        K_corrected = correction_outputs[0]
+        pp_delta = correction_outputs[1]
+        focal_scale = correction_outputs[2] if self.correct_focal else None
 
         # Use corrected intrinsics for ray features.
         feat = self.backbone._extract_frame_features(x_flat, K_corrected, R, t)
@@ -126,5 +133,7 @@ class RayAttentionFusionModelTemporalMixedResidualPrincipalPoint(RayAttentionFus
         mask_all = mask_all.view(B, T, self.max_joints)
 
         if self.return_pp_delta:
+            if self.correct_focal:
+                return pred_all, mask_all, pp_delta, focal_scale
             return pred_all, mask_all, pp_delta
         return pred_all, mask_all
