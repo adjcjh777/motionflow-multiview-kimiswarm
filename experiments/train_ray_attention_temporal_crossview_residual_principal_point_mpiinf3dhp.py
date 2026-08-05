@@ -159,6 +159,7 @@ def main():
     parser.add_argument("--lr", type=float, default=1e-3)
     parser.add_argument("--batch_size", type=int, default=8)
     parser.add_argument("--train_samples", type=int, default=4000, help="Random clips per train sequence")
+    parser.add_argument("--val_stride", type=int, default=1, help="Stride for validation clips (higher = faster)")
     parser.add_argument("--reproj_weight", type=float, default=0.0, help="Weight for reprojection auxiliary loss")
     parser.add_argument("--pp_loss_weight", type=float, default=0.0, help="Weight for principal-point offset supervision loss")
     parser.add_argument("--focal_loss_weight", type=float, default=None, help="Weight for focal scale supervision loss (defaults to pp_loss_weight)")
@@ -179,7 +180,7 @@ def main():
     for tp in args.train:
         train_datasets.append(RandomClipDataset(tp, args.clip_len, n_samples=args.train_samples))
     train_dataset = torch.utils.data.ConcatDataset(train_datasets)
-    val_dataset = TemporalClipDataset(args.val, args.clip_len)
+    val_dataset = TemporalClipDataset(args.val, args.clip_len, stride=args.val_stride)
 
     train_loader = torch.utils.data.DataLoader(
         train_dataset, batch_size=args.batch_size, shuffle=True, collate_fn=collate_fn, num_workers=0,
