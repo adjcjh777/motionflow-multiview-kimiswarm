@@ -289,16 +289,17 @@ Note: mixed training lags MPI-only (11.16 vs 10.46 mm) but demonstrates cross-da
   | cxcy_5px | 23.86 | 10.31 |
 - Observations: clean accuracy improves further, but principal-point robustness remains weaker than MPI. The 4-view H36M setup has too little redundancy for strong PP correction.
 
-### pp_loss_weight ablation (MPI small)
-| pp_loss_weight | Best val MPJPE | Clean MPJPE | Clean PA-MPJPE | cxcy_3px | cxcy_5px |
-|---:|---:|---:|---:|---:|---:|
-| 0.10 | 10.94 | 10.97 | 7.97 | 13.77 | 16.67 |
-| **0.05** | **10.30** | **10.34** | **6.28** | **11.29** | **13.13** |
+### pp_loss_weight ablation (MPI)
+| Model | pp_loss_weight | Best val MPJPE | Clean MPJPE | Clean PA-MPJPE | cxcy_3px | cxcy_5px |
+|---|---:|---:|---:|---:|---:|---:|
+| small | 0.10 | 10.94 | 10.97 | 7.97 | 13.77 | 16.67 |
+| small | **0.05** | **10.30** | **10.34** | **6.28** | **11.29** | **13.13** |
+| full | 0.10 | 10.09 | 10.09 | 5.00 | 11.41 | 13.87 |
+| **full** | **0.05** | **9.41** | **9.41** | **5.66** | **10.93** | **13.47** |
 
-Reducing the PP supervision weight from 0.1 to 0.05 improves both clean accuracy and principal-point robustness, suggesting 0.1 was overly regularizing the correction head.
+Reducing the PP supervision weight from 0.1 to 0.05 improves both clean accuracy and principal-point robustness, suggesting 0.1 was overly regularizing the correction head. The full model with pp_loss_weight=0.05 reaches the best clean MPJPE (9.41 mm) and strong PP robustness.
 
 ### Next steps
-1. Scale the pp_loss_weight=0.05 setting to the full MPI model.
-2. Scale to mixed-dataset training (MPI-INF-3DHP + H36M) for cross-dataset generalization.
-3. Consider predicting PP correction from pooled spatio-temporal features for a tighter integration.
-4. Investigate H36M-specific data preprocessing or view selection to improve PP robustness with fewer views.
+1. Scale to mixed-dataset training (MPI-INF-3DHP + H36M) for cross-dataset generalization.
+2. Consider predicting PP correction from pooled spatio-temporal features for a tighter integration.
+3. Investigate H36M-specific data preprocessing or view selection to improve PP robustness with fewer views.
