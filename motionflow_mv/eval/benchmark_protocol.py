@@ -315,6 +315,18 @@ class BenchmarkProtocol:
             )
             manifest["checkpoints"][str(seed)] = entry
 
+            # Per-seed manifest for reproducibility and external tooling.
+            seed_manifest = {
+                "seed": seed,
+                "base_name": base_name,
+                "checkpoint": str(checkpoint),
+                "status": entry["status"],
+                "command": entry["command"],
+            }
+            seed_manifest_path = out_dir / f"manifest_seed{seed}.json"
+            with open(seed_manifest_path, "w") as f:
+                json.dump(seed_manifest, f, indent=2)
+
         manifest_path = out_dir / "manifest.json"
         with open(manifest_path, "w") as f:
             json.dump(manifest, f, indent=2)
