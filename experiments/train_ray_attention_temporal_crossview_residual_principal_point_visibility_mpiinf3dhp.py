@@ -63,6 +63,7 @@ def main():
     parser.add_argument("--min_views", type=int, default=2)
     parser.add_argument("--visibility_loss_weight", type=float, default=0.1, help="Weight for BCE visibility loss")
     parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--warm_start", type=str, default=None, help="Path to checkpoint to warm-start from (loads state_dict with strict=False)")
     parser.add_argument("--output", type=str, default="outputs/ray_attention_temporal_crossview_residual_principal_point_visibility_mpiinf3dhp.pth")
     args = parser.parse_args()
 
@@ -96,6 +97,14 @@ def main():
         principal_point_max_offset=args.principal_point_max_offset,
         focal_max_scale=args.focal_max_scale,
     ).to(device)
+    if args.warm_start is not None:
+        state = torch.load(args.warm_start, map_location="cpu", weights_only=True)
+        missing, unexpected = model.load_state_dict(state, strict=False)
+        if missing:
+            print(f"Warning: missing keys when warm-starting: {missing[:5]}")
+        if unexpected:
+            print(f"Warning: unexpected keys when warm-starting (ignored): {unexpected[:5]}")
+        print(f"Warm-started from {args.warm_start}")
     print(f"Model params: {sum(p.numel() for p in model.parameters())}")
 
     optimizer = optim.Adam(model.parameters(), lr=args.lr)
