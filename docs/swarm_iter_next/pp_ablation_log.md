@@ -273,8 +273,24 @@ Note: mixed training lags MPI-only (11.16 vs 10.46 mm) but demonstrates cross-da
   | cxcy_5px | 25.04 | 6.73 |
 - Observations: clean accuracy is excellent, but principal-point robustness is worse than on MPI (4 views vs 14 views), likely because fewer views provide less redundancy for correcting PP drift.
 
+### Full H36M results (d=64, residual_hidden=128)
+- Best val MPJPE: **5.24 mm** (epoch 7). Clean eval: MPJPE=5.24 mm, PA-MPJPE=4.84 mm.
+- Calibration robustness:
+  | Condition | MPJPE (mm) | PA-MPJPE (mm) |
+  |---|---:|---:|
+  | clean | 5.24 | 4.84 |
+  | rot_0.5_deg | 10.66 | 8.94 |
+  | rot_1.0_deg | 21.98 | 19.66 |
+  | trans_5mm | 7.44 | 5.25 |
+  | trans_10mm | 12.65 | 5.90 |
+  | focal_1pct | 8.87 | 7.36 |
+  | focal_2pct | 14.62 | 10.84 |
+  | cxcy_3px | 15.17 | 8.02 |
+  | cxcy_5px | 23.86 | 10.31 |
+- Observations: clean accuracy improves further, but principal-point robustness remains weaker than MPI. The 4-view H36M setup has too little redundancy for strong PP correction.
+
 ### Next steps
-1. Scale to full model on H36M and MPI.
-2. Scale to mixed-dataset training (MPI-INF-3DHP + H36M) for cross-dataset generalization.
-3. Tune pp_loss_weight (0.01, 0.05) and train longer.
-4. Consider predicting PP correction from pooled spatio-temporal features for a tighter integration.
+1. Scale to mixed-dataset training (MPI-INF-3DHP + H36M) for cross-dataset generalization.
+2. Tune pp_loss_weight (0.01, 0.05) and train longer.
+3. Consider predicting PP correction from pooled spatio-temporal features for a tighter integration.
+4. Investigate H36M-specific data preprocessing or view selection to improve PP robustness with fewer views.
