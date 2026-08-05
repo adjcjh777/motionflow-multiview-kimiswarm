@@ -24,6 +24,9 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from motionflow_mv.fusion.ray_attention_temporal_crossview_uncertainty_residual_learned_tri_v1_model import (
     RayAttentionFusionModelTemporalCrossviewUncertaintyResidualLearnedTriV1,
 )
+from motionflow_mv.fusion.ray_attention_temporal_uncertainty_residual_learned_tri_v1_model import (
+    RayAttentionFusionModelTemporalUncertaintyResidualLearnedTriV1,
+)
 from motionflow_mv.losses import reprojection_loss
 
 
@@ -148,6 +151,7 @@ def main():
     parser.add_argument("--gn_iters", type=int, default=3)
     parser.add_argument("--gn_damping", type=float, default=1e-6)
     parser.add_argument("--uncertainty_weight", type=float, default=0.1)
+    parser.add_argument("--model_type", type=str, default="crossview", choices=["crossview", "temporal"], help="Model architecture variant")
     parser.add_argument("--epochs", type=int, default=30)
     parser.add_argument("--lr", type=float, default=1e-3)
     parser.add_argument("--batch_size", type=int, default=8)
@@ -183,13 +187,22 @@ def main():
     j = sample["points_2d"].shape[2]
     print(f"n_views={n_views}, j={j}, clip_len={args.clip_len}, d={args.d}, n_st_layers={args.n_st_layers}")
 
-    model = RayAttentionFusionModelTemporalCrossviewUncertaintyResidualLearnedTriV1(
-        j=j, d=args.d, n_views=n_views, n_st_layers=args.n_st_layers,
-        residual_hidden=args.residual_hidden,
-        gn_iters=args.gn_iters,
-        gn_damping=args.gn_damping,
-        uncertainty_loss_weight=args.uncertainty_weight,
-    ).to(device)
+    if args.model_type == "crossview":
+        model = RayAttentionFusionModelTemporalCrossviewUncertaintyResidualLearnedTriV1(
+            j=j, d=args.d, n_views=n_views, n_st_layers=args.n_st_layers,
+            residual_hidden=args.residual_hidden,
+            gn_iters=args.gn_iters,
+            gn_damping=args.gn_damping,
+            uncertainty_loss_weight=args.uncertainty_weight,
+        ).to(device)
+    else:
+        model = RayAttentionFusionModelTemporalUncertaintyResidualLearnedTriV1(
+            j=j, d=args.d, n_views=n_views, n_temporal_layers=args.n_st_layers,
+            residual_hidden=args.residual_hidden,
+            gn_iters=args.gn_iters,
+            gn_damping=args.gn_damping,
+            uncertainty_loss_weight=args.uncertainty_weight,
+        ).to(device)
     print(f"Model params: {sum(p.numel() for p in model.parameters())}")
 
     optimizer = optim.Adam(model.parameters(), lr=args.lr)
