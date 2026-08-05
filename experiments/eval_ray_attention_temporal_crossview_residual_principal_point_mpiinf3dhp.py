@@ -78,24 +78,33 @@ def so3_exp(axis_angle: torch.Tensor) -> torch.Tensor:
 
 
 def corrupt_intrinsics(K, focal_err, cxcy_err):
-    """Apply focal/principal-point perturbation to a (V, 3, 3) intrinsic matrix."""
+    """Apply focal/principal-point perturbation to intrinsic matrices.
+
+    Accepts (V, 3, 3) or (B, V, 3, 3) inputs.
+    """
     K_out = K.clone()
-    K_out[:, 0, 0] *= 1 + focal_err
-    K_out[:, 1, 1] *= 1 + focal_err
-    K_out[:, 0, 2] += cxcy_err
-    K_out[:, 1, 2] += cxcy_err
+    K_out[..., 0, 0] *= 1 + focal_err
+    K_out[..., 1, 1] *= 1 + focal_err
+    K_out[..., 0, 2] += cxcy_err
+    K_out[..., 1, 2] += cxcy_err
     return K_out
 
 
 def corrupt_extrinsics(R, t, rot_std_deg, trans_std):
-    V = R.shape[0]
+    """Apply rotation/translation perturbation to extrinsics.
+
+    Accepts (V, 3, 3)/(V, 3) or (B, V, 3, 3)/(B, V, 3) inputs.
+    """
     R_out = R.clone()
     t_out = t.clone()
-    for v in range(V):
-        noise = torch.randn(3, device=R.device) * np.deg2rad(rot_std_deg)
-        delta_R = so3_exp(noise)
-        R_out[v] = delta_R @ R[v]
-        t_out[v] = t[v] + torch.randn(3, device=t.device) * trans_std
+    if rot_std_deg > 0:
+        axis = torch.randn(*R.shape[:-1], 3, device=R.device, dtype=R.dtype)
+        axis = axis / (axis.norm(dim=-1, keepdim=True) + 1e-8)
+        theta = torch.randn(*R.shape[:-1], 1, device=R.device, dtype=R.dtype) * np.deg2rad(rot_std_deg)
+        delta_R = so3_exp((axis * theta).squeeze(-1))
+        R_out = torch.einsum("...ij,...jk->...ik", delta_R, R)
+    if trans_std > 0:
+        t_out = t + torch.randn_like(t) * trans_std
     return R_out, t_out
 
 
