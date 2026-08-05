@@ -171,10 +171,20 @@ Completed background runs:
 - **Commit/push**: `2683a17` on `multiview-residual-exploration`.
 - **Issue/PR comments**: Updated GitHub issue #21 and PR #17.
 
+## 2026-08-06 (continued) — Interim robustness + visibility v2 trainer
+
+- **Robustness eval on current (mid-training) curriculum checkpoint** (MPI S2 full):
+  - clean: 10.69 / 7.01 mm (MPJPE/PA)
+  - rot_0.5°: 26.78 / 11.09 mm
+  - trans_5mm: 12.42 / 7.13 mm
+  - focal_1%: 11.07 / 7.32 mm
+  - pp_10px: 2023.42 / 459.74 mm (still breaking; final checkpoint evaluation pending)
+- **New visibility v2 full MPI trainer**: `experiments/train_crossview_residual_visibility_v2_mpiinf3dhp.py` — CPU smoke passed (20.17 mm val on smoke data). Ready for GPU once the curriculum run finishes.
+
 ## Next directions
 
-1. Evaluate the calibration curriculum checkpoint (clean + robustness matrix) once GPU training finishes.
-2. Start visibility-gated fusion v2 training after curriculum.
+1. Evaluate the final calibration curriculum checkpoint (clean + robustness matrix) once GPU training finishes.
+2. Start `train_crossview_residual_visibility_v2_mpiinf3dhp.py` on GPU after curriculum.
 3. Run SSL pretraining on MPI/H36M once GPU is free.
 4. Scale to mixed-dataset training (MPI + H36M + AIST++) once robustness is fixed.
 5. Generate final paper figures and tables.

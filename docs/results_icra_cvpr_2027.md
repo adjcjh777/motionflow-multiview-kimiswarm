@@ -44,6 +44,18 @@
 - Best val MPJPE **10.53 mm** (full MPI S1/S3, 10 epochs) vs current best **9.32 mm**.
 - Confirmed negative result: full capacity does not close the gap. CamPE direction dropped.
 
+## Interim robustness — curriculum checkpoint (mid-training, MPI S2 full)
+
+| Condition | MPJPE (mm) | PA-MPJPE (mm) | PCK@50 | PCK@100 | PCK@150 | PCK AUC |
+|---|---:|---:|---:|---:|---:|---:|
+| clean | 10.69 | 7.01 | 1.000 | 1.000 | 1.000 | 0.929 |
+| rot_0.5° | 26.78 | 11.09 | 0.909 | 0.993 | 1.000 | 0.821 |
+| trans_5mm | 12.42 | 7.13 | 1.000 | 1.000 | 1.000 | 0.917 |
+| focal_1% | 11.07 | 7.32 | 1.000 | 1.000 | 1.000 | 0.926 |
+| pp_10px | 2023.42 | 459.74 | 0.000 | 0.000 | 0.000 | 0.000 |
+
+*Note: checkpoint is still training; final evaluation after curriculum run completes.*
+
 ## Ongoing experiments
 
 | Experiment | Status | Next action |
