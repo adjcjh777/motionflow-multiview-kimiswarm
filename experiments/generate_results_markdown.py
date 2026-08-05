@@ -16,9 +16,6 @@ from pathlib import Path
 def load_metrics(path: str):
     with open(path, "r") as f:
         data = json.load(f)
-    # Flatten nested dicts if present.
-    if "clean" in data and isinstance(data["clean"], dict):
-        return data["clean"]
     return data
 
 
@@ -27,24 +24,32 @@ def main():
     parser.add_argument("--inputs", type=str, nargs="+", required=True, help="JSON files to compare")
     parser.add_argument("--labels", type=str, nargs="+", required=True, help="Label for each JSON file")
     parser.add_argument("--output", type=str, required=True, help="Output Markdown file")
+    parser.add_argument("--conditions", type=str, nargs="+", default=None, help="Optional list of condition keys to include (default: clean only)")
     args = parser.parse_args()
 
     if len(args.inputs) != len(args.labels):
         raise ValueError("Number of inputs and labels must match")
 
     metrics = ["mpjpe", "pa_mpjpe", "pck@50mm", "pck@100mm", "pck@150mm", "pck_auc"]
-    lines = ["| Model | " + " | ".join(m for m in metrics) + " |", "|" + "|".join(["---"] * (len(metrics) + 1)) + "|"]
+    lines = ["| Model | Condition | " + " | ".join(metrics) + " |",
+             "|" + "|".join(["---"] * (len(metrics) + 2)) + "|"]
 
     for label, path in zip(args.labels, args.inputs):
         data = load_metrics(path)
-        row = [label]
-        for m in metrics:
-            val = data.get(m)
-            if val is None:
-                row.append("—")
-            else:
-                row.append(f"{val:.4f}" if isinstance(val, float) else str(val))
-        lines.append("| " + " | ".join(row) + " |")
+        if args.conditions:
+            conditions = [c for c in args.conditions if c in data]
+        else:
+            conditions = ["clean"] if "clean" in data else list(data.keys())[:1]
+        for condition in conditions:
+            cond_data = data.get(condition, {})
+            row = [label, condition]
+            for m in metrics:
+                val = cond_data.get(m)
+                if val is None:
+                    row.append("—")
+                else:
+                    row.append(f"{val:.4f}" if isinstance(val, float) else str(val))
+            lines.append("| " + " | ".join(row) + " |")
 
     out_path = Path(args.output)
     out_path.parent.mkdir(parents=True, exist_ok=True)
