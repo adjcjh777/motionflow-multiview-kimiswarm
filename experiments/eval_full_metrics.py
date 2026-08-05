@@ -44,6 +44,9 @@ from motionflow_mv.fusion.ray_attention_temporal_crossview_residual_model import
 from motionflow_mv.fusion.ray_attention_temporal_crossview_residual_principal_point_model import (
     RayAttentionFusionModelTemporalCrossviewResidualPrincipalPoint,
 )
+from motionflow_mv.fusion.ray_attention_temporal_crossview_residual_principal_point_visibility_model import (
+    RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointVisibility,
+)
 
 
 MODEL_CLASSES = {
@@ -54,6 +57,7 @@ MODEL_CLASSES = {
     "adaptive_softgate": RayAttentionFusionModelTemporalResidualCamPEAdaptiveSoftGate,
     "crossview_residual": RayAttentionFusionModelTemporalCrossviewResidual,
     "crossview_residual_pp": RayAttentionFusionModelTemporalCrossviewResidualPrincipalPoint,
+    "crossview_residual_pp_visibility": RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointVisibility,
 }
 
 
@@ -103,7 +107,7 @@ def build_model(args, n_views, j):
         "d": args.d,
         "n_views": n_views,
     }
-    if args.model in {"crossview_residual", "crossview_residual_pp"}:
+    if args.model in {"crossview_residual", "crossview_residual_pp", "crossview_residual_pp_visibility"}:
         kwargs["n_st_layers"] = args.n_st_layers
         kwargs["residual_hidden"] = args.residual_hidden
     else:
