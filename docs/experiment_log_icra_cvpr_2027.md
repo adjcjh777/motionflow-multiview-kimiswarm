@@ -139,10 +139,28 @@ GPU work is gated by the running calibration curriculum training; non-GPU items 
 - Variable-view evaluation now works for `crossview_residual_pp` and `crossview_residual_pp_visibility`.
 - Next GPU queue after curriculum: visibility-gated fusion v2 training.
 
+## 2026-08-06 — 20-agent swarm synthesis and non-GPU tooling
+
+A third 20-agent swarm reviewed 20 open directions and produced a new prioritized plan in [`docs/next_iteration_plan_swarm.md`](./next_iteration_plan_swarm.md). Top P0 actions are now:
+
+1. **Camera calibration robustness** — evaluate the ongoing curriculum and extend to focal/stronger extrinsic perturbation.
+2. **Visibility-aware adaptive fusion** — run `scripts/run_crossview_pp_visibility_wsl.sh` once GPU is free.
+3. **Variable-view inference & view-dropout** — benchmark MPJPE@k for k=2..14.
+4. **Interpretability & failure analysis** — per-joint/per-view failure profiles and PP-correction visualizations.
+5. **Evaluation protocol, metrics & reproducibility** — unify benchmark protocol, add metrics, run repeated seeds.
+
+Implemented non-GPU components:
+
+- `motionflow_mv/data/ssl_dataset.py` + `experiments/pretrain_ray_attention_ssl.py` + runners for MPI and H36M: self-supervised masked-view pretraining skeleton.
+- `experiments/analyze_failures_crossview_pp.py` + runner: failure analysis for the PP model.
+- `experiments/run_repeated_seeds.py`: multi-seed repeated training harness.
+- `motionflow_mv/eval/metrics.py`: added `root_rel_mpjpe`, `velocity_mpjpe`, and `bone_length_error`.
+- Started CPU background jobs: WebBridge cross-dataset benchmark and variable-view MPJPE@k curve on the crossview-residual baseline.
+
 ## Next directions
 
-1. Evaluate the no-perturbation full-model baseline for a fair comparison.
-2. Train and evaluate the principal-point correction model with synthetic pp perturbations.
-3. If successful, combine principal-point correction with the best residual model and re-evaluate the full robustness matrix.
+1. Evaluate the calibration curriculum checkpoint (clean + robustness matrix) once GPU training finishes.
+2. Start visibility-gated fusion v2 training after curriculum.
+3. Run SSL pretraining on MPI/H36M once GPU is free.
 4. Scale to mixed-dataset training (MPI + H36M + AIST++) once robustness is fixed.
 5. Generate final paper figures and tables.
