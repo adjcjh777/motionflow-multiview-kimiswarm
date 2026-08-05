@@ -31,6 +31,9 @@ from motionflow_mv.fusion.ray_attention_temporal_crossview_residual_model import
 from motionflow_mv.fusion.ray_attention_temporal_crossview_residual_principal_point_model import (
     RayAttentionFusionModelTemporalCrossviewResidualPrincipalPoint,
 )
+from motionflow_mv.fusion.ray_attention_temporal_crossview_residual_principal_point_visibility_model import (
+    RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointVisibility,
+)
 from motionflow_mv.fusion.variable_view_inference import (
     VariableViewInferenceWrapper,
     generate_view_subsets,
@@ -80,6 +83,7 @@ MODEL_CLASSES = {
     "temporal_residual": RayAttentionFusionModelTemporalResidual,
     "crossview_residual": RayAttentionFusionModelTemporalCrossviewResidual,
     "crossview_residual_pp": RayAttentionFusionModelTemporalCrossviewResidualPrincipalPoint,
+    "crossview_residual_pp_visibility": RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointVisibility,
 }
 
 
@@ -94,7 +98,7 @@ def _build_model(
 ):
     cls = MODEL_CLASSES[model_class]
     kwargs = {"j": j, "d": d, "n_views": n_views, "residual_hidden": residual_hidden}
-    if model_class in {"crossview_residual", "crossview_residual_pp"}:
+    if model_class in {"crossview_residual", "crossview_residual_pp", "crossview_residual_pp_visibility"}:
         kwargs["n_st_layers"] = n_temporal_layers
     else:
         kwargs["n_temporal_layers"] = n_temporal_layers
