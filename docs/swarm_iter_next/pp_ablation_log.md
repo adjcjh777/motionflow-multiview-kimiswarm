@@ -197,6 +197,11 @@ Note: mixed training lags MPI-only (11.16 vs 10.46 mm) but demonstrates cross-da
   - Principal-point robustness marginally improved.
   - The problem is likely not head capacity. Possible causes: focal perturbation std (1%) is too small to learn a strong signal, or the correction should operate on normalized intrinsics / camera-independent features.
 
+### High focal perturbation (cam_aug_focal=0.05, focal_max_scale=0.2)
+- Epoch 1: val_MPJPE = 25.89 mm, Epoch 2: 43.67 mm.
+- Validation diverges immediately; 5% focal perturbation is too strong for the current correction mechanism.
+- Conclusion: simply increasing focal perturbation does not solve the problem.
+
 ## Key hypotheses
 1. Explicit PP supervision alone can teach the correction head, but too high a weight harms the main task.
 2. Adding reprojection consistency requires careful normalization; current implementation explodes with weight 0.5.

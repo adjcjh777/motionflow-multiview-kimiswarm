@@ -165,7 +165,7 @@ The full 20-epoch residual model cuts the raw DLT error by **59%** and the 5-epo
 | PP-only full | 10.97 | 13.25 | 23.02 | 13.03 | 15.26 |
 | Focal-aware full | 12.21 | 20.24 | 31.04 | 12.91 | 14.40 |
 
-All numbers are MPJPE in millimetres on MPI-INF-3DHP S2/Seq1. The focal-aware small model shows the expected focal-length gain at the cost of clean accuracy. The full model, however, does not yet improve focal robustness. We therefore introduced a dedicated focal-length MLP head; the resulting model reaches 12.73 mm validation MPJPE but still does not beat the shared-head focal_1pct/focal_2pct numbers (18.41 vs 20.25 mm and 28.42 vs 31.40 mm). This suggests the problem is not head capacity but the focal perturbation schedule or the way focal correction is supervised.
+All numbers are MPJPE in millimetres on MPI-INF-3DHP S2/Seq1. The focal-aware small model shows the expected focal-length gain at the cost of clean accuracy. The full model, however, does not yet improve focal robustness. We therefore introduced a dedicated focal-length MLP head; the resulting model reaches 12.73 mm validation MPJPE but still does not beat the shared-head focal_1pct/focal_2pct numbers (18.41 vs 20.25 mm and 28.42 vs 31.40 mm). Increasing the training focal perturbation to 5% made validation diverge (25.89 mm in epoch 1, 43.67 mm in epoch 2). This suggests focal-length correction requires a different supervision target or a camera-normalized feature representation, not simply more capacity or stronger perturbations.
 
 ### 5.2 Human3.6M cross-subject
 
