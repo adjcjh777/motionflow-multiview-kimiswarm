@@ -135,3 +135,5 @@ The supervised focal loss is numerically stable and trains a tiny network to rec
 ## Commit
 
 - Local commit created with the report and the new launcher script.
+- Commit hash: TBD after this report is committed.
+- Push was not attempted because the GPU training is queued locally; the commit remains on branch `multiview-residual-exploration`.
