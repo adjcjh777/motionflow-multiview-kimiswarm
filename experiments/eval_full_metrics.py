@@ -212,8 +212,11 @@ def main():
         print(f"Warning: unexpected keys in checkpoint (ignored): {unexpected[:5]}")
 
     preds, gts = evaluate(model, loader, device, args.model)
+    parents_arr = None
+    if args.parents:
+        parents_arr = np.array(_load_list(args.parents, int), dtype=np.int64)
     # Convert meters -> mm for metrics.
-    report = compute_all_metrics(preds * 1000.0, gts * 1000.0)
+    report = compute_all_metrics(preds * 1000.0, gts * 1000.0, parents=parents_arr)
     print(summarize_metrics(report))
     print(f"MPJPE: {report['mpjpe']:.2f} mm")
     print(f"PA-MPJPE: {report['pa_mpjpe']:.2f} mm")
