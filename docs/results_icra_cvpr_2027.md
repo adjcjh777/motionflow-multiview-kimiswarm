@@ -9,6 +9,7 @@
 | Cross-view residual + PP | d=32, h=64, pp_w=0.05 | 10.30 | 10.34 | 6.28 | small model |
 | Cross-view residual + PP | d=64, h=128, pp_w=0.05 | 9.41 | 9.41 | 5.66 | full model, 10 epochs |
 | Cross-view residual + PP | d=64, h=128, pp_w=0.05 | **9.32** | **9.32** | **5.37** | full model, 20 epochs |
+| Mixed-dataset PP (MPI+H36M) | d=32, h=64, pp_w=0.05 | 11.64 | 11.64 | 7.45 | small, trained on MPI S1/S3 + H36M S1 acts 2-6 |
 
 ### Human3.6M (4 views, 17 joints)
 | Model | Config | Best val MPJPE (mm) | Clean MPJPE (mm) | Clean PA-MPJPE (mm) |
@@ -39,8 +40,8 @@
 
 | Experiment | Status | Next action |
 |---|---|---|
-| Mixed-dataset PP small (MPI + H36M, pp_w=0.05) | training (epoch 7/10, best val 11.64 mm) | evaluate on MPI and H36M once finished |
-| Cross-view CamPE v2 small | code ready, smoke passed | start training after mixed run |
+| Mixed-dataset PP small (MPI + H36M, pp_w=0.05) | **done** (best val 11.64 mm) | MPI clean 11.64/7.45; H36M clean 101.02/35.64 (poor cross-dataset generalization) |
+| Cross-view CamPE v2 small | code ready, smoke passed | **start training now** |
 | Variable-view inference benchmark | deferred (GPU contention) | re-run after GPU is free |
 
 ## Planned next directions
@@ -55,4 +56,4 @@
 
 - Explicit principal-point supervision makes the multi-view estimator robust to small calibration drift without hurting clean accuracy.
 - Cross-view spatio-temporal attention outperforms temporal-only attention.
-- Mixed-dataset training is promising for cross-dataset generalization (results pending).
+- Mixed-dataset training keeps MPI accuracy at 11.64 mm but H36M cross-dataset performance is poor (101 mm), suggesting the mixed model needs more H36M data, domain balancing, or a dedicated per-dataset pose head.
