@@ -23,6 +23,10 @@ import torch
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from motionflow_mv.eval.metrics import compute_all_metrics, summarize_metrics
+from motionflow_mv.fusion.variable_view_inference import (
+    prepare_variable_view_input,
+    VariableViewInferenceWrapper,
+)
 from motionflow_mv.fusion.ray_attention_temporal_residual_model import (
     RayAttentionFusionModelTemporalResidual,
 )
@@ -147,18 +151,25 @@ def _load_pairs(path):
     return out
 
 
-def evaluate(model, loader, device, model_name: str):
+def evaluate(model, loader, device, model_name: str, source_n_views: int = None):
     model.eval()
+    use_wrapper = source_n_views is not None and source_n_views != loader.dataset.K.shape[0]
+    if use_wrapper:
+        model = VariableViewInferenceWrapper(model)
     preds, gts = [], []
     with torch.no_grad():
         for xb, yb, K, R, t in loader:
             xb, yb = xb.to(device), yb.to(device)
             K, R, t = K.to(device), R.to(device), t.to(device)
-            out = model(xb, K=K, R=R, t=t)
-            pred = out[0]
-            if model_name == "adaptive_softgate":
-                # forward returns (pred, weights, gate, reg)
+            if use_wrapper:
+                # Use all available target views (assumed to be <= source_n_views).
+                active = xb.shape[2]
+                pred = model(xb, K=K, R=R, t=t, active_views=active)[0]
+            else:
+                out = model(xb, K=K, R=R, t=t)
                 pred = out[0]
+                if model_name == "adaptive_softgate":
+                    pred = out[0]
             preds.append(pred.cpu().numpy())
             gts.append(yb.cpu().numpy())
     preds = np.concatenate(preds, axis=0)  # (N, T, J, 3)
@@ -188,6 +199,7 @@ def main():
     parser.add_argument("--camera_scale", type=float, default=1.0)
     parser.add_argument("--parents", type=str, default=None, help="Path to comma-separated parent list for campegraph")
     parser.add_argument("--symmetry_pairs", type=str, default=None, help="Path to symmetry pairs for campegraph")
+    parser.add_argument("--source_n_views", type=int, default=None, help="Fixed view count of the trained model; enables variable-view inference when target has fewer views")
     parser.add_argument("--output_json", type=str, default=None)
     args = parser.parse_args()
 
@@ -201,7 +213,8 @@ def main():
         dataset, batch_size=args.batch_size, shuffle=False, collate_fn=collate_fn, num_workers=0
     )
 
-    model = build_model(args, n_views, j).to(device)
+    source_n_views = args.source_n_views if args.source_n_views is not None else n_views
+    model = build_model(args, source_n_views, j).to(device)
     missing, unexpected = model.load_state_dict(
         torch.load(args.checkpoint, map_location="cpu", weights_only=True),
         strict=False,
@@ -211,7 +224,7 @@ def main():
     if unexpected:
         print(f"Warning: unexpected keys in checkpoint (ignored): {unexpected[:5]}")
 
-    preds, gts = evaluate(model, loader, device, args.model)
+    preds, gts = evaluate(model, loader, device, args.model, source_n_views=source_n_views)
     parents_arr = None
     if args.parents:
         parents_arr = np.array(_load_list(args.parents, int), dtype=np.int64)

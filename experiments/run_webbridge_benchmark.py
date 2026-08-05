@@ -36,6 +36,8 @@ def _run_eval(dataset_path: str, base_args: dict, output_json: Path) -> dict:
         "--camera_scale", str(base_args.get("camera_scale", 1.0)),
         "--output_json", str(output_json),
     ]
+    if "source_n_views" in base_args:
+        cmd.extend(["--source_n_views", str(base_args["source_n_views"])])
 
     if base_args["model"] in {"crossview_residual", "crossview_residual_pp"}:
         cmd.extend(["--n_st_layers", str(base_args.get("n_st_layers", 2))])
