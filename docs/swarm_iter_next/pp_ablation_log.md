@@ -173,6 +173,19 @@ Note: mixed training lags MPI-only (11.16 vs 10.46 mm) but demonstrates cross-da
   - Shared PP/focal MLP and identical loss weight may under-resource the focal task; a dedicated focal head or separate loss weight may help.
   - Next: try separate focal loss weight and/or mixed-dataset training to improve generalization.
 
+### Mixed-dataset focal-aware (MPI + H36M)
+- Best val MPJPE: **13.59 mm**, clean eval: 13.77 mm / PA-MPJPE 8.50 mm.
+- Worse than MPI-only focal small (12.90 mm val) and PP-only small (10.54 mm clean).
+- Mixed training is harder and likely needs a dedicated focal head or smaller focal loss weight.
+
+### Baseline comparison (no intrinsic correction)
+- Perturbation-trained residual small (d=32, h=64): clean 14.97 mm, focal_1pct 14.95 mm, focal_2pct 15.35 mm, cxcy_3px 1592.69 mm, cxcy_5px 1894.61 mm.
+- Confirms the learned correction layer removes the catastrophic principal-point failure.
+
+### Next iteration: dedicated focal head
+- Implemented a separate `focal_mlp` in `PrincipalPointCorrection` so focal length gets its own capacity.
+- Training a new small MPI-only model with the dedicated head is in progress.
+
 ## Key hypotheses
 1. Explicit PP supervision alone can teach the correction head, but too high a weight harms the main task.
 2. Adding reprojection consistency requires careful normalization; current implementation explodes with weight 0.5.

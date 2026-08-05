@@ -165,7 +165,7 @@ The full 20-epoch residual model cuts the raw DLT error by **59%** and the 5-epo
 | PP-only full | 10.97 | 13.25 | 23.02 | 13.03 | 15.26 |
 | Focal-aware full | 12.21 | 20.24 | 31.04 | 12.91 | 14.40 |
 
-All numbers are MPJPE in millimetres on MPI-INF-3DHP S2/Seq1. The focal-aware small model shows the expected focal-length gain at the cost of clean accuracy. The full model, however, does not yet improve focal robustness, indicating that the shared PP/focal correction head is under-resourced for the focal task. A dedicated focal branch is the next step.
+All numbers are MPJPE in millimetres on MPI-INF-3DHP S2/Seq1. The focal-aware small model shows the expected focal-length gain at the cost of clean accuracy. The full model, however, does not yet improve focal robustness, indicating that the shared PP/focal correction head is under-resourced for the focal task. We therefore introduced a dedicated focal-length MLP head, and mixed-dataset training is ongoing.
 
 ### 5.2 Human3.6M cross-subject
 
