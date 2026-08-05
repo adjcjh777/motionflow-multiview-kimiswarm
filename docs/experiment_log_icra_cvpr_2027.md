@@ -130,7 +130,14 @@ Top-ranked next actions are:
 4. **MotionFlow plugin integration** — wrap the best model as a `FusionModule` so the existing multi-view plugin can load it.
 5. **Visibility-gated fusion v2** — add an explicit occlusion head to the best PP model.
 
-GPU work is gated by the running CamPE v2 full training; non-GPU items can proceed in parallel.
+GPU work is gated by the running calibration curriculum training; non-GPU items can proceed in parallel.
+
+### 2026-08-05 (cont.) Implementation status
+
+- Calibration curriculum + view-dropout training is running in WSL (`scripts/run_crossview_pp_curriculum_wsl.sh`).
+- The training scripts for the best PP model and the visibility-gated model both support `--warm_start` for faster convergence.
+- Variable-view evaluation now works for `crossview_residual_pp` and `crossview_residual_pp_visibility`.
+- Next GPU queue after curriculum: visibility-gated fusion v2 training.
 
 ## Next directions
 
