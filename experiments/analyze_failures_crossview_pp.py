@@ -60,7 +60,8 @@ def pa_mpjpe(pred, gt):
 def sliding_window_inference(model, points_2d, confidences, K, R, t,
                              clip_len: int = 13, stride: int = 13,
                              batch_size: int = 32,
-                             device: torch.device = None) -> torch.Tensor:
+                             device: torch.device = None,
+                             return_residual: bool = False) -> tuple:
     """Run PP cross-view model on sliding windows and average predictions."""
     T, V, J, _ = points_2d.shape
     windows = []
@@ -73,6 +74,9 @@ def sliding_window_inference(model, points_2d, confidences, K, R, t,
     pred_count = torch.zeros(T, 1, 1, dtype=torch.float32)
     weight_sum = torch.zeros(T, V, J, dtype=torch.float32)
     pp_delta_sum = torch.zeros(T, V, 2, dtype=torch.float32)
+    if return_residual:
+        residual_sum = torch.zeros(T, J, 3, dtype=torch.float32)
+        residual_count = torch.zeros(T, 1, 1, dtype=torch.float32)
 
     K = K.to(device)
     R = R.to(device)
@@ -82,16 +86,34 @@ def sliding_window_inference(model, points_2d, confidences, K, R, t,
     for i in range(0, len(windows), batch_size):
         batch = windows[i:i + batch_size]
         xb = torch.stack([b[2] for b in batch], dim=0).to(device)
+
+        hook_handle = None
+        residual_container = []
+        if return_residual:
+            def _residual_hook(module, input, output):
+                residual_container.append(output)
+            hook_handle = model.residual_mlp.register_forward_hook(_residual_hook)
+
         with torch.no_grad():
             pred_b, weights_b, pp_delta_b = model(xb, K=K, R=R, t=t)
         pred_b = pred_b.cpu()
         weights_b = weights_b.cpu()
         pp_delta_b = pp_delta_b.cpu()
+        if return_residual:
+            if hook_handle is not None:
+                hook_handle.remove()
+            if residual_container:
+                delta_b = residual_container[0].view_as(pred_b).cpu()
+            else:
+                delta_b = torch.zeros_like(pred_b)
         for j_idx, (start, end, _) in enumerate(batch):
             pred_sum[start:end] += pred_b[j_idx]
             pred_count[start:end] += 1.0
             weight_sum[start:end] += weights_b[j_idx]
             pp_delta_sum[start:end] += pp_delta_b[j_idx]
+            if return_residual:
+                residual_sum[start:end] += delta_b[j_idx]
+                residual_count[start:end] += 1.0
             last_valid_end = max(last_valid_end, end)
 
     pred = pred_sum / pred_count
@@ -101,6 +123,12 @@ def sliding_window_inference(model, points_2d, confidences, K, R, t,
         pred[last_valid_end:] = pred[last_valid_end - 1].unsqueeze(0)
         weights[last_valid_end:] = weights[last_valid_end - 1].unsqueeze(0)
         pp_delta[last_valid_end:] = pp_delta[last_valid_end - 1].unsqueeze(0)
+        if return_residual:
+            residual_sum[last_valid_end:] = residual_sum[last_valid_end - 1].unsqueeze(0)
+            residual_count[last_valid_end:] = residual_count[last_valid_end - 1].unsqueeze(0)
+    if return_residual:
+        residual = residual_sum / residual_count
+        return pred, weights, pp_delta, residual
     return pred, weights, pp_delta
 
 
@@ -144,13 +172,15 @@ def analyze(dataset_path: str, checkpoint_path: str, clip_len: int, stride: int,
     print(f"Loaded checkpoint: {checkpoint_path}")
 
     print("Running sliding-window inference ...")
-    pred, weights, pp_delta = sliding_window_inference(
+    pred, weights, pp_delta, residual = sliding_window_inference(
         model, points_2d, confidences, K, R, t,
         clip_len=clip_len, stride=stride, batch_size=batch_size, device=device,
+        return_residual=True,
     )
     pred = pred.numpy()
     weights = weights.numpy()
     pp_delta = pp_delta.numpy()
+    residual = residual.numpy()
 
     per_joint_err = np.linalg.norm(pred - joints_3d, axis=-1)
     mean_per_joint = per_joint_err.mean(axis=0) * 1000.0
@@ -182,6 +212,14 @@ def analyze(dataset_path: str, checkpoint_path: str, clip_len: int, stride: int,
     # Weight statistics.
     mean_weights = weights.mean(axis=(0, 2))  # (V,)
 
+    # Residual correction statistics (m -> mm).
+    residual_norm = np.linalg.norm(residual, axis=-1) * 1000.0  # (T, J)
+    mean_residual_per_joint = residual_norm.mean(axis=0)
+    mean_residual_per_frame = residual_norm.mean(axis=1)
+    worst_residual_joints = np.argsort(mean_residual_per_joint)[::-1]
+    overall_residual = residual_norm.mean()
+    print(f"Mean residual correction: {overall_residual:.2f} mm")
+
     out_path = Path(out_dir)
     out_path.mkdir(parents=True, exist_ok=True)
     report_path = Path(report_dir)
@@ -200,6 +238,10 @@ def analyze(dataset_path: str, checkpoint_path: str, clip_len: int, stride: int,
         pp_delta_norm_px=pp_delta_norm,
         mean_pp_delta_px=mean_pp_delta,
         mean_weights=mean_weights,
+        residual_mm=residual * 1000.0,
+        residual_norm_mm=residual_norm,
+        mean_residual_per_joint_mm=mean_residual_per_joint,
+        mean_residual_per_frame_mm=mean_residual_per_frame,
     )
 
     try:
@@ -208,7 +250,8 @@ def analyze(dataset_path: str, checkpoint_path: str, clip_len: int, stride: int,
         import matplotlib.pyplot as plt
         plot_results(mean_per_joint, worst_joints, per_frame_err, worst_frames,
                      median_view_err, worst_views, mean_pp_delta, mean_weights,
-                     out_path)
+                     mean_residual_per_joint, worst_residual_joints,
+                     mean_residual_per_frame, out_path)
     except Exception as e:
         print(f"Plotting skipped: {e}")
 
@@ -217,13 +260,16 @@ def analyze(dataset_path: str, checkpoint_path: str, clip_len: int, stride: int,
         dataset_path, checkpoint_path, clip_len, mpjpe_val, pampjpe_val,
         worst_joints, mean_per_joint, worst_frames, per_frame_err,
         worst_views, mean_view_err, median_view_err, mean_pp_delta,
-        mean_weights, out_path,
+        mean_weights, mean_residual_per_joint, worst_residual_joints,
+        mean_residual_per_frame, overall_residual, out_path,
     )
     print(f"Report written to: {report_path / 'failure_analysis_crossview_pp.md'}")
 
 
 def plot_results(mean_per_joint, worst_joints, per_frame_err, worst_frames,
-                 median_view_err, worst_views, mean_pp_delta, mean_weights, out_path):
+                 median_view_err, worst_views, mean_pp_delta, mean_weights,
+                 mean_residual_per_joint, worst_residual_joints,
+                 mean_residual_per_frame, out_path):
     import matplotlib.pyplot as plt
 
     # Per-joint error.
@@ -283,11 +329,33 @@ def plot_results(mean_per_joint, worst_joints, per_frame_err, worst_frames,
     plt.savefig(out_path / "mean_view_weights.png", dpi=150)
     plt.close()
 
+    # Residual correction magnitude per joint.
+    plt.figure(figsize=(12, 6))
+    names = [JOINT_NAMES[i] for i in worst_residual_joints]
+    vals = mean_residual_per_joint[worst_residual_joints]
+    plt.barh(names[::-1], vals[::-1])
+    plt.xlabel("Mean residual correction magnitude per joint (mm)")
+    plt.title("Residual correction magnitude per joint (worst to best)")
+    plt.tight_layout()
+    plt.savefig(out_path / "residual_correction_per_joint.png", dpi=150)
+    plt.close()
+
+    # Residual correction magnitude per frame.
+    plt.figure(figsize=(14, 5))
+    plt.plot(mean_residual_per_frame, alpha=0.6)
+    plt.xlabel("Frame index")
+    plt.ylabel("Mean residual correction magnitude (mm)")
+    plt.title("Per-frame residual correction magnitude")
+    plt.tight_layout()
+    plt.savefig(out_path / "residual_correction_per_frame.png", dpi=150)
+    plt.close()
+
 
 def write_report(path, dataset_path, checkpoint_path, clip_len, mpjpe, pampjpe,
                  worst_joints, mean_per_joint, worst_frames, per_frame_err,
                  worst_views, mean_view_err, median_view_err, mean_pp_delta,
-                 mean_weights, out_path):
+                 mean_weights, mean_residual_per_joint, worst_residual_joints,
+                 mean_residual_per_frame, overall_residual, out_path):
     with open(path, "w") as f:
         f.write("# Failure-Case Analysis: Cross-View Residual + PP Model\n\n")
         f.write("## Setup\n\n")
@@ -296,7 +364,8 @@ def write_report(path, dataset_path, checkpoint_path, clip_len, mpjpe, pampjpe,
         f.write(f"* clip_len: {clip_len}\n\n")
         f.write("## Overall metrics\n\n")
         f.write(f"* MPJPE: **{mpjpe:.2f} mm**\n")
-        f.write(f"* PA-MPJPE: **{pampjpe:.2f} mm**\n\n")
+        f.write(f"* PA-MPJPE: **{pampjpe:.2f} mm**\n")
+        f.write(f"* Mean residual correction: **{overall_residual:.2f} mm**\n\n")
         f.write("## Worst joints\n\n")
         f.write("| Rank | Joint | MPJPE (mm) |\n")
         f.write("|---|---:|---:|\n")
@@ -311,6 +380,12 @@ def write_report(path, dataset_path, checkpoint_path, clip_len, mpjpe, pampjpe,
         for v in worst_views:
             f.write(f"| {v} | {mean_view_err[v]:.2f} | {median_view_err[v]:.2f} | "
                     f"{mean_pp_delta[v]:.2f} | {mean_weights[v]:.3f} |\n")
+        f.write("\n## Residual correction\n\n")
+        f.write(f"* Overall mean residual correction magnitude: **{overall_residual:.2f} mm**\n")
+        f.write("| Rank | Joint | Mean residual correction (mm) |\n")
+        f.write("|---|---:|---:|\n")
+        for rank, j in enumerate(worst_residual_joints[:10], 1):
+            f.write(f"| {rank} | {JOINT_NAMES[j]} | {mean_residual_per_joint[j]:.2f} |\n")
         f.write(f"\nFigures saved to: `{out_path}`\n")
 
 

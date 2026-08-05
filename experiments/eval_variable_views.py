@@ -216,6 +216,8 @@ def main():
                         help="Synthetic frame count when --dataset is not given")
     parser.add_argument("--output_json", type=str, default=None,
                         help="Optional JSON path to save results")
+    parser.add_argument("--output_csv", type=str, default=None,
+                        help="Optional CSV path to save per-k summary")
     args = parser.parse_args()
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -267,6 +269,15 @@ def main():
         with open(out_path, "w") as f:
             json.dump({k: v for k, v in results.items()}, f, indent=2)
         print(f"Saved results to {out_path}")
+
+    if args.output_csv:
+        out_path = Path(args.output_csv)
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(out_path, "w") as f:
+            f.write("k,mean_mm,std_mm,n_subsets\n")
+            for k, res in results.items():
+                f.write(f"{k},{res['mean_mm']:.4f},{res['std_mm']:.4f},{res['n_subsets']}\n")
+        print(f"Saved CSV to {out_path}")
 
 
 if __name__ == "__main__":

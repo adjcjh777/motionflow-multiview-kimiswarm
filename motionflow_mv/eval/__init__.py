@@ -1,3 +1,4 @@
+from .benchmark_protocol import BenchmarkConfig, BenchmarkProtocol
 from .metrics import (
     compute_all_metrics,
     mpjpe,
@@ -14,6 +15,8 @@ from .metrics import (
 )
 
 __all__ = [
+    "BenchmarkConfig",
+    "BenchmarkProtocol",
     "compute_all_metrics",
     "mpjpe",
     "mpjpe_batch",

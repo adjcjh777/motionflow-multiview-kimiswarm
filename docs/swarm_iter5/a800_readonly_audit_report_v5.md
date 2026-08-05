@@ -1,7 +1,7 @@
 # A800-D Read-Only Audit Report (Swarm Iteration 5)
 
 **Date:**
-2026-08-04 16:05:17 UTC
+2026-08-05 20:35:41 UTC
 
 **Scope:**
 `/mnt/nvme0n1/zhangzy/projects` on host `a800-D`
@@ -85,7 +85,7 @@ drwxrwxr-x  9 zhangzy zhangzy  4096 Jun 25 08:49 xiaoqibot
 
 ```text
 Filesystem      Size  Used Avail Use% Mounted on
-/dev/nvme0n1p1  3.5T  3.2T   94G  98% /mnt/nvme0n1p1
+/dev/nvme0n1p1  3.5T  3.2T   92G  98% /mnt/nvme0n1p1
 /dev/nvme1n1p1  3.5T  2.7T  644G  81% /mnt/nvme1n1p1
 ```
 
@@ -96,48 +96,48 @@ Filesystem      Size  Used Avail Use% Mounted on
 
 ```text
 NAMES                                                   IMAGE                                          STATUS                     PORTS
-motionflow                                              elf3-trainer:20260729-auto-equal-sample        Up 6 days                  0.0.0.0:8000->8000/tcp, :::8000->8000/tcp, 8080/tcp
-motionflow-pre-auto-equal-sample-20260729T085958Z       elf3-trainer:20260729-equal-sample-hotfix      Exited (143) 6 days ago    
-motionflow-pre-equal-sample-hotfix-20260729T083057Z     elf3-trainer:20260729-multigpu-tuning          Exited (143) 6 days ago    
-xiaoqibot-preview-latest                                asimov-mjlab:latest                            Up 7 days                  0.0.0.0:8081->8080/tcp, :::8081->8080/tcp
-xiaoqibot-dashboard                                     xiaoqibot-dashboard:20260728                   Up 7 days                  0.0.0.0:8050->8050/tcp, :::8050->8050/tcp, 8080/tcp
-xiaoqibot-multigpu                                      asimov-mjlab:latest                            Up 7 days                  0.0.0.0:8080->8080/tcp, :::8080->8080/tcp
-motionflow-pre-multigpu-tuning-20260729T075059Z         elf3-trainer:20260728-live-log-eta-v2          Exited (143) 6 days ago    
-motionflow-pre-live-log-eta-v2-20260728T063526Z         elf3-trainer:20260728-live-log-eta             Exited (143) 7 days ago    
-motionflow-pre-live-log-eta-20260728T063041Z            elf3-trainer:20260728-global-env-split         Exited (143) 7 days ago    
-keen_rosalind                                           artifixer:cuda12                               Up 8 days                  6006/tcp, 8888/tcp
-motionflow-pre-global-env-split-20260728T055705Z        elf3-trainer:20260724-preview-runtime-hotfix   Exited (143) 7 days ago    
-motionflow-pre-preview-runtime-hotfix-20260724T175420   elf3-trainer:20260724-smart-gpu-scheduler      Exited (143) 11 days ago   
-asimov-train-container                                  asimov-mjlab:latest                            Exited (0) 12 days ago     
-coder_wuzy                                              coder-server-ai                                Up 7 days                  5550-5570/tcp, 0.0.0.0:18841-18848->18841-18848/tcp, :::18841-18848->18841-18848/tcp, 0.0.0.0:18840->8080/tcp, :::18840->8080/tcp, 0.0.0.0:18849->33533/tcp, :::18849->33533/tcp
-motionflow-pre-smart-scheduler-20260724T033247Z         elf3-trainer:20260720-a800-single-port         Exited (143) 11 days ago   
+motionflow                                              elf3-trainer:20260729-auto-equal-sample        Up 7 days                  0.0.0.0:8000->8000/tcp, :::8000->8000/tcp, 8080/tcp
+motionflow-pre-auto-equal-sample-20260729T085958Z       elf3-trainer:20260729-equal-sample-hotfix      Exited (143) 7 days ago    
+motionflow-pre-equal-sample-hotfix-20260729T083057Z     elf3-trainer:20260729-multigpu-tuning          Exited (143) 7 days ago    
+xiaoqibot-preview-latest                                asimov-mjlab:latest                            Up 8 days                  0.0.0.0:8081->8080/tcp, :::8081->8080/tcp
+xiaoqibot-dashboard                                     xiaoqibot-dashboard:20260728                   Up 8 days                  0.0.0.0:8050->8050/tcp, :::8050->8050/tcp, 8080/tcp
+xiaoqibot-multigpu                                      asimov-mjlab:latest                            Up 8 days                  0.0.0.0:8080->8080/tcp, :::8080->8080/tcp
+motionflow-pre-multigpu-tuning-20260729T075059Z         elf3-trainer:20260728-live-log-eta-v2          Exited (143) 7 days ago    
+motionflow-pre-live-log-eta-v2-20260728T063526Z         elf3-trainer:20260728-live-log-eta             Exited (143) 8 days ago    
+motionflow-pre-live-log-eta-20260728T063041Z            elf3-trainer:20260728-global-env-split         Exited (143) 8 days ago    
+keen_rosalind                                           artifixer:cuda12                               Up 9 days                  6006/tcp, 8888/tcp
+motionflow-pre-global-env-split-20260728T055705Z        elf3-trainer:20260724-preview-runtime-hotfix   Exited (143) 8 days ago    
+motionflow-pre-preview-runtime-hotfix-20260724T175420   elf3-trainer:20260724-smart-gpu-scheduler      Exited (143) 12 days ago   
+asimov-train-container                                  asimov-mjlab:latest                            Exited (0) 13 days ago     
+coder_wuzy                                              coder-server-ai                                Up 8 days                  5550-5570/tcp, 0.0.0.0:18841-18848->18841-18848/tcp, :::18841-18848->18841-18848/tcp, 0.0.0.0:18840->8080/tcp, :::18840->8080/tcp, 0.0.0.0:18849->33533/tcp, :::18849->33533/tcp
+motionflow-pre-smart-scheduler-20260724T033247Z         elf3-trainer:20260720-a800-single-port         Exited (143) 12 days ago   
 motionflow-pre-single-port-20260720                     elf3-trainer:20260717-concurrent-queue         Exited (0) 2 weeks ago     
 motionflow-gpu7-stopped-20260717                        elf3-trainer:20260717-concurrent-queue         Exited (137) 2 weeks ago   
 motionflow-pre-concurrent-20260717                      elf3-trainer:20260717-system-settings          Exited (0) 2 weeks ago     
 elf3-trainer-b300-webui                                 elf3-trainer:b300                              Exited (0) 2 weeks ago     
-elf3-trainer-b300-webui-pre-seek-final-20260715         46288aef4eb0                                   Exited (0) 2 weeks ago     
-elf3-trainer-b300-webui-pre-timeline-20260715           1291662d15ac                                   Exited (0) 2 weeks ago     
-elf3-trainer-b300-webui-pre-one-env-20260715            d7b7e7a4ed86                                   Exited (0) 2 weeks ago     
-elf3-trainer-b300-webui-pre-preview-fix-20260715        2380390ce760                                   Exited (0) 2 weeks ago     
-elf3-trainer-b300-webui-pre-final-20260715              a7116e37cdf4                                   Exited (0) 2 weeks ago     
-elf3-trainer-b300-webui-backup-20260715                 0c2cb4d89c6c                                   Exited (137) 2 weeks ago   
-elf3-trainer                                            elf3-trainer:latest                            Exited (0) 2 weeks ago     
+elf3-trainer-b300-webui-pre-seek-final-20260715         46288aef4eb0                                   Exited (0) 3 weeks ago     
+elf3-trainer-b300-webui-pre-timeline-20260715           1291662d15ac                                   Exited (0) 3 weeks ago     
+elf3-trainer-b300-webui-pre-one-env-20260715            d7b7e7a4ed86                                   Exited (0) 3 weeks ago     
+elf3-trainer-b300-webui-pre-preview-fix-20260715        2380390ce760                                   Exited (0) 3 weeks ago     
+elf3-trainer-b300-webui-pre-final-20260715              a7116e37cdf4                                   Exited (0) 3 weeks ago     
+elf3-trainer-b300-webui-backup-20260715                 0c2cb4d89c6c                                   Exited (137) 3 weeks ago   
+elf3-trainer                                            elf3-trainer:latest                            Exited (0) 3 weeks ago     
 funny_ishizaka                                          d7ecb1a21d4c                                   Exited (1) 3 weeks ago     
 trusting_pike                                           d7ecb1a21d4c                                   Exited (1) 3 weeks ago     
 strange_newton                                          ghcr.io/nerfstudio-project/nerfstudio:1.1.5    Exited (127) 3 weeks ago   
-coder_freemocap                                         coder_hermes                                   Exited (255) 8 days ago    5550-5570/tcp, 11110-11199/tcp, 0.0.0.0:12210-12299->12210-12299/tcp, :::12210-12299->12210-12299/tcp, 0.0.0.0:12200->8080/tcp, :::12200->8080/tcp, 0.0.0.0:12201->33533/tcp, :::12201->33533/tcp
-jixunying-2                                             nvcr.io/nvidia/pytorch:23.05-py3               Exited (137) 8 days ago    
-jixunying-1                                             nvcr.io/nvidia/pytorch:23.05-py3               Exited (137) 8 days ago    
-coder_fyt_gpu                                           coder_hermes                                   Exited (255) 8 days ago    5550-5570/tcp, 11110-11199/tcp, 0.0.0.0:12110-12199->12110-12199/tcp, :::12110-12199->12110-12199/tcp, 0.0.0.0:12100->8080/tcp, :::12100->8080/tcp, 0.0.0.0:12101->33533/tcp, :::12101->33533/tcp
-coder_113                                               coder_hermes                                   Exited (255) 8 days ago    5550-5570/tcp, 11110-11199/tcp, 0.0.0.0:11310-11399->11310-11399/tcp, :::11310-11399->11310-11399/tcp, 0.0.0.0:11300->8080/tcp, :::11300->8080/tcp, 0.0.0.0:11301->33533/tcp, :::11301->33533/tcp
-coder_112                                               coder_hermes                                   Exited (255) 8 days ago    5550-5570/tcp, 11110-11199/tcp, 0.0.0.0:11210-11299->11210-11299/tcp, :::11210-11299->11210-11299/tcp, 0.0.0.0:11200->8080/tcp, :::11200->8080/tcp, 0.0.0.0:11201->33533/tcp, :::11201->33533/tcp
-coder_hermes                                            coder-server-ai                                Up 34 hours                5550-5570/tcp, 0.0.0.0:11110-11199->11110-11199/tcp, :::11110-11199->11110-11199/tcp, 0.0.0.0:11100->8080/tcp, :::11100->8080/tcp, 0.0.0.0:11101->33533/tcp, :::11101->33533/tcp
-stt3                                                    5adce7ec4e6f                                   Up 8 days                  0.0.0.0:15576->8080/tcp, :::15576->8080/tcp
-tts2                                                    c4c07b9daa29                                   Up 8 days                  0.0.0.0:15577->18827/tcp, :::15577->18827/tcp
-stt                                                     stt2                                           Up 8 days                  0.0.0.0:7806->8080/tcp, :::7806->8080/tcp
-coder_fyt                                               coder-server-ai                                Exited (255) 8 days ago    5550-5570/tcp, 0.0.0.0:18831-18838->18831-18838/tcp, :::18831-18838->18831-18838/tcp, 0.0.0.0:18830->8080/tcp, :::18830->8080/tcp, 0.0.0.0:18839->33533/tcp, :::18839->33533/tcp
-coder_shf                                               coder-server-ai                                Exited (255) 8 days ago    5550-5570/tcp, 0.0.0.0:18821-18828->18821-18828/tcp, :::18821-18828->18821-18828/tcp, 0.0.0.0:18820->8080/tcp, :::18820->8080/tcp, 0.0.0.0:18829->33533/tcp, :::18829->33533/tcp
-mysql                                                   mysql:5.6                                      Up 8 days                  0.0.0.0:3306->3306/tcp, :::3306->3306/tcp
+coder_freemocap                                         coder_hermes                                   Exited (255) 9 days ago    5550-5570/tcp, 11110-11199/tcp, 0.0.0.0:12210-12299->12210-12299/tcp, :::12210-12299->12210-12299/tcp, 0.0.0.0:12200->8080/tcp, :::12200->8080/tcp, 0.0.0.0:12201->33533/tcp, :::12201->33533/tcp
+jixunying-2                                             nvcr.io/nvidia/pytorch:23.05-py3               Exited (137) 9 days ago    
+jixunying-1                                             nvcr.io/nvidia/pytorch:23.05-py3               Exited (137) 9 days ago    
+coder_fyt_gpu                                           coder_hermes                                   Exited (255) 9 days ago    5550-5570/tcp, 11110-11199/tcp, 0.0.0.0:12110-12199->12110-12199/tcp, :::12110-12199->12110-12199/tcp, 0.0.0.0:12100->8080/tcp, :::12100->8080/tcp, 0.0.0.0:12101->33533/tcp, :::12101->33533/tcp
+coder_113                                               coder_hermes                                   Exited (255) 9 days ago    5550-5570/tcp, 11110-11199/tcp, 0.0.0.0:11310-11399->11310-11399/tcp, :::11310-11399->11310-11399/tcp, 0.0.0.0:11300->8080/tcp, :::11300->8080/tcp, 0.0.0.0:11301->33533/tcp, :::11301->33533/tcp
+coder_112                                               coder_hermes                                   Exited (255) 9 days ago    5550-5570/tcp, 11110-11199/tcp, 0.0.0.0:11210-11299->11210-11299/tcp, :::11210-11299->11210-11299/tcp, 0.0.0.0:11200->8080/tcp, :::11200->8080/tcp, 0.0.0.0:11201->33533/tcp, :::11201->33533/tcp
+coder_hermes                                            coder-server-ai                                Up 2 days                  5550-5570/tcp, 0.0.0.0:11110-11199->11110-11199/tcp, :::11110-11199->11110-11199/tcp, 0.0.0.0:11100->8080/tcp, :::11100->8080/tcp, 0.0.0.0:11101->33533/tcp, :::11101->33533/tcp
+stt3                                                    5adce7ec4e6f                                   Up 9 days                  0.0.0.0:15576->8080/tcp, :::15576->8080/tcp
+tts2                                                    c4c07b9daa29                                   Up 9 days                  0.0.0.0:15577->18827/tcp, :::15577->18827/tcp
+stt                                                     stt2                                           Up 9 days                  0.0.0.0:7806->8080/tcp, :::7806->8080/tcp
+coder_fyt                                               coder-server-ai                                Exited (255) 9 days ago    5550-5570/tcp, 0.0.0.0:18831-18838->18831-18838/tcp, :::18831-18838->18831-18838/tcp, 0.0.0.0:18830->8080/tcp, :::18830->8080/tcp, 0.0.0.0:18839->33533/tcp, :::18839->33533/tcp
+coder_shf                                               coder-server-ai                                Exited (255) 9 days ago    5550-5570/tcp, 0.0.0.0:18821-18828->18821-18828/tcp, :::18821-18828->18821-18828/tcp, 0.0.0.0:18820->8080/tcp, :::18820->8080/tcp, 0.0.0.0:18829->33533/tcp, :::18829->33533/tcp
+mysql                                                   mysql:5.6                                      Up 9 days                  0.0.0.0:3306->3306/tcp, :::3306->3306/tcp
 ```
 
 ### Docker images (top 40)
