@@ -41,19 +41,22 @@ class PrincipalPointCorrection(nn.Module):
         d: int = 64,
         hidden: int = 64,
         max_offset: float = 20.0,
+        max_focal_scale: float = 0.0,
         use_confidence: bool = True,
     ):
         super().__init__()
         self.d = d
         self.max_offset = max_offset
+        self.max_focal_scale = max_focal_scale
         self.use_confidence = use_confidence
 
+        out_dim = 3 if max_focal_scale > 0 else 2
         self.mlp = nn.Sequential(
             nn.Linear(d, hidden),
             nn.ReLU(),
             nn.Linear(hidden, hidden),
             nn.ReLU(),
-            nn.Linear(hidden, 2),
+            nn.Linear(hidden, out_dim),
             nn.Tanh(),
         )
 
@@ -97,11 +100,33 @@ class PrincipalPointCorrection(nn.Module):
         else:
             raise ValueError("Either feat or x must be provided.")
 
-        delta = self.mlp(pooled) * self.max_offset  # (N, V, 2)
+        out = self.mlp(pooled)
+        delta = out[..., :2] * self.max_offset  # (N, V, 2)
 
-        K_corrected = K.clone()
-        K_corrected[..., 0, 2] = K_corrected[..., 0, 2] + delta[..., 0]
-        K_corrected[..., 1, 2] = K_corrected[..., 1, 2] + delta[..., 1]
+        # Build the corrected intrinsics in a functional way to avoid in-place
+        # operations that break the autograd graph when focal length is corrected.
+        cx = K[..., 0, 2] + delta[..., 0]
+        cy = K[..., 1, 2] + delta[..., 1]
+        if self.max_focal_scale > 0:
+            focal_scale = 1.0 + out[..., 2] * self.max_focal_scale  # (N, V)
+            fx = K[..., 0, 0] * focal_scale
+            fy = K[..., 1, 1] * focal_scale
+        else:
+            focal_scale = None
+            fx = K[..., 0, 0]
+            fy = K[..., 1, 1]
+
+        K_corrected = torch.stack(
+            [
+                torch.stack([fx, K[..., 0, 1], cx], dim=-1),
+                torch.stack([K[..., 1, 0], fy, cy], dim=-1),
+                torch.stack([K[..., 2, 0], K[..., 2, 1], K[..., 2, 2]], dim=-1),
+            ],
+            dim=-2,
+        )
+
+        if self.max_focal_scale > 0:
+            return K_corrected, delta, focal_scale
         return K_corrected, delta
 
     def _pool_features(

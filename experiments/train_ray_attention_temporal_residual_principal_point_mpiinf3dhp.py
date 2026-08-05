@@ -155,6 +155,7 @@ def main():
     parser.add_argument("--reproj_weight", type=float, default=0.0, help="Weight for reprojection auxiliary loss")
     parser.add_argument("--bone_weight", type=float, default=0.0, help="Weight for bone-length auxiliary loss")
     parser.add_argument("--pp_loss_weight", type=float, default=0.0, help="Weight for principal-point offset supervision loss")
+    parser.add_argument("--focal_max_scale", type=float, default=0.0, help="Maximum predicted focal-length scale (relative); 0 disables focal correction")
     parser.add_argument("--use_reproj_gate", action="store_true", help="Use reprojection-error gate in the residual head")
     parser.add_argument("--cam_aug_rot", type=float, default=0.5, help="Camera rotation augmentation std in degrees")
     parser.add_argument("--cam_aug_trans", type=float, default=0.005, help="Camera translation augmentation std in meters")
@@ -190,7 +191,8 @@ def main():
     n_views = sample["camera_K"].shape[0]
     j = sample["points_2d"].shape[2]
     print(f"n_views={n_views}, j={j}, clip_len={args.clip_len}, d={args.d}, residual_hidden={args.residual_hidden}, "
-          f"principal_point_hidden={args.principal_point_hidden}, principal_point_max_offset={args.principal_point_max_offset}")
+          f"principal_point_hidden={args.principal_point_hidden}, principal_point_max_offset={args.principal_point_max_offset}, "
+          f"focal_max_scale={args.focal_max_scale}")
 
     model = RayAttentionFusionModelTemporalResidualPrincipalPoint(
         j=j, d=args.d, n_views=n_views, n_temporal_layers=args.n_temporal_layers,
@@ -198,7 +200,8 @@ def main():
         use_reproj_gate=args.use_reproj_gate,
         principal_point_hidden=args.principal_point_hidden,
         principal_point_max_offset=args.principal_point_max_offset,
-        return_pp_delta=args.pp_loss_weight > 0.0,
+        focal_max_scale=args.focal_max_scale,
+        return_pp_delta=args.pp_loss_weight > 0.0 or args.focal_max_scale > 0.0,
     ).to(device)
     print(f"Model params: {sum(p.numel() for p in model.parameters())}")
 
@@ -222,7 +225,7 @@ def main():
             xb, yb = xb.to(device), yb.to(device)
             K, R, t = K.to(device), R.to(device), t.to(device)
             xb = augment_clip(xb)
-            K, R, t, true_pp_delta = perturb_cameras_with_delta(
+            K, R, t, true_pp_delta, true_focal_scale = perturb_cameras_with_delta(
                 K, R, t,
                 rot_std=args.cam_aug_rot,
                 trans_std=args.cam_aug_trans,
@@ -240,6 +243,15 @@ def main():
                 # The correction layer *adds* predicted delta to the perturbed principal point,
                 # so the target is the negative of the applied offset.
                 loss = loss + args.pp_loss_weight * criterion(pred_pp_delta, -true_pp_delta)
+                if args.focal_max_scale > 0.0:
+                    pred_focal_scale = outputs[3]  # (B*T, V)
+                    # True focal scale has shape (B, V, 1); broadcast across the
+                    # temporal dimension and reshape to (B*T, V). The correction layer
+                    # should predict the inverse of the perturbation so that the
+                    # corrected focal length matches the original calibration.
+                    true_focal_scale = true_focal_scale.to(device).squeeze(-1).unsqueeze(1).expand(B, T, -1)
+                    target_focal_scale = 1.0 / true_focal_scale.reshape(B * T, -1)
+                    loss = loss + args.pp_loss_weight * criterion(pred_focal_scale, target_focal_scale)
             if args.reproj_weight > 0.0:
                 points_2d = xb[..., :2]
                 conf = xb[..., 2]
