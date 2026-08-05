@@ -20,6 +20,8 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from motionflow_mv.eval.metrics import compute_all_metrics
 from motionflow_mv.fusion.ray_attention_temporal_crossview_residual_principal_point_model import RayAttentionFusionModelTemporalCrossviewResidualPrincipalPoint
+from motionflow_mv.fusion.ray_attention_temporal_crossview_residual_model import RayAttentionFusionModelTemporalCrossviewResidual
+from motionflow_mv.fusion.ray_attention_temporal_crossview_residual_campe_v2_model import RayAttentionFusionModelTemporalCrossviewResidualCamPEV2
 
 
 class TemporalClipDataset(torch.utils.data.Dataset):
@@ -97,16 +99,20 @@ def corrupt_extrinsics(R, t, rot_std_deg, trans_std):
 
 
 def build_model(args, n_views, j):
-    return RayAttentionFusionModelTemporalCrossviewResidualPrincipalPoint(
-        j=j,
-        d=args.d,
-        n_views=n_views,
-        n_st_layers=args.n_st_layers,
-        residual_hidden=args.residual_hidden,
-        principal_point_hidden=args.principal_point_hidden,
-        principal_point_max_offset=args.principal_point_max_offset,
-        focal_max_scale=args.focal_max_scale,
-    )
+    common = {"j": j, "d": args.d, "n_views": n_views, "n_st_layers": args.n_st_layers, "residual_hidden": args.residual_hidden}
+    if args.model_class == "crossview_residual_principal_point":
+        return RayAttentionFusionModelTemporalCrossviewResidualPrincipalPoint(
+            **common,
+            principal_point_hidden=args.principal_point_hidden,
+            principal_point_max_offset=args.principal_point_max_offset,
+            focal_max_scale=args.focal_max_scale,
+        )
+    elif args.model_class == "crossview_residual":
+        return RayAttentionFusionModelTemporalCrossviewResidual(**common)
+    elif args.model_class == "crossview_residual_campe_v2":
+        return RayAttentionFusionModelTemporalCrossviewResidualCamPEV2(**common)
+    else:
+        raise ValueError(f"Unknown model_class: {args.model_class}")
 
 
 def evaluate_clean(model, loader, device):
@@ -163,6 +169,9 @@ def main():
     parser.add_argument("--val_stride", type=int, default=1, help="Stride for validation clips")
     parser.add_argument("--out_json", type=str, default="outputs/crossview_principal_point_model_eval.json")
     parser.add_argument("--focal_max_scale", type=float, default=0.0, help="Maximum predicted focal-length scale; 0 disables focal correction")
+    parser.add_argument("--model_class", type=str, default="crossview_residual_principal_point",
+                        choices=["crossview_residual_principal_point", "crossview_residual", "crossview_residual_campe_v2"],
+                        help="Model architecture to evaluate")
     args = parser.parse_args()
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
