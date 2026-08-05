@@ -10,6 +10,10 @@ from .ray_attention_temporal_residual_module import (
     RayAttentionTemporalResidualFusionModule,
     register_ray_attention_temporal_residual_fusion_module,
 )
+from .ray_attention_temporal_crossview_residual_principal_point_module import (
+    RayAttentionTemporalCrossviewResidualPrincipalPointFusionModule,
+    register_ray_attention_temporal_crossview_residual_principal_point_fusion_module,
+)
 
 register_attention_fusion_module()
 # register_attention_v2_fusion_module()  # experimental, training unstable
@@ -18,6 +22,7 @@ register_residual_refiner_fusion_module()
 register_temporal_refiner_fusion_module()
 register_ray_attention_fusion_module()
 register_ray_attention_temporal_residual_fusion_module()
+register_ray_attention_temporal_crossview_residual_principal_point_fusion_module()
 
 __all__ = [
     "triangulate_dlt",
