@@ -307,7 +307,41 @@ Reducing the PP supervision weight from 0.1 to 0.05 improves both clean accuracy
 
 Training for 20 epochs gives a marginal clean improvement (9.41 → 9.32 mm) but slightly worse principal-point robustness, suggesting the model begins to overfit or the optimal stopping point is around 10–16 epochs.
 
+### Two-stage refined principal-point correction (negative result)
+- Motivation: the original `PrincipalPointCorrection` predicts the offset directly from raw 2D + intrinsics, which may be under-constrained. We added a two-stage refinement: first regress an initial `(dx, dy)` and a residual correction from a feature volume produced by the spatio-temporal encoder, then supervise the final offset with the same explicit PP loss (weight=0.05).
+- Model: `RayAttentionFusionModelTemporalResidualPrincipalPointRefined` (`motionflow_mv/fusion/ray_attention_temporal_crossview_residual_principal_point_refined_model.py`).
+- Training script: `experiments/train_ray_attention_temporal_crossview_residual_principal_point_refined_mpiinf3dhp.py`.
+- Eval script: `experiments/eval_refined_pp_model_mpiinf3dhp.py`.
+- Setup: small model, d=32, residual_hidden=64, n_st_layers=2, pp_loss_weight=0.05, cam_aug_pp=5.0, 10 epochs, train on S1/S3, val on S2/Seq1.
+- Best val MPJPE: **14.59 mm** (epoch 10).
+- Clean eval: MPJPE=**14.53 mm**, PA-MPJPE=**13.77 mm**.
+- Calibration robustness (val S2/Seq1):
+  | Condition | MPJPE (mm) | PA-MPJPE (mm) |
+  |---|---:|---:|
+  | clean | 14.53 | 13.77 |
+  | rot_0.5_deg | 21.30 | 14.84 |
+  | rot_1.0_deg | 31.54 | 17.21 |
+  | trans_5mm | 14.79 | 13.77 |
+  | trans_10mm | 15.49 | 13.83 |
+  | focal_1pct | 19.76 | 14.56 |
+  | focal_2pct | 29.77 | 16.33 |
+  | cxcy_3px | 15.05 | 13.76 |
+  | cxcy_5px | 16.15 | 13.80 |
+
+- Comparison with non-refined PP small (pp_loss_weight=0.05):
+  | Model | clean | cxcy_3px | cxcy_5px |
+  |---|---:|---:|---:|
+  | non-refined | 10.34 | 11.29 | 13.13 |
+  | refined | 14.53 | 15.05 | 16.15 |
+
+- Observations:
+  - The refined two-stage correction degrades clean accuracy by ~4.2 mm and also worsens principal-point robustness.
+  - The feature-refinement head appears to introduce an under-constrained, high-variance mapping that hurts the overall estimator.
+  - Negative result: adding a residual refinement branch on top of the explicit PP correction does not help in this configuration.
+
 ### Next steps
-1. Scale to mixed-dataset training (MPI-INF-3DHP + H36M) for cross-dataset generalization.
-2. Consider predicting PP correction from pooled spatio-temporal features for a tighter integration.
-3. Investigate H36M-specific data preprocessing or view selection to improve PP robustness with fewer views.
+1. Drop the two-stage refined PP direction.
+2. Return to the best non-refined PP configuration (full MPI, pp_loss_weight=0.05, 10–16 epochs; clean ~9.32 mm).
+3. Scale the best PP model to mixed-dataset training (MPI-INF-3DHP + H36M) for cross-dataset generalization.
+4. Consider predicting PP correction from pooled spatio-temporal features for a tighter integration (different architecture, not a residual refinement on the raw offset).
+5. Investigate H36M-specific data preprocessing or view selection to improve PP robustness with fewer views.
