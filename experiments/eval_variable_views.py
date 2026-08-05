@@ -11,6 +11,7 @@ Usage with a real dataset and checkpoint:
 """
 
 import argparse
+import json
 import math
 import sys
 from itertools import combinations
@@ -213,6 +214,8 @@ def main():
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--n_frames", type=int, default=36,
                         help="Synthetic frame count when --dataset is not given")
+    parser.add_argument("--output_json", type=str, default=None,
+                        help="Optional JSON path to save results")
     args = parser.parse_args()
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -257,6 +260,13 @@ def main():
     for k, res in results.items():
         print(f"  k={k:2d}: mean={res['mean_mm']:.4f} mm, "
               f"std={res['std_mm']:.4f} mm, subsets={res['n_subsets']}")
+
+    if args.output_json:
+        out_path = Path(args.output_json)
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(out_path, "w") as f:
+            json.dump({k: v for k, v in results.items()}, f, indent=2)
+        print(f"Saved results to {out_path}")
 
 
 if __name__ == "__main__":
