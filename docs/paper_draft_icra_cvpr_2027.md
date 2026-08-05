@@ -118,7 +118,19 @@ K_corrected[..., 1, 1] *= s
 
 All corrections are initialized near zero and bounded, so the layer is transparent when calibration is accurate and only activates when drift is detected. During training, the input cameras are perturbed with realistic rotation, translation, focal-length, and principal-point noise; the correction head is supervised with the inverse of the applied perturbation so it learns to restore the true calibration. The same correction layer is applied both to the temporal-only model (Section 3.2) and to the cross-view spatio-temporal variant (Section 3.6), with identical training and inference overhead.
 
-### 3.8 Quality gating and system integration
+### 3.9 Visibility-gated adaptive fusion
+
+In real captures some views may be occluded or unreliable. We add a per-view, per-joint visibility head that predicts a soft visibility score from the spatio-temporal features and gates the DLT weights. The head is conditioned on a per-joint pooled context across views, so each view's visibility estimate is aware of the full multi-view context. A fallback guard ensures at least `min_visible_views` remain active, preventing degenerate triangulation. The visibility head is supervised with a binary cross-entropy loss against the detector confidence mask.
+
+### 3.10 Factorised spatio-temporal attention (T x V x J)
+
+A more expressive backbone factorises attention along the temporal, view, and joint axes. After ray-aware feature extraction and intrinsic correction, tokens are arranged as a 3-D grid `(T, V, J)` and refined by separate Transformer layers along each axis. Three-dimensional positional embeddings (time, view, joint) are added before the factorised attention, and per-view weights are predicted from the refined features. This model is larger than the temporal-only baseline and targets the same plug-in interface.
+
+### 3.11 Self-supervised masked-view pre-training
+
+To reduce reliance on 3D labels, we pre-train the backbone without ground-truth 3D. Random views or time steps are masked out by zeroing their confidence channels, and the model is asked to minimise the reprojection error on both visible and masked slots. A temporal smoothness loss and a skeleton bone-length consistency loss serve as regularisers. After pre-training on unlabeled multi-view video, the model is fine-tuned with labelled data.
+
+### 3.12 Quality gating and system integration
 
 The fusion module is exposed as a `MultiViewFusionPlugin` inside MotionFlow. It outputs a `HumanMotionIR` containing the fused 3D pose, per-joint confidence, and view-support count, which downstream quality gating can use to fall back to the best single view when fusion disagreement is high.
 
@@ -334,7 +346,9 @@ These numbers confirm the plugin generalises to real SMPL-style output and remai
 
 ### 5.6 Ongoing experiments
 
-The temporal-residual baseline reaches **10.46 mm** MPJPE (PA-MPJPE 8.93 mm) on MPI-INF-3DHP S2/Seq1, and **0.94 mm** MPJPE (PA-MPJPE 0.92 mm) on Human3.6M S1→S5. The geometry-based camera positional encoding (CamPE) variant reaches **11.25 mm** on MPI-INF-3DHP and **1.39 mm** on Human3.6M S1→S5; although it does not beat the baseline, it removes the fixed-view embedding and enables variable camera rigs. The hard adaptive view selector reaches **12.73 mm** on MPI-INF-3DHP; a continuous soft-gate redesign reaches a similar **12.84 mm**, suggesting that view gating is not the bottleneck. The cross-view-only CamPE+GraphJR reaches **12.81 mm** on MPI-INF-3DHP, while the full-skeleton variant reaches **13.98 mm**; the same architecture reaches **0.62 mm** MPJPE (PA-MPJPE 0.70 mm) on Human3.6M. A factorised cross-view/temporal residual model was training but proved very slow without an early improvement. A larger-capacity baseline (d=96, h=192, n_temporal_layers=3) reached 18.79 mm, indicating clear overfitting; the simple 243 k-parameter baseline remains the strongest MPI-INF-3DHP result. Camera-calibration robustness experiments are currently running.
+The temporal-residual baseline reaches **10.46 mm** MPJPE (PA-MPJPE 8.93 mm) on MPI-INF-3DHP S2/Seq1, and **0.94 mm** MPJPE (PA-MPJPE 0.92 mm) on Human3.6M S1→S5. The geometry-based camera positional encoding (CamPE) variant reaches **11.25 mm** on MPI-INF-3DHP and **1.39 mm** on Human3.6M S1→S5; although it does not beat the baseline, it removes the fixed-view embedding and enables variable camera rigs. The hard adaptive view selector reaches **12.73 mm** on MPI-INF-3DHP; a continuous soft-gate redesign reaches a similar **12.84 mm**, suggesting that view gating is not the bottleneck. The cross-view-only CamPE+GraphJR reaches **12.81 mm** on MPI-INF-3DHP, while the full-skeleton variant reaches **13.98 mm**; the same architecture reaches **0.62 mm** MPJPE (PA-MPJPE 0.70 mm) on Human3.6M.
+
+The best cross-view residual + principal-point correction model reaches **9.32 mm** MPJPE (PA-MPJPE **5.37 mm**) on MPI-INF-3DHP. A calibration-curriculum variant with view dropout is training; an interim checkpoint shows clean 10.69 mm, but still fails under 10 px principal-point shifts. New skeletons being evaluated include visibility-gated adaptive fusion, factorised (T×V×J) spatio-temporal attention, uncertainty-weighted triangulation, graph joint relations, focal-length self-calibration, and masked-view self-supervised pre-training. All variants are being validated through the same reproducibility protocol (multi-seed, cross-dataset WebBridge benchmark, and variable-view MPJPE@k curves).
 
 ## 6. MotionFlow System Integration
 
