@@ -155,6 +155,17 @@ Models are implemented in PyTorch and trained on a local RTX 4090. The small res
 
 The full 20-epoch residual model cuts the raw DLT error by **59%** and the 5-epoch result by **6%**, reaching 10.46 mm with PA-MPJPE 8.93 mm. CamPE trades a small accuracy gap (11.25 mm) for the ability to accept variable camera rigs; the hard adaptive view selector underperforms at 12.73 mm, suggesting the discrete Gumbel top-k gate is too restrictive.
 
+#### Intrinsic correction comparison
+
+| Model | Clean | focal_1pct | focal_2pct | cxcy_3px | cxcy_5px |
+|---|---:|---:|---:|---:|---:|
+| PP-only small | 10.54 | 18.41 | 29.97 | 13.84 | 17.05 |
+| Focal-aware small | 12.82 | 18.29 | 28.42 | 14.31 | 16.51 |
+| PP-only full | 10.97 | 13.25 | 23.02 | 13.03 | 15.26 |
+| Focal-aware full | 12.21 | 20.24 | 31.04 | 12.91 | 14.40 |
+
+All numbers are MPJPE in millimetres on MPI-INF-3DHP S2/Seq1. The focal-aware small model shows the expected focal-length gain at the cost of clean accuracy. The full model, however, does not yet improve focal robustness, indicating that the shared PP/focal correction head is under-resourced for the focal task. A dedicated focal branch is the next step.
+
 ### 5.2 Human3.6M cross-subject
 
 | Model | Params | MPJPE (mm) | PA-MPJPE (mm) | PCK@50 | AUC |
