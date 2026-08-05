@@ -15,4 +15,5 @@ python experiments/train_crossview_residual_visibility_v2_mpiinf3dhp.py \
     --pp_loss_weight 0.05 --cam_aug_pp 5.0 \
     --view_dropout_rate 0.2 --min_views 4 \
     --visibility_loss_weight 0.1 \
-    --output outputs/ray_attention_temporal_crossview_residual_visibility_v2_mpiinf3dhp.pth
+    --output outputs/ray_attention_temporal_crossview_residual_visibility_v2_mpiinf3dhp.pth \
+    > outputs/ray_attention_temporal_crossview_residual_visibility_v2_mpiinf3dhp.log 2>&1
