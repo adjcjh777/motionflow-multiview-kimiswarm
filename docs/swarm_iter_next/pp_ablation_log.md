@@ -257,7 +257,24 @@ Note: mixed training lags MPI-only (11.16 vs 10.46 mm) but demonstrates cross-da
 - Clean accuracy now matches or exceeds the no-PP cross-view residual small baseline (~10.20 mm), while adding PP robustness.
 - PA-MPJPE drops dramatically from 7.97 mm (small) to 5.00 mm (full), indicating better pose alignment.
 
+### Human3.6M results (d=32, residual_hidden=64)
+- Best val MPJPE: **6.16 mm** (epoch 6). Clean eval: MPJPE=6.20 mm, PA-MPJPE=4.26 mm.
+- Calibration robustness:
+  | Condition | MPJPE (mm) | PA-MPJPE (mm) |
+  |---|---:|---:|
+  | clean | 6.20 | 4.26 |
+  | rot_0.5_deg | 10.35 | 9.29 |
+  | rot_1.0_deg | 19.65 | 17.47 |
+  | trans_5mm | 8.68 | 4.60 |
+  | trans_10mm | 13.32 | 5.84 |
+  | focal_1pct | 9.75 | 6.63 |
+  | focal_2pct | 15.50 | 10.20 |
+  | cxcy_3px | 16.20 | 4.87 |
+  | cxcy_5px | 25.04 | 6.73 |
+- Observations: clean accuracy is excellent, but principal-point robustness is worse than on MPI (4 views vs 14 views), likely because fewer views provide less redundancy for correcting PP drift.
+
 ### Next steps
-1. Scale to mixed-dataset training (MPI-INF-3DHP + H36M) for cross-dataset generalization.
-2. Tune pp_loss_weight (0.01, 0.05) and train longer to see if clean accuracy can improve further.
-3. Consider predicting PP correction from pooled spatio-temporal features for a tighter integration.
+1. Scale to full model on H36M and MPI.
+2. Scale to mixed-dataset training (MPI-INF-3DHP + H36M) for cross-dataset generalization.
+3. Tune pp_loss_weight (0.01, 0.05) and train longer.
+4. Consider predicting PP correction from pooled spatio-temporal features for a tighter integration.
