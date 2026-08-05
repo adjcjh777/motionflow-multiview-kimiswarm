@@ -86,9 +86,10 @@ def _build_model(
     n_temporal_layers: int,
     checkpoint: str | None,
     model_class: str = "temporal_residual",
+    residual_hidden: int = 128,
 ):
     cls = MODEL_CLASSES[model_class]
-    kwargs = {"j": j, "d": d, "n_views": n_views}
+    kwargs = {"j": j, "d": d, "n_views": n_views, "residual_hidden": residual_hidden}
     if model_class == "crossview_residual":
         kwargs["n_st_layers"] = n_temporal_layers
     else:
@@ -191,6 +192,7 @@ def main():
     parser.add_argument("--n_views", type=int, default=6)
     parser.add_argument("--j", type=int, default=17)
     parser.add_argument("--d", type=int, default=64)
+    parser.add_argument("--residual_hidden", type=int, default=128)
     parser.add_argument("--clip_len", type=int, default=9)
     parser.add_argument("--n_temporal_layers", type=int, default=2)
     parser.add_argument("--model_class", type=str, default="temporal_residual",
@@ -227,7 +229,7 @@ def main():
         )
         n_views = args.n_views
 
-    model = _build_model(args.j, n_views, args.d, args.n_temporal_layers, args.checkpoint, args.model_class).to(device)
+    model = _build_model(args.j, n_views, args.d, args.n_temporal_layers, args.checkpoint, args.model_class, args.residual_hidden).to(device)
 
     results = evaluate_variable_views(
         model,
