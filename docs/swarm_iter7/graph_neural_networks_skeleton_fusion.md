@@ -72,6 +72,10 @@ All four test cases passed: 28-joint forward, 17-joint forward, single-frame 4D 
 
 Queue the launcher `scripts/run_crossview_residual_principal_point_graph_wsl.sh` after the currently running PP curriculum finishes.  Do not execute it now.
 
+## Commit status
+
+Files were added to the local branch (`multiview-residual-exploration`) and committed.  The working tree is clean for these files.  Push was not attempted per instructions; the commit remains local.
+
 ## Notes / follow-up
 
 - The existing `GraphJointRelation` in `motionflow_mv/fusion/graph_joint_relation.py` uses an edge-conditioned attention message-passing scheme with three edge types (bone, symmetry, cross-view).  The variant in `motionflow_mv/models/graph_joint_relation.py` uses multi-head dot-product attention with edge-type bias; both are candidates for the ablation.  The current skeleton uses the former because it is already imported by the fusion package.

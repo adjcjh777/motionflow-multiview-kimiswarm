@@ -113,4 +113,4 @@ python -m experiments.train_crossview_residual_principal_point \
     --device cuda
 ```
 
-The launcher is intentionally a skeleton; actual flags should match the existing `experiments/train_crossview_residual_principal_point.py` interface.
+The launcher is intentionally a skeleton; the actual training script and flags should mirror the existing cross-view residual + PP training harness (e.g. `experiments/ablate_*.py` patterns).
