@@ -1,0 +1,20 @@
+model_config:
+  model: crossview_residual_pp
+  checkpoint: outputs/ray_attention_temporal_crossview_residual_principal_point_full_ppw005_20ep.pth
+  clip_len: 13
+  d: 64
+  n_st_layers: 2
+  residual_hidden: 128
+  batch_size: 8
+  gt_scale: 1.0
+  camera_scale: 1.0
+
+datasets:
+  - name: mpi_s2_seq1
+    path: data/webbridge/mpi_inf_3dhp/s_02_seq_01_v14_multiview_m.npz
+  - name: mpi_s3_seq1
+    path: data/webbridge/mpi_inf_3dhp/s_03_seq_01_v14_multiview_m.npz
+  - name: h36m_s1_act2
+    path: data/webbridge/h36m_meters/s_01_acts_02_multiview_m.npz
+  - name: aistpp_gBR_sBM_cAll_d04_mBR0_ch01
+    path: data/webbridge/aistpp_canonical/gBR_sBM_cAll_d04_mBR0_ch01_multiview.npz
