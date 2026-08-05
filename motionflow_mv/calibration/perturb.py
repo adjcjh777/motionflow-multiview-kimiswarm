@@ -147,6 +147,43 @@ def perturb_cameras(
     return K_aug, R_aug, t_aug
 
 
+def perturb_radial_distortion(
+    xy: torch.Tensor,
+    K: torch.Tensor,
+    k1_std: float = 0.0,
+) -> torch.Tensor:
+    """Apply radial lens distortion to 2D keypoints in normalized coordinates.
+
+    Args:
+        xy: Pixel coordinates ``(..., V, J, 2)``.
+        K: Intrinsic matrices ``(..., V, 3, 3)``.
+        k1_std: Standard deviation of the Brown-Conrady k1 coefficient.  Set to
+            0 to skip distortion.
+
+    Returns:
+        Distorted 2D keypoints of the same shape as ``xy``.
+    """
+    if k1_std <= 0:
+        return xy
+    # Broadcastable cx, cy, fx, fy of shape compatible with (..., V, J).
+    cx = K[..., 0, 2].unsqueeze(-1)
+    cy = K[..., 1, 2].unsqueeze(-1)
+    fx = K[..., 0, 0].unsqueeze(-1)
+    fy = K[..., 1, 1].unsqueeze(-1)
+
+    x_n = (xy[..., 0] - cx) / fx
+    y_n = (xy[..., 1] - cy) / fy
+    r2 = x_n * x_n + y_n * y_n
+
+    k1 = torch.randn(*r2.shape, device=r2.device, dtype=r2.dtype) * k1_std
+    factor = 1.0 + k1 * r2
+
+    xy_out = xy.clone()
+    xy_out[..., 0] = cx + (xy[..., 0] - cx) * factor
+    xy_out[..., 1] = cy + (xy[..., 1] - cy) * factor
+    return xy_out
+
+
 def perturb_cameras_with_delta(
     K: torch.Tensor,
     R: torch.Tensor,
