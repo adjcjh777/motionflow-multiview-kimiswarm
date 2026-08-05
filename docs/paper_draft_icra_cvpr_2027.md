@@ -348,7 +348,9 @@ These numbers confirm the plugin generalises to real SMPL-style output and remai
 
 The temporal-residual baseline reaches **10.46 mm** MPJPE (PA-MPJPE 8.93 mm) on MPI-INF-3DHP S2/Seq1, and **0.94 mm** MPJPE (PA-MPJPE 0.92 mm) on Human3.6M S1→S5. The geometry-based camera positional encoding (CamPE) variant reaches **11.25 mm** on MPI-INF-3DHP and **1.39 mm** on Human3.6M S1→S5; although it does not beat the baseline, it removes the fixed-view embedding and enables variable camera rigs. The hard adaptive view selector reaches **12.73 mm** on MPI-INF-3DHP; a continuous soft-gate redesign reaches a similar **12.84 mm**, suggesting that view gating is not the bottleneck. The cross-view-only CamPE+GraphJR reaches **12.81 mm** on MPI-INF-3DHP, while the full-skeleton variant reaches **13.98 mm**; the same architecture reaches **0.62 mm** MPJPE (PA-MPJPE 0.70 mm) on Human3.6M.
 
-The best cross-view residual + principal-point correction model reaches **9.32 mm** MPJPE (PA-MPJPE **5.37 mm**) on MPI-INF-3DHP. A 20-agent swarm exploration (Swarm Iteration 7) has produced minimal-viable skeletons for the next architecture cycle: visibility-gated adaptive fusion, factorised (T×V×J) spatio-temporal attention, uncertainty-weighted triangulation, graph joint relations, focal-length self-calibration, masked-view self-supervised pre-training, cross-dataset domain adaptation, action-aware fusion, and a reproducible multi-seed benchmark protocol. A calibration-curriculum variant with view dropout is currently training on the WSL RTX 4090; an interim checkpoint shows clean 10.69 mm, but still fails under 10 px principal-point shifts. All variants are being validated through the same reproducibility protocol (multi-seed, cross-dataset WebBridge benchmark, and variable-view MPJPE@k curves).
+The best cross-view residual + principal-point correction model reaches **9.32 mm** MPJPE (PA-MPJPE **5.37 mm**) on MPI-INF-3DHP. A 20-agent swarm exploration (Swarm Iteration 12) has produced minimal-viable skeletons for the next architecture cycle: visibility-gated adaptive fusion, factorised (T×V×J) spatio-temporal attention, uncertainty-weighted triangulation, graph joint relations, focal-length self-calibration, masked-view self-supervised pre-training, cross-dataset domain adaptation, action-aware fusion, and a reproducible multi-seed benchmark protocol. A calibration-curriculum variant with view dropout is currently training on the WSL RTX 4090; an interim checkpoint shows clean 10.69 mm, but still fails under 10 px principal-point shifts.
+
+**Note on principal-point robustness.** A recent diagnostic revealed that the learned principal-point correction head saturates at its maximum allowed offset regardless of input. The reported clean accuracy (9.32 mm) is preserved because the residual MLP compensates for this constant spurious offset, but the model does not actually correct new principal-point drift. A re-train with explicit reprojection supervision and a dedicated pre-training phase for the correction head is underway; if this does not resolve the saturation, the principal-point correction layer will be removed and robustness will be addressed through training-time perturbation and a stronger residual head alone.
 
 ## 6. MotionFlow System Integration
 
@@ -383,8 +385,7 @@ We introduced a residual refinement head on top of temporal ray-attention fusion
 ## References
 
 1. Hartley, R. and Zisserman, A. *Multiple View Geometry in Computer Vision*. Cambridge University Press, 2004.
-2. Iskandar, et al. “Triangulation learning.” *CVPR*, 2020.
-3. Iskandar, et al. “Learnable triangulation of human pose.” *ICCV*, 2019.
+2. Iskakov, I., Burkov, E., Lempitsky, V., and Malkov, Y. “Learnable triangulation of human pose.” *ICCV*, 2019.
 4. Ray-attention multi-view pose. *CVPR*, 2022.
 5. Lin, et al. “MotionBERT.” *ICCV*, 2023.
 6. Zeng, et al. “SmoothNet.” *CVPR*, 2022.
