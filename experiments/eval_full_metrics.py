@@ -51,6 +51,9 @@ from motionflow_mv.fusion.ray_attention_temporal_crossview_residual_principal_po
 from motionflow_mv.fusion.ray_attention_temporal_crossview_residual_principal_point_visibility_model import (
     RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointVisibility,
 )
+from motionflow_mv.models.crossview_residual_visibility_v2 import (
+    CrossviewResidualVisibilityV2,
+)
 
 
 MODEL_CLASSES = {
@@ -62,6 +65,7 @@ MODEL_CLASSES = {
     "crossview_residual": RayAttentionFusionModelTemporalCrossviewResidual,
     "crossview_residual_pp": RayAttentionFusionModelTemporalCrossviewResidualPrincipalPoint,
     "crossview_residual_pp_visibility": RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointVisibility,
+    "crossview_residual_pp_visibility_v2": CrossviewResidualVisibilityV2,
 }
 
 
@@ -131,6 +135,9 @@ def build_model(args, n_views, j):
         kwargs["target_k"] = args.target_k
         kwargs["min_views"] = args.min_views
         kwargs["lambda_gate"] = 0.0
+    if args.model == "crossview_residual_pp_visibility_v2":
+        kwargs["principal_point_hidden"] = 64
+        kwargs["principal_point_max_offset"] = 20.0
     return cls(**kwargs)
 
 
