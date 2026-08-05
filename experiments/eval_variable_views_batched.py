@@ -109,8 +109,9 @@ def evaluate_variable_views_batched(
     max_views: int | None = None,
     num_subsets_per_k: int | None = None,
     seed: int = 42,
+    batch_size: int = 32,
 ) -> dict:
-    """Batched variable-view evaluation."""
+    """Batched variable-view evaluation with bounded batch size."""
     if max_views is None:
         max_views = points_2d.shape[1]
     V = points_2d.shape[1]
@@ -151,7 +152,7 @@ def evaluate_variable_views_batched(
             active = torch.zeros(V, dtype=torch.bool)
             active[list(subset)] = True
 
-            # Batch all clips for this subset into one forward pass.
+            # Prepare all clips for this subset.
             clip_batch = []
             for _, _, x_clip in all_clips:
                 x_clip, Kp, Rp, tp, _ = prepare_variable_view_input(
@@ -160,17 +161,20 @@ def evaluate_variable_views_batched(
                 clip_batch.append(x_clip)
             if not clip_batch:
                 continue
-            x_batch = torch.stack(clip_batch, dim=0)  # (B, T, V, J, 3)
 
-            with torch.no_grad():
-                pred_batch = wrapper.model(x_batch, K=Kp, R=Rp, t=tp)[0]
-            pred_batch = pred_batch.cpu().numpy()  # (B, T, J, 3)
+            # Run forward in chunks to keep CUDA kernel arguments valid.
+            preds = []
+            for i in range(0, n_clips, batch_size):
+                chunk = clip_batch[i:i + batch_size]
+                x_batch = torch.stack(chunk, dim=0)  # (B, T, V, J, 3)
+                with torch.no_grad():
+                    pred_batch = wrapper.model(x_batch, K=Kp, R=Rp, t=tp)[0]
+                preds.append(pred_batch.cpu().numpy())
+
+            pred_all = np.concatenate([p.reshape(-1, J, 3) for p in preds], axis=0)
 
             # GT clips in the same order.
-            gt_batch = []
-            for start, end, _ in all_clips:
-                gt_batch.append(joints_3d[start:end])
-            pred_all = np.concatenate([pred_batch[i] for i in range(n_clips)], axis=0)
+            gt_batch = [joints_3d[start:end] for start, end, _ in all_clips]
             gt_all = np.concatenate(gt_batch, axis=0)
             err = mpjpe_metric(pred_all * 1000.0, gt_all * 1000.0)
             subset_errors.append(err)
