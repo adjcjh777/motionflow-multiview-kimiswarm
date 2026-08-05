@@ -114,3 +114,7 @@ python -m experiments.train_crossview_residual_principal_point \
 ```
 
 The launcher is intentionally a skeleton; the actual training script and flags should mirror the existing cross-view residual + PP training harness (e.g. `experiments/ablate_*.py` patterns).
+
+---
+
+**Verification note:** CPU smoke test executed on 2026-08-06 with `KMP_DUPLICATE_LIB_OK=TRUE python docs/swarm_iter7/ablate_multiscale_spatial_pp.py`; both the insertion sanity test and the subclassed forward/backward test passed.
