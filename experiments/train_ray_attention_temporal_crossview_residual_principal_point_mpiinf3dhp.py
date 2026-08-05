@@ -191,6 +191,7 @@ def main():
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--warm_start", type=str, default=None, help="Path to checkpoint to warm-start from (loads state_dict with strict=False)")
     parser.add_argument("--output", type=str, default="outputs/ray_attention_temporal_crossview_residual_principal_point_mpiinf3dhp.pth")
+    parser.add_argument("--pp_pretrain_epochs", type=int, default=0, help="Number of initial epochs to train only the principal_point_correction head")
     args = parser.parse_args()
 
     set_seed(args.seed)
@@ -241,6 +242,50 @@ def main():
     best_val = float("inf")
     output_path = Path(args.output)
     output_path.parent.mkdir(exist_ok=True, parents=True)
+
+    # Optional pre-training phase for the principal-point correction head only.
+    # This prevents the residual MLP from compensating for a spurious constant PP offset
+    # and forces the PP head to actually learn the inverse perturbation.
+    if args.pp_pretrain_epochs > 0:
+        print(f"Pre-training PP correction head for {args.pp_pretrain_epochs} epochs...")
+        for p in model.parameters():
+            p.requires_grad = False
+        for p in model.principal_point_correction.parameters():
+            p.requires_grad = True
+        pretrain_optimizer = optim.Adam(model.principal_point_correction.parameters(), lr=args.lr)
+        for pe in range(1, args.pp_pretrain_epochs + 1):
+            model.train()
+            train_loss = 0.0
+            for xb, yb, K, R, t in train_loader:
+                xb, yb = xb.to(device), yb.to(device)
+                K, R, t = K.to(device), R.to(device), t.to(device)
+                xb = augment_clip(xb, view_dropout_rate=0.0, min_views=args.min_views)
+                K, R, t, true_pp_delta, true_focal_scale = perturb_cameras_with_delta(
+                    K, R, t,
+                    rot_std=0.0,
+                    trans_std=0.0,
+                    focal_std=0.0,
+                    pp_std=args.cam_aug_pp,
+                )
+                pretrain_optimizer.zero_grad()
+                outputs = model(xb, K=K, R=R, t=t)
+                pred = outputs[0]
+                pred_pp_delta = outputs[2]
+                B, T = yb.shape[:2]
+                true_pp_delta = true_pp_delta.to(device).unsqueeze(1).expand(B, T, -1, -1).reshape(B * T, -1, 2)
+                loss = criterion(pred_pp_delta, -true_pp_delta)
+                if args.reproj_weight > 0.0:
+                    points_2d = xb[..., :2]
+                    conf = xb[..., 2]
+                    loss = loss + args.reproj_weight * reprojection_loss(pred, points_2d, K, R, t, confidences=conf)
+                loss.backward()
+                pretrain_optimizer.step()
+                train_loss += loss.item() * xb.size(0)
+            train_loss /= len(train_loader.dataset)
+            print(f"  PP pretrain epoch {pe}: loss={train_loss:.6f}")
+        print("Unfreezing full model for end-to-end training.")
+        for p in model.parameters():
+            p.requires_grad = True
 
     for epoch in range(1, args.epochs + 1):
         model.train()
