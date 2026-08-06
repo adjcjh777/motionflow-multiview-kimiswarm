@@ -127,7 +127,6 @@ def gaussian_splatting_pose_loss(
     diff = (points_2d - proj).unsqueeze(-1)  # (B, T, V, J, 2, 1)
 
     # Cholesky solve for Mahalanobis distance and log determinant.
-    # Try with increasingly large jitter if the matrix is not positive-definite.
     L = _robust_cholesky(Sigma_2d)
     y_solve = torch.linalg.solve_triangular(L, diff, upper=False)
     mahalanobis_sq = (y_solve ** 2).sum(dim=(-2, -1))  # (B, T, V, J)
@@ -205,7 +204,7 @@ def gaussian_splatting_render_error(
     )
 
     diff = (points_2d - proj).unsqueeze(-1)
-    L = torch.linalg.cholesky(Sigma_2d)
+    L = _robust_cholesky(Sigma_2d)
     y_solve = torch.linalg.solve_triangular(L, diff, upper=False)
     mahalanobis = (y_solve ** 2).sum(dim=(-2, -1)).sqrt()
     return mahalanobis
