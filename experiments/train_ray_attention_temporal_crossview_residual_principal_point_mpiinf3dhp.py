@@ -62,11 +62,17 @@ from motionflow_mv.fusion.ray_attention_temporal_crossview_residual_principal_po
 from motionflow_mv.fusion.ray_attention_temporal_crossview_residual_principal_point_epipolar_bias_v2_model import (
     RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointEpipolarBiasV2,
 )
+from motionflow_mv.fusion.epipolar_bias_v2_lite_pp_model import (
+    RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointEpipolarBiasV2Lite,
+)
 from motionflow_mv.fusion.ray_attention_temporal_crossview_residual_camera_conditioned_model import (
     RayAttentionFusionModelTemporalCrossviewResidualCameraConditioned,
 )
 from motionflow_mv.fusion.ray_attention_hierarchical_view_temporal_joint_residual_principal_point_model import (
     RayAttentionFusionModelHierarchicalViewTemporalJointResidualPrincipalPoint,
+)
+from motionflow_mv.fusion.ray_attention_temporal_crossview_residual_principal_point_deeper_temporal_model import (
+    RayAttentionFusionModelHierarchicalViewDeeperTemporalResidualPrincipalPoint,
 )
 from motionflow_mv.losses.gaussian_splatting_pose_loss import gaussian_splatting_pose_loss
 
@@ -210,7 +216,7 @@ def main():
     parser.add_argument("--val", type=str, required=True, help="Validation .npz file")
     parser.add_argument("--clip_len", type=int, default=13)
     parser.add_argument("--d", type=int, default=64)
-    parser.add_argument("--model_type", type=str, default="temporal", choices=["temporal", "factorized", "dynamic_gate", "graph_skeleton_residual", "epipolar", "epipolar_bias_v2_pp", "splat", "kinematic_chain", "crossview_contrast", "bayesian_tri", "camera_conditioned_pp", "hierarchical_view_temporal_joint_pp"], help="Backbone type: temporal (time+view), factorized (alternating view/temporal), dynamic_gate (anchor + per-view gate), graph_skeleton_residual (skeleton-graph residual refiner), epipolar (epipolar-biased weight head), epipolar_bias_v2_pp (epipolar-biased ST transformer v2), splat (Gaussian-splatting pose regularizer), kinematic_chain (kinematic-chain graph refiner), crossview_contrast (cross-view contrastive pose representation), bayesian_tri (uncertainty-aware triangulation with adaptive Gauss-Newton), camera_conditioned_pp (camera-parameter-conditioned weight + residual heads), or hierarchical_view_temporal_joint_pp (hierarchical view -> temporal -> skeleton-joint attention)")
+    parser.add_argument("--model_type", type=str, default="temporal", choices=["temporal", "factorized", "dynamic_gate", "graph_skeleton_residual", "epipolar", "epipolar_bias_v2_pp", "epipolar_bias_v2_lite_pp", "splat", "kinematic_chain", "crossview_contrast", "bayesian_tri", "camera_conditioned_pp", "hierarchical_view_temporal_joint_pp", "deeper_temporal_pp"], help="Backbone type: temporal (time+view), factorized (alternating view/temporal), dynamic_gate (anchor + per-view gate), graph_skeleton_residual (skeleton-graph residual refiner), epipolar (epipolar-biased weight head), epipolar_bias_v2_pp (epipolar-biased ST transformer v2), epipolar_bias_v2_lite_pp (late-layer epipolar-biased ST transformer v2 lite), splat (Gaussian-splatting pose regularizer), kinematic_chain (kinematic-chain graph refiner), crossview_contrast (cross-view contrastive pose representation), bayesian_tri (uncertainty-aware triangulation with adaptive Gauss-Newton), camera_conditioned_pp (camera-parameter-conditioned weight + residual heads), hierarchical_view_temporal_joint_pp (hierarchical view -> temporal -> skeleton-joint attention), or deeper_temporal_pp (hierarchical view -> deeper residual-gated temporal -> skeleton-joint attention)")
     parser.add_argument("--n_st_layers", type=int, default=2)
     parser.add_argument("--n_view_layers", type=int, default=2)
     parser.add_argument("--n_temporal_layers", type=int, default=2)
@@ -309,6 +315,15 @@ def main():
             focal_max_scale=args.focal_max_scale,
             return_pp_delta=True,
         ).to(device)
+    elif args.model_type == "epipolar_bias_v2_lite_pp":
+        model = RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointEpipolarBiasV2Lite(
+            j=j, d=args.d, n_views=n_views, n_st_layers=args.n_st_layers,
+            residual_hidden=args.residual_hidden,
+            principal_point_hidden=args.principal_point_hidden,
+            principal_point_max_offset=args.principal_point_max_offset,
+            focal_max_scale=args.focal_max_scale,
+            return_pp_delta=True,
+        ).to(device)
     elif args.model_type == "graph_skeleton_residual":
         model = RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointGraphSkeletonResidual(
             j=j, d=args.d, n_views=n_views, n_st_layers=args.n_st_layers,
@@ -379,6 +394,21 @@ def main():
         ).to(device)
     elif args.model_type == "hierarchical_view_temporal_joint_pp":
         model = RayAttentionFusionModelHierarchicalViewTemporalJointResidualPrincipalPoint(
+            j=j, d=args.d, n_views=n_views, n_st_layers=args.n_st_layers,
+            residual_hidden=args.residual_hidden,
+            principal_point_hidden=args.principal_point_hidden,
+            principal_point_max_offset=args.principal_point_max_offset,
+            focal_max_scale=args.focal_max_scale,
+            return_pp_delta=True,
+            return_raw=args.return_raw_3d or args.reproj_raw_weight > 0.0,
+            n_view_groups=args.n_view_groups,
+            n_view_layers=args.n_view_layers,
+            n_temporal_layers=args.n_temporal_layers,
+            n_joint_graph_layers=args.n_joint_graph_layers,
+            use_skeleton_graph=True,
+        ).to(device)
+    elif args.model_type == "deeper_temporal_pp":
+        model = RayAttentionFusionModelHierarchicalViewDeeperTemporalResidualPrincipalPoint(
             j=j, d=args.d, n_views=n_views, n_st_layers=args.n_st_layers,
             residual_hidden=args.residual_hidden,
             principal_point_hidden=args.principal_point_hidden,
