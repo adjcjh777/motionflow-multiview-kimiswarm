@@ -98,6 +98,5 @@ class RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointKinematicCha
 
         if self.return_pp_delta or self.return_visibility or self.focal_max_scale > 0.0:
             # Replace the unrefined 3-D pose with the refined one in the tuple.
-            extras[0] = pred_3d_refined
-            return tuple(extras)
+            return (pred_3d_refined,) + tuple(extras)
         return pred_3d_refined, weights
