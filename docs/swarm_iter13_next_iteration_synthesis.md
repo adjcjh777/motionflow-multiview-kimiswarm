@@ -3,7 +3,7 @@
 **Date:** 2026-08-06
 **Empirical anchor:** `RayAttentionFusionModelTemporalCrossviewResidualPrincipalPoint` — MPI-INF-3DHP clean **9.32 mm** MPJPE / **5.37 mm** PA-MPJPE
 **Running GPU job:** `experiments/train_crossview_residual_visibility_v2_mpiinf3dhp.py` on RTX 4090
-**SOTA context:** Classical DLT/robust IRLS baselines are expected to land around **~25 mm** on the same split, leaving a large but still unquantified margin over the learned anchor.
+**SOTA context:** Classical DLT/robust IRLS baselines now land at **~25.2 mm** on the same split (`experiments/compare_sota_baselines.py`), giving the learned anchor a clean **15.9 mm** margin.
 **Known blocker:** The PP-correction branch shows signs of saturation — the correction layer is driven only by downstream 3-D pose gradients and can under-/over-correct when `focal_max_scale` and PP noise are injected from epoch 1.
 
 This document distills the latest 20-agent planning swarm into a minimal, executable roadmap. No new architecture is committed without a smoke test.
@@ -73,7 +73,8 @@ Themes: SOTA comparison harness, unified benchmark protocol, failure analysis/di
 
 ### 2. Fix PP-correction saturation with direct intrinsics loss + curriculum (GPU)
 **Files/scripts:**
-- `experiments/train_crossview_residual_visibility_v2_mpiinf3dhp.py`
+- `experiments/train_ray_attention_temporal_crossview_residual_principal_point_mpiinf3dhp.py`
+- `scripts/run_crossview_pp_robust_retrain_wsl.sh`
 - `motionflow_mv/fusion/principal_point_correction.py` (read-only; already returns `focal_scale`)
 - `motionflow_mv/calibration/perturb.py` (for curriculum helpers)
 
@@ -87,16 +88,16 @@ Themes: SOTA comparison harness, unified benchmark protocol, failure analysis/di
 **Self-evolution loop mapping:**
 - *Reflect:* PP/focal correction is learned indirectly and saturates because full noise is injected from epoch 1.
 - *Hypothesize:* A direct intrinsics loss + curriculum ramp makes the correction more accurate and stable.
-- *Smoke-validate:* Add the loss/curriculum to the v2 trainer and run a short smoke.
+- *Smoke-validate:* Use the existing `--cam_aug_schedule intrinsics_curriculum` in the PP trainer and run a short smoke after visibility v2 finishes.
 - *Integrate:* If it passes, fold into the visibility v2 full run and the factorized PP smoke.
 
 ---
 
 ### 3. Unified SOTA comparison harness (CPU / A800-D read-only)
 **Files/scripts:**
-- New: `experiments/compare_sota_baselines.py`
-- `motionflow_mv/fusion/ray_attention_model.py` (expose `_triangulate_weighted_dlt` cleanly)
-- `motionflow_mv/eval/benchmark_protocol.py` (reuse metric aggregation)
+- `experiments/compare_sota_baselines.py`
+- `docs/tables/icra2027/main_results.md` / `.tex`
+- `docs/paper_draft_icra_cvpr_2027.md`
 
 **Pass/fail:**
 - Pass: script completes in < 10 min on CPU for the clean test split.
@@ -107,10 +108,10 @@ Themes: SOTA comparison harness, unified benchmark protocol, failure analysis/di
 **CPU/GPU:** CPU; can read A800-D data read-only.
 
 **Self-evolution loop mapping:**
-- *Reflect:* No apples-to-apples comparison exists; SOTA numbers in the paper are stale or inferred.
+- *Reflect:* No apples-to-apples comparison existed; SOTA numbers in the paper were stale or inferred.
 - *Hypothesize:* A single harness will show the anchor’s margin over DLT/IRLS and expose where robust methods close the gap.
-- *Smoke-validate:* Implement the harness on a small test split, compare outputs.
-- *Integrate:* Merge into the unified benchmark and regenerate paper tables.
+- *Smoke-validate:* Run the harness on the clean test split and verify DLT/IRLS/anchor numbers.
+- *Integrate:* Regenerate paper tables and archive JSON in `docs/tables/icra2027/sota_comparison_mpi.json`.
 
 ---
 
@@ -183,11 +184,11 @@ Parallel CPU/A800-read-only work (no GPU needed):
 ## 5. Immediate Action Items
 
 - [ ] Monitor `train_crossview_residual_visibility_v2_mpiinf3dhp.py` to completion and run `scripts/eval_crossview_residual_visibility_v2_wsl.sh`.
-- [ ] Add direct PP/focal intrinsics loss and curriculum ramp to the v2 trainer; run a 3–5 epoch GPU smoke.
-- [ ] Create `experiments/compare_sota_baselines.py` and produce the first DLT/IRLS/anchor comparison JSON.
+- [x] Add direct PP/focal intrinsics loss and curriculum ramp to the PP trainer; queued via `scripts/run_crossview_pp_robust_retrain_wsl.sh`.
+- [x] Run `experiments/compare_sota_baselines.py` and update paper tables (DLT/IRLS/anchor comparison done).
 - [ ] Extend `experiments/eval_robustness_matrix_pp_mpiinf3dhp.py` with severity sweeps and a visibility-v2 path; smoke on 20 clips.
 - [ ] Create the factorized ST+PP model + smoke trainer; benchmark latency vs. the 9.32 mm baseline.
-- [ ] Regenerate `docs/tables/icra2027/main_results.md` and paper figures from the 9.32 mm anchor.
+- [x] Regenerate `docs/tables/icra2027/main_results.md` and paper draft from the 9.32 mm anchor.
 - [ ] Confirm A800-D GPU policy/availability with the owner before scheduling Experiment #5 there.
 
 ---

@@ -184,8 +184,9 @@ def main():
     parser.add_argument("--cam_aug_trans", type=float, default=0.005, help="Camera translation augmentation std in meters")
     parser.add_argument("--cam_aug_focal", type=float, default=0.01, help="Camera focal length augmentation std (relative)")
     parser.add_argument("--cam_aug_pp", type=float, default=2.0, help="Camera principal point augmentation std in pixels")
-    parser.add_argument("--cam_aug_schedule", type=str, default="flat", choices=["flat", "extrinsic_curriculum"], help="Camera augmentation schedule")
+    parser.add_argument("--cam_aug_schedule", type=str, default="flat", choices=["flat", "extrinsic_curriculum", "intrinsics_curriculum"], help="Camera augmentation schedule")
     parser.add_argument("--cam_aug_ramp_epochs", type=int, default=10, help="Number of epochs over which to ramp extrinsic augmentation for extrinsic_curriculum")
+    parser.add_argument("--cam_aug_intrinsics_ramp_epochs", type=int, default=5, help="Number of epochs over which to ramp PP/focal augmentation for intrinsics_curriculum")
     parser.add_argument("--view_dropout_rate", type=float, default=0.0, help="Probability of dropping an entire camera view during training (0 disables)")
     parser.add_argument("--min_views", type=int, default=2, help="Minimum number of views kept when view_dropout_rate > 0")
     parser.add_argument("--seed", type=int, default=42)
@@ -294,9 +295,19 @@ def main():
             ramp = min(1.0, epoch / max(1, args.cam_aug_ramp_epochs))
             schedule_rot = args.cam_aug_rot * ramp
             schedule_trans = args.cam_aug_trans * ramp
+            schedule_focal = args.cam_aug_focal
+            schedule_pp = args.cam_aug_pp
+        elif args.cam_aug_schedule == "intrinsics_curriculum":
+            ramp = min(1.0, epoch / max(1, args.cam_aug_intrinsics_ramp_epochs))
+            schedule_rot = args.cam_aug_rot
+            schedule_trans = args.cam_aug_trans
+            schedule_focal = args.cam_aug_focal * ramp
+            schedule_pp = args.cam_aug_pp * ramp
         else:
             schedule_rot = args.cam_aug_rot
             schedule_trans = args.cam_aug_trans
+            schedule_focal = args.cam_aug_focal
+            schedule_pp = args.cam_aug_pp
         for xb, yb, K, R, t in train_loader:
             xb, yb = xb.to(device), yb.to(device)
             K, R, t = K.to(device), R.to(device), t.to(device)
@@ -305,8 +316,8 @@ def main():
                 K, R, t,
                 rot_std=schedule_rot,
                 trans_std=schedule_trans,
-                focal_std=args.cam_aug_focal,
-                pp_std=args.cam_aug_pp,
+                focal_std=schedule_focal,
+                pp_std=schedule_pp,
             )
             optimizer.zero_grad()
             outputs = model(xb, K=K, R=R, t=t)

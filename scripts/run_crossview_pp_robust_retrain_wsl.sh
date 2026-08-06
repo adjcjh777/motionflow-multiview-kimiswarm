@@ -17,6 +17,7 @@ python -u experiments/train_ray_attention_temporal_crossview_residual_principal_
   --clip_len 13 --d 64 --residual_hidden 128 --n_st_layers 2 --epochs 20 \
   --train_samples 1000 --batch_size 8 --val_stride 50 \
   --pp_loss_weight 0.5 --reproj_weight 0.2 --cam_aug_pp 5.0 --cam_aug_focal 0.01 \
+  --cam_aug_schedule intrinsics_curriculum --cam_aug_intrinsics_ramp_epochs 5 \
   --pp_pretrain_epochs 3 \
   --output outputs/ray_attention_temporal_crossview_residual_principal_point_robust_retrain.pth \
   "$@"
