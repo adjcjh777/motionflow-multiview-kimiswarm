@@ -207,7 +207,6 @@ def main():
     parser.add_argument("--n_st_layers", type=int, default=2,
                         help="Number of cross-view spatio-temporal layers for crossview_residual/crossview_residual_pp models")
     parser.add_argument("--n_view_layers", type=int, default=2, help="Number of view-level transformer layers for factorized_pp")
-    parser.add_argument("--n_temporal_layers", type=int, default=2, help="Number of temporal-level transformer layers for factorized_pp")
     parser.add_argument("--residual_hidden", type=int, default=128)
     parser.add_argument("--graph_layers", type=int, default=3)
     parser.add_argument("--k", type=int, default=4)
