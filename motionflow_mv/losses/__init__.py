@@ -4,6 +4,7 @@ from .bone_length import bone_length_loss
 from .canonical_skeleton_loss import canonical_skeleton_loss
 from .focal_calibration_loss import focal_calibration_loss
 from .gaussian_splatting_pose_loss import gaussian_splatting_pose_loss
+from .kinematic_chain import kinematic_chain_loss
 from .masked_view_completion import masked_view_completion_loss
 from .multiperson_association_loss import MultiPersonAssociationLoss
 from .reprojection import reprojection_loss
@@ -15,6 +16,7 @@ __all__ = [
     "canonical_skeleton_loss",
     "focal_calibration_loss",
     "gaussian_splatting_pose_loss",
+    "kinematic_chain_loss",
     "masked_view_completion_loss",
     "reprojection_loss",
     "velocity_loss",
