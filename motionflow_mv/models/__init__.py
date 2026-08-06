@@ -4,6 +4,12 @@ from .crossview_residual_uncertainty import CrossviewResidualUncertaintyModel
 from .domain_adaptation_wrapper import DomainAdaptationWrapper
 
 try:
+    from .shelf_campus_domain_adaptation import ShelfCampusDomainAdaptationWrapper
+except ImportError:  # pragma: no cover
+    ShelfCampusDomainAdaptationWrapper = None  # type: ignore
+
+
+try:
     from .spatiotemporal_principal_point_model import SpatiotemporalPrincipalPointModel
 except ImportError:  # pragma: no cover
     SpatiotemporalPrincipalPointModel = None  # type: ignore
@@ -36,14 +42,27 @@ except ImportError:  # pragma: no cover
     MPI_INF_3DHP_28_PARENTS = None  # type: ignore
     MPI_INF_3DHP_28_SYMMETRY_PAIRS = None  # type: ignore
 
+try:
+    from .distilled_student_principal_point_model import DistilledStudentPrincipalPointModel
+except ImportError:  # pragma: no cover
+    DistilledStudentPrincipalPointModel = None  # type: ignore
+
+try:
+    from .data_augmentation_multiview_wrapper import MultiViewDataAugmentationWrapper
+except ImportError:  # pragma: no cover
+    MultiViewDataAugmentationWrapper = None  # type: ignore
+
 __all__ = [
     "CrossviewResidualUncertaintyModel",
     "CrossviewResidualVisibilityV2",
+    "DistilledStudentPrincipalPointModel",
     "DomainAdaptationWrapper",
+    "ShelfCampusDomainAdaptationWrapper",
     "GraphJointRelation",
     "build_edge_index",
     "H36M_17_PARENTS",
     "H36M_17_SYMMETRY_PAIRS",
     "MPI_INF_3DHP_28_PARENTS",
     "MPI_INF_3DHP_28_SYMMETRY_PAIRS",
+    "MultiViewDataAugmentationWrapper",
 ]
