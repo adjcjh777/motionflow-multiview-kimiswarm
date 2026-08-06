@@ -9,6 +9,7 @@ make view selection and the final 3D residual correction aware of the physical
 camera rig geometry without altering the rest of the architecture.
 """
 
+import numpy as np
 import torch
 import torch.nn as nn
 
