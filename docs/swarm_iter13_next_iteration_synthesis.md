@@ -162,16 +162,15 @@ Themes: SOTA comparison harness, unified benchmark protocol, failure analysis/di
 
 ## 4. GPU Queue Recommendation Order
 
-Only one RTX 4090 is available and it is currently training visibility v2. CPU/read-only tasks can run in parallel.
+Only one RTX 4090 is available. CPU/read-only tasks can run in parallel. Visibility v2 proved CPU-bound and very slow, so we are pivoting to the factorized ST+PP smoke first to get faster feedback.
 
-1. **RTX 4090 — Finish visibility v2 training** (in progress).
-   - Blocker: nothing else can run here until it finishes.
+1. **RTX 4090 — Factorized ST+PP smoke** (running).
+   - Uses `scripts/run_factorized_pp_smoke_wsl.sh` (d=32, residual_hidden=64, 500 samples, 5 epochs).
+   - Target: finite val MPJPE, no NaNs/crashes, and a measurable speed-vs-accuracy trade-off.
 2. **RTX 4090 — PP-correction saturation fix smoke** (Experiment #2).
-   - Short 3–5 epoch run; if it passes, fold into the next full visibility v2 re-run.
-3. **A800-D GPUs 0–3 (after owner confirmation) — Factorized ST+PP smoke** (Experiment #5).
-   - Independent of visibility v2; can run in parallel on A800-D if policy allows.
-4. **RTX 4090 / A800-D — Full visibility v2 re-train with PP fix if Experiment #2 passes**.
-5. **GPU eval only** for robustness matrix and occlusion eval can reuse the trained checkpoints without training.
+   - Queued after the factorized smoke via `scripts/queue_remaining_gpu_experiments.sh`.
+3. **RTX 4090 — SSL pre-training on H36M** (if factorized smoke passes).
+4. **RTX 4090 / A800-D — Visibility v2 re-visit** only after we confirm the factorized architecture is viable and the PP saturation is fixed.
 
 Parallel CPU/A800-read-only work (no GPU needed):
 - Implement & run `compare_sota_baselines.py` (Experiment #3).
@@ -183,13 +182,14 @@ Parallel CPU/A800-read-only work (no GPU needed):
 
 ## 5. Immediate Action Items
 
-- [ ] Monitor `train_crossview_residual_visibility_v2_mpiinf3dhp.py` to completion and run `scripts/eval_crossview_residual_visibility_v2_wsl.sh`.
 - [x] Add direct PP/focal intrinsics loss and curriculum ramp to the PP trainer; queued via `scripts/run_crossview_pp_robust_retrain_wsl.sh`.
 - [x] Run `experiments/compare_sota_baselines.py` and update paper tables (DLT/IRLS/anchor comparison done).
-- [ ] Extend `experiments/eval_robustness_matrix_pp_mpiinf3dhp.py` with severity sweeps and a visibility-v2 path; smoke on 20 clips.
-- [ ] Create the factorized ST+PP model + smoke trainer; benchmark latency vs. the 9.32 mm baseline.
+- [ ] Monitor factorized ST+PP smoke to completion and evaluate with `eval_full_metrics.py --model factorized_pp`.
+- [ ] Extend `experiments/eval_robustness_matrix_pp_mpiinf3dhp.py` with severity sweeps; smoke on 20 clips.
+- [x] Create the factorized ST+PP model + smoke trainer; benchmark latency vs. the 9.32 mm baseline.
 - [x] Regenerate `docs/tables/icra2027/main_results.md` and paper draft from the 9.32 mm anchor.
-- [ ] Confirm A800-D GPU policy/availability with the owner before scheduling Experiment #5 there.
+- [ ] Revisit visibility v2 after factorized smoke and PP saturation fix; visibility v2 is currently too slow on RTX 4090.
+- [ ] Confirm A800-D GPU policy/availability with the owner before scheduling any GPU jobs there.
 
 ---
 
