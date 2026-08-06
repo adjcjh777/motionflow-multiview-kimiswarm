@@ -33,7 +33,7 @@ def main():
         "--batch_size", "8",
         "--val_stride", "50",
         "--pp_loss_weight", "0.2",
-        "--splat_loss_weight", "0.05",
+        "--splat_loss_weight", "0.01",
         "--reproj_weight", "0.0",
         "--cam_aug_pp", "5.0",
         "--cam_aug_focal", "0.01",
