@@ -3,7 +3,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-VENV=${MF_VENV:-/tmp/mf_venv}
+VENV=${MF_VENV:-$(pwd)/.venv}
 . "$VENV/bin/activate"
 export PYTHONUNBUFFERED=1
 
