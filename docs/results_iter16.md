@@ -52,13 +52,14 @@ All run on CPU (RTX 4090 reserved for Bayesian Tri). Two epochs only.
 
 ## Current run
 
-- `epipolar_bias_v2_pp` GPU full run started on RTX 4090 (background task `bash-ssvvij9q`).
-- Log: `outputs/epipolar_bias_v2_pp_full_mpiinf3dhp.log`
-- Checkpoint target: `outputs/epipolar_bias_v2_pp_full_mpiinf3dhp.pth`
+- `epipolar_bias_v2_pp` GPU full run was stopped after the first end-to-end epoch did not complete within ~5 min (CPU-bound epipolar geometry computation); optimization needed.
+- `hierarchical_attention_pp` GPU full run started on RTX 4090 (background task `bash-s2tuyaga`).
+- Log: `outputs/hierarchical_attention_pp_full_mpiinf3dhp.log`
+- Checkpoint target: `outputs/hierarchical_attention_pp_full_mpiinf3dhp.pth`
 
 ## Next steps
 
-1. Monitor `epipolar_bias_v2_pp` full run to completion.
-2. Run `scripts/eval_epipolar_bias_v2_pp_full_wsl.sh` for clean MPJPE.
-3. If `epipolar_bias_v2_pp` > 8.75 mm, start `hierarchical_attention_pp` GPU full run.
+1. Monitor `hierarchical_attention_pp` full run to completion.
+2. Run `scripts/eval_hierarchical_attention_pp_full_wsl.sh` for clean MPJPE.
+3. If `hierarchical_attention_pp` > 8.75 mm, optimize and rerun `epipolar_bias_v2_pp`, or try `splat_pp` / `camera_conditioned_pp`.
 4. Apply robustness matrix to any model that beats the anchor.
