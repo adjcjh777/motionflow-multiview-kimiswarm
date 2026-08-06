@@ -3,12 +3,11 @@
 set -e
 cd "$(dirname "$0")/.."
 
-echo "[queue] waiting for visibility v2 training to start..."
-while ! pgrep -f "train_crossview_residual_visibility_v2_mpiinf3dhp.py" > /dev/null; do
-    sleep 60
-done
-echo "[queue] waiting for visibility v2 training to finish..."
-while pgrep -f "train_crossview_residual_visibility_v2_mpiinf3dhp.py" > /dev/null; do
+echo "[queue] starting factorized ST+PP smoke"
+bash scripts/run_factorized_pp_smoke_wsl.sh
+
+echo "[queue] waiting for factorized smoke to finish..."
+while pgrep -f "train_ray_attention_temporal_crossview_residual_principal_point_mpiinf3dhp.py" > /dev/null; do
     sleep 60
 done
 
@@ -16,14 +15,6 @@ echo "[queue] starting PP robust re-train (reproj + stronger PP supervision)"
 bash scripts/run_crossview_pp_robust_retrain_wsl.sh
 
 echo "[queue] waiting for PP robust re-train to finish..."
-while pgrep -f "train_ray_attention_temporal_crossview_residual_principal_point_mpiinf3dhp.py" > /dev/null; do
-    sleep 60
-done
-
-echo "[queue] starting factorized ST+PP smoke"
-bash scripts/run_factorized_pp_smoke_wsl.sh
-
-echo "[queue] waiting for factorized smoke to finish..."
 while pgrep -f "train_ray_attention_temporal_crossview_residual_principal_point_mpiinf3dhp.py" > /dev/null; do
     sleep 60
 done

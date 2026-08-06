@@ -14,4 +14,5 @@ python -u experiments/train_ray_attention_temporal_crossview_residual_principal_
   --residual_hidden 64 --epochs 5 --train_samples 500 --batch_size 8 --val_stride 50 \
   --pp_loss_weight 0.1 --cam_aug_pp 3.0 --cam_aug_focal 0.01 \
   --output outputs/factorized_pp_smoke_mpiinf3dhp.pth \
-  "$@"
+  "$@" \
+  > outputs/factorized_pp_smoke_mpiinf3dhp.log 2>&1
