@@ -29,6 +29,11 @@ import torch.optim as optim
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from motionflow_mv.calibration.perturb import perturb_cameras_with_delta
+from motionflow_mv.fusion.prototypes.trainer_optim_utils import (
+    AMPContext,
+    build_lr_scheduler,
+    clip_gradients,
+)
 from motionflow_mv.fusion.ray_attention_temporal_crossview_factorized_residual_principal_point_model import (
     RayAttentionFusionModelTemporalCrossviewFactorizedResidualPrincipalPoint,
 )
@@ -239,6 +244,11 @@ def main():
     parser.add_argument("--principal_point_max_offset", type=float, default=20.0)
     parser.add_argument("--epochs", type=int, default=30)
     parser.add_argument("--lr", type=float, default=1e-3)
+    parser.add_argument("--lr_warmup_epochs", type=int, default=0, help="Linear warmup epochs before cosine decay (0 disables warmup)")
+    parser.add_argument("--lr_cosine", action="store_true", help="Use cosine LR schedule (with optional warmup) instead of constant LR")
+    parser.add_argument("--lr_min", type=float, default=0.0, help="Minimum LR at the end of cosine annealing")
+    parser.add_argument("--grad_clip_norm", type=float, default=0.0, help="Global gradient clipping max norm (0 disables)")
+    parser.add_argument("--amp", action="store_true", help="Enable Automatic Mixed Precision (CUDA only)")
     parser.add_argument("--batch_size", type=int, default=8)
     parser.add_argument("--train_samples", type=int, default=4000, help="Random clips per train sequence")
     parser.add_argument("--val_stride", type=int, default=1, help="Stride for validation clips (higher = faster)")
@@ -443,6 +453,13 @@ def main():
     print(f"Model params: {sum(p.numel() for p in model.parameters())}")
 
     optimizer = optim.Adam(model.parameters(), lr=args.lr)
+    scheduler = build_lr_scheduler(
+        optimizer,
+        total_epochs=args.epochs,
+        warmup_epochs=args.lr_warmup_epochs if args.lr_cosine else 0,
+        eta_min=args.lr_min if args.lr_cosine else 0.0,
+    ) if args.lr_cosine else None
+    amp_context = AMPContext(enabled=args.amp, device=device)
     criterion = nn.MSELoss()
 
     best_val = float("inf")
@@ -474,18 +491,23 @@ def main():
                     pp_std=args.cam_aug_pp,
                 )
                 pretrain_optimizer.zero_grad()
-                outputs = model(xb, K=K, R=R, t=t)
-                pred = outputs[0]
-                pred_pp_delta = outputs[2]
-                B, T = yb.shape[:2]
-                true_pp_delta = true_pp_delta.to(device).unsqueeze(1).expand(B, T, -1, -1).reshape(B * T, -1, 2)
-                loss = criterion(pred_pp_delta, -true_pp_delta)
-                # Do not add reprojection loss during PP-head pre-training: the
-                # rest of the model is frozen at random weights, so the
-                # reprojection term would dominate and drown the PP offset
-                # supervision.
-                loss.backward()
-                pretrain_optimizer.step()
+                with amp_context:
+                    outputs = model(xb, K=K, R=R, t=t)
+                    pred = outputs[0]
+                    pred_pp_delta = outputs[2]
+                    B, T = yb.shape[:2]
+                    true_pp_delta = true_pp_delta.to(device).unsqueeze(1).expand(B, T, -1, -1).reshape(B * T, -1, 2)
+                    loss = criterion(pred_pp_delta, -true_pp_delta)
+                    # Do not add reprojection loss during PP-head pre-training: the
+                    # rest of the model is frozen at random weights, so the
+                    # reprojection term would dominate and drown the PP offset
+                    # supervision.
+                scaled_loss = amp_context.scale(loss)
+                scaled_loss.backward()
+                amp_context.unscale(pretrain_optimizer)
+                clip_gradients(model, args.grad_clip_norm)
+                amp_context.step(pretrain_optimizer)
+                amp_context.update()
                 train_loss += loss.item() * xb.size(0)
             train_loss /= len(train_loader.dataset)
             print(f"  PP pretrain epoch {pe}: loss={train_loss:.6f}")
