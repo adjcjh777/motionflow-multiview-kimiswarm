@@ -56,6 +56,18 @@ from motionflow_mv.fusion.ray_attention_temporal_crossview_residual_principal_po
 from motionflow_mv.fusion.ray_attention_temporal_crossview_residual_principal_point_crossview_contrast_model import (
     RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointCrossViewContrast,
 )
+from motionflow_mv.fusion.ray_attention_temporal_crossview_residual_principal_point_bayesian_tri_model import (
+    RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointBayesianTri,
+)
+from motionflow_mv.fusion.ray_attention_temporal_crossview_residual_principal_point_epipolar_bias_v2_model import (
+    RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointEpipolarBiasV2,
+)
+from motionflow_mv.fusion.ray_attention_temporal_crossview_residual_camera_conditioned_model import (
+    RayAttentionFusionModelTemporalCrossviewResidualCameraConditioned,
+)
+from motionflow_mv.fusion.ray_attention_hierarchical_view_temporal_joint_residual_principal_point_model import (
+    RayAttentionFusionModelHierarchicalViewTemporalJointResidualPrincipalPoint,
+)
 from motionflow_mv.losses.gaussian_splatting_pose_loss import gaussian_splatting_pose_loss
 
 
@@ -198,10 +210,12 @@ def main():
     parser.add_argument("--val", type=str, required=True, help="Validation .npz file")
     parser.add_argument("--clip_len", type=int, default=13)
     parser.add_argument("--d", type=int, default=64)
-    parser.add_argument("--model_type", type=str, default="temporal", choices=["temporal", "factorized", "dynamic_gate", "graph_skeleton_residual", "epipolar", "splat", "kinematic_chain", "crossview_contrast"], help="Backbone type: temporal (time+view), factorized (alternating view/temporal), dynamic_gate (anchor + per-view gate), graph_skeleton_residual (skeleton-graph residual refiner), epipolar (epipolar-biased weight head), splat (Gaussian-splatting pose regularizer), kinematic_chain (kinematic-chain graph refiner), or crossview_contrast (cross-view contrastive pose representation)")
+    parser.add_argument("--model_type", type=str, default="temporal", choices=["temporal", "factorized", "dynamic_gate", "graph_skeleton_residual", "epipolar", "epipolar_bias_v2_pp", "splat", "kinematic_chain", "crossview_contrast", "bayesian_tri", "camera_conditioned_pp", "hierarchical_view_temporal_joint_pp"], help="Backbone type: temporal (time+view), factorized (alternating view/temporal), dynamic_gate (anchor + per-view gate), graph_skeleton_residual (skeleton-graph residual refiner), epipolar (epipolar-biased weight head), epipolar_bias_v2_pp (epipolar-biased ST transformer v2), splat (Gaussian-splatting pose regularizer), kinematic_chain (kinematic-chain graph refiner), crossview_contrast (cross-view contrastive pose representation), bayesian_tri (uncertainty-aware triangulation with adaptive Gauss-Newton), camera_conditioned_pp (camera-parameter-conditioned weight + residual heads), or hierarchical_view_temporal_joint_pp (hierarchical view -> temporal -> skeleton-joint attention)")
     parser.add_argument("--n_st_layers", type=int, default=2)
     parser.add_argument("--n_view_layers", type=int, default=2)
     parser.add_argument("--n_temporal_layers", type=int, default=2)
+    parser.add_argument("--n_view_groups", type=int, default=2, help="Number of camera groups for hierarchical_view_temporal_joint_pp")
+    parser.add_argument("--n_joint_graph_layers", type=int, default=1, help="Number of skeleton-graph layers for hierarchical_view_temporal_joint_pp")
     parser.add_argument("--residual_hidden", type=int, default=128)
     parser.add_argument("--gate_sparsity_weight", type=float, default=0.0, help="Sparsity regulariser weight for the dynamic view gate")
     parser.add_argument("--gate_entropy_weight", type=float, default=0.0, help="Entropy regulariser weight for the dynamic view gate")
@@ -238,6 +252,7 @@ def main():
     parser.add_argument("--output", type=str, default="outputs/ray_attention_temporal_crossview_residual_principal_point_mpiinf3dhp.pth")
     parser.add_argument("--pp_pretrain_epochs", type=int, default=0, help="Number of initial epochs to train only the principal_point_correction head")
     parser.add_argument("--splat_loss_weight", type=float, default=0.0, help="Weight for Gaussian-splatting pose regularizer loss (splat model only)")
+    parser.add_argument("--epipolar_loss_weight", type=float, default=0.0, help="Weight for epipolar consistency auxiliary loss (bayesian_tri model only)")
     args = parser.parse_args()
 
     set_seed(args.seed)
@@ -285,6 +300,15 @@ def main():
             focal_max_scale=args.focal_max_scale,
             return_pp_delta=True,
         ).to(device)
+    elif args.model_type == "epipolar_bias_v2_pp":
+        model = RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointEpipolarBiasV2(
+            j=j, d=args.d, n_views=n_views, n_st_layers=args.n_st_layers,
+            residual_hidden=args.residual_hidden,
+            principal_point_hidden=args.principal_point_hidden,
+            principal_point_max_offset=args.principal_point_max_offset,
+            focal_max_scale=args.focal_max_scale,
+            return_pp_delta=True,
+        ).to(device)
     elif args.model_type == "graph_skeleton_residual":
         model = RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointGraphSkeletonResidual(
             j=j, d=args.d, n_views=n_views, n_st_layers=args.n_st_layers,
@@ -293,6 +317,16 @@ def main():
             principal_point_max_offset=args.principal_point_max_offset,
             focal_max_scale=args.focal_max_scale,
             return_pp_delta=True,
+        ).to(device)
+    elif args.model_type == "bayesian_tri":
+        model = RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointBayesianTri(
+            j=j, d=args.d, n_views=n_views, n_st_layers=args.n_st_layers,
+            residual_hidden=args.residual_hidden,
+            principal_point_hidden=args.principal_point_hidden,
+            principal_point_max_offset=args.principal_point_max_offset,
+            focal_max_scale=args.focal_max_scale,
+            return_pp_delta=True,
+            return_covariance=False,
         ).to(device)
     elif args.model_type == "crossview_contrast":
         model = RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointCrossViewContrast(
@@ -332,6 +366,31 @@ def main():
             focal_max_scale=args.focal_max_scale,
             return_pp_delta=args.pp_loss_weight > 0.0 or args.focal_max_scale > 0.0,
             return_raw=args.return_raw_3d or args.reproj_raw_weight > 0.0,
+        ).to(device)
+    elif args.model_type == "camera_conditioned_pp":
+        model = RayAttentionFusionModelTemporalCrossviewResidualCameraConditioned(
+            j=j, d=args.d, n_views=n_views, n_st_layers=args.n_st_layers,
+            residual_hidden=args.residual_hidden,
+            principal_point_hidden=args.principal_point_hidden,
+            principal_point_max_offset=args.principal_point_max_offset,
+            focal_max_scale=args.focal_max_scale,
+            return_pp_delta=args.pp_loss_weight > 0.0 or args.focal_max_scale > 0.0,
+            return_raw=args.return_raw_3d or args.reproj_raw_weight > 0.0,
+        ).to(device)
+    elif args.model_type == "hierarchical_view_temporal_joint_pp":
+        model = RayAttentionFusionModelHierarchicalViewTemporalJointResidualPrincipalPoint(
+            j=j, d=args.d, n_views=n_views, n_st_layers=args.n_st_layers,
+            residual_hidden=args.residual_hidden,
+            principal_point_hidden=args.principal_point_hidden,
+            principal_point_max_offset=args.principal_point_max_offset,
+            focal_max_scale=args.focal_max_scale,
+            return_pp_delta=True,
+            return_raw=args.return_raw_3d or args.reproj_raw_weight > 0.0,
+            n_view_groups=args.n_view_groups,
+            n_view_layers=args.n_view_layers,
+            n_temporal_layers=args.n_temporal_layers,
+            n_joint_graph_layers=args.n_joint_graph_layers,
+            use_skeleton_graph=True,
         ).to(device)
     else:
         model = RayAttentionFusionModelTemporalCrossviewResidualPrincipalPoint(
@@ -499,6 +558,9 @@ def main():
                     pred, points_2d, K, R, t, log_std, confidences=conf,
                 )
                 loss = loss + args.splat_loss_weight * loss_splat
+            if args.model_type == "bayesian_tri":
+                epi_loss = outputs[-1]  # scalar
+                loss = loss + args.epipolar_loss_weight * epi_loss
             loss.backward()
             optimizer.step()
             train_loss += loss.item() * xb.size(0)

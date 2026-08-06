@@ -63,6 +63,24 @@ from motionflow_mv.fusion.ray_attention_temporal_crossview_residual_principal_po
 from motionflow_mv.fusion.ray_attention_temporal_crossview_residual_principal_point_epipolar_model import (
     RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointEpipolar,
 )
+from motionflow_mv.fusion.ray_attention_temporal_crossview_residual_principal_point_splat_model import (
+    RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointSplat,
+)
+from motionflow_mv.fusion.ray_attention_temporal_crossview_residual_principal_point_kinematic_chain_model import (
+    RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointKinematicChain,
+)
+from motionflow_mv.fusion.ray_attention_temporal_crossview_residual_principal_point_bayesian_tri_model import (
+    RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointBayesianTri,
+)
+from motionflow_mv.fusion.ray_attention_temporal_crossview_residual_principal_point_epipolar_bias_v2_model import (
+    RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointEpipolarBiasV2,
+)
+from motionflow_mv.fusion.ray_attention_temporal_crossview_residual_camera_conditioned_model import (
+    RayAttentionFusionModelTemporalCrossviewResidualCameraConditioned,
+)
+from motionflow_mv.fusion.ray_attention_hierarchical_view_temporal_joint_residual_principal_point_model import (
+    RayAttentionFusionModelHierarchicalViewTemporalJointResidualPrincipalPoint,
+)
 from motionflow_mv.models.crossview_residual_visibility_v2 import (
     CrossviewResidualVisibilityV2,
 )
@@ -82,6 +100,12 @@ MODEL_CLASSES = {
     "dynamic_gate_pp": RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointDynamicGate,
     "graph_skeleton_residual_pp": RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointGraphSkeletonResidual,
     "epipolar_pp": RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointEpipolar,
+    "splat_pp": RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointSplat,
+    "kinematic_chain_pp": RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointKinematicChain,
+    "bayesian_tri_pp": RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointBayesianTri,
+    "epipolar_bias_v2_pp": RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointEpipolarBiasV2,
+    "camera_conditioned_pp": RayAttentionFusionModelTemporalCrossviewResidualCameraConditioned,
+    "hierarchical_view_temporal_joint_pp": RayAttentionFusionModelHierarchicalViewTemporalJointResidualPrincipalPoint,
 }
 
 
@@ -131,7 +155,7 @@ def build_model(args, n_views, j):
         "d": args.d,
         "n_views": n_views,
     }
-    if args.model in {"crossview_residual", "crossview_residual_pp", "crossview_residual_pp_visibility", "dynamic_gate_pp", "graph_skeleton_residual_pp", "epipolar_pp"}:
+    if args.model in {"crossview_residual", "crossview_residual_pp", "crossview_residual_pp_visibility", "dynamic_gate_pp", "graph_skeleton_residual_pp", "epipolar_pp", "splat_pp", "kinematic_chain_pp", "bayesian_tri_pp", "epipolar_bias_v2_pp", "camera_conditioned_pp", "hierarchical_view_temporal_joint_pp"}:
         kwargs["n_st_layers"] = args.n_st_layers
         kwargs["residual_hidden"] = args.residual_hidden
     elif args.model == "factorized_pp":
@@ -142,6 +166,12 @@ def build_model(args, n_views, j):
         kwargs["principal_point_max_offset"] = 20.0
     elif args.model != "crossview_residual_pp_visibility_v2":
         kwargs["n_temporal_layers"] = args.n_temporal_layers
+    if args.model == "hierarchical_view_temporal_joint_pp":
+        kwargs["n_view_groups"] = args.n_view_groups
+        kwargs["n_view_layers"] = args.n_view_layers
+        kwargs["n_temporal_layers"] = args.n_temporal_layers
+        kwargs["n_joint_graph_layers"] = args.n_joint_graph_layers
+        kwargs["use_skeleton_graph"] = not args.no_skeleton_graph
     if args.model in {"residual", "campe", "campegraph", "adaptive"}:
         kwargs["residual_hidden"] = args.residual_hidden
     if args.model == "campegraph":
@@ -218,7 +248,10 @@ def main():
     parser.add_argument("--n_temporal_layers", type=int, default=2)
     parser.add_argument("--n_st_layers", type=int, default=2,
                         help="Number of cross-view spatio-temporal layers for crossview_residual/crossview_residual_pp models")
-    parser.add_argument("--n_view_layers", type=int, default=2, help="Number of view-level transformer layers for factorized_pp")
+    parser.add_argument("--n_view_layers", type=int, default=2, help="Number of view-level transformer layers for factorized_pp and hierarchical_view_temporal_joint_pp")
+    parser.add_argument("--n_view_groups", type=int, default=2, help="Number of camera groups for hierarchical_view_temporal_joint_pp")
+    parser.add_argument("--n_joint_graph_layers", type=int, default=1, help="Number of skeleton-graph layers for hierarchical_view_temporal_joint_pp")
+    parser.add_argument("--no_skeleton_graph", action="store_true", help="Disable skeleton-graph stage in hierarchical_view_temporal_joint_pp")
     parser.add_argument("--residual_hidden", type=int, default=128)
     parser.add_argument("--graph_layers", type=int, default=3)
     parser.add_argument("--k", type=int, default=4)

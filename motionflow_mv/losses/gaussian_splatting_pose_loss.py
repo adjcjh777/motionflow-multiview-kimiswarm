@@ -10,6 +10,29 @@ import torch
 import torch.nn.functional as F
 
 
+def _robust_cholesky(A: torch.Tensor, max_jitter: float = 1.0) -> torch.Tensor:
+    """Cholesky with jitter fallback for numerical stability."""
+    try:
+        return torch.linalg.cholesky(A)
+    except RuntimeError:
+        pass
+    # Add increasing diagonal jitter until positive-definite.
+    jitter = 1e-4
+    while jitter <= max_jitter:
+        A_jittered = A + jitter * torch.eye(A.shape[-1], device=A.device, dtype=A.dtype).view(
+            1, 1, 1, 1, A.shape[-1], A.shape[-1]
+        )
+        try:
+            return torch.linalg.cholesky(A_jittered)
+        except RuntimeError:
+            jitter *= 10.0
+    # Fallback: eigendecomposition with clipped eigenvalues.
+    eigvals, eigvecs = torch.linalg.eigh(A)
+    eigvals = eigvals.clamp(min=1e-6)
+    A_pd = eigvecs @ torch.diag_embed(eigvals) @ eigvecs.transpose(-2, -1)
+    return torch.linalg.cholesky(A_pd)
+
+
 def gaussian_splatting_pose_loss(
     pred_3d: torch.Tensor,
     points_2d: torch.Tensor,
@@ -104,11 +127,11 @@ def gaussian_splatting_pose_loss(
     diff = (points_2d - proj).unsqueeze(-1)  # (B, T, V, J, 2, 1)
 
     # Cholesky solve for Mahalanobis distance and log determinant.
-    L = torch.linalg.cholesky(Sigma_2d)  # (B, T, V, J, 2, 2)
+    L = _robust_cholesky(Sigma_2d)
     y_solve = torch.linalg.solve_triangular(L, diff, upper=False)
     mahalanobis_sq = (y_solve ** 2).sum(dim=(-2, -1))  # (B, T, V, J)
 
-    logdet = 2.0 * torch.log(L.diagonal(dim1=-2, dim2=-1)).sum(dim=-1)  # (B, T, V, J)
+    logdet = 2.0 * torch.log(L.diagonal(dim1=-2, dim2=-1).abs()).sum(dim=-1)  # (B, T, V, J)
 
     nll = 0.5 * (logdet + mahalanobis_sq)
 
@@ -181,7 +204,7 @@ def gaussian_splatting_render_error(
     )
 
     diff = (points_2d - proj).unsqueeze(-1)
-    L = torch.linalg.cholesky(Sigma_2d)
+    L = _robust_cholesky(Sigma_2d)
     y_solve = torch.linalg.solve_triangular(L, diff, upper=False)
     mahalanobis = (y_solve ** 2).sum(dim=(-2, -1)).sqrt()
     return mahalanobis

@@ -139,7 +139,7 @@ class GraphJointRelation(nn.Module):
 
     def forward(self, x: torch.Tensor, edge_index: torch.Tensor, edge_type: torch.Tensor) -> torch.Tensor:
         B, V, J, _ = x.shape
-        h = x.view(B * V * J, self.d)
+        h = x.reshape(B * V * J, self.d)
 
         src_idx = edge_index[0]
         dst_idx = edge_index[1]
