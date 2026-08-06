@@ -53,14 +53,22 @@ def _adaptive_gauss_newton(
         X: (N, J, 3) refined estimate.
     """
     N, V, J, _ = points_2d.shape
-    X = init_3d
+    # Run Gauss-Newton in float32 to keep AMP/fp16 training stable.
+    original_dtype = points_2d.dtype
+    X = init_3d.to(torch.float32)
+    points_2d = points_2d.to(torch.float32)
+    weights = weights.to(torch.float32)
+    K = K.to(torch.float32)
+    R = R.to(torch.float32)
+    t = t.to(torch.float32)
+    damping = damping.to(torch.float32)
 
     fx = K[:, :, 0, 0]
     s = K[:, :, 0, 1]
     cx = K[:, :, 0, 2]
     fy = K[:, :, 1, 1]
     cy = K[:, :, 1, 2]
-    eye3 = torch.eye(3, device=X.device, dtype=X.dtype).view(1, 1, 3, 3)
+    eye3 = torch.eye(3, device=X.device, dtype=torch.float32).view(1, 1, 3, 3)
 
     for _ in range(max(1, num_iters)):
         X_cam = torch.einsum("nvab,njb->nvja", R, X) + t.unsqueeze(2)
@@ -98,11 +106,12 @@ def _adaptive_gauss_newton(
         damp = damping.unsqueeze(-1).unsqueeze(-1)  # (N, J, 1, 1)
         A = A + damp * eye3.expand(N, J, -1, -1)
 
-        b = b.unsqueeze(-1)
+        b = b.unsqueeze(-1).float()
+        A = A.float()
         dx = torch.linalg.solve(A, b).squeeze(-1)
-        X = X + dx
+        X = X + dx.to(torch.float32)
 
-    return X
+    return X.to(original_dtype)
 
 
 class RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointBayesianTri(
