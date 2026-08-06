@@ -171,6 +171,8 @@ The cross-view + PP full model reduces the raw DLT error by **63%** and the temp
 
 #### Intrinsic correction comparison
 
+The full 6-axis robustness matrix for the 9.32 mm PP baseline is shown in Figure \ref{fig:robustness_matrix}. Rotation remains the dominant failure mode, while focal-length drift is handled well. Principal-point perturbation is still catastrophic (>1,700 mm), which motivated the robust re-train with direct intrinsics supervision described in Section 3.8.
+
 | Model | Clean | focal_1pct | focal_2pct | cxcy_3px | cxcy_5px |
 |---|---:|---:|---:|---:|---:|
 | Baseline small (no correction) | 14.97 | 14.95 | 15.35 | 1592.69 | 1894.61 |
