@@ -71,9 +71,6 @@ from motionflow_mv.fusion.ray_attention_hierarchical_view_temporal_joint_residua
 from motionflow_mv.fusion.ray_attention_temporal_crossview_residual_principal_point_deeper_temporal_model import (
     RayAttentionFusionModelHierarchicalViewDeeperTemporalResidualPrincipalPoint,
 )
-from motionflow_mv.fusion.ray_attention_temporal_crossview_residual_principal_point_deeper_temporal_model import (
-    RayAttentionFusionModelHierarchicalViewDeeperTemporalResidualPrincipalPoint,
-)
 from motionflow_mv.losses.gaussian_splatting_pose_loss import gaussian_splatting_pose_loss
 
 
@@ -398,21 +395,6 @@ def main():
         ).to(device)
     elif args.model_type == "hierarchical_view_temporal_joint_pp":
         model = RayAttentionFusionModelHierarchicalViewTemporalJointResidualPrincipalPoint(
-            j=j, d=args.d, n_views=n_views, n_st_layers=args.n_st_layers,
-            residual_hidden=args.residual_hidden,
-            principal_point_hidden=args.principal_point_hidden,
-            principal_point_max_offset=args.principal_point_max_offset,
-            focal_max_scale=args.focal_max_scale,
-            return_pp_delta=True,
-            return_raw=args.return_raw_3d or args.reproj_raw_weight > 0.0,
-            n_view_groups=args.n_view_groups,
-            n_view_layers=args.n_view_layers,
-            n_temporal_layers=args.n_temporal_layers,
-            n_joint_graph_layers=args.n_joint_graph_layers,
-            use_skeleton_graph=True,
-        ).to(device)
-    elif args.model_type == "deeper_temporal_pp":
-        model = RayAttentionFusionModelHierarchicalViewDeeperTemporalResidualPrincipalPoint(
             j=j, d=args.d, n_views=n_views, n_st_layers=args.n_st_layers,
             residual_hidden=args.residual_hidden,
             principal_point_hidden=args.principal_point_hidden,
