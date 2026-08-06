@@ -37,6 +37,10 @@ from motionflow_mv.fusion.ray_attention_temporal_crossview_residual_principal_po
 )
 from motionflow_mv.losses import reprojection_loss, velocity_loss
 from motionflow_mv.losses.reprojection_consistency import robust_reprojection_loss
+from motionflow_mv.losses.view_selection_loss import ViewSelectionLoss
+from motionflow_mv.fusion.ray_attention_temporal_crossview_residual_principal_point_dynamic_gate_model import (
+    RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointDynamicGate,
+)
 
 
 def set_seed(seed: int):
@@ -121,10 +125,14 @@ def collate_fn(batch):
 
 def augment_clip(x, noise_std: float = 0.5, dropout_rate: float = 0.1,
                  outlier_rate: float = 0.02, outlier_scale: float = 100.0,
-                 view_dropout_rate: float = 0.0, min_views: int = 2):
+                 view_dropout_rate: float = 0.0, min_views: int = 2,
+                 view_noise_std: float = 0.0, joint_dropout_rate: float = 0.0):
     """Lightweight per-clip augmentation."""
     if noise_std > 0:
         x[..., :2] = x[..., :2] + torch.randn_like(x[..., :2]) * noise_std
+    if view_noise_std > 0:
+        # Per-view independent 2-D Gaussian noise.
+        x[..., :2] = x[..., :2] + torch.randn_like(x[..., :2]) * view_noise_std
     if dropout_rate > 0:
         mask = (torch.rand(x.shape[0], x.shape[1], x.shape[2], x.shape[3], device=x.device) > dropout_rate).float()
         x[..., 2] = x[..., 2] * mask
@@ -146,6 +154,10 @@ def augment_clip(x, noise_std: float = 0.5, dropout_rate: float = 0.1,
                     extra = dropped[perm[:needed]]
                     view_mask[i, extra] = 1.0
         x[..., 2] = x[..., 2] * view_mask.view(B, 1, V, 1)
+    if joint_dropout_rate > 0:
+        # Randomly zero-out per-joint confidence per view.
+        joint_mask = (torch.rand(x.shape[0], x.shape[1], x.shape[2], x.shape[3], device=x.device) > joint_dropout_rate).float()
+        x[..., 2] = x[..., 2] * joint_mask
     return x
 
 
@@ -170,11 +182,15 @@ def main():
     parser.add_argument("--val", type=str, required=True, help="Validation .npz file")
     parser.add_argument("--clip_len", type=int, default=13)
     parser.add_argument("--d", type=int, default=64)
-    parser.add_argument("--model_type", type=str, default="temporal", choices=["temporal", "factorized"], help="Backbone type: temporal (time+view) or factorized (alternating view/temporal)")
+    parser.add_argument("--model_type", type=str, default="temporal", choices=["temporal", "factorized", "dynamic_gate"], help="Backbone type: temporal (time+view), factorized (alternating view/temporal), or dynamic_gate (anchor + per-view gate)")
     parser.add_argument("--n_st_layers", type=int, default=2)
     parser.add_argument("--n_view_layers", type=int, default=2)
     parser.add_argument("--n_temporal_layers", type=int, default=2)
     parser.add_argument("--residual_hidden", type=int, default=128)
+    parser.add_argument("--gate_sparsity_weight", type=float, default=0.0, help="Sparsity regulariser weight for the dynamic view gate")
+    parser.add_argument("--gate_entropy_weight", type=float, default=0.0, help="Entropy regulariser weight for the dynamic view gate")
+    parser.add_argument("--view_noise_std", type=float, default=0.0, help="Per-view 2D Gaussian noise std (pixels) for dynamic_gate")
+    parser.add_argument("--joint_dropout_rate", type=float, default=0.0, help="Per-joint confidence dropout rate for dynamic_gate")
     parser.add_argument("--principal_point_hidden", type=int, default=64)
     parser.add_argument("--principal_point_max_offset", type=float, default=20.0)
     parser.add_argument("--epochs", type=int, default=30)
@@ -232,7 +248,18 @@ def main():
           f"residual_hidden={args.residual_hidden}, principal_point_hidden={args.principal_point_hidden}, "
           f"principal_point_max_offset={args.principal_point_max_offset}, focal_max_scale={args.focal_max_scale}")
 
-    if args.model_type == "factorized":
+    if args.model_type == "dynamic_gate":
+        model = RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointDynamicGate(
+            j=j, d=args.d, n_views=n_views, n_st_layers=args.n_st_layers,
+            residual_hidden=args.residual_hidden,
+            principal_point_hidden=args.principal_point_hidden,
+            principal_point_max_offset=args.principal_point_max_offset,
+            focal_max_scale=args.focal_max_scale,
+            return_pp_delta=True,
+            return_raw=args.return_raw_3d or args.reproj_raw_weight > 0.0,
+            return_gate=True,
+        ).to(device)
+    elif args.model_type == "factorized":
         model = RayAttentionFusionModelTemporalCrossviewFactorizedResidualPrincipalPoint(
             j=j, d=args.d, n_views=n_views,
             n_view_layers=args.n_view_layers, n_temporal_layers=args.n_temporal_layers,
@@ -253,6 +280,12 @@ def main():
             return_pp_delta=args.pp_loss_weight > 0.0 or args.focal_max_scale > 0.0,
             return_raw=args.return_raw_3d or args.reproj_raw_weight > 0.0,
         ).to(device)
+    gate_loss_fn = None
+    if args.model_type == "dynamic_gate":
+        gate_loss_fn = ViewSelectionLoss(
+            sparsity_weight=args.gate_sparsity_weight,
+            entropy_weight=args.gate_entropy_weight,
+        )
     if args.warm_start is not None:
         state = torch.load(args.warm_start, map_location="cpu", weights_only=True)
         missing, unexpected = model.load_state_dict(state, strict=False)
@@ -337,7 +370,8 @@ def main():
         for xb, yb, K, R, t in train_loader:
             xb, yb = xb.to(device), yb.to(device)
             K, R, t = K.to(device), R.to(device), t.to(device)
-            xb = augment_clip(xb, view_dropout_rate=args.view_dropout_rate, min_views=args.min_views)
+            xb = augment_clip(xb, view_dropout_rate=args.view_dropout_rate, min_views=args.min_views,
+                              view_noise_std=args.view_noise_std, joint_dropout_rate=args.joint_dropout_rate)
             K, R, t, true_pp_delta, true_focal_scale = perturb_cameras_with_delta(
                 K, R, t,
                 rot_std=schedule_rot,
@@ -362,6 +396,10 @@ def main():
                     target_focal_scale = 1.0 / true_focal_scale.reshape(B * T, -1)
                     focal_loss_weight = args.focal_loss_weight if args.focal_loss_weight is not None else args.pp_loss_weight
                     loss = loss + focal_loss_weight * criterion(pred_focal_scale, target_focal_scale)
+            if args.model_type == "dynamic_gate":
+                gate_weights = outputs[-2]  # (B, T, V, J) or (B*T, V, J)
+                gate_reg_loss = gate_loss_fn(gate_weights)
+                loss = loss + gate_reg_loss
             if args.reproj_weight > 0.0:
                 points_2d = xb[..., :2]
                 conf = xb[..., 2]
