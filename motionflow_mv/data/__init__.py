@@ -6,6 +6,12 @@ from .webbridge_loader import (
     convert_panoptic,
     convert_3dpw,
 )
+from .webbridge_mixed_dataset import (
+    WebBridgeCanonical17Dataset,
+    WebBridgeMixedDataset,
+    build_webbridge_mixed_dataloaders,
+    webbridge_mixed_collate_fn,
+)
 
 __all__ = [
     "VoxelPoseShelfLoader",
@@ -14,4 +20,8 @@ __all__ = [
     "convert_synthetic_amass",
     "convert_panoptic",
     "convert_3dpw",
+    "WebBridgeCanonical17Dataset",
+    "WebBridgeMixedDataset",
+    "build_webbridge_mixed_dataloaders",
+    "webbridge_mixed_collate_fn",
 ]
