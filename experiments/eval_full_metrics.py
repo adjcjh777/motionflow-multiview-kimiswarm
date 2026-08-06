@@ -213,6 +213,7 @@ def main():
     parser.add_argument("--target_k", type=int, default=4)
     parser.add_argument("--min_views", type=int, default=2)
     parser.add_argument("--batch_size", type=int, default=8)
+    parser.add_argument("--val_stride", type=int, default=1, help="Stride for validation clips (higher = faster)")
     parser.add_argument("--gt_scale", type=float, default=1.0)
     parser.add_argument("--camera_scale", type=float, default=1.0)
     parser.add_argument("--parents", type=str, default=None, help="Path to comma-separated parent list for campegraph")
@@ -226,7 +227,7 @@ def main():
     n_views = data["camera_K"].shape[0]
     j = data["points_2d"].shape[2]
 
-    dataset = TemporalClipDataset(args.dataset, args.clip_len, gt_scale=args.gt_scale, camera_scale=args.camera_scale)
+    dataset = TemporalClipDataset(args.dataset, args.clip_len, stride=args.val_stride, gt_scale=args.gt_scale, camera_scale=args.camera_scale)
     loader = torch.utils.data.DataLoader(
         dataset, batch_size=args.batch_size, shuffle=False, collate_fn=collate_fn, num_workers=0
     )
