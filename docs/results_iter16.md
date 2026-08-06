@@ -33,8 +33,10 @@ Full run on RTX 4090.
 | 16 | 11.70 | — |
 | 17 | 11.38 | — |
 | 18 | 18.50 | diverging |
+| 19 | 10.83 | — |
+| 20 | 12.30 | — |
 
-Status: **still running** (Epoch 18/20). Early best = 9.81 mm, which is **worse than the 8.75 mm anchor**. Final clean evaluation pending.
+Status: **completed**. Best val MPJPE = **9.81 mm**, clean eval MPJPE = **9.81 mm**, PA-MPJPE = **5.84 mm**. Did **not** beat the 8.75 mm anchor.
 
 ## Next-candidate CPU smoke results
 
@@ -48,10 +50,15 @@ All run on CPU (RTX 4090 reserved for Bayesian Tri). Two epochs only.
 | `splat_pp` | 28.82 | wired, Cholesky robustness verified |
 | `WebBridgeMixedDataset` prototype | — | clean CPU smoke on H36M+MPI+AIST |
 
+## Current run
+
+- `epipolar_bias_v2_pp` GPU full run started on RTX 4090 (background task `bash-ssvvij9q`).
+- Log: `outputs/epipolar_bias_v2_pp_full_mpiinf3dhp.log`
+- Checkpoint target: `outputs/epipolar_bias_v2_pp_full_mpiinf3dhp.pth`
+
 ## Next steps
 
-1. Wait for Bayesian Tri 20-epoch run to finish.
-2. Run `scripts/eval_bayesian_tri_pp_full_wsl.sh` for clean MPJPE.
-3. If final clean MPJPE > 8.75 mm, start `epipolar_bias_v2_pp` GPU full run (`scripts/run_epipolar_bias_v2_pp_full_wsl.sh`).
-4. If `epipolar_bias_v2_pp` also fails, run `hierarchical_attention_pp` GPU full run.
-5. Apply robustness matrix to any model that beats the anchor.
+1. Monitor `epipolar_bias_v2_pp` full run to completion.
+2. Run `scripts/eval_epipolar_bias_v2_pp_full_wsl.sh` for clean MPJPE.
+3. If `epipolar_bias_v2_pp` > 8.75 mm, start `hierarchical_attention_pp` GPU full run.
+4. Apply robustness matrix to any model that beats the anchor.
