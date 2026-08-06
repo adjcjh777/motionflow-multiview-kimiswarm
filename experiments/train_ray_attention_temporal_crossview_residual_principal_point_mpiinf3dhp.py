@@ -293,10 +293,10 @@ def main():
                 B, T = yb.shape[:2]
                 true_pp_delta = true_pp_delta.to(device).unsqueeze(1).expand(B, T, -1, -1).reshape(B * T, -1, 2)
                 loss = criterion(pred_pp_delta, -true_pp_delta)
-                if args.reproj_weight > 0.0:
-                    points_2d = xb[..., :2]
-                    conf = xb[..., 2]
-                    loss = loss + args.reproj_weight * reprojection_loss(pred, points_2d, K, R, t, confidences=conf)
+                # Do not add reprojection loss during PP-head pre-training: the
+                # rest of the model is frozen at random weights, so the
+                # reprojection term would dominate and drown the PP offset
+                # supervision.
                 loss.backward()
                 pretrain_optimizer.step()
                 train_loss += loss.item() * xb.size(0)
