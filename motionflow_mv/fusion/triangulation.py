@@ -101,3 +101,55 @@ def triangulate_confidence_weighted(points_2d: np.ndarray, proj_matrices: np.nda
         (3,) triangulated point.
     """
     return triangulate_dlt(points_2d, proj_matrices, weights=confidences)
+
+
+def triangulate_dlt_batched_lstsq(
+    points_2d: torch.Tensor,
+    proj_matrices: torch.Tensor,
+    weights: torch.Tensor | None = None,
+) -> torch.Tensor:
+    """Fully batched weighted DLT triangulation using ``torch.linalg.lstsq``.
+
+    Solves all (batch, joint) pairs in a single batched least-squares call,
+    avoiding the per-joint Python loop used in ``triangulate_dlt_torch``.
+
+    Args:
+        points_2d: (N, V, J, 2) tensor of 2D keypoints.
+        proj_matrices: (N, V, 3, 4) or (V, 3, 4) projection matrices.
+        weights: optional (N, V, J) non-negative weights.
+
+    Returns:
+        X: (N, J, 3) triangulated 3D points.
+    """
+    if points_2d.dim() != 4:
+        raise ValueError(f"points_2d must be 4-D (N, V, J, 2), got shape {points_2d.shape}")
+
+    N, V, J, _ = points_2d.shape
+    if proj_matrices.dim() == 3:
+        proj_matrices = proj_matrices.unsqueeze(0).expand(N, -1, -1, -1)
+
+    if weights is None:
+        weights = torch.ones(N, V, J, device=points_2d.device, dtype=points_2d.dtype)
+    else:
+        weights = weights.reshape(N, V, J)
+
+    A_rows = []
+    for v in range(V):
+        P = proj_matrices[:, v, :, :]  # (N, 3, 4)
+        x = points_2d[:, v, :, 0]  # (N, J)
+        y = points_2d[:, v, :, 1]  # (N, J)
+        row_x = x[..., None] * P[:, 2:3, :] - P[:, 0:1, :]  # (N, J, 4)
+        row_y = y[..., None] * P[:, 2:3, :] - P[:, 1:2, :]
+        A_view = torch.stack([row_x, row_y], dim=2)  # (N, J, 2, 4)
+
+        w = weights[:, v, :].unsqueeze(-1).unsqueeze(-1)  # (N, J, 1, 1)
+        A_view = A_view * torch.sqrt(w + 1e-6)
+        A_rows.append(A_view)
+
+    A = torch.cat(A_rows, dim=2)  # (N, J, 2V, 4)
+    A3 = A[..., :3]  # (N, J, 2V, 3)
+    b = -A[..., 3:]  # (N, J, 2V, 1)
+
+    # Batched least-squares over (N, J) independent 3x3 systems.
+    X, *_ = torch.linalg.lstsq(A3, b)
+    return X.squeeze(-1)  # (N, J, 3)

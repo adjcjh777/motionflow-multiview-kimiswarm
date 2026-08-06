@@ -20,6 +20,7 @@ from .ray_attention_temporal_crossview_residual_principal_point_model import (
     RayAttentionFusionModelTemporalCrossviewResidualPrincipalPoint,
 )
 from .epipolar_attention_bias import compute_epipolar_distance
+from .triangulation import triangulate_dlt_batched_lstsq
 
 
 def _triangulate_weighted_dlt(points_2d, weights, P):
@@ -354,6 +355,137 @@ class RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointBayesianTri(
             out += (L,)
 
         # Always append the auxiliary epipolar loss so the trainer can use it.
+        out += (epi_loss,)
+        return out
+
+
+class RayAttentionFusionModelBayesianTriV2(
+    RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointBayesianTri
+):
+    """Bayesian triangulation with batched lstsq DLT.
+
+    Identical to the parent Bayesian tri model, but replaces the per-joint
+    ``_triangulate_weighted_dlt`` loop with a single fully batched
+    ``torch.linalg.lstsq`` call via ``triangulate_dlt_batched_lstsq``.
+
+    Parameters are inherited from the base class.
+    """
+
+    def forward(self, x, cameras=None, K=None, R=None, t=None):
+        squeeze_output = False
+        if x.dim() == 4:
+            x = x.unsqueeze(1)
+            squeeze_output = True
+
+        B, T, V, J, _ = x.shape
+        device = x.device
+
+        if K is None:
+            if cameras is None:
+                raise ValueError("Either cameras or (K, R, t) must be provided")
+            from .ray_attention_temporal_crossview_model import _cameras_to_tensors
+            K, R, t = _cameras_to_tensors(cameras, device)
+
+        if K.dim() == 3:
+            K = K.unsqueeze(0).expand(B * T, -1, -1, -1)
+            R = R.unsqueeze(0).expand(B * T, -1, -1, -1)
+            t = t.unsqueeze(0).expand(B * T, -1, -1)
+        elif K.dim() == 4:
+            K = K.unsqueeze(1).expand(B, T, -1, -1, -1).reshape(B * T, V, 3, 3)
+            R = R.unsqueeze(1).expand(B, T, -1, -1, -1).reshape(B * T, V, 3, 3)
+            t = t.unsqueeze(1).expand(B, T, -1, -1).reshape(B * T, V, 3)
+        else:
+            raise ValueError("K must have shape (V, 3, 3) or (B, V, 3, 3)")
+
+        x_flat = x.reshape(B * T, V, J, 3)
+        points_2d = x_flat[..., :2]
+        confidences = x_flat[..., 2]
+
+        correction_outputs = self.principal_point_correction(
+            K=K,
+            x=x_flat,
+            weights=confidences,
+        )
+        K_corrected = correction_outputs[0]
+        pp_delta = correction_outputs[1]
+        focal_scale = correction_outputs[2] if self.correct_focal else None
+
+        feat = self._extract_frame_features(x_flat, K_corrected, R, t)
+
+        feat = feat.view(B, T, V, J, self.d)
+        time_emb = self.time_pos_embed[:T].view(1, T, 1, 1, self.d)
+        view_emb = self.view_pos_embed[:V].view(1, 1, V, 1, self.d)
+        feat = feat + time_emb + view_emb
+
+        feat = feat.permute(0, 3, 1, 2, 4).reshape(B * J, T * V, self.d)
+        for layer in self.st_transformer:
+            feat = layer(feat)
+        feat = feat.view(B, J, T, V, self.d).permute(0, 2, 3, 1, 4).reshape(B * T, V, J, self.d)
+
+        raw_cov = self.covariance_head(feat)
+        L = self._cholesky_to_covariance(raw_cov)
+
+        precision = 1.0 / (
+            L[..., 0, 0].clamp(min=1e-4) * L[..., 1, 1].clamp(min=1e-4)
+        )
+
+        visibility = self._visibility_multiplier(feat, confidences)
+
+        feat_for_weight = feat.permute(0, 2, 1, 3)
+        w_logits = self.weight_head(feat_for_weight).squeeze(-1)
+        weights = torch.sigmoid(w_logits).permute(0, 2, 1)
+        weights = weights * confidences * precision * visibility
+        weights = weights.clamp(min=1e-4)
+
+        Rt = torch.cat([R, t[..., None]], dim=-1)
+        P = K_corrected @ Rt
+
+        # V2: fully batched DLT.
+        pred_3d_raw = triangulate_dlt_batched_lstsq(points_2d, P, weights)
+
+        feat_pooled = feat.mean(dim=1)
+        damping = self.damping_head(feat_pooled).squeeze(-1)
+        damping = self.min_gn_damping + (
+            self.max_gn_damping - self.min_gn_damping
+        ) * damping
+
+        pred_3d_gn = _adaptive_gauss_newton(
+            points_2d,
+            weights,
+            K_corrected,
+            R,
+            t,
+            pred_3d_raw,
+            damping,
+            num_iters=self.gn_iters,
+        )
+
+        residual_input = torch.cat([feat_pooled, pred_3d_gn], dim=-1)
+        delta = self.residual_mlp(residual_input)
+        pred_3d = pred_3d_gn + delta
+
+        epi_loss = self._epipolar_consistency_loss(points_2d, K_corrected, R, t, L)
+        epi_loss = self.epipolar_loss_weight * epi_loss
+
+        pred_3d = pred_3d.view(B, T, J, 3)
+        weights = weights.view(B, T, V, J)
+        L = L.view(B, T, V, J, 2, 2)
+
+        if squeeze_output:
+            pred_3d = pred_3d.squeeze(1)
+            weights = weights.squeeze(1)
+            L = L.squeeze(1)
+
+        out = (pred_3d, weights)
+
+        if self.return_pp_delta:
+            out += (pp_delta,)
+            if self.correct_focal:
+                out += (focal_scale,)
+
+        if self.return_covariance:
+            out += (L,)
+
         out += (epi_loss,)
         return out
 

@@ -14,6 +14,13 @@ except ImportError:  # pragma: no cover
     CrossviewResidualVisibilityV2 = None  # type: ignore
 
 try:
+    from .crossview_residual_visibility_uncertainty_v1 import (
+        CrossviewResidualVisibilityUncertaintyV1,
+    )
+except ImportError:  # pragma: no cover
+    CrossviewResidualVisibilityUncertaintyV1 = None  # type: ignore
+
+try:
     from .spatial_feature_pyramid import SpatialFeaturePyramid, SpatialFeaturePyramidModel
 except ImportError:  # pragma: no cover
     SpatialFeaturePyramid = None  # type: ignore
@@ -39,6 +46,7 @@ except ImportError:  # pragma: no cover
 __all__ = [
     "CrossviewResidualUncertaintyModel",
     "CrossviewResidualVisibilityV2",
+    "CrossviewResidualVisibilityUncertaintyV1",
     "DomainAdaptationWrapper",
     "GraphJointRelation",
     "build_edge_index",

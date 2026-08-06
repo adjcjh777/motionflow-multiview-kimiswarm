@@ -71,6 +71,7 @@ from motionflow_mv.fusion.ray_attention_temporal_crossview_residual_principal_po
 )
 from motionflow_mv.fusion.ray_attention_temporal_crossview_residual_principal_point_bayesian_tri_model import (
     RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointBayesianTri,
+    RayAttentionFusionModelBayesianTriV2,
 )
 from motionflow_mv.fusion.ray_attention_temporal_crossview_residual_principal_point_epipolar_bias_v2_model import (
     RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointEpipolarBiasV2,
@@ -84,6 +85,12 @@ from motionflow_mv.fusion.ray_attention_hierarchical_view_temporal_joint_residua
 from motionflow_mv.models.crossview_residual_visibility_v2 import (
     CrossviewResidualVisibilityV2,
 )
+try:
+    from motionflow_mv.models.crossview_residual_visibility_uncertainty_v1 import (
+        CrossviewResidualVisibilityUncertaintyV1,
+    )
+except ImportError:  # pragma: no cover
+    CrossviewResidualVisibilityUncertaintyV1 = None
 
 
 MODEL_CLASSES = {
@@ -103,6 +110,7 @@ MODEL_CLASSES = {
     "splat_pp": RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointSplat,
     "kinematic_chain_pp": RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointKinematicChain,
     "bayesian_tri_pp": RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointBayesianTri,
+    "bayesian_tri_v2_pp": RayAttentionFusionModelBayesianTriV2,
     "epipolar_bias_v2_pp": RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointEpipolarBiasV2,
     "camera_conditioned_pp": RayAttentionFusionModelTemporalCrossviewResidualCameraConditioned,
     "hierarchical_view_temporal_joint_pp": RayAttentionFusionModelHierarchicalViewTemporalJointResidualPrincipalPoint,
@@ -155,7 +163,7 @@ def build_model(args, n_views, j):
         "d": args.d,
         "n_views": n_views,
     }
-    if args.model in {"crossview_residual", "crossview_residual_pp", "crossview_residual_pp_visibility", "dynamic_gate_pp", "graph_skeleton_residual_pp", "epipolar_pp", "splat_pp", "kinematic_chain_pp", "bayesian_tri_pp", "epipolar_bias_v2_pp", "camera_conditioned_pp", "hierarchical_view_temporal_joint_pp"}:
+    if args.model in {"crossview_residual", "crossview_residual_pp", "crossview_residual_pp_visibility", "crossview_residual_pp_visibility_uncertainty_v1", "dynamic_gate_pp", "graph_skeleton_residual_pp", "epipolar_pp", "splat_pp", "kinematic_chain_pp", "bayesian_tri_pp", "bayesian_tri_v2_pp", "epipolar_bias_v2_pp", "camera_conditioned_pp", "hierarchical_view_temporal_joint_pp"}:
         kwargs["n_st_layers"] = args.n_st_layers
         kwargs["residual_hidden"] = args.residual_hidden
     elif args.model == "factorized_pp":
@@ -188,6 +196,9 @@ def build_model(args, n_views, j):
         kwargs["min_views"] = args.min_views
         kwargs["lambda_gate"] = 0.0
     if args.model == "crossview_residual_pp_visibility_v2":
+        kwargs["principal_point_hidden"] = 64
+        kwargs["principal_point_max_offset"] = 20.0
+    if args.model == "crossview_residual_pp_visibility_uncertainty_v1":
         kwargs["principal_point_hidden"] = 64
         kwargs["principal_point_max_offset"] = 20.0
     return cls(**kwargs)
