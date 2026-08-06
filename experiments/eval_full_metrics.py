@@ -54,6 +54,9 @@ from motionflow_mv.fusion.ray_attention_temporal_crossview_residual_principal_po
 from motionflow_mv.fusion.ray_attention_temporal_crossview_factorized_residual_principal_point_model import (
     RayAttentionFusionModelTemporalCrossviewFactorizedResidualPrincipalPoint,
 )
+from motionflow_mv.fusion.ray_attention_temporal_crossview_residual_principal_point_dynamic_gate_model import (
+    RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointDynamicGate,
+)
 from motionflow_mv.models.crossview_residual_visibility_v2 import (
     CrossviewResidualVisibilityV2,
 )
@@ -70,6 +73,7 @@ MODEL_CLASSES = {
     "crossview_residual_pp_visibility": RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointVisibility,
     "crossview_residual_pp_visibility_v2": CrossviewResidualVisibilityV2,
     "factorized_pp": RayAttentionFusionModelTemporalCrossviewFactorizedResidualPrincipalPoint,
+    "dynamic_gate_pp": RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointDynamicGate,
 }
 
 
@@ -119,7 +123,7 @@ def build_model(args, n_views, j):
         "d": args.d,
         "n_views": n_views,
     }
-    if args.model in {"crossview_residual", "crossview_residual_pp", "crossview_residual_pp_visibility"}:
+    if args.model in {"crossview_residual", "crossview_residual_pp", "crossview_residual_pp_visibility", "dynamic_gate_pp"}:
         kwargs["n_st_layers"] = args.n_st_layers
         kwargs["residual_hidden"] = args.residual_hidden
     elif args.model == "factorized_pp":
