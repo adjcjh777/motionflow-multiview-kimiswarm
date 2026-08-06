@@ -8,6 +8,7 @@ echo "[iter14] Tier-1 smoke queue: reprojection-consistency -> dynamic-view-gate
 bash scripts/run_reprojection_consistency_pp_smoke_wsl.sh
 bash scripts/run_dynamic_view_gate_smoke_wsl.sh
 bash scripts/run_graph_skeleton_residual_pp_smoke_wsl.sh
+bash scripts/run_epipolar_pp_smoke_wsl.sh
 
 # Aggregate clean metrics for any produced checkpoints.
 for model in reprojection_consistency_pp dynamic_view_gate_pp graph_skeleton_residual_pp; do

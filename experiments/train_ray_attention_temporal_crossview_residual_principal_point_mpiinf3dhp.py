@@ -44,6 +44,9 @@ from motionflow_mv.fusion.ray_attention_temporal_crossview_residual_principal_po
 from motionflow_mv.fusion.ray_attention_temporal_crossview_residual_principal_point_graph_skeleton_residual_model import (
     RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointGraphSkeletonResidual,
 )
+from motionflow_mv.fusion.ray_attention_temporal_crossview_residual_principal_point_epipolar_model import (
+    RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointEpipolar,
+)
 
 
 def set_seed(seed: int):
@@ -185,7 +188,7 @@ def main():
     parser.add_argument("--val", type=str, required=True, help="Validation .npz file")
     parser.add_argument("--clip_len", type=int, default=13)
     parser.add_argument("--d", type=int, default=64)
-    parser.add_argument("--model_type", type=str, default="temporal", choices=["temporal", "factorized", "dynamic_gate", "graph_skeleton_residual"], help="Backbone type: temporal (time+view), factorized (alternating view/temporal), dynamic_gate (anchor + per-view gate), or graph_skeleton_residual (skeleton-graph residual refiner)")
+    parser.add_argument("--model_type", type=str, default="temporal", choices=["temporal", "factorized", "dynamic_gate", "graph_skeleton_residual", "epipolar"], help="Backbone type: temporal (time+view), factorized (alternating view/temporal), dynamic_gate (anchor + per-view gate), graph_skeleton_residual (skeleton-graph residual refiner), or epipolar (epipolar-biased weight head)")
     parser.add_argument("--n_st_layers", type=int, default=2)
     parser.add_argument("--n_view_layers", type=int, default=2)
     parser.add_argument("--n_temporal_layers", type=int, default=2)
@@ -261,6 +264,15 @@ def main():
             return_pp_delta=True,
             return_raw=args.return_raw_3d or args.reproj_raw_weight > 0.0,
             return_gate=True,
+        ).to(device)
+    elif args.model_type == "epipolar":
+        model = RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointEpipolar(
+            j=j, d=args.d, n_views=n_views, n_st_layers=args.n_st_layers,
+            residual_hidden=args.residual_hidden,
+            principal_point_hidden=args.principal_point_hidden,
+            principal_point_max_offset=args.principal_point_max_offset,
+            focal_max_scale=args.focal_max_scale,
+            return_pp_delta=True,
         ).to(device)
     elif args.model_type == "graph_skeleton_residual":
         model = RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointGraphSkeletonResidual(
