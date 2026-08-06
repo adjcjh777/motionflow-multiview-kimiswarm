@@ -121,6 +121,13 @@ class RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointBayesianTri(
     epipolar_loss_weight:
         Weight for the optional epipolar consistency term (forward returns it
         as the last element so the trainer can add it to the total loss).
+    use_adaptive_gn:
+        If False, skip the adaptive Gauss-Newton refinement and use the raw
+        weighted-DLT estimate directly (useful for ablations).
+    anisotropic_covariance:
+        If False, predict a single scalar per (view, joint) and use an
+        isotropic 2-D covariance instead of a full 2x2 Cholesky factor
+        (useful for ablations).
     See ``RayAttentionFusionModelTemporalCrossviewResidualPrincipalPoint`` for
     the remaining arguments.
     """
@@ -145,6 +152,8 @@ class RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointBayesianTri(
         min_gn_damping: float = 1e-6,
         max_gn_damping: float = 1e-2,
         epipolar_loss_weight: float = 0.05,
+        use_adaptive_gn: bool = True,
+        anisotropic_covariance: bool = True,
     ):
         super().__init__(
             j=j,
@@ -165,14 +174,19 @@ class RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointBayesianTri(
         self.min_gn_damping = min_gn_damping
         self.max_gn_damping = max_gn_damping
         self.epipolar_loss_weight = epipolar_loss_weight
+        self.use_adaptive_gn = use_adaptive_gn
+        self.anisotropic_covariance = anisotropic_covariance
 
         # Cholesky covariance head: outputs l_xx, l_xy, l_yy for a 2x2
         # lower-triangular matrix.  Diagonal entries are softplus-ed to keep
         # the resulting covariance positive definite.
+        # When anisotropic_covariance=False, the head outputs a single scalar l
+        # that is reused for both diagonal entries, giving isotropic 2-D covariances.
+        cov_out_dim = 3 if self.anisotropic_covariance else 1
         self.covariance_head = nn.Sequential(
             nn.Linear(d, covariance_hidden),
             nn.ReLU(),
-            nn.Linear(covariance_hidden, 3),
+            nn.Linear(covariance_hidden, cov_out_dim),
         )
 
         # Per-joint adaptive GN damping predictor.
@@ -187,14 +201,21 @@ class RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointBayesianTri(
         """Build 2x2 covariance matrices from the raw head output.
 
         Args:
-            params: (..., 3) with raw [l_xx, l_xy, l_yy].
+            params: (..., 3) with raw [l_xx, l_xy, l_yy] when anisotropic,
+                    or (..., 1) with raw [l] when isotropic.
 
         Returns:
             L: (..., 2, 2) lower-triangular Cholesky factor.
         """
-        l_xx = torch.nn.functional.softplus(params[..., 0]) + 1e-4
-        l_xy = params[..., 1]
-        l_yy = torch.nn.functional.softplus(params[..., 2]) + 1e-4
+        if self.anisotropic_covariance:
+            l_xx = torch.nn.functional.softplus(params[..., 0]) + 1e-4
+            l_xy = params[..., 1]
+            l_yy = torch.nn.functional.softplus(params[..., 2]) + 1e-4
+        else:
+            l = torch.nn.functional.softplus(params[..., 0]) + 1e-4
+            l_xx = l
+            l_xy = torch.zeros_like(l)
+            l_yy = l
 
         L = torch.zeros(*params.shape[:-1], 2, 2, device=params.device, dtype=params.dtype)
         L[..., 0, 0] = l_xx

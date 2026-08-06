@@ -259,6 +259,8 @@ def main():
     parser.add_argument("--pp_pretrain_epochs", type=int, default=0, help="Number of initial epochs to train only the principal_point_correction head")
     parser.add_argument("--splat_loss_weight", type=float, default=0.0, help="Weight for Gaussian-splatting pose regularizer loss (splat model only)")
     parser.add_argument("--epipolar_loss_weight", type=float, default=0.0, help="Weight for epipolar consistency auxiliary loss (bayesian_tri model only)")
+    parser.add_argument("--use_adaptive_gn", type=lambda s: s.lower() in {"1", "true"}, default=True, help="Enable adaptive Gauss-Newton refinement for bayesian_tri model (1/true or 0/false)")
+    parser.add_argument("--anisotropic_covariance", type=lambda s: s.lower() in {"1", "true"}, default=True, help="Use anisotropic 2-D covariance for bayesian_tri model (1/true or 0/false)")
     args = parser.parse_args()
 
     set_seed(args.seed)
@@ -342,6 +344,8 @@ def main():
             focal_max_scale=args.focal_max_scale,
             return_pp_delta=True,
             return_covariance=False,
+            use_adaptive_gn=args.use_adaptive_gn,
+            anisotropic_covariance=args.anisotropic_covariance,
         ).to(device)
     elif args.model_type == "crossview_contrast":
         model = RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointCrossViewContrast(
