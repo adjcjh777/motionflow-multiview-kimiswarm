@@ -20,4 +20,5 @@ python -u experiments/train_ray_attention_temporal_crossview_residual_principal_
   --cam_aug_schedule intrinsics_curriculum --cam_aug_intrinsics_ramp_epochs 5 \
   --pp_pretrain_epochs 3 \
   --output outputs/ray_attention_temporal_crossview_residual_principal_point_robust_retrain.pth \
-  "$@"
+  "$@" \
+  > outputs/ray_attention_temporal_crossview_residual_principal_point_robust_retrain.log 2>&1
