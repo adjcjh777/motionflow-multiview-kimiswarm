@@ -144,6 +144,120 @@ class CrossViewSpatialPyramid(nn.Module):
         return x_out
 
 
+
+
+class AdaptiveScaleCrossViewSpatialPyramid(nn.Module):
+    """Multi-scale cross-view spatial pyramid with learnable scale gating.
+
+    Compared with ``CrossViewSpatialPyramid``, which concatenates all scale
+    branches and projects them back to ``d`` channels, this variant learns a
+    per-joint soft attention over scales.  The gate is conditioned on the
+    average per-joint context across views, so the model can emphasize fine-
+    resolution branches for precise end-effector joints and coarse-resolution
+    branches for noisy/occluded torso joints.
+
+    Parameters
+    ----------
+    d:
+        Feature dimension.
+    n_views:
+        Number of camera views.
+    scales:
+        Downsample factors for the joint axis.  Default ``(1, 2, 4)``.
+    n_heads:
+        Number of attention heads in each cross-view block.  Default 1.
+    gate_hidden:
+        Hidden dimension of the scale-selection MLP.  Default ``d // 2``.
+    """
+
+    def __init__(
+        self,
+        d: int,
+        n_views: int,
+        scales: Sequence[int] = (1, 2, 4),
+        n_heads: int = 1,
+        gate_hidden: int | None = None,
+    ):
+        super().__init__()
+        self.d = d
+        self.n_views = n_views
+        self.scales = tuple(scales)
+
+        if any(s < 1 for s in self.scales):
+            raise ValueError("All scale factors must be >= 1")
+
+        self.branches = nn.ModuleList(
+            [_CrossViewBlock(d, n_views, n_heads=n_heads) for _ in self.scales]
+        )
+
+        gate_hidden = gate_hidden or max(1, d // 2)
+        self.scale_gate = nn.Sequential(
+            nn.Linear(d, gate_hidden),
+            nn.ReLU(),
+            nn.Linear(gate_hidden, len(self.scales)),
+        )
+        self.norm = nn.LayerNorm(d)
+
+    def _downsample_branch(self, x: torch.Tensor, scale: int, branch: nn.Module) -> torch.Tensor:
+        """Apply cross-view attention at ``J // scale`` resolution and upsample.
+
+        Input / output shape: ``(N, V, J, d)``.
+        """
+        N, V, J, d = x.shape
+        if scale == 1:
+            x_s = x.permute(0, 2, 1, 3).reshape(N * J, V, d)
+            x_s = branch(x_s)
+            x_s = x_s.view(N, J, V, d).permute(0, 2, 1, 3)
+            return x_s
+
+        target_j = max(1, J // scale)
+        x_perm = x.permute(0, 1, 3, 2).reshape(N * V, d, J)
+        x_pooled = F.adaptive_avg_pool1d(x_perm, target_j)
+        x_pooled = x_pooled.view(N, V, d, target_j).permute(0, 3, 1, 2)
+        x_pooled = x_pooled.reshape(N * target_j, V, d)
+        x_attended = branch(x_pooled)
+        x_attended = x_attended.view(N, target_j, V, d).permute(0, 2, 3, 1)
+        x_attended = x_attended.reshape(N * V, d, target_j)
+        x_upsampled = F.interpolate(
+            x_attended, size=J, mode="linear", align_corners=False
+        )
+        x_s = x_upsampled.view(N, V, d, J).permute(0, 1, 3, 2)
+        return x_s
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Forward pass.
+
+        Parameters
+        ----------
+        x:
+            Tensor of shape ``(N, V, J, d)``.
+
+        Returns
+        -------
+        Tensor of shape ``(N, V, J, d)``.
+        """
+        if x.dim() != 4:
+            raise ValueError(f"Expected 4-D input (N,V,J,d), got {x.shape}")
+
+        N, V, J, d = x.shape
+        x_in = x
+
+        scale_features = []
+        for scale, branch in zip(self.scales, self.branches):
+            scale_features.append(self._downsample_branch(x, scale, branch))
+
+        # Stack to (N, V, J, S, d).
+        stack = torch.stack(scale_features, dim=3)
+
+        # Per-joint scale attention, shared across views.
+        context = x_in.mean(dim=1)  # (N, J, d)
+        scale_logits = self.scale_gate(context)  # (N, J, S)
+        scale_weights = F.softmax(scale_logits, dim=-1)  # (N, J, S)
+        scale_weights = scale_weights.view(N, 1, J, len(self.scales), 1)
+
+        x_out = (stack * scale_weights).sum(dim=3)  # (N, V, J, d)
+        x_out = self.norm(x_out + x_in)
+        return x_out
 class CrossViewSpatialPyramidModel(nn.Module):
     """Tiny wrapper model used only for smoke tests.
 
