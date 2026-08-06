@@ -64,6 +64,7 @@ class RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointKinematicCha
             return_pp_delta=return_pp_delta,
             return_visibility=return_visibility,
         )
+        self.focal_max_scale = focal_max_scale
         self.kc_hidden_dim = kc_hidden_dim
         self.kc_num_layers = kc_num_layers
         self.kinematic_chain_refiner = KinematicChainGraphRefinerTemporal(
