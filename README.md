@@ -18,13 +18,46 @@ Extend the existing MotionFlow pipeline (monocular video → human motion) to ac
 - `docs/design_v2.md`: paper direction v2 — why DLT is hard to beat and how to frame the contribution.
 - `docs/phase0_literature_audit.md`: audit of ScoreHMR, EasyMocap, and candidate multi-view methods.
 
-## Roadmap (draft)
+## Roadmap (next iteration)
 
-1. **Baseline**: identify MotionFlow architecture and output format.
-2. **Fusion model**: minimal multi-view pose fusion + calibration.
-3. **Integration**: plug fusion into MotionFlow inference pipeline.
-4. **Experiments**: compare monocular vs. multi-view on a small dataset.
-5. **Feedback loop**: open issues for each round.
+Goal: push the multi-view pose model to ICRA/CVPR 2027 publishable quality on MPI-INF-3DHP, with the near-term target of **MPJPE < 8.75 mm** on the validation set.
+
+Full plan: `docs/iter_next_swarm_plan.md`.
+
+### Anchor run (in progress — no new GPU training until it finishes)
+
+- Script: `scripts/run_bayesian_tri_v2_large_scale_wsl.sh`
+- Config: `bayesian_tri_v2_pp` (d=128, residual_hidden=256, n_st_layers=3, 50 epochs, 2000 samples)
+- Hardware: RTX 4090 (WSL)
+- Log: `outputs/bayesian_tri_v2_large_scale_mpiinf3dhp.log`
+- Eval: `scripts/eval_bayesian_tri_v2_large_scale_wsl.sh`
+
+### Parallel tracks (code, CPU smoke tests, and docs only for now)
+
+1. **Data & Augmentation**
+   - Audit WebBridge MPI-INF-3DHP data availability and create a manifest.
+   - Synchronized multiview 2D augmentation.
+   - Synthetic joint occlusion augmentation.
+   - Confidence-aware random view dropout with per-joint resampling.
+2. **Calibration**
+   - Extend camera perturbation ranges and intrinsics curriculum.
+3. **Trainer**
+   - Cosine LR schedule, warmup, gradient clipping, and AMP.
+   - EMA checkpoint save/load support.
+4. **Architecture**
+   - Prototype deeper ST attention model as a new model class.
+   - Prototype cross-view graph attention fusion module.
+   - Prototype Bayesian tri v3 with learned per-joint precision and refinement.
+5. **Loss & Inference**
+   - Temporal velocity + acceleration consistency loss.
+   - Ensemble inference across multiple checkpoints.
+6. **Evaluation, HPO & Documentation**
+   - Robustness matrix across noise, occlusion, and view dropout.
+   - Hyperparameter search script for large runs.
+   - Ablation study CSV template and plotting script.
+   - ICRA/CVPR 2027 paper story draft.
+   - README roadmap and GitHub issue #25 status update.
+   - Synthesize swarm outputs into a next-iteration action plan.
 
 ## Repo structure
 
