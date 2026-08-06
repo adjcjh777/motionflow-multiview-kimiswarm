@@ -29,13 +29,17 @@ import torch.optim as optim
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from motionflow_mv.calibration.perturb import perturb_cameras_with_delta
+from motionflow_mv.fusion.graph_joint_relation import (
+    H36M_17_PARENTS,
+    MPI_INF_3DHP_28_PARENTS,
+)
 from motionflow_mv.fusion.ray_attention_temporal_crossview_factorized_residual_principal_point_model import (
     RayAttentionFusionModelTemporalCrossviewFactorizedResidualPrincipalPoint,
 )
 from motionflow_mv.fusion.ray_attention_temporal_crossview_residual_principal_point_model import (
     RayAttentionFusionModelTemporalCrossviewResidualPrincipalPoint,
 )
-from motionflow_mv.losses import reprojection_loss, velocity_loss
+from motionflow_mv.losses import kinematic_chain_loss, reprojection_loss, velocity_loss
 from motionflow_mv.losses.reprojection_consistency import robust_reprojection_loss
 from motionflow_mv.losses.view_selection_loss import ViewSelectionLoss
 from motionflow_mv.fusion.ray_attention_temporal_crossview_residual_principal_point_dynamic_gate_model import (
@@ -252,6 +256,9 @@ def main():
     parser.add_argument("--output", type=str, default="outputs/ray_attention_temporal_crossview_residual_principal_point_mpiinf3dhp.pth")
     parser.add_argument("--pp_pretrain_epochs", type=int, default=0, help="Number of initial epochs to train only the principal_point_correction head")
     parser.add_argument("--splat_loss_weight", type=float, default=0.0, help="Weight for Gaussian-splatting pose regularizer loss (splat model only)")
+    parser.add_argument("--kc_loss_weight", type=float, default=0.0, help="Weight for kinematic-chain bone-direction/length consistency auxiliary loss")
+    parser.add_argument("--kc_bone_weight", type=float, default=1.0, help="Bone term weight inside kinematic_chain_loss")
+    parser.add_argument("--kc_symmetry_weight", type=float, default=0.0, help="Symmetry term weight inside kinematic_chain_loss (default 0 to avoid limb collapse)")
     parser.add_argument("--epipolar_loss_weight", type=float, default=0.0, help="Weight for epipolar consistency auxiliary loss (bayesian_tri model only)")
     args = parser.parse_args()
 
@@ -275,6 +282,12 @@ def main():
     sample = np.load(args.train[0])
     n_views = sample["camera_K"].shape[0]
     j = sample["points_2d"].shape[2]
+    if j == 17:
+        kc_parents = H36M_17_PARENTS
+    elif j == 28:
+        kc_parents = MPI_INF_3DHP_28_PARENTS
+    else:
+        kc_parents = None
     print(f"n_views={n_views}, j={j}, clip_len={args.clip_len}, d={args.d}, model_type={args.model_type}, "
           f"n_st_layers={args.n_st_layers}, n_view_layers={args.n_view_layers}, n_temporal_layers={args.n_temporal_layers}, "
           f"residual_hidden={args.residual_hidden}, principal_point_hidden={args.principal_point_hidden}, "
@@ -508,6 +521,14 @@ def main():
                 outputs = model(xb, K=K, R=R, t=t)
             pred = outputs[0]
             loss = criterion(pred, yb)
+            if args.kc_loss_weight > 0.0 and kc_parents is not None:
+                kc_aux = kinematic_chain_loss(
+                    pred, yb, kc_parents,
+                    symmetry_pairs=None,
+                    bone_weight=args.kc_bone_weight,
+                    symmetry_weight=args.kc_symmetry_weight,
+                )
+                loss = loss + args.kc_loss_weight * kc_aux
             if args.model_type == "crossview_contrast":
                 loss = loss + outputs[-1]
             if args.pp_loss_weight > 0.0:
