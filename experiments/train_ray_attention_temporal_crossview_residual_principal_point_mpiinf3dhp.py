@@ -47,6 +47,16 @@ from motionflow_mv.fusion.ray_attention_temporal_crossview_residual_principal_po
 from motionflow_mv.fusion.ray_attention_temporal_crossview_residual_principal_point_epipolar_model import (
     RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointEpipolar,
 )
+from motionflow_mv.fusion.ray_attention_temporal_crossview_residual_principal_point_splat_model import (
+    RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointSplat,
+)
+from motionflow_mv.fusion.ray_attention_temporal_crossview_residual_principal_point_kinematic_chain_model import (
+    RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointKinematicChain,
+)
+from motionflow_mv.fusion.ray_attention_temporal_crossview_residual_principal_point_crossview_contrast_model import (
+    RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointCrossViewContrast,
+)
+from motionflow_mv.losses.gaussian_splatting_pose_loss import gaussian_splatting_pose_loss
 
 
 def set_seed(seed: int):
@@ -188,7 +198,7 @@ def main():
     parser.add_argument("--val", type=str, required=True, help="Validation .npz file")
     parser.add_argument("--clip_len", type=int, default=13)
     parser.add_argument("--d", type=int, default=64)
-    parser.add_argument("--model_type", type=str, default="temporal", choices=["temporal", "factorized", "dynamic_gate", "graph_skeleton_residual", "epipolar"], help="Backbone type: temporal (time+view), factorized (alternating view/temporal), dynamic_gate (anchor + per-view gate), graph_skeleton_residual (skeleton-graph residual refiner), or epipolar (epipolar-biased weight head)")
+    parser.add_argument("--model_type", type=str, default="temporal", choices=["temporal", "factorized", "dynamic_gate", "graph_skeleton_residual", "epipolar", "splat", "kinematic_chain", "crossview_contrast"], help="Backbone type: temporal (time+view), factorized (alternating view/temporal), dynamic_gate (anchor + per-view gate), graph_skeleton_residual (skeleton-graph residual refiner), epipolar (epipolar-biased weight head), splat (Gaussian-splatting pose regularizer), kinematic_chain (kinematic-chain graph refiner), or crossview_contrast (cross-view contrastive pose representation)")
     parser.add_argument("--n_st_layers", type=int, default=2)
     parser.add_argument("--n_view_layers", type=int, default=2)
     parser.add_argument("--n_temporal_layers", type=int, default=2)
@@ -227,6 +237,7 @@ def main():
     parser.add_argument("--warm_start", type=str, default=None, help="Path to checkpoint to warm-start from (loads state_dict with strict=False)")
     parser.add_argument("--output", type=str, default="outputs/ray_attention_temporal_crossview_residual_principal_point_mpiinf3dhp.pth")
     parser.add_argument("--pp_pretrain_epochs", type=int, default=0, help="Number of initial epochs to train only the principal_point_correction head")
+    parser.add_argument("--splat_loss_weight", type=float, default=0.0, help="Weight for Gaussian-splatting pose regularizer loss (splat model only)")
     args = parser.parse_args()
 
     set_seed(args.seed)
@@ -282,6 +293,34 @@ def main():
             principal_point_max_offset=args.principal_point_max_offset,
             focal_max_scale=args.focal_max_scale,
             return_pp_delta=True,
+        ).to(device)
+    elif args.model_type == "crossview_contrast":
+        model = RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointCrossViewContrast(
+            j=j, d=args.d, n_views=n_views, n_st_layers=args.n_st_layers,
+            residual_hidden=args.residual_hidden,
+            principal_point_hidden=args.principal_point_hidden,
+            principal_point_max_offset=args.principal_point_max_offset,
+            focal_max_scale=args.focal_max_scale,
+            return_pp_delta=True,
+        ).to(device)
+    elif args.model_type == "kinematic_chain":
+        model = RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointKinematicChain(
+            j=j, d=args.d, n_views=n_views, n_st_layers=args.n_st_layers,
+            residual_hidden=args.residual_hidden,
+            principal_point_hidden=args.principal_point_hidden,
+            principal_point_max_offset=args.principal_point_max_offset,
+            focal_max_scale=args.focal_max_scale,
+            return_pp_delta=True,
+        ).to(device)
+    elif args.model_type == "splat":
+        model = RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointSplat(
+            j=j, d=args.d, n_views=n_views, n_st_layers=args.n_st_layers,
+            residual_hidden=args.residual_hidden,
+            principal_point_hidden=args.principal_point_hidden,
+            principal_point_max_offset=args.principal_point_max_offset,
+            focal_max_scale=args.focal_max_scale,
+            return_pp_delta=args.pp_loss_weight > 0.0 or args.focal_max_scale > 0.0,
+            return_covariance=args.splat_loss_weight > 0.0,
         ).to(device)
     elif args.model_type == "factorized":
         model = RayAttentionFusionModelTemporalCrossviewFactorizedResidualPrincipalPoint(
@@ -404,9 +443,14 @@ def main():
                 pp_std=schedule_pp,
             )
             optimizer.zero_grad()
-            outputs = model(xb, K=K, R=R, t=t)
+            if args.model_type == "crossview_contrast":
+                outputs = model.forward_with_contrastive_loss(xb, K=K, R=R, t=t)
+            else:
+                outputs = model(xb, K=K, R=R, t=t)
             pred = outputs[0]
             loss = criterion(pred, yb)
+            if args.model_type == "crossview_contrast":
+                loss = loss + outputs[-1]
             if args.pp_loss_weight > 0.0:
                 pred_pp_delta = outputs[2]  # (B*T, V, 2)
                 B, T = yb.shape[:2]
@@ -447,6 +491,14 @@ def main():
                     )
             if args.velocity_loss_weight > 0.0:
                 loss = loss + args.velocity_loss_weight * velocity_loss(pred, yb)
+            if args.splat_loss_weight > 0.0:
+                log_std = outputs[-1]  # (B, T, J, 3)
+                points_2d = xb[..., :2]
+                conf = xb[..., 2]
+                loss_splat = gaussian_splatting_pose_loss(
+                    pred, points_2d, K, R, t, log_std, confidences=conf,
+                )
+                loss = loss + args.splat_loss_weight * loss_splat
             loss.backward()
             optimizer.step()
             train_loss += loss.item() * xb.size(0)
