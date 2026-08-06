@@ -51,6 +51,9 @@ from motionflow_mv.fusion.ray_attention_temporal_crossview_residual_principal_po
 from motionflow_mv.fusion.ray_attention_temporal_crossview_residual_principal_point_visibility_model import (
     RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointVisibility,
 )
+from motionflow_mv.fusion.ray_attention_temporal_crossview_factorized_residual_principal_point_model import (
+    RayAttentionFusionModelTemporalCrossviewFactorizedResidualPrincipalPoint,
+)
 from motionflow_mv.models.crossview_residual_visibility_v2 import (
     CrossviewResidualVisibilityV2,
 )
@@ -66,6 +69,7 @@ MODEL_CLASSES = {
     "crossview_residual_pp": RayAttentionFusionModelTemporalCrossviewResidualPrincipalPoint,
     "crossview_residual_pp_visibility": RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointVisibility,
     "crossview_residual_pp_visibility_v2": CrossviewResidualVisibilityV2,
+    "factorized_pp": RayAttentionFusionModelTemporalCrossviewFactorizedResidualPrincipalPoint,
 }
 
 
@@ -118,7 +122,13 @@ def build_model(args, n_views, j):
     if args.model in {"crossview_residual", "crossview_residual_pp", "crossview_residual_pp_visibility"}:
         kwargs["n_st_layers"] = args.n_st_layers
         kwargs["residual_hidden"] = args.residual_hidden
-    else:
+    elif args.model == "factorized_pp":
+        kwargs["n_view_layers"] = args.n_view_layers
+        kwargs["n_temporal_layers"] = args.n_temporal_layers
+        kwargs["residual_hidden"] = args.residual_hidden
+        kwargs["principal_point_hidden"] = 64
+        kwargs["principal_point_max_offset"] = 20.0
+    elif args.model != "crossview_residual_pp_visibility_v2":
         kwargs["n_temporal_layers"] = args.n_temporal_layers
     if args.model in {"residual", "campe", "campegraph", "adaptive"}:
         kwargs["residual_hidden"] = args.residual_hidden
@@ -196,6 +206,8 @@ def main():
     parser.add_argument("--n_temporal_layers", type=int, default=2)
     parser.add_argument("--n_st_layers", type=int, default=2,
                         help="Number of cross-view spatio-temporal layers for crossview_residual/crossview_residual_pp models")
+    parser.add_argument("--n_view_layers", type=int, default=2, help="Number of view-level transformer layers for factorized_pp")
+    parser.add_argument("--n_temporal_layers", type=int, default=2, help="Number of temporal-level transformer layers for factorized_pp")
     parser.add_argument("--residual_hidden", type=int, default=128)
     parser.add_argument("--graph_layers", type=int, default=3)
     parser.add_argument("--k", type=int, default=4)
