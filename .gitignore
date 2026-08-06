@@ -4,7 +4,7 @@ __pycache__/
 .pytest_cache/
 .venv/
 venv/
-data/
+/data/
 *.mp4
 *.avi
 *.pkl
@@ -12,3 +12,9 @@ data/
 .DS_Store
 tmp/
 outputs/
+tools/
+oa*.json
+oa*.xml
+lt.json
+arx.xml
+tmpmpi_advanced_v1_train.log

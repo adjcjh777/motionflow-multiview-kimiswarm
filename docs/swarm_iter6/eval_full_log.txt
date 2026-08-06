@@ -1,0 +1,20 @@
+D:\WSL_workspace\about_eassys\motionflow-multivie-kimiswarm\experiments\eval_ray_attention_temporal_residual_iterative.py:109: FutureWarning: You are using `torch.load` with `weights_only=False` (the current default value), which uses the default pickle module implicitly. It is possible to construct malicious pickle data which will execute arbitrary code during unpickling (See https://github.com/pytorch/pytorch/blob/main/SECURITY.md#untrusted-models for more details). In a future release, the default value for `weights_only` will be flipped to `True`. This limits the functions that could be executed during unpickling. Arbitrary objects will no longer be allowed to be loaded via this mode unless they are explicitly allowlisted by the user via `torch.serialization.add_safe_globals`. We recommend you start setting `weights_only=True` for any use case where you don't have full control of the loaded file. Please open an issue on GitHub for any issues related to this experimental feature.
+  state = torch.load(args.checkpoint, map_location=device)
+D:\anaconda3\envs\mf\lib\site-packages\torch\nn\modules\transformer.py:720: UserWarning: 1Torch was not compiled with flash attention. (Triggered internally at C:\actions-runner\_work\pytorch\pytorch\builder\windows\pytorch\aten\src\ATen\native\transformers\cuda\sdp_utils.cpp:555.)
+  return torch._transformer_encoder_layer_fwd(
+Device: cuda
+Data: data/webbridge/mpi_inf_3dhp/s_02_seq_01_v14_multiview_m.npz
+n_views=14, n_joints=28, clip_len=13, d=64
+Loaded checkpoint: outputs/ray_attention_temporal_residual_v2.pth
+Model params: 243428
+
+--- Evaluating n_iter=1 ---
+n_iter=1: MPJPE=13.1238 mm, PA-MPJPE=10.8580 mm, PCK@50mm=0.9999, PCK@100mm=1.0000, PCK@150mm=1.0000
+
+--- Evaluating n_iter=2 ---
+n_iter=2: MPJPE=40.9908 mm, PA-MPJPE=40.6794 mm, PCK@50mm=0.7195, PCK@100mm=0.9982, PCK@150mm=1.0000
+
+--- Evaluating n_iter=3 ---
+n_iter=3: MPJPE=71.1485 mm, PA-MPJPE=71.4922 mm, PCK@50mm=0.3327, PCK@100mm=0.7730, PCK@150mm=0.9685
+
+Saved JSON summary to docs\swarm_iter6\iterative_eval.json

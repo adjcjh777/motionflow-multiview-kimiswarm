@@ -1,0 +1,45 @@
+{
+  "checkpoint": "outputs/ray_attention_temporal_residual_v2.pth",
+  "val_dataset": "data/webbridge/mpi_inf_3dhp/s_02_seq_01_v14_multiview_m_smoke.npz",
+  "n_views": 14,
+  "d": 64,
+  "n_temporal_layers": 2,
+  "results": [
+    {
+      "n_iter": 1,
+      "n_clips": 488,
+      "clip_len": 13,
+      "n_joints": 28,
+      "mpjpe_mm": 10.76423794068679,
+      "pa_mpjpe_mm": 11.259065051756094,
+      "pck_50mm": 1.0,
+      "pck_100mm": 1.0,
+      "pck_150mm": 1.0,
+      "pck_auc_150mm": 0.928265211564392
+    },
+    {
+      "n_iter": 2,
+      "n_clips": 488,
+      "clip_len": 13,
+      "n_joints": 28,
+      "mpjpe_mm": 42.3458833907698,
+      "pa_mpjpe_mm": 44.79305583437707,
+      "pck_50mm": 0.6416692938209332,
+      "pck_100mm": 1.0,
+      "pck_150mm": 1.0,
+      "pck_auc_150mm": 0.7177098857426726
+    },
+    {
+      "n_iter": 3,
+      "n_clips": 488,
+      "clip_len": 13,
+      "n_joints": 28,
+      "mpjpe_mm": 75.81127558960547,
+      "pa_mpjpe_mm": 79.10342540699197,
+      "pck_50mm": 0.34479710862907587,
+      "pck_100mm": 0.7038371464600973,
+      "pck_150mm": 0.9443681318681318,
+      "pck_auc_150mm": 0.49507636034275376
+    }
+  ]
+}

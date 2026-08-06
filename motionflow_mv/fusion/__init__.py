@@ -1,6 +1,54 @@
 from .triangulation import triangulate_dlt, triangulate_confidence_weighted
+from .fusion_module import DLTFusion, FusionModule, FusionModuleRegistry, FUSION_REGISTRY
+from .attention_fusion_module import AttentionFusionModule, register_attention_fusion_module
+from .attention_fusion_v2_module import AttentionFusionV2Module, register_attention_v2_fusion_module
+from .robust_triangulation_module import RobustTriangulationFusion, register_robust_triangulation_fusion_module
+from .residual_refiner_module import ResidualRefinerFusion, register_residual_refiner_fusion_module
+from .temporal_refiner_module import TemporalRefinerFusion, register_temporal_refiner_fusion_module
+from .ray_attention_module import RayAttentionFusionModule, register_ray_attention_fusion_module
+from .ray_attention_temporal_residual_module import (
+    RayAttentionTemporalResidualFusionModule,
+    register_ray_attention_temporal_residual_fusion_module,
+)
+from .ray_attention_temporal_crossview_residual_principal_point_module import (
+    RayAttentionTemporalCrossviewResidualPrincipalPointFusionModule,
+    register_ray_attention_temporal_crossview_residual_principal_point_fusion_module,
+)
+from .ray_attention_temporal_crossview_residual_principal_point_spatial_pyramid_module import (
+    RayAttentionTemporalCrossviewResidualPrincipalPointSpatialPyramidFusionModule,
+    register_ray_attention_temporal_crossview_residual_principal_point_spatial_pyramid_fusion_module,
+)
+from .ray_attention_temporal_crossview_residual_principal_point_adaptive_window_pyramid_module import (
+    RayAttentionTemporalCrossviewResidualPrincipalPointAdaptiveWindowPyramidFusionModule,
+    register_ray_attention_temporal_crossview_residual_principal_point_adaptive_window_pyramid_fusion_module,
+)
+# Optional iter15 ablation: learnable camera-centric coordinate transform.
+# from .ray_attention_temporal_crossview_residual_principal_point_camera_centric_module import (
+#     RayAttentionTemporalCrossviewResidualPrincipalPointCameraCentricFusionModule,
+#     register_ray_attention_temporal_crossview_residual_principal_point_camera_centric_fusion_module,
+# )
+
+register_attention_fusion_module()
+# register_attention_v2_fusion_module()  # experimental, training unstable
+register_robust_triangulation_fusion_module()
+register_residual_refiner_fusion_module()
+register_temporal_refiner_fusion_module()
+register_ray_attention_fusion_module()
+register_ray_attention_temporal_residual_fusion_module()
+register_ray_attention_temporal_crossview_residual_principal_point_fusion_module()
+register_ray_attention_temporal_crossview_residual_principal_point_spatial_pyramid_fusion_module()
+register_ray_attention_temporal_crossview_residual_principal_point_adaptive_window_pyramid_fusion_module()
+# register_ray_attention_temporal_crossview_residual_principal_point_camera_centric_fusion_module()
 
 __all__ = [
     "triangulate_dlt",
     "triangulate_confidence_weighted",
+    "FusionModule",
+    "DLTFusion",
+    "AttentionFusionModule",
+    "RobustTriangulationFusion",
+    "ResidualRefinerFusion",
+    "TemporalRefinerFusion",
+    "FusionModuleRegistry",
+    "FUSION_REGISTRY",
 ]

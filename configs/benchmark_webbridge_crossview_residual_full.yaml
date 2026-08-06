@@ -1,0 +1,31 @@
+model_config:
+  model: crossview_residual
+  checkpoint: outputs/crossview_residual_d64_h128_full5.pth
+  source_n_views: 14
+  clip_len: 13
+  d: 64
+  n_st_layers: 2
+  residual_hidden: 128
+  batch_size: 8
+  gt_scale: 1.0
+  camera_scale: 1.0
+
+datasets:
+  - name: s_01_seq_01_v4
+    path: data/webbridge/mpi_inf_3dhp/s_01_seq_01_v4_multiview_m.npz
+  - name: s_01_seq_01_v14
+    path: data/webbridge/mpi_inf_3dhp/s_01_seq_01_v14_multiview_m.npz
+  - name: s_01_seq_02_v4
+    path: data/webbridge/mpi_inf_3dhp/s_01_seq_02_v4_multiview_m.npz
+  - name: s_01_seq_02_v14
+    path: data/webbridge/mpi_inf_3dhp/s_01_seq_02_v14_multiview_m.npz
+  - name: s_02_seq_01_v14
+    path: data/webbridge/mpi_inf_3dhp/s_02_seq_01_v14_multiview_m.npz
+  - name: s_03_seq_01_v4
+    path: data/webbridge/mpi_inf_3dhp/s_03_seq_01_v4_multiview_m.npz
+  - name: s_03_seq_01_v14
+    path: data/webbridge/mpi_inf_3dhp/s_03_seq_01_v14_multiview_m.npz
+  - name: s_03_seq_02_v4
+    path: data/webbridge/mpi_inf_3dhp/s_03_seq_02_v4_multiview_m.npz
+  - name: s_03_seq_02_v14
+    path: data/webbridge/mpi_inf_3dhp/s_03_seq_02_v14_multiview_m.npz

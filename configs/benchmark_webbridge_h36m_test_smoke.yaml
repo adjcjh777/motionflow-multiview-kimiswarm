@@ -1,0 +1,73 @@
+model_config:
+  model: crossview_residual_pp
+  checkpoint: outputs/ray_attention_temporal_crossview_residual_principal_point_full_ppw005_20ep.pth
+  clip_len: 13
+  d: 64
+  n_st_layers: 2
+  residual_hidden: 128
+  batch_size: 8
+  gt_scale: 1.0
+  camera_scale: 1.0
+
+# Standard H36M test subjects (S9, S11), all 15 actions, metric (meter) units.
+datasets:
+  - name: h36m_s9_act02
+    path: data/webbridge/h36m_meters/s_09_acts_02_multiview_m.npz
+  - name: h36m_s9_act03
+    path: data/webbridge/h36m_meters/s_09_acts_03_multiview_m.npz
+  - name: h36m_s9_act04
+    path: data/webbridge/h36m_meters/s_09_acts_04_multiview_m.npz
+  - name: h36m_s9_act05
+    path: data/webbridge/h36m_meters/s_09_acts_05_multiview_m.npz
+  - name: h36m_s9_act06
+    path: data/webbridge/h36m_meters/s_09_acts_06_multiview_m.npz
+  - name: h36m_s9_act07
+    path: data/webbridge/h36m_meters/s_09_acts_07_multiview_m.npz
+  - name: h36m_s9_act08
+    path: data/webbridge/h36m_meters/s_09_acts_08_multiview_m.npz
+  - name: h36m_s9_act09
+    path: data/webbridge/h36m_meters/s_09_acts_09_multiview_m.npz
+  - name: h36m_s9_act10
+    path: data/webbridge/h36m_meters/s_09_acts_10_multiview_m.npz
+  - name: h36m_s9_act11
+    path: data/webbridge/h36m_meters/s_09_acts_11_multiview_m.npz
+  - name: h36m_s9_act12
+    path: data/webbridge/h36m_meters/s_09_acts_12_multiview_m.npz
+  - name: h36m_s9_act13
+    path: data/webbridge/h36m_meters/s_09_acts_13_multiview_m.npz
+  - name: h36m_s9_act14
+    path: data/webbridge/h36m_meters/s_09_acts_14_multiview_m.npz
+  - name: h36m_s9_act15
+    path: data/webbridge/h36m_meters/s_09_acts_15_multiview_m.npz
+  - name: h36m_s9_act16
+    path: data/webbridge/h36m_meters/s_09_acts_16_multiview_m.npz
+  - name: h36m_s11_act02
+    path: data/webbridge/h36m_meters/s_11_acts_02_multiview_m.npz
+  - name: h36m_s11_act03
+    path: data/webbridge/h36m_meters/s_11_acts_03_multiview_m.npz
+  - name: h36m_s11_act04
+    path: data/webbridge/h36m_meters/s_11_acts_04_multiview_m.npz
+  - name: h36m_s11_act05
+    path: data/webbridge/h36m_meters/s_11_acts_05_multiview_m.npz
+  - name: h36m_s11_act06
+    path: data/webbridge/h36m_meters/s_11_acts_06_multiview_m.npz
+  - name: h36m_s11_act07
+    path: data/webbridge/h36m_meters/s_11_acts_07_multiview_m.npz
+  - name: h36m_s11_act08
+    path: data/webbridge/h36m_meters/s_11_acts_08_multiview_m.npz
+  - name: h36m_s11_act09
+    path: data/webbridge/h36m_meters/s_11_acts_09_multiview_m.npz
+  - name: h36m_s11_act10
+    path: data/webbridge/h36m_meters/s_11_acts_10_multiview_m.npz
+  - name: h36m_s11_act11
+    path: data/webbridge/h36m_meters/s_11_acts_11_multiview_m.npz
+  - name: h36m_s11_act12
+    path: data/webbridge/h36m_meters/s_11_acts_12_multiview_m.npz
+  - name: h36m_s11_act13
+    path: data/webbridge/h36m_meters/s_11_acts_13_multiview_m.npz
+  - name: h36m_s11_act14
+    path: data/webbridge/h36m_meters/s_11_acts_14_multiview_m.npz
+  - name: h36m_s11_act15
+    path: data/webbridge/h36m_meters/s_11_acts_15_multiview_m.npz
+  - name: h36m_s11_act16
+    path: data/webbridge/h36m_meters/s_11_acts_16_multiview_m.npz

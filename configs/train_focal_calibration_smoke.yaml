@@ -1,0 +1,18 @@
+# CPU smoke test for focal calibration loss.
+# Usage:
+#   python experiments/train_focal_calibration_smoke.py --config configs/train_focal_calibration_smoke.yaml
+
+training:
+  epochs: 20
+  lr: 0.01
+  batch_size: 64
+  n_views: 4
+  seed: 42
+
+focal:
+  focal_max_scale: 0.1
+  focal_loss_weight: 1.0
+
+output:
+  dir: outputs
+  checkpoint_name: focal_calibration_smoke.pth
