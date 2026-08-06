@@ -29,6 +29,11 @@ import torch.optim as optim
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from motionflow_mv.calibration.perturb import perturb_cameras_with_delta
+from motionflow_mv.fusion.prototypes.trainer_optim_utils import (
+    AMPContext,
+    build_lr_scheduler,
+    clip_gradients,
+)
 from motionflow_mv.fusion.ray_attention_temporal_crossview_factorized_residual_principal_point_model import (
     RayAttentionFusionModelTemporalCrossviewFactorizedResidualPrincipalPoint,
 )
@@ -239,6 +244,11 @@ def main():
     parser.add_argument("--principal_point_max_offset", type=float, default=20.0)
     parser.add_argument("--epochs", type=int, default=30)
     parser.add_argument("--lr", type=float, default=1e-3)
+    parser.add_argument("--lr_warmup_epochs", type=int, default=0, help="Linear warmup epochs before cosine decay (0 disables warmup)")
+    parser.add_argument("--lr_cosine", action="store_true", help="Use cosine LR schedule (with optional warmup) instead of constant LR")
+    parser.add_argument("--lr_min", type=float, default=0.0, help="Minimum LR at the end of cosine annealing")
+    parser.add_argument("--grad_clip_norm", type=float, default=0.0, help="Global gradient clipping max norm (0 disables)")
+    parser.add_argument("--amp", action="store_true", help="Enable Automatic Mixed Precision (CUDA only)")
     parser.add_argument("--batch_size", type=int, default=8)
     parser.add_argument("--train_samples", type=int, default=4000, help="Random clips per train sequence")
     parser.add_argument("--val_stride", type=int, default=1, help="Stride for validation clips (higher = faster)")
@@ -443,6 +453,13 @@ def main():
     print(f"Model params: {sum(p.numel() for p in model.parameters())}")
 
     optimizer = optim.Adam(model.parameters(), lr=args.lr)
+    scheduler = build_lr_scheduler(
+        optimizer,
+        total_epochs=args.epochs,
+        warmup_epochs=args.lr_warmup_epochs if args.lr_cosine else 0,
+        eta_min=args.lr_min if args.lr_cosine else 0.0,
+    ) if args.lr_cosine else None
+    amp_context = AMPContext(enabled=args.amp, device=device)
     criterion = nn.MSELoss()
 
     best_val = float("inf")
@@ -474,18 +491,23 @@ def main():
                     pp_std=args.cam_aug_pp,
                 )
                 pretrain_optimizer.zero_grad()
-                outputs = model(xb, K=K, R=R, t=t)
-                pred = outputs[0]
-                pred_pp_delta = outputs[2]
-                B, T = yb.shape[:2]
-                true_pp_delta = true_pp_delta.to(device).unsqueeze(1).expand(B, T, -1, -1).reshape(B * T, -1, 2)
-                loss = criterion(pred_pp_delta, -true_pp_delta)
-                # Do not add reprojection loss during PP-head pre-training: the
-                # rest of the model is frozen at random weights, so the
-                # reprojection term would dominate and drown the PP offset
-                # supervision.
-                loss.backward()
-                pretrain_optimizer.step()
+                with amp_context:
+                    outputs = model(xb, K=K, R=R, t=t)
+                    pred = outputs[0]
+                    pred_pp_delta = outputs[2]
+                    B, T = yb.shape[:2]
+                    true_pp_delta = true_pp_delta.to(device).unsqueeze(1).expand(B, T, -1, -1).reshape(B * T, -1, 2)
+                    loss = criterion(pred_pp_delta, -true_pp_delta)
+                    # Do not add reprojection loss during PP-head pre-training: the
+                    # rest of the model is frozen at random weights, so the
+                    # reprojection term would dominate and drown the PP offset
+                    # supervision.
+                scaled_loss = amp_context.scale(loss)
+                scaled_loss.backward()
+                amp_context.unscale(pretrain_optimizer)
+                clip_gradients(model, args.grad_clip_norm)
+                amp_context.step(pretrain_optimizer)
+                amp_context.update()
                 train_loss += loss.item() * xb.size(0)
             train_loss /= len(train_loader.dataset)
             print(f"  PP pretrain epoch {pe}: loss={train_loss:.6f}")
@@ -526,77 +548,85 @@ def main():
                 pp_std=schedule_pp,
             )
             optimizer.zero_grad()
-            if args.model_type == "crossview_contrast":
-                outputs = model.forward_with_contrastive_loss(xb, K=K, R=R, t=t)
-            else:
-                outputs = model(xb, K=K, R=R, t=t)
-            pred = outputs[0]
-            loss = criterion(pred, yb)
-            if args.model_type == "crossview_contrast":
-                loss = loss + outputs[-1]
-            if args.pp_loss_weight > 0.0:
-                pred_pp_delta = outputs[2]  # (B*T, V, 2)
-                B, T = yb.shape[:2]
-                true_pp_delta = true_pp_delta.to(device).unsqueeze(1).expand(B, T, -1, -1).reshape(B * T, -1, 2)
-                # The correction layer *adds* predicted delta to the perturbed principal point,
-                # so the target is the negative of the applied offset.
-                loss = loss + args.pp_loss_weight * criterion(pred_pp_delta, -true_pp_delta)
-                if args.focal_max_scale > 0.0:
-                    pred_focal_scale = outputs[3]  # (B*T, V)
-                    true_focal_scale = true_focal_scale.to(device).squeeze(-1).unsqueeze(1).expand(B, T, -1)
-                    target_focal_scale = 1.0 / true_focal_scale.reshape(B * T, -1)
-                    focal_loss_weight = args.focal_loss_weight if args.focal_loss_weight is not None else args.pp_loss_weight
-                    loss = loss + focal_loss_weight * criterion(pred_focal_scale, target_focal_scale)
-            if args.model_type == "dynamic_gate":
-                gate_weights = outputs[-2]  # (B, T, V, J) or (B*T, V, J)
-                gate_reg_loss = gate_loss_fn(gate_weights)
-                loss = loss + gate_reg_loss
-            if args.reproj_weight > 0.0:
-                points_2d = xb[..., :2]
-                conf = xb[..., 2]
-                loss_reproj = reprojection_loss(pred, points_2d, K, R, t, confidences=conf)
-                loss = loss + args.reproj_weight * loss_reproj
-            if args.reproj_raw_weight > 0.0 or args.reproj_refined_weight > 0.0:
-                points_2d = xb[..., :2]
-                conf = xb[..., 2]
-                mask = (conf > 0) if args.reproj_mask_dropout else None
-                loss_type = "charbonnier" if args.reproj_robust else "mse"
-                if args.reproj_raw_weight > 0.0:
-                    raw_3d = outputs[-1]
-                    loss = loss + args.reproj_raw_weight * robust_reprojection_loss(
-                        raw_3d, points_2d, K, R, t,
-                        confidences=conf, mask=mask, loss_type=loss_type,
+            with amp_context:
+                if args.model_type == "crossview_contrast":
+                    outputs = model.forward_with_contrastive_loss(xb, K=K, R=R, t=t)
+                else:
+                    outputs = model(xb, K=K, R=R, t=t)
+                pred = outputs[0]
+                loss = criterion(pred, yb)
+                if args.model_type == "crossview_contrast":
+                    loss = loss + outputs[-1]
+                if args.pp_loss_weight > 0.0:
+                    pred_pp_delta = outputs[2]  # (B*T, V, 2)
+                    B, T = yb.shape[:2]
+                    true_pp_delta = true_pp_delta.to(device).unsqueeze(1).expand(B, T, -1, -1).reshape(B * T, -1, 2)
+                    # The correction layer *adds* predicted delta to the perturbed principal point,
+                    # so the target is the negative of the applied offset.
+                    loss = loss + args.pp_loss_weight * criterion(pred_pp_delta, -true_pp_delta)
+                    if args.focal_max_scale > 0.0:
+                        pred_focal_scale = outputs[3]  # (B*T, V)
+                        true_focal_scale = true_focal_scale.to(device).squeeze(-1).unsqueeze(1).expand(B, T, -1)
+                        target_focal_scale = 1.0 / true_focal_scale.reshape(B * T, -1)
+                        focal_loss_weight = args.focal_loss_weight if args.focal_loss_weight is not None else args.pp_loss_weight
+                        loss = loss + focal_loss_weight * criterion(pred_focal_scale, target_focal_scale)
+                if args.model_type == "dynamic_gate":
+                    gate_weights = outputs[-2]  # (B, T, V, J) or (B*T, V, J)
+                    gate_reg_loss = gate_loss_fn(gate_weights)
+                    loss = loss + gate_reg_loss
+                if args.reproj_weight > 0.0:
+                    points_2d = xb[..., :2]
+                    conf = xb[..., 2]
+                    loss_reproj = reprojection_loss(pred, points_2d, K, R, t, confidences=conf)
+                    loss = loss + args.reproj_weight * loss_reproj
+                if args.reproj_raw_weight > 0.0 or args.reproj_refined_weight > 0.0:
+                    points_2d = xb[..., :2]
+                    conf = xb[..., 2]
+                    mask = (conf > 0) if args.reproj_mask_dropout else None
+                    loss_type = "charbonnier" if args.reproj_robust else "mse"
+                    if args.reproj_raw_weight > 0.0:
+                        raw_3d = outputs[-1]
+                        loss = loss + args.reproj_raw_weight * robust_reprojection_loss(
+                            raw_3d, points_2d, K, R, t,
+                            confidences=conf, mask=mask, loss_type=loss_type,
+                        )
+                    if args.reproj_refined_weight > 0.0:
+                        loss = loss + args.reproj_refined_weight * robust_reprojection_loss(
+                            pred, points_2d, K, R, t,
+                            confidences=conf, mask=mask, loss_type=loss_type,
+                        )
+                if args.velocity_loss_weight > 0.0:
+                    loss = loss + args.velocity_loss_weight * velocity_loss(pred, yb)
+                if args.splat_loss_weight > 0.0:
+                    log_std = outputs[-1]  # (B, T, J, 3)
+                    points_2d = xb[..., :2]
+                    conf = xb[..., 2]
+                    loss_splat = gaussian_splatting_pose_loss(
+                        pred, points_2d, K, R, t, log_std, confidences=conf,
                     )
-                if args.reproj_refined_weight > 0.0:
-                    loss = loss + args.reproj_refined_weight * robust_reprojection_loss(
-                        pred, points_2d, K, R, t,
-                        confidences=conf, mask=mask, loss_type=loss_type,
-                    )
-            if args.velocity_loss_weight > 0.0:
-                loss = loss + args.velocity_loss_weight * velocity_loss(pred, yb)
-            if args.splat_loss_weight > 0.0:
-                log_std = outputs[-1]  # (B, T, J, 3)
-                points_2d = xb[..., :2]
-                conf = xb[..., 2]
-                loss_splat = gaussian_splatting_pose_loss(
-                    pred, points_2d, K, R, t, log_std, confidences=conf,
-                )
-                loss = loss + args.splat_loss_weight * loss_splat
-            if args.model_type in ("bayesian_tri", "bayesian_tri_v2"):
-                epi_loss = outputs[-1]  # scalar
-                loss = loss + args.epipolar_loss_weight * epi_loss
-            loss.backward()
-            optimizer.step()
+                    loss = loss + args.splat_loss_weight * loss_splat
+                if args.model_type in ("bayesian_tri", "bayesian_tri_v2"):
+                    epi_loss = outputs[-1]  # scalar
+                    loss = loss + args.epipolar_loss_weight * epi_loss
+            scaled_loss = amp_context.scale(loss)
+            scaled_loss.backward()
+            amp_context.unscale(optimizer)
+            clip_gradients(model, args.grad_clip_norm)
+            amp_context.step(optimizer)
+            amp_context.update()
             train_loss += loss.item() * xb.size(0)
         train_loss /= len(train_loader.dataset)
 
         val_err = evaluate(model, val_loader, device)
+        if scheduler is not None:
+            scheduler.step()
+        lr_str = f", lr={optimizer.param_groups[0]['lr']:.2e}" if scheduler is not None else ""
         if val_err < best_val:
             best_val = val_err
             torch.save(model.state_dict(), output_path)
-            print(f"Epoch {epoch}: train_loss={train_loss:.6f}, val_MPJPE={val_err*1000:.2f}mm (saved)")
+            print(f"Epoch {epoch}: train_loss={train_loss:.6f}, val_MPJPE={val_err*1000:.2f}mm{lr_str} (saved)")
         else:
-            print(f"Epoch {epoch}: train_loss={train_loss:.6f}, val_MPJPE={val_err*1000:.2f}mm")
+            print(f"Epoch {epoch}: train_loss={train_loss:.6f}, val_MPJPE={val_err*1000:.2f}mm{lr_str}")
 
     print(f"Best val MPJPE: {best_val*1000:.2f}mm -> {output_path}")
 
