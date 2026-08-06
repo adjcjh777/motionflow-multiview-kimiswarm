@@ -65,6 +65,7 @@ def main():
     parser.add_argument("--batch_size", type=int, default=8)
     parser.add_argument("--train_samples", type=int, default=4000)
     parser.add_argument("--val_stride", type=int, default=1)
+    parser.add_argument("--num_workers", type=int, default=4, help="DataLoader workers (0 = main process)")
     parser.add_argument("--pp_loss_weight", type=float, default=0.05)
     parser.add_argument("--focal_max_scale", type=float, default=0.0)
     parser.add_argument("--cam_aug_rot", type=float, default=0.5)
@@ -92,10 +93,10 @@ def main():
     val_dataset = TemporalClipDataset(args.val, args.clip_len, stride=args.val_stride)
 
     train_loader = torch.utils.data.DataLoader(
-        train_dataset, batch_size=args.batch_size, shuffle=True, collate_fn=collate_fn, num_workers=0,
+        train_dataset, batch_size=args.batch_size, shuffle=True, collate_fn=collate_fn, num_workers=args.num_workers,
     )
     val_loader = torch.utils.data.DataLoader(
-        val_dataset, batch_size=args.batch_size, shuffle=False, collate_fn=collate_fn, num_workers=0,
+        val_dataset, batch_size=args.batch_size, shuffle=False, collate_fn=collate_fn, num_workers=args.num_workers,
     )
 
     sample = np.load(args.train[0])
