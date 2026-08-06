@@ -36,6 +36,7 @@ from motionflow_mv.fusion.ray_attention_temporal_crossview_residual_principal_po
     RayAttentionFusionModelTemporalCrossviewResidualPrincipalPoint,
 )
 from motionflow_mv.losses import reprojection_loss, velocity_loss
+from motionflow_mv.losses.reprojection_consistency import robust_reprojection_loss
 
 
 def set_seed(seed: int):
@@ -183,6 +184,11 @@ def main():
     parser.add_argument("--val_stride", type=int, default=1, help="Stride for validation clips (higher = faster)")
     parser.add_argument("--velocity_loss_weight", type=float, default=0.0, help="Weight for temporal velocity consistency auxiliary loss (requires clip_len >= 2)")
     parser.add_argument("--reproj_weight", type=float, default=0.0, help="Weight for reprojection auxiliary loss")
+    parser.add_argument("--reproj_raw_weight", type=float, default=0.0, help="Weight for robust reprojection loss on the raw triangulated pose")
+    parser.add_argument("--reproj_refined_weight", type=float, default=0.0, help="Weight for robust reprojection loss on the refined pose")
+    parser.add_argument("--reproj_robust", action="store_true", help="Use Charbonnier robust reprojection loss instead of MSE")
+    parser.add_argument("--reproj_mask_dropout", action="store_true", help="Mask zero-confidence joints in reprojection loss")
+    parser.add_argument("--return_raw_3d", action="store_true", help="Return raw triangulated 3D pose for reprojection supervision")
     parser.add_argument("--pp_loss_weight", type=float, default=0.0, help="Weight for principal-point offset supervision loss")
     parser.add_argument("--focal_loss_weight", type=float, default=None, help="Weight for focal scale supervision loss (defaults to pp_loss_weight)")
     parser.add_argument("--focal_max_scale", type=float, default=0.0, help="Maximum predicted focal-length scale; 0 disables focal correction")
@@ -235,6 +241,7 @@ def main():
             principal_point_max_offset=args.principal_point_max_offset,
             focal_max_scale=args.focal_max_scale,
             return_pp_delta=args.pp_loss_weight > 0.0 or args.focal_max_scale > 0.0,
+            return_raw=args.return_raw_3d or args.reproj_raw_weight > 0.0,
         ).to(device)
     else:
         model = RayAttentionFusionModelTemporalCrossviewResidualPrincipalPoint(
@@ -244,6 +251,7 @@ def main():
             principal_point_max_offset=args.principal_point_max_offset,
             focal_max_scale=args.focal_max_scale,
             return_pp_delta=args.pp_loss_weight > 0.0 or args.focal_max_scale > 0.0,
+            return_raw=args.return_raw_3d or args.reproj_raw_weight > 0.0,
         ).to(device)
     if args.warm_start is not None:
         state = torch.load(args.warm_start, map_location="cpu", weights_only=True)
@@ -359,6 +367,22 @@ def main():
                 conf = xb[..., 2]
                 loss_reproj = reprojection_loss(pred, points_2d, K, R, t, confidences=conf)
                 loss = loss + args.reproj_weight * loss_reproj
+            if args.reproj_raw_weight > 0.0 or args.reproj_refined_weight > 0.0:
+                points_2d = xb[..., :2]
+                conf = xb[..., 2]
+                mask = (conf > 0) if args.reproj_mask_dropout else None
+                loss_type = "charbonnier" if args.reproj_robust else "mse"
+                if args.reproj_raw_weight > 0.0:
+                    raw_3d = outputs[-1]
+                    loss = loss + args.reproj_raw_weight * robust_reprojection_loss(
+                        raw_3d, points_2d, K, R, t,
+                        confidences=conf, mask=mask, loss_type=loss_type,
+                    )
+                if args.reproj_refined_weight > 0.0:
+                    loss = loss + args.reproj_refined_weight * robust_reprojection_loss(
+                        pred, points_2d, K, R, t,
+                        confidences=conf, mask=mask, loss_type=loss_type,
+                    )
             if args.velocity_loss_weight > 0.0:
                 loss = loss + args.velocity_loss_weight * velocity_loss(pred, yb)
             loss.backward()

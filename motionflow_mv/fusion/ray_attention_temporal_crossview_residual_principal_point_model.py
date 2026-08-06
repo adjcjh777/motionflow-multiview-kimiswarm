@@ -40,6 +40,7 @@ class RayAttentionFusionModelTemporalCrossviewResidualPrincipalPoint(RayAttentio
         focal_max_scale: float = 0.0,
         return_pp_delta: bool = False,
         return_visibility: bool = False,
+        return_raw: bool = False,
     ):
         super().__init__(
             j=j,
@@ -53,6 +54,7 @@ class RayAttentionFusionModelTemporalCrossviewResidualPrincipalPoint(RayAttentio
         )
         self.return_pp_delta = return_pp_delta
         self.return_visibility = return_visibility
+        self.return_raw = return_raw
         self.correct_focal = focal_max_scale > 0.0
         self.principal_point_correction = PrincipalPointCorrection(
             d=d,
@@ -159,9 +161,14 @@ class RayAttentionFusionModelTemporalCrossviewResidualPrincipalPoint(RayAttentio
                 visibility = visibility.squeeze(1)
 
         if self.return_pp_delta:
+            out = [pred_3d, weights, pp_delta]
             if self.correct_focal:
-                return pred_3d, weights, pp_delta, focal_scale
-            return pred_3d, weights, pp_delta
+                out.insert(3, focal_scale)
+            if self.return_raw:
+                out.append(pred_3d_raw.view(B, T, J, 3))
+            return tuple(out)
         if self.return_visibility:
             return pred_3d, weights, visibility
+        if self.return_raw:
+            return pred_3d, weights, pred_3d_raw.view(B, T, J, 3)
         return pred_3d, weights
