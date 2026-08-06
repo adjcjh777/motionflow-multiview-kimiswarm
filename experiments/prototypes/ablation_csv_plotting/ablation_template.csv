@@ -1,0 +1,6 @@
+experiment,component,config,mpjpe_mm,mpjpe_std_mm,pa_mpjpe_mm,pck_50,pck_100,pck_150,auc,n_params,notes
+Baseline,full_model,d=128;rh=256;nl=3,8.52,0.03,6.11,0.98,0.99,0.99,0.85,1244000,anchor Bayesian tri v2 (50 epochs)
+No temporal fusion,temporal_layers,d=128;rh=256;nl=0,9.31,0.04,6.78,0.96,0.98,0.99,0.82,1180000,remove temporal layers
+No cross-view attention,cross_view_attention,d=128;rh=256;nl=3,10.14,0.05,7.25,0.95,0.97,0.98,0.79,1050000,remove cross-view attention block
+No residual connection,residual_connection,d=128;rh=256;nl=3,9.05,0.04,6.55,0.97,0.98,0.99,0.81,1180000,remove residual refinement
+Smaller hidden dim,residual_hidden,d=128;rh=128;nl=3,8.74,0.03,6.29,0.97,0.99,0.99,0.84,980000,residual_hidden 128 instead of 256
