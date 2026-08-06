@@ -151,11 +151,12 @@ Models are implemented in PyTorch and trained on a local RTX 4090. The small res
 
 | Model | Params | MPJPE (mm) | PA-MPJPE (mm) | PCK@50 | AUC |
 |---|---:|---:|---:|---:|---:|
-| Raw DLT | — | 25.21 | — | — | — |
+| Raw DLT | — | 25.21 | 24.08 | 0.990 | 0.832 |
+| Robust IRLS | — | 25.20 | 24.07 | 0.990 | 0.832 |
 | Temporal ray-attention (no residual) | 218 k | 25.21 | 24.14 | 0.989 | 0.832 |
 | Residual 3-epoch (d=64, h=128) | 243 k | 14.17 | 12.99 | 0.998 | 0.906 |
 | Residual full 5-epoch (d=64, h=128) | 243 k | 11.17 | 8.24 | 1.000 | 0.926 |
-| **Residual full 20-epoch (d=64, h=128)** | **243 k** | **10.46** | **8.93** | **1.000** | **0.930** |
+| Residual full 20-epoch (d=64, h=128) | 243 k | 10.46 | 8.93 | 1.000 | 0.930 |
 | CamPE 20-epoch (d=64, h=128) | 254 k | 11.25 | 9.14 | 0.9999 | 0.925 |
 | CamPE+Adaptive view selection | 258 k | 12.73 | 9.14 | 1.000 | 0.915 |
 | CamPE+GraphJR (cross-view only) | 257 k | 12.81 | 11.05 | 0.998 | 0.915 |
@@ -164,8 +165,9 @@ Models are implemented in PyTorch and trained on a local RTX 4090. The small res
 | Factorised cross-view/temporal residual (in progress) | — | — | — | — | — |
 | Residual small (d=32, h=64) | 66 k | 13.22 | 11.77 | 0.997 | 0.912 |
 | Cross-view residual (d=128, n_st=3, h=256, snapshot) | 1.06 M | 13.90 | 10.90 | 1.000 | 0.995 |
+| **Cross-view + PP full 20 ep (ppw 0.05)** | **243 k** | **9.32** | **5.37** | **1.000** | **0.938** |
 
-The full 20-epoch residual model cuts the raw DLT error by **59%** and the 5-epoch result by **6%**, reaching 10.46 mm with PA-MPJPE 8.93 mm. CamPE trades a small accuracy gap (11.25 mm) for the ability to accept variable camera rigs; the hard adaptive view selector underperforms at 12.73 mm, suggesting the discrete Gumbel top-k gate is too restrictive.
+The cross-view + PP full model reduces the raw DLT error by **63%** and the temporal ray-attention baseline by **63%**, reaching **9.32 mm** MPJPE and **5.37 mm** PA-MPJPE on MPI-INF-3DHP. Classical triangulation baselines (DLT and robust IRLS) remain at ~25 mm, confirming that the gain comes from the learned residual + principal-point correction rather than from stronger geometric triangulation. CamPE trades a small accuracy gap (11.25 mm) for the ability to accept variable camera rigs; the hard adaptive view selector underperforms at 12.73 mm, suggesting the discrete Gumbel top-k gate is too restrictive.
 
 #### Intrinsic correction comparison
 
