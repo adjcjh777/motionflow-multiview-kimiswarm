@@ -29,6 +29,9 @@ import torch.optim as optim
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from motionflow_mv.calibration.perturb import perturb_cameras_with_delta
+from motionflow_mv.fusion.ray_attention_temporal_crossview_factorized_residual_principal_point_model import (
+    RayAttentionFusionModelTemporalCrossviewFactorizedResidualPrincipalPoint,
+)
 from motionflow_mv.fusion.ray_attention_temporal_crossview_residual_principal_point_model import (
     RayAttentionFusionModelTemporalCrossviewResidualPrincipalPoint,
 )
@@ -166,7 +169,10 @@ def main():
     parser.add_argument("--val", type=str, required=True, help="Validation .npz file")
     parser.add_argument("--clip_len", type=int, default=13)
     parser.add_argument("--d", type=int, default=64)
+    parser.add_argument("--model_type", type=str, default="temporal", choices=["temporal", "factorized"], help="Backbone type: temporal (time+view) or factorized (alternating view/temporal)")
     parser.add_argument("--n_st_layers", type=int, default=2)
+    parser.add_argument("--n_view_layers", type=int, default=2)
+    parser.add_argument("--n_temporal_layers", type=int, default=2)
     parser.add_argument("--residual_hidden", type=int, default=128)
     parser.add_argument("--principal_point_hidden", type=int, default=64)
     parser.add_argument("--principal_point_max_offset", type=float, default=20.0)
@@ -215,18 +221,30 @@ def main():
     sample = np.load(args.train[0])
     n_views = sample["camera_K"].shape[0]
     j = sample["points_2d"].shape[2]
-    print(f"n_views={n_views}, j={j}, clip_len={args.clip_len}, d={args.d}, n_st_layers={args.n_st_layers}, "
+    print(f"n_views={n_views}, j={j}, clip_len={args.clip_len}, d={args.d}, model_type={args.model_type}, "
+          f"n_st_layers={args.n_st_layers}, n_view_layers={args.n_view_layers}, n_temporal_layers={args.n_temporal_layers}, "
           f"residual_hidden={args.residual_hidden}, principal_point_hidden={args.principal_point_hidden}, "
           f"principal_point_max_offset={args.principal_point_max_offset}, focal_max_scale={args.focal_max_scale}")
 
-    model = RayAttentionFusionModelTemporalCrossviewResidualPrincipalPoint(
-        j=j, d=args.d, n_views=n_views, n_st_layers=args.n_st_layers,
-        residual_hidden=args.residual_hidden,
-        principal_point_hidden=args.principal_point_hidden,
-        principal_point_max_offset=args.principal_point_max_offset,
-        focal_max_scale=args.focal_max_scale,
-        return_pp_delta=args.pp_loss_weight > 0.0 or args.focal_max_scale > 0.0,
-    ).to(device)
+    if args.model_type == "factorized":
+        model = RayAttentionFusionModelTemporalCrossviewFactorizedResidualPrincipalPoint(
+            j=j, d=args.d, n_views=n_views,
+            n_view_layers=args.n_view_layers, n_temporal_layers=args.n_temporal_layers,
+            residual_hidden=args.residual_hidden,
+            principal_point_hidden=args.principal_point_hidden,
+            principal_point_max_offset=args.principal_point_max_offset,
+            focal_max_scale=args.focal_max_scale,
+            return_pp_delta=args.pp_loss_weight > 0.0 or args.focal_max_scale > 0.0,
+        ).to(device)
+    else:
+        model = RayAttentionFusionModelTemporalCrossviewResidualPrincipalPoint(
+            j=j, d=args.d, n_views=n_views, n_st_layers=args.n_st_layers,
+            residual_hidden=args.residual_hidden,
+            principal_point_hidden=args.principal_point_hidden,
+            principal_point_max_offset=args.principal_point_max_offset,
+            focal_max_scale=args.focal_max_scale,
+            return_pp_delta=args.pp_loss_weight > 0.0 or args.focal_max_scale > 0.0,
+        ).to(device)
     if args.warm_start is not None:
         state = torch.load(args.warm_start, map_location="cpu", weights_only=True)
         missing, unexpected = model.load_state_dict(state, strict=False)
