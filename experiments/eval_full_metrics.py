@@ -84,6 +84,9 @@ from motionflow_mv.fusion.ray_attention_hierarchical_view_temporal_joint_residua
 from motionflow_mv.models.crossview_residual_visibility_v2 import (
     CrossviewResidualVisibilityV2,
 )
+from motionflow_mv.models.crossview_residual_visibility_uncertainty_v1 import (
+    CrossviewResidualVisibilityUncertaintyV1,
+)
 
 
 MODEL_CLASSES = {
@@ -96,6 +99,7 @@ MODEL_CLASSES = {
     "crossview_residual_pp": RayAttentionFusionModelTemporalCrossviewResidualPrincipalPoint,
     "crossview_residual_pp_visibility": RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointVisibility,
     "crossview_residual_pp_visibility_v2": CrossviewResidualVisibilityV2,
+    "crossview_residual_pp_visibility_uncertainty_v1": CrossviewResidualVisibilityUncertaintyV1,
     "factorized_pp": RayAttentionFusionModelTemporalCrossviewFactorizedResidualPrincipalPoint,
     "dynamic_gate_pp": RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointDynamicGate,
     "graph_skeleton_residual_pp": RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointGraphSkeletonResidual,
@@ -155,7 +159,7 @@ def build_model(args, n_views, j):
         "d": args.d,
         "n_views": n_views,
     }
-    if args.model in {"crossview_residual", "crossview_residual_pp", "crossview_residual_pp_visibility", "dynamic_gate_pp", "graph_skeleton_residual_pp", "epipolar_pp", "splat_pp", "kinematic_chain_pp", "bayesian_tri_pp", "epipolar_bias_v2_pp", "camera_conditioned_pp", "hierarchical_view_temporal_joint_pp"}:
+    if args.model in {"crossview_residual", "crossview_residual_pp", "crossview_residual_pp_visibility", "crossview_residual_pp_visibility_uncertainty_v1", "dynamic_gate_pp", "graph_skeleton_residual_pp", "epipolar_pp", "splat_pp", "kinematic_chain_pp", "bayesian_tri_pp", "epipolar_bias_v2_pp", "camera_conditioned_pp", "hierarchical_view_temporal_joint_pp"}:
         kwargs["n_st_layers"] = args.n_st_layers
         kwargs["residual_hidden"] = args.residual_hidden
     elif args.model == "factorized_pp":
@@ -188,6 +192,9 @@ def build_model(args, n_views, j):
         kwargs["min_views"] = args.min_views
         kwargs["lambda_gate"] = 0.0
     if args.model == "crossview_residual_pp_visibility_v2":
+        kwargs["principal_point_hidden"] = 64
+        kwargs["principal_point_max_offset"] = 20.0
+    if args.model == "crossview_residual_pp_visibility_uncertainty_v1":
         kwargs["principal_point_hidden"] = 64
         kwargs["principal_point_max_offset"] = 20.0
     return cls(**kwargs)
