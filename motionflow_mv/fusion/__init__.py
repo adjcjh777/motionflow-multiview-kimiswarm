@@ -14,6 +14,19 @@ from .ray_attention_temporal_crossview_residual_principal_point_module import (
     RayAttentionTemporalCrossviewResidualPrincipalPointFusionModule,
     register_ray_attention_temporal_crossview_residual_principal_point_fusion_module,
 )
+from .ray_attention_temporal_crossview_residual_principal_point_spatial_pyramid_module import (
+    RayAttentionTemporalCrossviewResidualPrincipalPointSpatialPyramidFusionModule,
+    register_ray_attention_temporal_crossview_residual_principal_point_spatial_pyramid_fusion_module,
+)
+from .ray_attention_temporal_crossview_residual_principal_point_adaptive_window_pyramid_module import (
+    RayAttentionTemporalCrossviewResidualPrincipalPointAdaptiveWindowPyramidFusionModule,
+    register_ray_attention_temporal_crossview_residual_principal_point_adaptive_window_pyramid_fusion_module,
+)
+# Optional iter15 ablation: learnable camera-centric coordinate transform.
+# from .ray_attention_temporal_crossview_residual_principal_point_camera_centric_module import (
+#     RayAttentionTemporalCrossviewResidualPrincipalPointCameraCentricFusionModule,
+#     register_ray_attention_temporal_crossview_residual_principal_point_camera_centric_fusion_module,
+# )
 
 register_attention_fusion_module()
 # register_attention_v2_fusion_module()  # experimental, training unstable
@@ -23,6 +36,9 @@ register_temporal_refiner_fusion_module()
 register_ray_attention_fusion_module()
 register_ray_attention_temporal_residual_fusion_module()
 register_ray_attention_temporal_crossview_residual_principal_point_fusion_module()
+register_ray_attention_temporal_crossview_residual_principal_point_spatial_pyramid_fusion_module()
+register_ray_attention_temporal_crossview_residual_principal_point_adaptive_window_pyramid_fusion_module()
+# register_ray_attention_temporal_crossview_residual_principal_point_camera_centric_fusion_module()
 
 __all__ = [
     "triangulate_dlt",
