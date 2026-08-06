@@ -16,7 +16,7 @@ import torch.optim as optim
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from motionflow_mv.calibration.perturb import perturb_cameras_with_delta
-from motionflow_mv.data.mixed_dataset import DATASET_REGISTRY, build_mixed_dataloaders
+from motionflow_mv.data.mixed_dataset import DATASET_IDS, DATASET_REGISTRY, build_mixed_dataloaders
 from motionflow_mv.data.temporal_clip_dataset import set_seed
 from motionflow_mv.fusion.ray_attention_temporal_mixed_residual_principal_point_model import RayAttentionFusionModelTemporalMixedResidualPrincipalPoint
 
@@ -35,6 +35,8 @@ def evaluate(model, loader, device):
     model.eval()
     total_err = 0.0
     total_count = 0
+    per_dataset_err = {}
+    per_dataset_count = {}
     for xb, yb, K, R, t, ids in loader:
         xb, yb = xb.to(device), yb.to(device)
         K, R, t = K.to(device), R.to(device), t.to(device)
@@ -44,7 +46,19 @@ def evaluate(model, loader, device):
         err = (pred - yb).norm(dim=-1) * mask.float()
         total_err += err.sum().item()
         total_count += mask.sum().item()
-    return total_err / total_count
+
+        # Per-dataset metrics (ids are constant across the batch clip).
+        for did in ids.unique().tolist():
+            did_mask = (ids == did).to(device)
+            if did_mask.sum() == 0:
+                continue
+            did_err = err[did_mask].sum().item()
+            did_count = mask[did_mask].sum().item()
+            per_dataset_err[did] = per_dataset_err.get(did, 0.0) + did_err
+            per_dataset_count[did] = per_dataset_count.get(did, 0.0) + did_count
+
+    per_dataset = {did: per_dataset_err[did] / per_dataset_count[did] for did in per_dataset_err}
+    return total_err / total_count, per_dataset
 
 
 def main():
@@ -78,9 +92,24 @@ def main():
     parser.add_argument("--cam_aug_trans", type=float, default=0.005)
     parser.add_argument("--cam_aug_focal", type=float, default=0.01)
     parser.add_argument("--cam_aug_pp", type=float, default=5.0)
+    parser.add_argument("--balance_datasets", action="store_true", help="Use dataset-balanced sampling so each epoch samples equally from H36M and MPI")
+    parser.add_argument("--balance_samples_per_dataset", type=int, default=None, help="Override number of samples per dataset when balance_datasets is enabled")
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--output", type=str, default="outputs/ray_attention_temporal_mixed_pp.pth")
+    parser.add_argument("--smoke", action="store_true", help="Override hyperparameters for a fast CPU smoke test")
     args = parser.parse_args()
+
+    if args.smoke:
+        args.d = 8
+        args.n_temporal_layers = 1
+        args.residual_hidden = 16
+        args.principal_point_hidden = 16
+        args.train_samples = 4
+        args.batch_size = 2
+        args.epochs = 1
+        args.clip_len = 9
+        args.num_workers = 0
+        print("Smoke mode: overriding hyperparameters to tiny values.")
 
     set_seed(args.seed)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -97,6 +126,9 @@ def main():
         train_samples=args.train_samples,
         val_stride=args.val_stride,
         num_workers=args.num_workers,
+        balance_datasets=args.balance_datasets,
+        balance_samples_per_dataset=args.balance_samples_per_dataset,
+        balance_seed=args.seed,
     )
 
     model = RayAttentionFusionModelTemporalMixedResidualPrincipalPoint(
@@ -167,13 +199,18 @@ def main():
             train_count += mask.sum().item()
 
         train_loss /= train_count
-        val_err = evaluate(model, val_loader, device)
+        val_err, per_dataset_err = evaluate(model, val_loader, device)
+        _id_to_name = {v: k for k, v in DATASET_IDS.items()}
+        per_dataset_str = ", ".join(
+            f"{_id_to_name.get(k, 'did_' + str(k))}={v*1000:.2f}mm"
+            for k, v in per_dataset_err.items()
+        )
         if val_err < best_val:
             best_val = val_err
             torch.save(model.state_dict(), output_path)
-            print(f"Epoch {epoch}: train_loss={train_loss:.6f}, val_MPJPE={val_err*1000:.2f}mm (saved)")
+            print(f"Epoch {epoch}: train_loss={train_loss:.6f}, val_MPJPE={val_err*1000:.2f}mm (saved), {per_dataset_str}")
         else:
-            print(f"Epoch {epoch}: train_loss={train_loss:.6f}, val_MPJPE={val_err*1000:.2f}mm")
+            print(f"Epoch {epoch}: train_loss={train_loss:.6f}, val_MPJPE={val_err*1000:.2f}mm, {per_dataset_str}")
 
     print(f"Best val MPJPE: {best_val*1000:.2f}mm -> {output_path}")
 

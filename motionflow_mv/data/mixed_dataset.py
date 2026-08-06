@@ -20,7 +20,7 @@ from typing import Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
 import torch
-from torch.utils.data import ConcatDataset, DataLoader, Dataset
+from torch.utils.data import ConcatDataset, DataLoader, Dataset, Sampler
 
 
 # Canonical dimensions inferred from MPI-INF-3DHP (the largest dataset).
@@ -49,6 +49,62 @@ def _pad_cameras(camera_K: np.ndarray, camera_R: np.ndarray, camera_t: np.ndarra
     R_pad[:src_v] = camera_R
     t_pad[:src_v] = camera_t
     return K_pad, R_pad, t_pad
+
+
+class DatasetBalancedSampler(Sampler):
+    """Sample equally from each sub-dataset inside a :class:`ConcatDataset`.
+
+    Parameters
+    ----------
+    dataset_lengths:
+        Number of samples in each sub-dataset.
+    samples_per_dataset:
+        How many samples to draw from each sub-dataset per epoch.  If ``None``,
+        defaults to the length of the largest sub-dataset (with replacement
+        for smaller datasets).
+    replacement:
+        If ``True`` (default), smaller datasets are oversampled so that every
+        epoch contains the same number of samples from each dataset.  If
+        ``False``, the epoch size is capped at the smallest sub-dataset and
+        all samples are drawn without replacement.
+    seed:
+        Optional seed for reproducibility.
+    """
+
+    def __init__(
+        self,
+        dataset_lengths: Sequence[int],
+        samples_per_dataset: Optional[int] = None,
+        replacement: bool = True,
+        seed: Optional[int] = None,
+    ):
+        self.dataset_lengths = list(dataset_lengths)
+        if any(n <= 0 for n in self.dataset_lengths):
+            raise ValueError("All dataset lengths must be positive.")
+
+        max_len = max(self.dataset_lengths)
+        self.samples_per_dataset = samples_per_dataset if samples_per_dataset is not None else max_len
+        self.replacement = replacement
+
+        if not replacement:
+            self.samples_per_dataset = min(self.samples_per_dataset, min(self.dataset_lengths))
+
+        self._rng = np.random.default_rng(seed)
+
+    def __len__(self) -> int:
+        return self.samples_per_dataset * len(self.dataset_lengths)
+
+    def __iter__(self):
+        indices = []
+        offset = 0
+        for length in self.dataset_lengths:
+            if self.replacement:
+                sample_idx = self._rng.integers(0, length, size=self.samples_per_dataset)
+            else:
+                sample_idx = self._rng.choice(length, size=self.samples_per_dataset, replace=False)
+            indices.extend(offset + sample_idx)
+            offset += length
+        return iter(indices)
 
 
 class MixedDataset(Dataset):
@@ -177,6 +233,9 @@ def build_mixed_dataloaders(
     train_samples: int = 500,
     val_stride: int = 1,
     num_workers: int = 0,
+    balance_datasets: bool = False,
+    balance_samples_per_dataset: Optional[int] = None,
+    balance_seed: Optional[int] = None,
 ) -> Tuple[DataLoader, DataLoader]:
     """Build mixed-dataset train/val :class:`DataLoader` instances.
 
@@ -196,6 +255,15 @@ def build_mixed_dataloaders(
         Number of random clips to sample from each training sequence.
     val_stride:
         Stride for validation clips.
+    balance_datasets:
+        If ``True``, use :class:`DatasetBalancedSampler` so that each epoch
+        samples equally from every training dataset instead of proportionally
+        to dataset size.
+    balance_samples_per_dataset:
+        Optional override for the number of samples drawn per dataset when
+        ``balance_datasets`` is ``True``.
+    balance_seed:
+        Optional seed for the balanced sampler.
 
     Returns
     -------
@@ -211,14 +279,30 @@ def build_mixed_dataloaders(
         val_path, val_dataset, clip_len, n_samples=None, stride=val_stride
     )
 
-    train_loader = DataLoader(
-        ConcatDataset(train_datasets),
-        batch_size=batch_size,
-        shuffle=True,
-        collate_fn=mixed_collate_fn,
-        num_workers=num_workers,
-        pin_memory=num_workers > 0,
-    )
+    if balance_datasets:
+        sampler = DatasetBalancedSampler(
+            [len(ds) for ds in train_datasets],
+            samples_per_dataset=balance_samples_per_dataset,
+            seed=balance_seed,
+        )
+        train_loader = DataLoader(
+            ConcatDataset(train_datasets),
+            batch_size=batch_size,
+            shuffle=False,
+            sampler=sampler,
+            collate_fn=mixed_collate_fn,
+            num_workers=num_workers,
+            pin_memory=num_workers > 0,
+        )
+    else:
+        train_loader = DataLoader(
+            ConcatDataset(train_datasets),
+            batch_size=batch_size,
+            shuffle=True,
+            collate_fn=mixed_collate_fn,
+            num_workers=num_workers,
+            pin_memory=num_workers > 0,
+        )
     val_loader = DataLoader(
         val_dataset_obj,
         batch_size=batch_size,
