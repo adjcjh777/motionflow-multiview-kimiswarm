@@ -42,6 +42,10 @@ from motionflow_mv.data.split_loader import (  # noqa: E402
     load_multi_dataset_manifest,
     load_split_manifest,
 )
+from motionflow_mv.data.webbridge_mixed_dataset import (  # noqa: E402
+    build_webbridge_mixed_dataloaders,
+    webbridge_mixed_collate_fn,
+)
 from motionflow_mv.fusion.prototypes.cross_view_graph_attention import (  # noqa: E402
     H36M_17_PARENTS,
     MPI_INF_3DHP_28_PARENTS,
@@ -453,7 +457,15 @@ def build_compute_loss(args: Namespace):
         batch: Tuple[torch.Tensor, ...],
         device: torch.device,
     ) -> Tuple[torch.Tensor, Dict[str, Any]]:
-        x, y, K, R, t = batch
+        # Mixed loader returns (x, y, K, R, t, dataset_id); the dataset_id is used
+        # to build a base view mask for padded views.
+        if len(batch) == 6:
+            x, y, K, R, t, dataset_id = batch
+            dataset_id = dataset_id.to(device)
+        else:
+            x, y, K, R, t = batch
+            dataset_id = None
+
         x = x.to(device)
         y = y.to(device)
         K = K.to(device)
@@ -470,6 +482,23 @@ def build_compute_loss(args: Namespace):
             min_views=args.min_views,
             variable_view_subset=args.variable_view_subset,
         )
+
+        # When using the mixed loader, padded views must be masked out.  The
+        # dataset_id encodes the source domain (0=H36M/4 views, 1=MPI/14 views).
+        if dataset_id is not None:
+            B, T, V_full = x.shape[0], x.shape[1], x.shape[2]
+            base_view_mask = torch.zeros(B, T, V_full, device=device)
+            for i in range(B):
+                if dataset_id[i].item() == 0:  # H36M
+                    base_view_mask[i, :, :4] = 1.0
+                elif dataset_id[i].item() == 1:  # MPI-INF-3DHP
+                    base_view_mask[i, :, :14] = 1.0
+                else:
+                    base_view_mask[i, :, :] = 1.0
+            if view_mask is None:
+                view_mask = base_view_mask
+            else:
+                view_mask = view_mask * base_view_mask
 
         # Optional variable-view training: sample a random subset of views and
         # optionally permute the order of all views.  The model still receives
@@ -702,6 +731,35 @@ def build_datasets(args: Namespace) -> Tuple[torch.utils.data.Dataset, torch.uti
         )
         return train_dataset, val_dataset, 4, n_joints
 
+    if args.use_mixed_loader:
+        if args.mixed_manifest is None:
+            raise ValueError("--mixed_manifest is required when --use_mixed_loader is set")
+        import yaml
+
+        with open(args.mixed_manifest, "r") as f:
+            mixed_cfg = yaml.safe_load(f)
+
+        train_paths = mixed_cfg["train_paths"]
+        train_names = mixed_cfg["train_names"]
+        val_paths = mixed_cfg["val_paths"]
+        val_names = mixed_cfg["val_names"]
+        if not (len(train_paths) == len(train_names) and len(val_paths) == len(val_names)):
+            raise ValueError("Mixed manifest: paths and names must have the same length")
+
+        train_loader, val_loader = build_webbridge_mixed_dataloaders(
+            train_paths=train_paths,
+            train_names=train_names,
+            val_paths=val_paths,
+            val_names=val_names,
+            clip_len=args.clip_len,
+            batch_size=args.batch_size,
+            train_samples=args.train_samples,
+            val_stride=args.val_stride,
+            num_workers=0,
+        )
+        # The mixed loader always pads to 14 views and maps to the 17-joint skeleton.
+        return train_loader.dataset, val_loader.dataset, 14, 17
+
     if args.manifest:
         split = load_multi_dataset_manifest(args.manifest)
     else:
@@ -790,6 +848,8 @@ def parse_args() -> Namespace:
     parser.add_argument("--train", type=str, nargs="+", default=None, help="Train .npz files (legacy, overrides manifest train)")
     parser.add_argument("--val", type=str, default=None, help="Validation .npz file (legacy, overrides manifest val)")
     parser.add_argument("--smoke", action="store_true", help="1-epoch CPU/GPU smoke test on synthetic data")
+    parser.add_argument("--use_mixed_loader", action="store_true", help="Use the WebBridge mixed-dataset loader (H36M+MPI, 17 joints/14 views)")
+    parser.add_argument("--mixed_manifest", type=str, default=None, help="YAML manifest for mixed loader (train_paths/train_names/val_paths/val_names)")
     # Model
     parser.add_argument("--d", type=int, default=128, help="Model feature dimension")
     parser.add_argument("--residual_hidden", type=int, default=128, help="Residual MLP hidden size")
@@ -905,18 +965,19 @@ def main():
     # ------------------------------------------------------------------
     train_dataset, val_dataset, n_views, n_joints = build_datasets(args)
 
+    selected_collate_fn = webbridge_mixed_collate_fn if args.use_mixed_loader else collate_fn
     train_loader = torch.utils.data.DataLoader(
         train_dataset,
         batch_size=args.batch_size,
         shuffle=True,
-        collate_fn=collate_fn,
+        collate_fn=selected_collate_fn,
         num_workers=0,
     )
     val_loader = torch.utils.data.DataLoader(
         val_dataset,
         batch_size=args.batch_size,
         shuffle=False,
-        collate_fn=collate_fn,
+        collate_fn=selected_collate_fn,
         num_workers=0,
     )
 
