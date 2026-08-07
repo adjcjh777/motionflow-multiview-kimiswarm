@@ -11,6 +11,7 @@
 | Cross-view residual + PP | d=64, h=128, pp_w=0.05 | **9.32** | **9.32** | **5.37** | full model, 20 epochs |
 | Bayesian Tri v2 (stabilized) | d=128, h=256, pp_w=0.2 | 9.03 | 9.03 | — | single d=128 model |
 | Bayesian Tri v2 ensemble | d=128, h=256 (stabilized + aug) | **8.61** | **8.61** | **5.38** | first result below 8.75 mm |
+| Bayesian Tri v2 ensemble (stabilized + aug, epoch 22) | d=128, h=256 | **8.35** | **8.35** | **5.29** | updated best ensemble |
 | Mixed-dataset PP (MPI+H36M) | d=32, h=64, pp_w=0.05 | 11.64 | 11.64 | 7.45 | small, trained on MPI S1/S3 + H36M S1 acts 2-6 |
 
 ### Human3.6M (4 views, 17 joints)

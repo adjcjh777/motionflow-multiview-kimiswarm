@@ -21,6 +21,7 @@ The goal is not to build a bigger model but to converge on a compact, robust, an
 |---|---|---:|---:|---:|---:|
 | MPI-INF-3DHP S2/Seq1 | Temporal residual (d=64, h=128, 20 ep) | **10.46** | 8.93 | 1.000 | 0.9303 |
 | MPI-INF-3DHP S2/Seq1 | Bayesian Tri v2 ensemble (stabilized + aug, d=128) | **8.61** | 5.38 | 1.000 | 0.9426 |
+| MPI-INF-3DHP S2/Seq1 | Bayesian Tri v2 ensemble (stabilized + aug epoch22, d=128) | **8.35** | 5.29 | 1.000 | 0.9444 |
 | Human3.6M S5/Act2 | CamPE+GraphJR (d=64, h=128) | **0.62** | 0.70 | 0.9993 | 0.9936 |
 
 ## MPI-INF-3DHP variants tried

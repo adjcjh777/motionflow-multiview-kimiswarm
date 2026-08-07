@@ -110,7 +110,7 @@ This decouples multi-view fusion from the upstream single-view estimator and dow
 | MPI-INF-3DHP S2/Seq1 | Raw DLT | 25.21 | 24.08 | geometric baseline, no learning |
 | MPI-INF-3DHP S2/Seq1 | Temporal ray-attention (no residual) | 25.21 | 24.14 | learned weights alone do not help |
 | MPI-INF-3DHP S2/Seq1 | Cross-view residual + PP (d=64, h=128, 20 ep) | **9.32** | **5.37** | best single-model result before d=128 |
-| MPI-INF-3DHP S2/Seq1 | Bayesian Tri v2 ensemble (stabilized + aug, d=128) | **8.61** | **5.38** | first result below the 8.75 mm publishable threshold |
+| MPI-INF-3DHP S2/Seq1 | Bayesian Tri v2 ensemble (stabilized + aug, d=128) | **8.35** | **5.29** | best ensemble so far |
 | MPI-INF-3DHP S2/Seq1 | Cross-view residual + PP small (d=32, h=64) | 10.34 | 6.28 | 66 k params |
 | Human3.6M S5/Act2 | CamPE + GraphJR (d=64, h=128) | **0.62** | **0.70** | 4-view rig |
 | Human3.6M S5/Act2 | Cross-view residual + PP (d=64, h=128) | **5.24** | **4.84** | with PP correction |
@@ -165,7 +165,7 @@ Configuration:
 
 **Goal:** push MPI-INF-3DHP validation MPJPE below the ICRA/CVPR 2027 publishable threshold of **8.75 mm**.
 
-**Outcome:** The anchor single model (`bayesian_tri_v2_stabilized_mpiinf3dhp.pth`) reached **9.03 mm** MPJPE. An ensemble of the stabilized checkpoint and the augmented-training variant (`bayesian_tri_v2_aug_mpiinf3dhp.pth`) reached **8.61 mm** MPJPE / **5.38 mm** PA-MPJPE / **0.9426** PCK-AUC on 2026-08-07, satisfying the primary accuracy claim. Ongoing full-data and epipolar-bias-v2 runs are expected to produce even stronger single models for a future ensemble.
+**Outcome:** The anchor single model (`bayesian_tri_v2_stabilized_mpiinf3dhp.pth`) reached **9.03 mm** MPJPE. An ensemble of the stabilized checkpoint and the augmented-training variant (`bayesian_tri_v2_aug_mpiinf3dhp.pth`) reached **8.35 mm** MPJPE / **5.29 mm** PA-MPJPE / **0.9444** PCK-AUC on 2026-08-07, improving on the first <8.75 mm ensemble. Ongoing full-data, epipolar-bias-v2, graph, and visibility runs are expected to produce even stronger single models for a future ensemble.
 
 ---
 
@@ -182,7 +182,7 @@ Configuration:
 ## 7. Paper arc
 
 ### Abstract
-We present a compact, calibrated multi-view 3D human pose estimator that combines a differentiable weighted-DLT triangulation step with a learned anisotropic covariance, adaptive Gauss-Newton refinement, and a small residual correction. On MPI-INF-3DHP it reaches **8.61 mm** MPJPE (target <8.75 mm) via a two-model ensemble, and on Human3.6M it reaches **0.62 mm** MPJPE. The method is calibration-robust, runs at 12–195 clips/s on an RTX 4090, and is exposed as a `MultiViewFusionPlugin` inside MotionFlow.
+We present a compact, calibrated multi-view 3D human pose estimator that combines a differentiable weighted-DLT triangulation step with a learned anisotropic covariance, adaptive Gauss-Newton refinement, and a small residual correction. On MPI-INF-3DHP it reaches **8.35 mm** MPJPE (target <8.75 mm) via a two-model ensemble, and on Human3.6M it reaches **0.62 mm** MPJPE. The method is calibration-robust, runs at 12–195 clips/s on an RTX 4090, and is exposed as a `MultiViewFusionPlugin` inside MotionFlow.
 
 ### Introduction (narrative)
 1. Multi-view capture is everywhere in robotics and immersive video.
