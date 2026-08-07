@@ -12,6 +12,7 @@ declare -A LAUNCHERS=(
   [v4_varview_adaptive_mpi]="$ROOT/scripts/tmux_v4_varview_adaptive_mpi.sh"
   [v6_mpi_isab]="$ROOT/scripts/tmux_v6_mpi_isab.sh"
   [v6_mpi_perceiver]="$ROOT/scripts/tmux_v6_mpi_perceiver.sh"
+  [v6_h36m_isab]="$ROOT/scripts/tmux_v6_h36m_isab.sh"
 )
 
 log "Monitor started (PID $$)."
