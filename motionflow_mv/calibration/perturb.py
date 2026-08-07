@@ -142,7 +142,7 @@ def perturb_cameras(
     Returns:
         Tuple of perturbed (K, R, t).
     """
-    K_aug, _ = perturb_intrinsics_with_delta(K, focal_std=focal_std, pp_std=pp_std)
+    K_aug, _, _ = perturb_intrinsics_with_delta(K, focal_std=focal_std, pp_std=pp_std)
     R_aug, t_aug = perturb_extrinsics(R, t, rot_std=rot_std, trans_std=trans_std)
     return K_aug, R_aug, t_aug
 
