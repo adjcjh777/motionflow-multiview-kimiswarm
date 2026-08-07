@@ -108,6 +108,8 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
         perceiver_n_heads: int = 4,
         perceiver_dropout: float = 0.0,
         use_full_precision_dlt: bool = False,
+        use_domain_embedding: bool = False,
+        num_domains: int = 2,
     ):
         super().__init__(
             j=j,
@@ -161,6 +163,9 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
         self.perceiver_n_heads = perceiver_n_heads
         self.perceiver_dropout = perceiver_dropout
         self.use_full_precision_dlt = use_full_precision_dlt
+        self.use_domain_embedding = use_domain_embedding
+        if self.use_domain_embedding:
+            self.domain_embedding = nn.Embedding(num_domains, d)
 
         if self.use_camera_view_embedding:
             self.camera_view_embedding = CameraConditionedViewEmbedding(
@@ -296,6 +301,7 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
         R: torch.Tensor = None,
         t: torch.Tensor = None,
         view_mask: Optional[torch.Tensor] = None,
+        domain_id: Optional[torch.Tensor] = None,
     ) -> Tuple[torch.Tensor, ...]:
         squeeze_output = False
         if x.dim() == 4:
@@ -388,6 +394,11 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
             feat = self.perceiver_aggregator(feat, view_mask=view_mask)
         elif self.use_set_view_aggregator and self.set_view_aggregator is not None:
             feat = self.set_view_aggregator(feat, view_mask=view_mask)
+
+        # Optional domain embedding (useful when mixing H36M/MPI/WebBridge).
+        if self.use_domain_embedding and domain_id is not None:
+            domain_emb = self.domain_embedding(domain_id)  # (B, d)
+            feat = feat + domain_emb.view(B, 1, 1, 1, self.d)
 
         # Spatio-temporal (time + view) attention with optional epipolar bias.
         time_emb = self.time_pos_embed[:T].view(1, T, 1, 1, self.d)

@@ -545,10 +545,12 @@ def build_compute_loss(args: Namespace):
             K, R, t, model.epoch if hasattr(model, "epoch") else 0, args
         )
 
+        model_kwargs_forward: Dict[str, Any] = {}
         if view_mask is not None:
-            out = model(x, K=K_aug, R=R_aug, t=t_aug, view_mask=view_mask)
-        else:
-            out = model(x, K=K_aug, R=R_aug, t=t_aug)
+            model_kwargs_forward["view_mask"] = view_mask
+        if args.use_domain_embedding and dataset_id is not None:
+            model_kwargs_forward["domain_id"] = dataset_id
+        out = model(x, K=K_aug, R=R_aug, t=t_aug, **model_kwargs_forward)
         pred_3d = out[0]
         weights = out[1]
         visibility = out[2]
@@ -647,7 +649,10 @@ def build_eval_metric():
         t = t.to(device)
 
         with torch.no_grad():
-            out = model(x, K=K, R=R, t=t)
+            forward_kwargs: Dict[str, Any] = {}
+            if len(batch) == 6 and getattr(model, "use_domain_embedding", False):
+                forward_kwargs["domain_id"] = batch[5].to(device)
+            out = model(x, K=K, R=R, t=t, **forward_kwargs)
             pred_3d = out[0]
             loss = F.mse_loss(pred_3d, y)
             mpjpe = (pred_3d - y).norm(dim=-1).mean()
@@ -901,6 +906,8 @@ def parse_args() -> Namespace:
     parser.add_argument("--perceiver_n_heads", type=int, default=4, help="Number of attention heads in Perceiver aggregator")
     parser.add_argument("--perceiver_dropout", type=float, default=0.0, help="Dropout in Perceiver aggregator")
     parser.add_argument("--use_full_precision_dlt", action="store_true", help="Use full 2x2 precision matrix in DLT triangulation")
+    parser.add_argument("--use_domain_embedding", action="store_true", help="Add a learnable per-dataset embedding (requires --use_mixed_loader)")
+    parser.add_argument("--num_domains", type=int, default=2, help="Number of dataset domains for the embedding")
     parser.add_argument("--monotonic_loss_weight", type=float, default=0.0, help="Weight for monotonic multi-view ranking loss")
     parser.add_argument("--monotonic_margin", type=float, default=5.0, help="Margin (mm) for monotonic multi-view loss")
     # Training
@@ -1045,6 +1052,8 @@ def main():
         "perceiver_dropout": args.perceiver_dropout,
         # v7 toggles
         "use_full_precision_dlt": args.use_full_precision_dlt,
+        "use_domain_embedding": args.use_domain_embedding,
+        "num_domains": args.num_domains,
     }
     if args.adaptive_view_k is not None:
         model_kwargs["adaptive_view_target_k"] = args.adaptive_view_k
