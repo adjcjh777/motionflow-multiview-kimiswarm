@@ -60,6 +60,9 @@ class VisibilityGateHead(nn.Module):
     use_uncertainty:
         If True, output an extra uncertainty channel that scales the visibility
         mask, allowing the model to express "don't know".
+    use_context_visibility:
+        Alias for ``use_context`` kept for the v4 model API.  If provided, it
+        overrides ``use_context``.
     """
 
     def __init__(
@@ -68,8 +71,12 @@ class VisibilityGateHead(nn.Module):
         hidden: int = 64,
         use_context: bool = True,
         use_uncertainty: bool = False,
+        use_context_visibility: bool | None = None,
     ):
         super().__init__()
+        # ``use_context_visibility`` is the v4-facing alias for ``use_context``.
+        if use_context_visibility is not None:
+            use_context = use_context_visibility
         self.use_context = use_context
         self.use_uncertainty = use_uncertainty
 
@@ -137,6 +144,9 @@ class VisibilityGatedFusionV2(nn.Module):
         If True, condition visibility on the per-joint pooled context.
     use_uncertainty:
         If True, predict an uncertainty map and use it to scale the visibility.
+    use_context_visibility:
+        Alias for ``use_context`` kept for the v4 model API.  If provided, it
+        overrides ``use_context``.
     """
 
     def __init__(
@@ -148,8 +158,12 @@ class VisibilityGatedFusionV2(nn.Module):
         min_visible_views: int = 2,
         use_context: bool = True,
         use_uncertainty: bool = False,
+        use_context_visibility: bool | None = None,
     ):
         super().__init__()
+        # ``use_context_visibility`` is the v4-facing alias for ``use_context``.
+        if use_context_visibility is not None:
+            use_context = use_context_visibility
         self.d = d
         self.n_views = n_views
         self.visibility_threshold = visibility_threshold
@@ -189,10 +203,13 @@ class VisibilityGatedFusionV2(nn.Module):
             visibility = visibility * (1.0 - uncertainty)
 
         # Fallback guard: avoid degenerate DLT when too few views are visible.
+        # The straight-through estimator keeps the hard forward decision (restore
+        # all views to visible) while allowing gradients to flow through the
+        # visibility head even when the guard fires.
         visible = (visibility > self.visibility_threshold).float()
         visible_count = visible.sum(dim=1)  # (N, J)
         fallback = (visible_count < self.min_visible_views).float().unsqueeze(1)  # (N, 1, J)
-        effective_visibility = visibility + (1.0 - visibility) * fallback
+        effective_visibility = visibility + (1.0 - visibility).detach() * fallback
 
         # Silence views that were already masked out by detector confidence.
         confidence_mask = (confidences > 0).float()
@@ -233,6 +250,7 @@ class VisibilityGatedCrossviewResidualPrincipalPointV2(
         min_visible_views: int = 2,
         use_context: bool = True,
         use_uncertainty: bool = False,
+        use_context_visibility: bool | None = None,
     ):
         super().__init__(
             j=j,
@@ -257,6 +275,7 @@ class VisibilityGatedCrossviewResidualPrincipalPointV2(
             min_visible_views=min_visible_views,
             use_context=use_context,
             use_uncertainty=use_uncertainty,
+            use_context_visibility=use_context_visibility,
         )
 
     def _visibility_multiplier(self, feat, confidences):
@@ -285,6 +304,7 @@ class VisibilityGatedFusionV2Module(FusionModule):
         min_visible_views: int = 2,
         use_context: bool = True,
         use_uncertainty: bool = False,
+        use_context_visibility: bool | None = None,
     ):
         super().__init__()
         self.input_scale = input_scale
@@ -297,6 +317,7 @@ class VisibilityGatedFusionV2Module(FusionModule):
             min_visible_views=min_visible_views,
             use_context=use_context,
             use_uncertainty=use_uncertainty,
+            use_context_visibility=use_context_visibility,
         )
         if checkpoint_path is not None:
             self.model.load_state_dict(torch.load(checkpoint_path, map_location="cpu", weights_only=True))
