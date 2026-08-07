@@ -31,6 +31,7 @@ import torch
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from motionflow_mv.fusion.omniview_fusion_v2 import OmniMultiViewFusionV2
+from motionflow_mv.training.trainer_v2 import checkpoint_eval_state_dict
 
 
 # ---------------------------------------------------------------------------
@@ -228,8 +229,7 @@ def load_checkpoint(model: torch.nn.Module, checkpoint_path: str, n_views: int, 
     could not be inferred.
     """
     state = torch.load(checkpoint_path, map_location="cpu", weights_only=True)
-    if isinstance(state, dict) and "model" in state:
-        state = state["model"]
+    state = checkpoint_eval_state_dict(state)
 
     checkpoint_joints = _infer_checkpoint_joints(state, n_views)
 

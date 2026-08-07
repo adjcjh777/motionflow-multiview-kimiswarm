@@ -38,6 +38,7 @@ from motionflow_mv.fusion.variable_view_inference import (
     VariableViewInferenceWrapper,
     prepare_variable_view_input,
 )
+from motionflow_mv.training.trainer_v2 import checkpoint_eval_state_dict
 
 
 # ---------------------------------------------------------------------------
@@ -199,8 +200,7 @@ def build_model(args: argparse.Namespace, n_views: int, j: int) -> OmniMultiView
 
 def load_checkpoint(model: torch.nn.Module, checkpoint_path: str) -> None:
     state = torch.load(checkpoint_path, map_location="cpu", weights_only=True)
-    if isinstance(state, dict) and "model" in state:
-        state = state["model"]
+    state = checkpoint_eval_state_dict(state)
     missing, unexpected = model.load_state_dict(state, strict=False)
     if missing:
         print(f"Checkpoint load: missing keys {missing[:10]}")

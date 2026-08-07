@@ -49,7 +49,11 @@ from motionflow_mv.fusion.prototypes.cross_view_graph_attention import (  # noqa
     H36M_17_PARENTS,
     MPI_INF_3DHP_28_PARENTS,
 )
-from motionflow_mv.training.trainer_v2 import TrainerV2, build_lr_scheduler  # noqa: E402
+from motionflow_mv.training.trainer_v2 import (  # noqa: E402
+    TrainerV2,
+    build_lr_scheduler,
+    checkpoint_eval_state_dict,
+)
 
 
 def set_seed(seed: int):
@@ -601,8 +605,7 @@ def build_datasets(args: Namespace) -> Tuple[torch.utils.data.Dataset, torch.uti
 def load_warm_start(model: torch.nn.Module, checkpoint_path: str) -> None:
     """Load a checkpoint, tolerating extra/missing keys for warm-starting."""
     state = torch.load(checkpoint_path, map_location="cpu", weights_only=True)
-    if isinstance(state, dict) and "model" in state:
-        state = state["model"]
+    state = checkpoint_eval_state_dict(state)
     missing, unexpected = model.load_state_dict(state, strict=False)
     if missing:
         print(f"Warm-start: missing keys (expected for new heads): {missing[:10]}")
@@ -832,7 +835,7 @@ def main():
 
         best = min(history, key=lambda e: e.get("val", {}).get("loss", float("inf")))
         best_mpjpe = best.get("val", {}).get("mpjpe", float("nan"))
-        print(f"Best val MPJPE: {best_mpjpe * 1000:.2f}mm -> {output_path}")
+        print(f"MPJPE at best val loss: {best_mpjpe * 1000:.2f}mm -> {output_path}")
 
     # Always save the final checkpoint as well.
     trainer.save_checkpoint(str(output_path.with_suffix("")) + "_final.pth")

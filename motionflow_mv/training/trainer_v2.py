@@ -229,6 +229,28 @@ class EMA:
         self.shadow = OrderedDict({k: v.clone() for k, v in state_dict["shadow"].items()})
 
 
+def checkpoint_eval_state_dict(checkpoint: Dict[str, Any]) -> Dict[str, torch.Tensor]:
+    """Return the weights that match checkpoint-time evaluation.
+
+    New TrainerV2 checkpoints store this identity explicitly in
+    ``eval_model``.  Older composite checkpoints from EMA-evaluated runs can
+    reconstruct that identity by overlaying ``ema.shadow`` parameters on the
+    saved raw model; model buffers remain those from the raw state dict.
+    """
+    if "model" not in checkpoint:
+        return checkpoint  # type: ignore[return-value]
+    if "eval_model" in checkpoint:
+        return checkpoint["eval_model"]
+
+    model_state = checkpoint["model"]
+    ema_state = checkpoint.get("ema")
+    if isinstance(ema_state, dict) and "shadow" in ema_state:
+        eval_state = OrderedDict(model_state)
+        eval_state.update(ema_state["shadow"])
+        return eval_state
+    return model_state
+
+
 # ---------------------------------------------------------------------------
 # Generic trainer v2
 # ---------------------------------------------------------------------------
@@ -296,6 +318,7 @@ class TrainerV2:
         self.ema_eval = ema_eval
         self.epoch = 0
         self.history: List[Dict[str, Any]] = []
+        self.best_metric = float("inf")
 
     def compute_loss(
         self,
@@ -414,7 +437,6 @@ class TrainerV2:
 
         Returns the per-epoch history list.
         """
-        best_metric = float("inf")
         for _ in range(epochs):
             self.epoch += 1
             train_metrics = self.train_epoch(train_loader)
@@ -423,11 +445,22 @@ class TrainerV2:
                 val_metrics = self.evaluate(val_loader, compute_metric=eval_metric)
                 entry["val"] = val_metrics
                 self.history.append(entry)
-                if save_best and checkpoint_path is not None:
-                    val_loss = val_metrics.get("loss", float("inf"))
-                    if val_loss < best_metric:
-                        best_metric = val_loss
-                        self.save_checkpoint(checkpoint_path)
+                val_loss = val_metrics.get("loss", float("inf"))
+                save_best_checkpoint = save_best and checkpoint_path is not None
+                is_best = save_best_checkpoint and val_loss < self.best_metric
+                if is_best:
+                    self.best_metric = val_loss
+                self.step_scheduler()
+                if is_best and checkpoint_path is not None:
+                    self.save_checkpoint(
+                        checkpoint_path,
+                        extra={
+                            "checkpoint_role": "best",
+                            "monitor": "loss",
+                            "monitor_mode": "min",
+                            "monitor_value": val_loss,
+                        },
+                    )
                 print(
                     f"Epoch {self.epoch}: train_loss={train_metrics.get('loss', float('nan')):.6f}, "
                     f"val_loss={val_metrics.get('loss', float('nan')):.6f}, "
@@ -435,18 +468,28 @@ class TrainerV2:
                 )
             else:
                 self.history.append(entry)
+                self.step_scheduler()
                 print(f"Epoch {self.epoch}: train_loss={train_metrics.get('loss', float('nan')):.6f}")
-            self.step_scheduler()
         return self.history
 
     def save_checkpoint(self, path: str, *, extra: Optional[Dict[str, Any]] = None) -> None:
         """Save model, optimizer, scheduler, AMP, and EMA state."""
+        model_state = self.model.state_dict()
+        eval_model = OrderedDict(model_state)
+        eval_weights = "raw"
+        if self.ema is not None and self.ema_eval:
+            eval_model.update(self.ema.shadow)
+            eval_weights = "ema"
+
         state: Dict[str, Any] = {
             "epoch": self.epoch,
-            "model": self.model.state_dict(),
+            "model": model_state,
+            "eval_model": eval_model,
+            "eval_weights": eval_weights,
             "optimizer": self.optimizer.state_dict(),
             "amp": self.amp.state_dict(),
             "history": self.history,
+            "best_metric": self.best_metric,
         }
         if self.scheduler is not None:
             state["scheduler"] = self.scheduler.state_dict()
@@ -467,7 +510,23 @@ class TrainerV2:
             self.scheduler.load_state_dict(state["scheduler"])
         if self.ema is not None and "ema" in state:
             self.ema.load_state_dict(state["ema"])
+        elif self.ema is not None:
+            self.ema._step = 0
+            self.ema.shadow = OrderedDict(
+                (name, param.data.clone())
+                for name, param in self.model.named_parameters()
+                if param.requires_grad
+            )
         self.history = state.get("history", [])
+        if "best_metric" in state:
+            self.best_metric = state["best_metric"]
+        else:
+            history_losses = [
+                entry["val"]["loss"]
+                for entry in self.history
+                if "val" in entry and "loss" in entry["val"]
+            ]
+            self.best_metric = min(history_losses, default=float("inf"))
         return state
 
 

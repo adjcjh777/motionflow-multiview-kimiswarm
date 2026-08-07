@@ -3,7 +3,13 @@
 **Checkpoint**: `outputs/omniview_fusion_v2_h36m_d128_dense_graph_a800.pth`  
 **Config**: d=128, residual_hidden=256, n_st_layers=3, graph_num_layers=1, n_joint_layers=1  
 **Training**: WebBridge H36M S1, 30 epochs, batch 32, view_dropout_rate=0.1  
-**Best val MPJPE**: 20.91 mm (reported by trainer)
+**MPJPE at the best validation-loss epoch**: 20.91 mm (reported by trainer)
+
+> Identity boundary: this trainer value used EMA parameters, while the clean,
+> robustness, and variable-view scripts originally loaded the raw `model`
+> entry. The values below remain recorded observations, but they are not
+> same-weight comparisons until both identities are re-evaluated under one
+> protocol.
 
 ## Clean evaluation
 

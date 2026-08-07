@@ -31,6 +31,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from motionflow_mv.eval.metrics import compute_all_metrics
 from motionflow_mv.fusion.omniview_fusion_v2 import OmniMultiViewFusionV2
+from motionflow_mv.training.trainer_v2 import checkpoint_eval_state_dict
 
 
 # ---------------------------------------------------------------------------
@@ -190,8 +191,7 @@ def build_model(args: argparse.Namespace, n_views: int, j: int) -> OmniMultiView
 
 def load_checkpoint(model: torch.nn.Module, checkpoint_path: str) -> None:
     state = torch.load(checkpoint_path, map_location="cpu", weights_only=True)
-    if isinstance(state, dict) and "model" in state:
-        state = state["model"]
+    state = checkpoint_eval_state_dict(state)
     missing, unexpected = model.load_state_dict(state, strict=False)
     if missing:
         print(f"Checkpoint load: missing keys {missing[:10]}")
@@ -202,8 +202,7 @@ def load_checkpoint(model: torch.nn.Module, checkpoint_path: str) -> None:
 def infer_checkpoint_args(checkpoint_path: str) -> Dict[str, Any]:
     """Infer minimal architecture hyper-parameters from a saved state dict."""
     state = torch.load(checkpoint_path, map_location="cpu", weights_only=True)
-    if isinstance(state, dict) and "model" in state:
-        state = state["model"]
+    state = checkpoint_eval_state_dict(state)
     view_pos_embed = state["view_pos_embed"]
     n_views, d = view_pos_embed.shape
     residual_hidden = state.get("residual_mlp.0.weight", torch.empty(128, 0)).shape[0]

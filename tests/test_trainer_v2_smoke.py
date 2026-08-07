@@ -13,7 +13,13 @@ import torch.optim as optim
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from motionflow_mv.training import EMA, TrainerV2, MultiViewPoseTrainerV2, build_lr_scheduler
+from motionflow_mv.training import (
+    EMA,
+    TrainerV2,
+    MultiViewPoseTrainerV2,
+    build_lr_scheduler,
+    checkpoint_eval_state_dict,
+)
 
 
 class DummyModel(nn.Module):
@@ -136,6 +142,7 @@ def test_multiview_trainer():
     assert len(history) == 1
     assert "train" in history[0]
     assert "val" in history[0]
+    assert trainer.best_metric == float("inf")
 
 
 def test_checkpoint_roundtrip(tmp_path=None):
@@ -160,8 +167,26 @@ def test_checkpoint_roundtrip(tmp_path=None):
     loader = _make_dataloader()
     trainer.fit(loader, epochs=1)
 
+    with torch.no_grad():
+        for param in model.parameters():
+            param.fill_(3.0)
+        for shadow in trainer.ema.shadow.values():
+            shadow.fill_(2.0)
+
     path = tmp_path / "ckpt.pth" if tmp_path else "outputs/test_trainer_v2_ckpt.pth"
     trainer.save_checkpoint(str(path))
+
+    state = torch.load(path, map_location="cpu", weights_only=False)
+    assert state["eval_weights"] == "ema"
+    eval_state = checkpoint_eval_state_dict(state)
+    for name in state["ema"]["shadow"]:
+        assert torch.allclose(state["model"][name], torch.full_like(state["model"][name], 3.0))
+        assert torch.allclose(eval_state[name], torch.full_like(eval_state[name], 2.0))
+
+    legacy_state = {"model": state["model"], "ema": state["ema"]}
+    legacy_eval_state = checkpoint_eval_state_dict(legacy_state)
+    for name in state["ema"]["shadow"]:
+        assert torch.allclose(legacy_eval_state[name], state["ema"]["shadow"][name])
 
     model2 = DummyModel()
     optimizer2 = optim.SGD(model2.parameters(), lr=0.1)
@@ -177,6 +202,30 @@ def test_checkpoint_roundtrip(tmp_path=None):
 
     for p1, p2 in zip(model.parameters(), model2.parameters()):
         assert torch.allclose(p1, p2)
+
+    legacy_resume = dict(state)
+    legacy_resume.pop("ema")
+    legacy_resume.pop("eval_model")
+    legacy_resume.pop("eval_weights")
+    legacy_resume.pop("best_metric")
+    legacy_resume["history"] = [{"val": {"loss": 0.25}}]
+    legacy_path = Path(path).with_name(f"legacy_{Path(path).name}")
+    torch.save(legacy_resume, legacy_path)
+
+    model3 = DummyModel()
+    optimizer3 = optim.SGD(model3.parameters(), lr=0.1)
+    trainer3 = TrainerV2(
+        model3,
+        optimizer3,
+        device,
+        compute_loss=compute_loss,
+        total_epochs=2,
+        ema_decay=0.9,
+    )
+    trainer3.load_checkpoint(str(legacy_path))
+    assert trainer3.best_metric == 0.25
+    for name, param in model3.named_parameters():
+        assert torch.allclose(trainer3.ema.shadow[name], param)
 
 
 def main():
