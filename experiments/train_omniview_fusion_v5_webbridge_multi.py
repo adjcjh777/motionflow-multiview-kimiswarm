@@ -612,6 +612,55 @@ def _reprojection_loss(
     return (rho * mask).sum() / (mask.sum() + 1e-8)
 
 
+def temporal_consistency_loss(
+    pred_3d: torch.Tensor,
+    y: torch.Tensor,
+    temporal_loss_weight: float,
+    temporal_acceleration_weight: float,
+    eps: float = 1e-4,
+) -> Tuple[torch.Tensor, Dict[str, float]]:
+    """Velocity + acceleration temporal consistency loss.
+
+    Parameters
+    ----------
+    pred_3d:
+        Predicted 3-D poses, shape ``(B, T, J, 3)``.
+    y:
+        Ground-truth 3-D pose, shape ``(B, T, J, 3)``.
+    temporal_loss_weight:
+        Overall multiplier for the temporal loss.
+    temporal_acceleration_weight:
+        Relative weight of the acceleration smoothness term (0 disables).
+    eps:
+        Charbonnier epsilon.
+
+    Returns
+    -------
+    total_loss:
+        Scalar loss already scaled by ``temporal_loss_weight``.
+    metrics:
+        Dictionary with ``temp_vel_loss``, ``temp_acc_loss`` and ``temp_loss``.
+    """
+    if temporal_loss_weight <= 0.0 or pred_3d.shape[1] < 2:
+        return torch.tensor(0.0, device=pred_3d.device, dtype=pred_3d.dtype), {}
+
+    diff = pred_3d - y
+    vel = diff[:, 1:] - diff[:, :-1]
+    vel_loss = torch.sqrt(vel.pow(2).sum(-1) + eps ** 2).mean()
+
+    acc_loss = torch.tensor(0.0, device=pred_3d.device, dtype=pred_3d.dtype)
+    if temporal_acceleration_weight > 0.0 and pred_3d.shape[1] > 2:
+        acc = diff[:, 2:] - 2 * diff[:, 1:-1] + diff[:, :-2]
+        acc_loss = torch.sqrt(acc.pow(2).sum(-1) + eps ** 2).mean()
+
+    total = vel_loss + temporal_acceleration_weight * acc_loss
+    return temporal_loss_weight * total, {
+        "temp_vel_loss": vel_loss.item(),
+        "temp_acc_loss": acc_loss.item() if temporal_acceleration_weight > 0.0 else 0.0,
+        "temp_loss": total.item(),
+    }
+
+
 # ---------------------------------------------------------------------------
 # Trainer wrapper
 # ---------------------------------------------------------------------------
@@ -772,11 +821,14 @@ def build_compute_loss(args: Namespace):
             metrics["nll"] = nll.item()
 
         if args.temporal_loss_weight > 0.0 and pred_3d.shape[1] > 1:
-            vel_pred = pred_3d[:, 1:] - pred_3d[:, :-1]
-            vel_tgt = y[:, 1:] - y[:, :-1]
-            temp_loss = (vel_pred - vel_tgt).norm(dim=-1).mean()
-            loss = loss + args.temporal_loss_weight * temp_loss
-            metrics["temp_loss"] = temp_loss.item()
+            temp_loss, temp_metrics = temporal_consistency_loss(
+                pred_3d,
+                y,
+                temporal_loss_weight=args.temporal_loss_weight,
+                temporal_acceleration_weight=args.temporal_acceleration_weight,
+            )
+            loss = loss + temp_loss
+            metrics.update(temp_metrics)
 
         if args.bone_loss_weight > 0.0 and parents is not None:
             bl = bone_length_loss(pred_3d, y, parents)
@@ -1177,6 +1229,8 @@ def parse_args() -> Namespace:
     parser.add_argument("--pa_loss_weight", type=float, default=0.0, help="Weight for Procrustes-aligned MSE loss (0 disables)")
     parser.add_argument("--uncertainty_loss_weight", type=float, default=0.05, help="Uncertainty NLL weight")
     parser.add_argument("--temporal_loss_weight", type=float, default=0.02, help="Temporal consistency weight")
+    parser.add_argument("--temporal_acceleration_weight", type=float, default=0.0,
+                        help="Relative weight of acceleration smoothness within the temporal loss (0 disables)")
     parser.add_argument("--bone_loss_weight", type=float, default=0.05, help="Bone-length consistency weight")
     parser.add_argument("--attention_entropy_weight", type=float, default=0.0, help="Attention-entropy regularisation weight")
     parser.add_argument("--budget_loss_weight", type=float, default=0.0, help="Adaptive-view budget loss weight")
