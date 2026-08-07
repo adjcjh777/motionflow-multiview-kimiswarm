@@ -27,6 +27,9 @@ from motionflow_mv.fusion.ray_attention_temporal_crossview_residual_principal_po
 from motionflow_mv.fusion.ray_attention_temporal_crossview_residual_principal_point_epipolar_bias_v2_model import (
     RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointEpipolarBiasV2,
 )
+from motionflow_mv.fusion.ray_attention_temporal_crossview_residual_principal_point_epipolar_model import (
+    RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointEpipolar,
+)
 from motionflow_mv.fusion.ray_attention_temporal_crossview_residual_principal_point_model import (
     RayAttentionFusionModelTemporalCrossviewResidualPrincipalPoint,
 )
@@ -53,6 +56,7 @@ MODEL_FACTORIES = [
     lambda common: RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointEpipolarBiasV2(
         **common
     ),
+    lambda common: RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointEpipolar(**common),
     lambda common: RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointSplat(**common),
     lambda common: RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointVisibilityTransformer(
         **common, visibility_n_layers=1, visibility_n_heads=4

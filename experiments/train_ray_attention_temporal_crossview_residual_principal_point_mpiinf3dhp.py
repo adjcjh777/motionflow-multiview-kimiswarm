@@ -344,6 +344,7 @@ def main():
             principal_point_max_offset=args.principal_point_max_offset,
             focal_max_scale=args.focal_max_scale,
             return_pp_delta=True,
+            return_raw=args.return_raw_3d or args.reproj_raw_weight > 0.0,
         ).to(device)
     elif args.model_type == "epipolar_bias_v2_pp":
         model = RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointEpipolarBiasV2(
@@ -353,6 +354,7 @@ def main():
             principal_point_max_offset=args.principal_point_max_offset,
             focal_max_scale=args.focal_max_scale,
             return_pp_delta=True,
+            return_raw=args.return_raw_3d or args.reproj_raw_weight > 0.0,
         ).to(device)
     elif args.model_type == "epipolar_bias_v2_lite_pp":
         model = RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointEpipolarBiasV2Lite(
