@@ -2,9 +2,8 @@
 
 This is a thin subclass of
 ``RayAttentionFusionModelTemporalCrossviewResidualPrincipalPoint`` that adds a
-small bidirectional GRU over the raw triangulated 3-D sequence before the final
-residual MLP.  The extra head predicts a per-joint dynamics residual that is
-added to the refined pose.
+small bidirectional GRU over the refined 3-D sequence. The extra head predicts
+a per-joint dynamics residual that is added to the refined pose.
 
 The module is intended to be used together with
 ``motionflow_mv.losses.physics_informed_dynamics.PhysicsInformedSkeletonDynamicsLoss``,
@@ -111,40 +110,14 @@ class RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointPhysics(
         return delta
 
     def forward(self, x, cameras=None, K=None, R=None, t=None):
-        squeeze_output = False
-        if x.dim() == 4:
-            x = x.unsqueeze(1)
-            squeeze_output = True
-
-        B, T, V, J, _ = x.shape
-
-        # Re-use the anchor forward by forcing return_raw=True internally so we
-        # can apply the dynamics refiner on top of both raw and refined outputs.
-        parent_return_raw = self.return_raw
-        self.return_raw = True
+        squeeze_output = x.dim() == 4
         out = super().forward(x, cameras=cameras, K=K, R=R, t=t)
-        self.return_raw = parent_return_raw
-
-        if isinstance(out, tuple):
-            pred_3d, weights, pred_3d_raw = out[:3]
-        else:
-            pred_3d = out
-            weights = None
 
         # Dynamics residual is computed on the refined trajectory and added to it.
-        dynamics_delta = self._dynamics_residual(pred_3d)
-        pred_3d = pred_3d + dynamics_delta
-
+        pred_3d = out[0].unsqueeze(1) if squeeze_output else out[0]
+        pred_3d = pred_3d + self._dynamics_residual(pred_3d)
         if squeeze_output:
             pred_3d = pred_3d.squeeze(1)
-            if weights is not None:
-                weights = weights.squeeze(1)
 
-        if self.return_raw:
-            if weights is None:
-                return pred_3d, pred_3d_raw.squeeze(1) if squeeze_output else pred_3d_raw
-            return pred_3d, weights, pred_3d_raw.squeeze(1) if squeeze_output else pred_3d_raw
-
-        if weights is not None:
-            return pred_3d, weights
-        return pred_3d
+        # Keep the anchor's optional-output ordering and only replace its pose.
+        return (pred_3d, *out[1:])
