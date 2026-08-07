@@ -82,6 +82,26 @@ def test_compute_contrastive_loss_matches_hook_path():
     assert torch.allclose(c_loss_explicit, c_loss_hook, atol=1e-5, rtol=1e-4)
 
 
+def test_single_frame_batch_one_keeps_contrastive_sample_axis():
+    B, V, J = 1, 4, 17
+    cameras = _make_cameras(V)
+    x = torch.rand(B, V, J, 3)
+    model = RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointCrossViewContrast(
+        j=J,
+        d=32,
+        n_views=V,
+        n_st_layers=0,
+        contrastive_dim=16,
+    ).eval()
+
+    with torch.no_grad():
+        feat = model._prepare_contrastive_features(x, cameras=cameras)
+        loss = model.compute_contrastive_loss(x, cameras=cameras)
+
+    assert feat.shape == (B, V, J, 32)
+    assert loss.shape == ()
+
+
 if __name__ == "__main__":
     test_loss_shape_and_grad()
     test_model_forward_and_contrastive_loss()

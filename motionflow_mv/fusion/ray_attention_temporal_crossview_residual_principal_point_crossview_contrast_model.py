@@ -70,10 +70,8 @@ class RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointCrossViewCon
             from .ray_attention_temporal_crossview_model import _cameras_to_tensors
             K, R, t = _cameras_to_tensors(cameras, x.device)
 
-        squeeze_output = False
         if x.dim() == 4:
             x = x.unsqueeze(1)
-            squeeze_output = True
 
         B, T, V, J, _ = x.shape
         device = x.device
@@ -114,9 +112,7 @@ class RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointCrossViewCon
             B * T, V, J, self.d
         )
 
-        if squeeze_output:
-            feat = feat.squeeze(0)
-        return feat  # (B*T, V, J, d) or (V, J, d) for single-frame input
+        return feat  # (B*T, V, J, d)
 
     def compute_contrastive_loss(
         self,
