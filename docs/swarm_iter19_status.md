@@ -7,18 +7,21 @@
 
 | # | Workstream | Owner | Status |
 |---|-----------|-------|--------|
-| 1 | 4090 dense+graph v2 full run | local watchdog | Freeze phase done (val_MPJPE=25.37 mm); end-to-end phase running |
-| 2 | A800 dense+graph v2 scaling | local | Restarted on GPU 4 (PID 122582), freeze phase started |
-| 3 | WebBridge multi-dataset loader | subagent | **Done** – pushed to main (commit `4475018`) |
-| 4 | OmniMultiViewFusion v3 design | subagent | **Done** – pushed to main (commit `c9f2d2d`); A800 training running on GPU 5 |
-| 5 | Robustness/eval pipeline | subagent | **Done** – pushed to main (commit `4475018`); no-graph eval paused to free GPU |
-| 6 | 4090/A800 monitor | local | watching logs & GPUs, will run eval when checkpoint is ready |
+| 1 | 4090 dense+graph v2 full run | local watchdog | End-to-end Epoch 6, val_MPJPE=25.40 mm |
+| 2 | A800 MPI dense+graph v2 | local tmux | GPU 4, freeze epoch 3, val_MPJPE=25.62 mm |
+| 3 | A800 MPI OmniMultiViewFusion v3 | local | GPU 5, first epoch in progress |
+| 4 | A800 H36M dense+graph v2 | local | GPU 6, just started |
+| 5 | WebBridge multi-dataset loader | subagent | **Done** – pushed to main (commit `4475018`) |
+| 6 | OmniMultiViewFusion v3 design | subagent | **Done** – pushed to main (commit `c9f2d2d`) |
+| 7 | Robustness/eval pipeline | local | v3 eval script + smoke test pushed; waiting for checkpoint |
+| 8 | 4090/A800 monitor | local | watching logs & GPUs, will run eval when checkpoint ready |
 
 ## Latest 4090 results
 
 - **No-graph ablation**: clean MPJPE ~25.3 mm (baseline).
-- **Dense+graph v2 (freeze phase)**: val_MPJPE = 25.13 mm → 25.37 mm across 5 freeze epochs; now in end-to-end training.
-- **A800**: v2 and v3 restarted on free GPUs 4/5 to avoid VLLM collisions; first epoch metrics pending.
+- **Dense+graph v2 (freeze phase)**: val_MPJPE = 25.13 mm → 25.37 mm across 5 freeze epochs.
+- **A800 MPI v2**: val_MPJPE improved to 25.07 mm at freeze epoch 2, currently 25.62 mm at epoch 3.
+- **A800 H36M v2**: launched to expand scale beyond MPI-INF-3DHP.
 
 ## Next decisions
 
