@@ -506,6 +506,9 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
                     eye2.expand_as(precision_matrix),
                     precision_matrix,
                 )
+            # Clamp precision matrix to prevent degenerate / exploding Mahalanobis
+            # distances in the robust reweight path.
+            precision_matrix = precision_matrix.clamp(min=-1e3, max=1e3)
             Rt = torch.cat([R, t[..., None]], dim=-1)
             P = K_corrected @ Rt
             from motionflow_mv.fusion.triangulation import triangulate_dlt_batched_lstsq
@@ -526,6 +529,7 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
                 # Detach robust weights so the second solve does not backprop through
                 # the (potentially unstable) precision/covariance head.
                 weights_robust = (weights * rho * view_mask_flat.unsqueeze(-1)).detach()
+                weights_robust = weights_robust.clamp(min=1e-4, max=1e4)
                 pred_3d_raw = triangulate_dlt_batched_lstsq(points_2d, P, weights_robust, precision_matrix=precision_matrix.detach())
         else:
             weights = weights * confidences * precision * visibility
