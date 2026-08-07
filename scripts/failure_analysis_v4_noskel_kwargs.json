@@ -1,0 +1,18 @@
+{
+  "j": 28,
+  "n_views": 14,
+  "d": 128,
+  "n_heads": 4,
+  "n_st_layers": 3,
+  "residual_hidden": 256,
+  "graph_num_layers": 1,
+  "n_joint_layers": 1,
+  "return_pp_delta": false,
+  "return_covariance": true,
+  "use_multiscale_fusion": false,
+  "use_camera_conditioning": false,
+  "use_epipolar_bias": false,
+  "use_context_visibility": true,
+  "use_skeleton_residual": false,
+  "use_rotation_correction": true
+}
