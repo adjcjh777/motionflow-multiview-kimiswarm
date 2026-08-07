@@ -886,6 +886,7 @@ def parse_args() -> Namespace:
     parser.add_argument("--perceiver_n_layers", type=int, default=2, help="Number of Perceiver latent layers")
     parser.add_argument("--perceiver_n_heads", type=int, default=4, help="Number of attention heads in Perceiver aggregator")
     parser.add_argument("--perceiver_dropout", type=float, default=0.0, help="Dropout in Perceiver aggregator")
+    parser.add_argument("--use_full_precision_dlt", action="store_true", help="Use full 2x2 precision matrix in DLT triangulation")
     parser.add_argument("--monotonic_loss_weight", type=float, default=0.0, help="Weight for monotonic multi-view ranking loss")
     parser.add_argument("--monotonic_margin", type=float, default=5.0, help="Margin (mm) for monotonic multi-view loss")
     # Training
@@ -1026,6 +1027,8 @@ def main():
         "perceiver_n_layers": args.perceiver_n_layers,
         "perceiver_n_heads": args.perceiver_n_heads,
         "perceiver_dropout": args.perceiver_dropout,
+        # v7 toggles
+        "use_full_precision_dlt": args.use_full_precision_dlt,
     }
     if args.adaptive_view_k is not None:
         model_kwargs["adaptive_view_target_k"] = args.adaptive_view_k

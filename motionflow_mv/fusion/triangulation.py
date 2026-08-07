@@ -107,6 +107,7 @@ def triangulate_dlt_batched_lstsq(
     points_2d: torch.Tensor,
     proj_matrices: torch.Tensor,
     weights: torch.Tensor | None = None,
+    precision_matrix: torch.Tensor | None = None,
 ) -> torch.Tensor:
     """Fully batched weighted DLT triangulation using ``torch.linalg.lstsq``.
 
@@ -116,11 +117,26 @@ def triangulate_dlt_batched_lstsq(
     Args:
         points_2d: (N, V, J, 2) tensor of 2D keypoints.
         proj_matrices: (N, V, 3, 4) or (V, 3, 4) projection matrices.
-        weights: optional (N, V, J) non-negative weights.
+        weights: optional (N, V, J) non-negative scalar weights.
+        precision_matrix: optional (N, V, J, 2, 2) per-view 2D precision
+            matrices. When provided, the function uses the statistically
+            optimal Mahalanobis DLT weighting and ``weights`` are treated as
+            per-view confidences.
 
     Returns:
         X: (N, J, 3) triangulated 3D points.
     """
+    if precision_matrix is not None:
+        from motionflow_mv.fusion.uncertainty_weighted_triangulation import (
+            triangulate_uncertainty_weighted_batched,
+        )
+        return triangulate_uncertainty_weighted_batched(
+            points_2d,
+            proj_matrices,
+            precisions=precision_matrix,
+            confidences=weights,
+        )
+
     if points_2d.dim() != 4:
         raise ValueError(f"points_2d must be 4-D (N, V, J, 2), got shape {points_2d.shape}")
 

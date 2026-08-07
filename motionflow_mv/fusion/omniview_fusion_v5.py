@@ -107,6 +107,7 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
         perceiver_n_layers: int = 2,
         perceiver_n_heads: int = 4,
         perceiver_dropout: float = 0.0,
+        use_full_precision_dlt: bool = False,
     ):
         super().__init__(
             j=j,
@@ -159,6 +160,7 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
         self.perceiver_n_layers = perceiver_n_layers
         self.perceiver_n_heads = perceiver_n_heads
         self.perceiver_dropout = perceiver_dropout
+        self.use_full_precision_dlt = use_full_precision_dlt
 
         if self.use_camera_view_embedding:
             self.camera_view_embedding = CameraConditionedViewEmbedding(
@@ -445,15 +447,22 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
 
         # Apply view mask to weights before triangulation.
         weights = weights * view_mask_flat.unsqueeze(-1)
-        weights = weights * confidences * precision * visibility
-        weights = weights.clamp(min=1e-4, max=1e4)
-
-        Rt = torch.cat([R, t[..., None]], dim=-1)
-        P = K_corrected @ Rt
-
-        from motionflow_mv.fusion.triangulation import triangulate_dlt_batched_lstsq
-
-        pred_3d_raw = triangulate_dlt_batched_lstsq(points_2d, P, weights)
+        if self.use_full_precision_dlt:
+            weights = weights * confidences * visibility
+            weights = weights.clamp(min=1e-4, max=1e4)
+            cov = L @ L.transpose(-2, -1)
+            precision_matrix = torch.linalg.inv(cov)
+            Rt = torch.cat([R, t[..., None]], dim=-1)
+            P = K_corrected @ Rt
+            from motionflow_mv.fusion.triangulation import triangulate_dlt_batched_lstsq
+            pred_3d_raw = triangulate_dlt_batched_lstsq(points_2d, P, weights, precision_matrix=precision_matrix)
+        else:
+            weights = weights * confidences * precision * visibility
+            weights = weights.clamp(min=1e-4, max=1e4)
+            Rt = torch.cat([R, t[..., None]], dim=-1)
+            P = K_corrected @ Rt
+            from motionflow_mv.fusion.triangulation import triangulate_dlt_batched_lstsq
+            pred_3d_raw = triangulate_dlt_batched_lstsq(points_2d, P, weights)
 
         # Adaptive Gauss-Newton refinement.
         feat_pooled = feat.mean(dim=1)
