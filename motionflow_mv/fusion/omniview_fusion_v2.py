@@ -337,7 +337,8 @@ class OmniMultiViewFusionV2(RayAttentionFusionModelBayesianTriV2):
         w_logits = self.weight_head(feat_for_weight).squeeze(-1)  # (B*T, J, V)
         weights = torch.sigmoid(w_logits).permute(0, 2, 1)  # (B*T, V, J)
         weights = weights * confidences * precision * visibility  # (B*T, V, J)
-        weights = weights.clamp(min=1e-4)
+        # Clamp to avoid extreme weights that can destabilise DLT/GN.
+        weights = weights.clamp(min=1e-4, max=1e4)
 
         Rt = torch.cat([R, t[..., None]], dim=-1)  # (B*T, V, 3, 4)
         P = K_corrected @ Rt
