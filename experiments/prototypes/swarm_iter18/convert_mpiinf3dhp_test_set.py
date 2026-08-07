@@ -81,12 +81,20 @@ def _load_test_annotations(mat_path: Path) -> tuple[np.ndarray, np.ndarray]:
         points_2d: (T, J, 2) array of image-space keypoints.
         valid: (T,) boolean array indicating valid frames.
     """
-    import h5py
+    try:
+        import h5py
 
-    with h5py.File(mat_path, "r") as f:
-        annot2 = f["annot2"][:]  # (T, 1, J, 2)
-        valid = f["valid_frame"][:, 0].astype(bool)  # (T,)
-    points_2d = annot2[:, 0, :, :].astype(np.float64)
+        with h5py.File(mat_path, "r") as f:
+            annot2 = f["annot2"][:]  # (T, 1, J, 2)
+            valid = f["valid_frame"][:, 0].astype(bool)  # (T,)
+        points_2d = annot2[:, 0, :, :].astype(np.float64)
+    except Exception:
+        from scipy.io import loadmat
+
+        data = loadmat(mat_path)
+        annot2 = data["annot2"]  # (T, 1, J, 2)
+        valid = data["valid_frame"].astype(bool)  # (T,)
+        points_2d = annot2[:, 0, :, :].astype(np.float64)
     return points_2d, valid
 
 
