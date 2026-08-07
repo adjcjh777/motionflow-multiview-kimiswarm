@@ -34,7 +34,6 @@ python "${ROOT}/experiments/train_omniview_fusion_v2_mpiinf3dhp.py" \
   --lr_warmup_epochs 3 \
   --lr_min 1e-6 \
   --max_grad_norm 1.0 \
-  --amp \
   --ema_decay 0.999 \
   --view_dropout_rate 0.1 \
   --min_views 2 \
