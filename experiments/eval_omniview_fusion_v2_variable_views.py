@@ -214,7 +214,13 @@ def infer_checkpoint_args(checkpoint_path: str) -> Dict[str, Any]:
     while f"st_transformer.{n_st_layers}.self_attn.in_proj_weight" in state:
         n_st_layers += 1
 
-    graph_num_layers = 1 if any(k.startswith("graph_joint_attention.") for k in state) else 0
+    graph_num_layers = 0
+    while f"graph_joint_attention.layers.{graph_num_layers}.q_proj.weight" in state:
+        graph_num_layers += 1
+
+    n_joint_layers = 0
+    while f"omni_joint_attn.{n_joint_layers}.self_attn.in_proj_weight" in state:
+        n_joint_layers += 1
 
     return {
         "d": d,
@@ -222,6 +228,7 @@ def infer_checkpoint_args(checkpoint_path: str) -> Dict[str, Any]:
         "residual_hidden": residual_hidden,
         "n_st_layers": max(1, n_st_layers),
         "graph_num_layers": graph_num_layers,
+        "n_joint_layers": n_joint_layers,
     }
 
 
@@ -358,6 +365,7 @@ def parse_args() -> argparse.Namespace:
         args.residual_hidden = inferred["residual_hidden"]
         args.n_st_layers = inferred["n_st_layers"]
         args.graph_num_layers = inferred["graph_num_layers"]
+        args.n_joint_layers = inferred["n_joint_layers"]
         if args.smoke:
             args.n_views = inferred["n_views"]
     elif args.smoke:

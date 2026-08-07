@@ -42,6 +42,12 @@ Additional val metrics:
 
 ## Variable-view robustness
 
+Historical pipeline output; audit status: **PROTOCOL_CONFOUNDED**. The
+integrated evaluator passed clips through the single-frame input branch, while
+training confidence dropout and inference zero-observation masking exposed
+different information to the model. These numbers require a corrected
+same-checkpoint rerun before being used as a graceful-degradation curve.
+
 | Active views | Mean MPJPE (mm) | Std (mm) | n_subsets |
 |-------------:|----------------:|---------:|----------:|
 | 2 | 1990.56 | 750.11 | 6 |
@@ -52,4 +58,7 @@ Additional val metrics:
 
 - The model reaches a strong **single-model 15 mm MPJPE on H36M val** and generalises to the unseen subject S11 with 24 mm.
 - Calibration perturbations up to 1° rotation or 2 % focal error remain below 30 mm, which is a reasonable starting point.
-- **Variable-view inference is the main gap**: dropping to 2 or 3 views causes catastrophic error (~2000 mm). This confirms the need for explicit view-dropout robustness / adaptive view selection in the next iteration (v4).
+- **The historical variable-view pipeline is the main gap**: its 2/3-view
+  output is catastrophic, but the current audit does not attribute that result
+  to camera count alone. The evaluator shape and train/eval masking contracts
+  must be aligned before architecture conclusions are drawn.

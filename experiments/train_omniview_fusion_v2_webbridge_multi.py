@@ -252,7 +252,7 @@ def augment_clip(
     view_dropout_rate: float = 0.0,
     min_views: int = 2,
 ) -> torch.Tensor:
-    """Lightweight per-clip augmentation with optional view dropout."""
+    """Lightweight augmentation with confidence-only view dropout."""
     if noise_std > 0:
         x[..., :2] = x[..., :2] + torch.randn_like(x[..., :2]) * noise_std
     if dropout_rate > 0:
@@ -271,6 +271,8 @@ def augment_clip(
                     perm = torch.randperm(dropped.numel())
                     extra = dropped[perm[:needed]]
                     view_mask[i, extra] = 1.0
+        # Pixel coordinates remain available to the feature encoder; this is
+        # confidence dropout, not a simulation of an absent camera token.
         x[..., 2] = x[..., 2] * view_mask.view(B, 1, V, 1)
     return x
 

@@ -1,8 +1,15 @@
 # Direction 8: Variable-View Inference and View Dropout
 
+> Iteration-20 audit correction: the historical CPU smoke only established
+> shape-level execution. Training dropout retained inactive-view pixel
+> coordinates, inference used zero observations, inactive tokens remained in
+> attention/graph paths, and the integrated evaluator treated time as batch.
+> See `docs/swarm_iter20/08_variable_view_failure_audit.md`; historical MPJPE@k
+> values are not a validated graceful-degradation curve.
+
 ## Problem Statement
 
-The current best model `RayAttentionFusionModelTemporalCrossviewResidualPrincipalPoint` is trained with a fixed number of cameras (`n_views`). At deployment, camera rigs may have anywhere from 2 to 14 active views, and views can drop out because of occlusion or calibration loss. We need to (a) quantify how accuracy degrades as the active view count decreases and (b) harden training against such dropouts. The zero-confidence masking wrapper in `motionflow_mv/fusion/variable_view_inference.py` already lets a fixed-view model run with fewer views; the next step is to run the MPJPE@k benchmark on the best checkpoint and pair it with the existing `view_dropout_rate` training augmentation.
+The current best model `RayAttentionFusionModelTemporalCrossviewResidualPrincipalPoint` is trained with a fixed number of cameras (`n_views`). At deployment, camera rigs may have anywhere from 2 to 14 active views, and views can drop out because of occlusion or calibration loss. We need to (a) quantify how accuracy degrades as the active view count decreases and (b) harden training against such dropouts. The historical zero-observation wrapper in `motionflow_mv/fusion/variable_view_inference.py` keeps the fixed tensor shape, but does not remove inactive attention tokens; it therefore needs the iteration-20 contract fixes before a new MPJPE@k benchmark.
 
 ## Simplest Concrete Next Step
 

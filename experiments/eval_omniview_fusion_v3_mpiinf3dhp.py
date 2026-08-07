@@ -368,13 +368,13 @@ def evaluate_variable_views(
             preds = []
             gt_list = []
             for start, end, x_clip in all_clips:
-                x_clip = x_clip.to(device)
+                x_clip = x_clip.unsqueeze(0).to(device)
                 Kp = K.to(device)
                 Rp = R.to(device)
                 tp = t.to(device)
                 with torch.no_grad():
                     pred = wrapper(x_clip, Kp, Rp, tp, active_views=list(subset))[0]
-                preds.append(pred.cpu().numpy())
+                preds.append(pred.squeeze(0).cpu().numpy())
                 gt_list.append(joints_3d[start:end])
 
             pred_all = np.concatenate(preds, axis=0) * 1000.0

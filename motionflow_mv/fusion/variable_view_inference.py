@@ -3,16 +3,15 @@
 A fixed-view ray-attention model is trained with a specific number of cameras
 ``n_views``.  At deployment we may have fewer views available, or we may want to
 evaluate robustness when some views are dropped.  This module provides a
-**zero-confidence masking** strategy that lets a fixed-view model run inference
+**zero-observation masking** strategy that lets a fixed-view model run inference
 with any subset of its expected views, without retraining or changing the
 model.
 
-The idea is simple: keep all ``n_views`` camera slots, but set the confidence of
-any dropped view to zero.  The learned weight head still predicts weights for
-those views, yet the subsequent triangulation multiplies weights by
-confidences, so dropped views contribute nothing to the DLT solve.  Attention
-layers still process the dropped views, but because the observations are
-zero-confidence padding the model tends to learn to ignore them.
+The wrapper keeps all ``n_views`` camera slots and zeros every observation
+channel in a dropped slot.  It does not remove those tokens from a model's
+attention or graph, and it cannot guarantee exact exclusion when a model floors
+weights after multiplying by confidence.  Those semantics belong to the model,
+not this input adapter.
 
 Future work: train a model with geometry-based camera positional encoding so
 that views can be added/removed without fixed slots at all.
@@ -29,20 +28,20 @@ def apply_view_mask(
     x: torch.Tensor,
     active_views: torch.Tensor,
 ) -> torch.Tensor:
-    """Zero out confidence channels of inactive views.
+    """Zero out every observation channel of inactive views.
 
     Args:
         x: (..., V, J, 3) tensor of (x_pixel, y_pixel, confidence).
         active_views: (V,) bool tensor. ``True`` -> view is used.
 
     Returns:
-        x masked: (..., V, J, 3) with confidence[..., inactive_views, :, 2] = 0.
+        x masked: (..., V, J, 3) with inactive view observations set to zero.
     """
     if active_views.dtype != torch.bool:
         active_views = active_views.bool()
     x = x.clone()
-    # Zero out both pixel and confidence for inactive views so the model has no
-    # information from them.
+    # Remove the measured observation. Camera/view embeddings and the padded
+    # token still exist unless the wrapped model applies its own mask.
     x[..., ~active_views, :, :] = 0.0
     return x
 
@@ -57,9 +56,9 @@ def prepare_variable_view_input(
 ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
     """Prepare a variable-view input so it can be fed to a fixed-view model.
 
-    The returned ``x`` is padded/truncated to ``n_views_max`` and the confidence
-    of every inactive view is set to zero.  The returned ``active_views`` mask
-    has length ``n_views_max``.
+    The returned ``x`` is padded/truncated to ``n_views_max`` and every channel
+    of each inactive observation is set to zero.  The returned ``active_views``
+    mask has length ``n_views_max``.
 
     Args:
         x: (..., V_actual, J, 3) or (..., n_views_max, J, 3).
@@ -136,10 +135,9 @@ def generate_view_subsets(
 class VariableViewInferenceWrapper:
     """Wrap a fixed-view model so it can be evaluated with variable view counts.
 
-    The wrapper does **not** modify the model parameters.  It simply masks out
-    dropped views by zeroing their confidence before the forward pass.  This is
-    compatible with any ``RayAttentionFusionModel*`` that follows the
-    convention ``weights = sigmoid(logits) * confidences``.
+    The wrapper does **not** modify model parameters or attention topology.  It
+    masks dropped observations before the forward pass; exact downstream
+    exclusion still depends on the wrapped model's masking semantics.
 
     Example:
         >>> model = RayAttentionFusionModelTemporalResidual(n_views=4)
