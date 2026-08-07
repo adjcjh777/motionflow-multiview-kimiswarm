@@ -55,8 +55,8 @@
 
 ## 7. Current Status
 
-- No-graph v2 ablation: ~25.3 mm (val).
-- Dense+graph v2 (freeze phase): val_MPJPE 25.13–25.23 mm.
+- No-graph v2 ablation: 25.18 mm MPJPE / 23.99 mm PA-MPJPE on MPI-INF-3DHP val (full 14 views).
+- Dense+graph v2 (freeze phase): val_MPJPE 25.13–25.35 mm.
 - v3 prototype implemented; smoke tests pass.
 - Multi-dataset loader and robustness scripts smoke-tested.
 
