@@ -110,6 +110,9 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
         use_full_precision_dlt: bool = False,
         use_robust_dlt_reweight: bool = False,
         use_domain_embedding: bool = False,
+        use_irls_reweight: bool = False,
+        irls_n_iters: int = 2,
+        irls_cauchy_scale: float = 1.0,
         num_domains: int = 2,
     ):
         super().__init__(
@@ -165,6 +168,9 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
         self.perceiver_dropout = perceiver_dropout
         self.use_full_precision_dlt = use_full_precision_dlt
         self.use_robust_dlt_reweight = use_robust_dlt_reweight
+        self.use_irls_reweight = use_irls_reweight
+        self.irls_n_iters = irls_n_iters
+        self.irls_cauchy_scale = irls_cauchy_scale
         self.use_domain_embedding = use_domain_embedding
         if self.use_domain_embedding:
             self.domain_embedding = nn.Embedding(num_domains, d)
@@ -531,6 +537,32 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
                 weights_robust = (weights * rho * view_mask_flat.unsqueeze(-1)).detach()
                 weights_robust = weights_robust.clamp(min=1e-4, max=1e4)
                 pred_3d_raw = triangulate_dlt_batched_lstsq(points_2d, P, weights_robust, precision_matrix=precision_matrix.detach())
+
+                # Optional IRLS refinement of the robust weights using a Cauchy kernel
+                # and MAD auto-scaling.  This is kept separate from the one-step
+                # reweight above so existing checkpoints are unaffected.
+                if self.use_irls_reweight:
+                    for _ in range(self.irls_n_iters):
+                        pred_3d_h = torch.cat(
+                            [pred_3d_raw, torch.ones(pred_3d_raw.shape[0], pred_3d_raw.shape[1], 1, device=pred_3d_raw.device, dtype=pred_3d_raw.dtype)],
+                            dim=-1,
+                        )
+                        x_h = (P.unsqueeze(2) @ pred_3d_h.unsqueeze(1).unsqueeze(-1)).squeeze(-1)
+                        x_pred = x_h[..., :2] / (x_h[..., 2:3] + 1e-8)
+                        residual = x_pred - points_2d  # (N, V, J, 2)
+                        # Robust scale via MAD over all residuals in the batch.
+                        abs_res = residual.abs()  # (N, V, J, 2)
+                        median = torch.median(abs_res)
+                        mad = torch.median((abs_res - median).abs()) * 1.4826
+                        scale = (mad + 1e-6).clamp(min=1e-3)
+                        u = abs_res / scale
+                        # Cauchy weight per coordinate, then average over (x, y).
+                        w = 1.0 / (1.0 + (u / self.irls_cauchy_scale) ** 2)
+                        w = w.mean(dim=-1).clamp(min=1e-4, max=1.0)  # (N, V, J)
+                        weights_irls = (weights * w * view_mask_flat.unsqueeze(-1)).detach().clamp(min=1e-4, max=1e4)
+                        pred_3d_raw = triangulate_dlt_batched_lstsq(
+                            points_2d, P, weights_irls, precision_matrix=precision_matrix.detach()
+                        )
         else:
             weights = weights * confidences * precision * visibility
             weights = weights.clamp(min=1e-4, max=1e4)
