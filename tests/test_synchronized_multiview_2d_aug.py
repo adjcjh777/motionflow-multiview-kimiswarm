@@ -8,7 +8,7 @@ import torch
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from motionflow_mv.fusion.prototypes.synchronized_multiview_2d_aug import (
+from motionflow_mv.data.sync_multiview_aug import (
     SynchronizedMultiview2DAugmenter,
     flip_horizontal,
     rotate,
