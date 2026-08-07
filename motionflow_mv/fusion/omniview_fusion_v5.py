@@ -28,6 +28,7 @@ from motionflow_mv.fusion.camera_conditioned_view_embedding import (
 from motionflow_mv.fusion.epipolar_transformer_bias import (
     EpipolarBiasedTransformerEncoderLayer,
 )
+from motionflow_mv.fusion.cross_view_transformer_v17 import CrossViewTransformerV17
 from motionflow_mv.fusion.omniview_fusion_v4 import OmniMultiViewFusionV4
 from motionflow_mv.fusion.perceiver_view_aggregator import PerceiverViewAggregator
 from motionflow_mv.fusion.variable_view_set_aggregator import (
@@ -100,6 +101,7 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
         use_camera_view_embedding: bool = False,
         use_set_view_aggregator: bool = False,
         use_perceiver_aggregator: bool = False,
+        use_cross_view_transformer_v17: bool = False,
         camera_view_embedding_hidden: int = 32,
         set_view_n_isab_layers: int = 2,
         set_view_num_inducing_points: int = 32,
@@ -219,6 +221,17 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
             )
         else:
             self.perceiver_aggregator = None
+
+        self.use_cross_view_transformer_v17 = use_cross_view_transformer_v17
+        if self.use_cross_view_transformer_v17:
+            self.cross_view_transformer_v17 = CrossViewTransformerV17(
+                d=d,
+                n_heads=n_heads,
+                n_layers=2,
+                dropout=0.1,
+            )
+        else:
+            self.cross_view_transformer_v17 = None
 
         # Make sure the ST transformer can accept an additive attention mask even
         # when epipolar bias is disabled.
@@ -432,6 +445,19 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
             feat = self.perceiver_aggregator(feat, view_mask=view_mask)
         elif self.use_set_view_aggregator and self.set_view_aggregator is not None:
             feat = self.set_view_aggregator(feat, view_mask=view_mask)
+
+        # Optional cross-view transformer (v17) with geometric ray/camera embeddings.
+        if self.use_cross_view_transformer_v17 and self.cross_view_transformer_v17 is not None:
+            # v17 expects 5D points_2d (B, T, V, J, 2); reshape from the internal 4D form.
+            points_2d_5d = points_2d.view(B, T, V, J, 2)
+            feat = self.cross_view_transformer_v17(
+                feat,
+                K=K_corrected,
+                R=R,
+                t=t,
+                points_2d=points_2d_5d,
+                view_mask=view_mask,
+            )
 
         # Optional domain embedding (useful when mixing H36M/MPI/WebBridge).
         if self.use_domain_embedding and domain_id is not None:
