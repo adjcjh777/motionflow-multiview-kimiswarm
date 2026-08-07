@@ -621,7 +621,11 @@ def build_eval_metric():
         batch: Tuple[torch.Tensor, ...],
         device: torch.device,
     ) -> Dict[str, Any]:
-        x, y, K, R, t = batch
+        # Mixed loader returns an extra dataset_id field; ignore it for evaluation.
+        if len(batch) == 6:
+            x, y, K, R, t, _ = batch
+        else:
+            x, y, K, R, t = batch
         x = x.to(device)
         y = y.to(device)
         K = K.to(device)
