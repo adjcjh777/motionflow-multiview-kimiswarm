@@ -12,12 +12,20 @@ from .temporal_consistency import (
     acceleration_loss,
     temporal_consistency_loss,
 )
+from .temporal_consistency_v2 import (
+    TemporalConsistencyLossV2,
+    acceleration_loss_v2,
+    temporal_consistency_loss_v2,
+    velocity_loss_v2,
+)
 from .velocity import velocity_loss, velocity_l1_loss
 from .visibility_supervision_loss import visibility_supervision_loss
 
 __all__ = [
     "TemporalConsistencyLoss",
+    "TemporalConsistencyLossV2",
     "acceleration_loss",
+    "acceleration_loss_v2",
     "bone_length_loss",
     "canonical_skeleton_loss",
     "focal_calibration_loss",
@@ -25,7 +33,9 @@ __all__ = [
     "masked_view_completion_loss",
     "reprojection_loss",
     "temporal_consistency_loss",
+    "temporal_consistency_loss_v2",
     "velocity_loss",
+    "velocity_loss_v2",
     "velocity_l1_loss",
     "visibility_supervision_loss",
 ]
