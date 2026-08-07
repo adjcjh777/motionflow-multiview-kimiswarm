@@ -365,7 +365,7 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
             # out features for masked views as a simple fallback. The mask is also
             # propagated into weights below.
             feat = feat.view(B, J, T, V, self.d)
-            feat = feat * view_mask_flat.view(B, 1, 1, V, 1)
+            feat = feat * view_mask_flat.view(B, 1, T, V, 1)
             feat = feat.view(B * J, T * V, self.d)
             for layer in self.st_transformer:
                 feat = layer(feat)
