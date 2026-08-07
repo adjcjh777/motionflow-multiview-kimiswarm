@@ -10,8 +10,8 @@
 | 1 | 4090 dense+graph v2 full run | local watchdog | Freeze Epoch 4 done (val_MPJPE=25.41 mm); 1 freeze epoch remaining |
 | 2 | A800 dense+graph v2 scaling | subagent | Training running on A800 GPU 5 (PID 45618) |
 | 3 | WebBridge multi-dataset loader | subagent | **Done** – pushed to main (commit `4475018`) |
-| 4 | OmniMultiViewFusion v3 design | subagent | **Done** – pushed to main (commit `c9f2d2d`) |
-| 5 | Robustness/eval pipeline | subagent | **Done** – pushed to main (commit `4475018`); real no-graph eval running |
+| 4 | OmniMultiViewFusion v3 design | subagent | **Done** – pushed to main (commit `c9f2d2d`); A800 training running on GPU 4 (tmux) |
+| 5 | Robustness/eval pipeline | subagent | **Done** – pushed to main (commit `4475018`); no-graph eval paused to free GPU |
 | 6 | 4090 monitor | subagent | watching log & GPU every 10–15 min |
 
 ## Latest 4090 results
