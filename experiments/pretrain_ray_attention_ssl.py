@@ -4,6 +4,10 @@ The model is trained without any 3D ground truth.  Random views/time steps are m
 out in the input; the loss is the reprojection error on both visible and masked slots,
 plus temporal smoothness and bone-length consistency regularizers.
 
+Optionally adds a cross-view contrastive objective (``--lambda_contrast > 0``) that
+encourages per-joint representations to be view-invariant, which can improve the
+transferability of the pretrained weights to the downstream supervised task.
+
 Usage
 -----
     python experiments/pretrain_ray_attention_ssl.py \
@@ -11,7 +15,8 @@ Usage
                 data/webbridge/h36m/s_05_acts_02_06_multiview.npz \
         --val data/webbridge/h36m/s_09_acts_02_06_multiview.npz \
         --clip_len 13 --d 64 --residual_hidden 128 --n_st_layers 2 --epochs 50 \
-        --mask_ratio 0.25 --output outputs/ray_attention_ssl_h36m.pth
+        --mask_ratio 0.25 --lambda_contrast 0.1 \
+        --output outputs/ray_attention_ssl_h36m.pth
 """
 
 import argparse
@@ -29,6 +34,9 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from motionflow_mv.data.ssl_dataset import make_ssl_dataloaders
 from motionflow_mv.fusion.ray_attention_temporal_crossview_residual_principal_point_model import (
     RayAttentionFusionModelTemporalCrossviewResidualPrincipalPoint,
+)
+from motionflow_mv.fusion.ray_attention_temporal_crossview_residual_principal_point_ssl_view_contrast_model import (
+    RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointSSLViewContrast,
 )
 from motionflow_mv.losses import reprojection_loss
 from train_utils import temporal_bone_length_consistency_loss
@@ -121,7 +129,8 @@ def evaluate(model, loader, device, lambda_mask, lambda_smooth, lambda_bone, par
         xb = xb.to(device)
         K, R, t = K.to(device), R.to(device), t.to(device)
         xb_masked, masked = mask_views(xb.clone(), ratio=0.0, mode="view")
-        pred, _ = model(xb_masked, K=K, R=R, t=t)
+        outputs = model(xb_masked, K=K, R=R, t=t)
+        pred = outputs[0]
         points_2d = xb[..., :2]
         conf = xb[..., 2]
         loss_vis = reprojection_loss(pred, points_2d, K, R, t, confidences=conf, mask=~masked)
@@ -158,6 +167,12 @@ def main():
     parser.add_argument("--lambda_mask", type=float, default=1.0)
     parser.add_argument("--lambda_smooth", type=float, default=0.1)
     parser.add_argument("--lambda_bone", type=float, default=0.1)
+    parser.add_argument("--lambda_contrast", type=float, default=0.0,
+                        help="Weight for the cross-view contrastive loss during SSL pretraining")
+    parser.add_argument("--contrastive_dim", type=int, default=64,
+                        help="Projection dimension for the cross-view contrastive head")
+    parser.add_argument("--contrastive_temperature", type=float, default=0.07,
+                        help="Temperature for the cross-view contrastive loss")
     parser.add_argument("--noise_std", type=float, default=0.5)
     parser.add_argument("--dropout_rate", type=float, default=0.05)
     parser.add_argument("--outlier_rate", type=float, default=0.01)
@@ -178,17 +193,34 @@ def main():
     j = sample["points_2d"].shape[2]
     print(f"n_views={n_views}, j={j}, clip_len={args.clip_len}")
 
-    model = RayAttentionFusionModelTemporalCrossviewResidualPrincipalPoint(
-        j=j,
-        d=args.d,
-        n_views=n_views,
-        n_st_layers=args.n_st_layers,
-        residual_hidden=args.residual_hidden,
-        principal_point_hidden=args.principal_point_hidden,
-        principal_point_max_offset=args.principal_point_max_offset,
-        focal_max_scale=args.focal_max_scale,
-        return_pp_delta=False,
-    ).to(device)
+    if args.lambda_contrast > 0.0:
+        print(f"Using SSL view-contrastive model (lambda_contrast={args.lambda_contrast})")
+        model = RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointSSLViewContrast(
+            j=j,
+            d=args.d,
+            n_views=n_views,
+            n_st_layers=args.n_st_layers,
+            residual_hidden=args.residual_hidden,
+            principal_point_hidden=args.principal_point_hidden,
+            principal_point_max_offset=args.principal_point_max_offset,
+            focal_max_scale=args.focal_max_scale,
+            return_pp_delta=False,
+            contrastive_dim=args.contrastive_dim,
+            contrastive_temperature=args.contrastive_temperature,
+            contrastive_loss_weight=1.0,
+        ).to(device)
+    else:
+        model = RayAttentionFusionModelTemporalCrossviewResidualPrincipalPoint(
+            j=j,
+            d=args.d,
+            n_views=n_views,
+            n_st_layers=args.n_st_layers,
+            residual_hidden=args.residual_hidden,
+            principal_point_hidden=args.principal_point_hidden,
+            principal_point_max_offset=args.principal_point_max_offset,
+            focal_max_scale=args.focal_max_scale,
+            return_pp_delta=False,
+        ).to(device)
     print(f"Model params: {sum(p.numel() for p in model.parameters())}")
 
     optimizer = optim.Adam(model.parameters(), lr=args.lr)
@@ -214,13 +246,20 @@ def main():
                               outlier_rate=args.outlier_rate)
             xb_masked, masked = mask_views(xb, ratio=args.mask_ratio, mode=args.mask_mode)
 
-            pred, _ = model(xb_masked, K=K, R=R, t=t)
+            if args.lambda_contrast > 0.0:
+                pred, weights, c_loss = model(xb_masked, K=K, R=R, t=t)
+            else:
+                pred, _ = model(xb_masked, K=K, R=R, t=t)
+                c_loss = None
             points_2d = xb[..., :2]
             conf = xb[..., 2]
 
             loss_vis = reprojection_loss(pred, points_2d, K, R, t, confidences=conf, mask=~masked)
             loss_mask = reprojection_loss(pred, points_2d, K, R, t, confidences=conf, mask=masked)
             loss = args.lambda_vis * loss_vis + args.lambda_mask * loss_mask
+
+            if c_loss is not None:
+                loss = loss + args.lambda_contrast * c_loss
 
             if args.lambda_smooth > 0:
                 loss = loss + args.lambda_smooth * temporal_smoothness_loss(pred)
