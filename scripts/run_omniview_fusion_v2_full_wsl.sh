@@ -8,7 +8,7 @@ VENV=${MF_VENV:-${ROOT}/.venv}
 export PYTHONUNBUFFERED=1
 
 # Optional warm-start checkpoint.  Adjust or unset if not available.
-WARM_START="${WARM_START:-${ROOT}/outputs/bayesian_tri_v2_stabilized.pth}"
+WARM_START="${WARM_START:-${ROOT}/outputs/bayesian_tri_v2_stabilized_mpiinf3dhp.pth}"
 WARM_START_ARGS=""
 if [[ -f "${WARM_START}" ]]; then
   WARM_START_ARGS="--warm_start ${WARM_START} --warm_start_freeze_epochs 5"
@@ -21,8 +21,8 @@ python "${ROOT}/experiments/train_omniview_fusion_v2_mpiinf3dhp.py" \
           "${ROOT}/data/webbridge/mpi_inf_3dhp/s_03_seq_02_v14_multiview_m.npz" \
   --val "${ROOT}/data/webbridge/mpi_inf_3dhp/s_02_seq_01_v14_multiview_m.npz" \
   --d 128 \
-  --residual_hidden 128 \
-  --n_st_layers 2 \
+  --residual_hidden 256 \
+  --n_st_layers 3 \
   --graph_num_layers 1 \
   --n_heads 4 \
   --epochs 30 \
