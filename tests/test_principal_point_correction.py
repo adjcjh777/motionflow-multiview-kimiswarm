@@ -36,6 +36,54 @@ def test_principal_point_correction_bounds():
     assert delta.abs().mean() < 5.0
 
 
+def test_principal_point_pooling_uses_exact_final_weights():
+    pool_layer = PrincipalPointCorrection(d=2, hidden=4).double()
+    layer = PrincipalPointCorrection(d=8, hidden=4).double()
+    with torch.no_grad():
+        layer.fallback_projector.weight.copy_(torch.eye(8, dtype=torch.float64))
+        layer.fallback_projector.bias.zero_()
+
+    feat = torch.tensor(
+        [[[[2.0, 20.0], [100.0, 1000.0]], [[3.0, 30.0], [200.0, 2000.0]]]],
+        dtype=torch.float64,
+    )
+    feat_weights = torch.tensor([[[0.0, 0.0], [1e-8, 0.0]]], dtype=torch.float64)
+    torch.testing.assert_close(
+        pool_layer._pool_features(feat, feat_weights),
+        torch.tensor([[[0.0, 0.0], [3.0, 30.0]]], dtype=torch.float64),
+        rtol=0,
+        atol=1e-12,
+    )
+
+    x = torch.tensor(
+        [[
+            [[2.0, 20.0, 0.0], [10.0, 100.0, 0.0]],
+            [[2.0, 20.0, 1.0], [10.0, 100.0, 0.0]],
+            [[2.0, 20.0, 0.5], [10.0, 100.0, 1.0]],
+        ]],
+        dtype=torch.float64,
+    )
+    one_K = torch.tensor(
+        [[2.0, 0.25, 3.0], [0.0, 4.0, 5.0], [0.0, 0.0, 1.0]],
+        dtype=torch.float64,
+    )
+    K = one_K.view(1, 1, 3, 3).repeat(1, 3, 1, 1)
+    expected = torch.tensor(
+        [[
+            [0.0, 0.0, 0.0, 3.0, 5.0, 2.0, 4.0, 0.25],
+            [2.0, 20.0, 0.5, 3.0, 5.0, 2.0, 4.0, 0.25],
+            [22.0 / 3.0, 220.0 / 3.0, 0.75, 3.0, 5.0, 2.0, 4.0, 0.25],
+        ]],
+        dtype=torch.float64,
+    )
+    torch.testing.assert_close(
+        layer._features_from_x(x, K, x[..., 2]),
+        expected,
+        rtol=0,
+        atol=1e-12,
+    )
+
+
 def test_principal_point_model_forward_and_grad():
     B, T, V, J = 2, 5, 4, 17
     cameras = _make_cameras(V)
@@ -68,6 +116,7 @@ def test_principal_point_model_single_frame():
 
 if __name__ == "__main__":
     test_principal_point_correction_bounds()
+    test_principal_point_pooling_uses_exact_final_weights()
     test_principal_point_model_forward_and_grad()
     test_principal_point_model_single_frame()
     print("principal-point correction tests passed")

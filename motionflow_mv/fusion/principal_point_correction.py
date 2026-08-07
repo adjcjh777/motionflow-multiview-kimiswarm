@@ -95,8 +95,8 @@ class PrincipalPointCorrection(nn.Module):
             keypoints and ``[..., 2]`` the confidence.  Used only when
             ``feat`` is not provided.
         weights:
-            Optional pooling weights ``(N, V, J)``.  If ``None`` and
-            ``feat`` is provided, uniform averaging over joints is used.
+            Optional final pooling weights ``(N, V, J)``.  If ``None``,
+            uniform averaging over joints is used.
 
         Returns
         -------
@@ -148,9 +148,10 @@ class PrincipalPointCorrection(nn.Module):
     ) -> torch.Tensor:
         """Weighted average over joints -> (N, V, d)."""
         if weights is not None:
-            # Normalize per view.
-            w = weights.unsqueeze(-1) + 1e-8  # (N, V, J, 1)
-            pooled = (feat * w).sum(dim=2) / w.sum(dim=2)
+            w = weights.unsqueeze(-1)  # (N, V, J, 1)
+            numerator = (feat * w).sum(dim=2)
+            denominator = w.sum(dim=2)
+            pooled = numerator / denominator.masked_fill(denominator == 0, 1.0)
         else:
             pooled = feat.mean(dim=2)
         return pooled
@@ -163,15 +164,18 @@ class PrincipalPointCorrection(nn.Module):
     ) -> torch.Tensor:
         """Build a per-view descriptor from 2D observations and intrinsics.
 
-        Returns (N, V, 8): mean(x), mean(y), mean(c), cx, cy, fx, fy, skew.
+        Builds mean(x), mean(y), mean(c), cx, cy, fx, fy, skew, then projects
+        the descriptor to ``(N, V, d)``.
         """
         N, V, J, _ = x.shape
         points = x[..., :2]  # (N, V, J, 2)
         conf = x[..., 2]  # (N, V, J)
 
         if weights is not None:
-            w = (weights * conf).unsqueeze(-1) + 1e-8
-            p_mean = (points * w).sum(dim=2) / w.sum(dim=2)
+            w = weights.unsqueeze(-1)
+            numerator = (points * w).sum(dim=2)
+            denominator = w.sum(dim=2)
+            p_mean = numerator / denominator.masked_fill(denominator == 0, 1.0)
         else:
             p_mean = points.mean(dim=2)
 
