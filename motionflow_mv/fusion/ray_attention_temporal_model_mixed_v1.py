@@ -120,7 +120,8 @@ class RayAttentionFusionModelTemporalMixed(nn.Module):
         return pred_pad, mask
 
     def forward(self, x, K, R, t, dataset_ids):
-        if x.dim() == 4:
+        squeeze_output = x.dim() == 4
+        if squeeze_output:
             x = x.unsqueeze(1)
         B, T, V, J, _ = x.shape
         assert (V, J) == (self.max_views, self.max_joints)
@@ -166,4 +167,7 @@ class RayAttentionFusionModelTemporalMixed(nn.Module):
 
         pred_all = pred_all.view(B, T, self.max_joints, 3)
         mask_all = mask_all.view(B, T, self.max_joints)
+        if squeeze_output:
+            pred_all = pred_all.squeeze(1)
+            mask_all = mask_all.squeeze(1)
         return pred_all, mask_all
