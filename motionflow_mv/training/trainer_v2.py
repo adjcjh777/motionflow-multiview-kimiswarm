@@ -417,6 +417,8 @@ class TrainerV2:
         best_metric = float("inf")
         for _ in range(epochs):
             self.epoch += 1
+            if hasattr(self, "model"):
+                self.model.epoch = self.epoch
             train_metrics = self.train_epoch(train_loader)
             entry = {"epoch": self.epoch, "train": train_metrics}
             if val_loader is not None:
