@@ -7,9 +7,9 @@
 
 | # | Workstream | Owner | Status |
 |---|-----------|-------|--------|
-| 1 | 4090 dense+graph v2 full run | local watchdog | Freeze Epoch 2 done (val_MPJPE=25.23 mm); 3 freeze epochs remaining |
-| 2 | A800 dense+graph v2 scaling | subagent | cloning + data sync in progress |
-| 3 | WebBridge multi-dataset loader | subagent | manifests + loader in progress |
+| 1 | 4090 dense+graph v2 full run | local watchdog | Freeze Epoch 3 done (val_MPJPE=25.35 mm); 2 freeze epochs remaining |
+| 2 | A800 dense+graph v2 scaling | subagent | venv ready, requirements installing |
+| 3 | WebBridge multi-dataset loader | subagent | **Done** – pushed to main (commit `4475018`) |
 | 4 | OmniMultiViewFusion v3 design | subagent | **Done** – pushed to main (commit `c9f2d2d`) |
 | 5 | Robustness/eval pipeline | subagent | variable-view + camera-perturbation scripts in progress |
 | 6 | 4090 monitor | subagent | watching log & GPU every 10–15 min |
