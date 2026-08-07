@@ -77,3 +77,10 @@ def test_default_search_space_omniview_difference():
     assert len(omni.uncertainty_loss_weight) > 1
     assert len(legacy.bone_loss_weight) == 1
     assert len(omni.bone_loss_weight) > 1
+
+
+def test_skip_existing_flag_present():
+    args = hp.parse_args([
+        "--mode", "smoke", "--dry_run", "--skip_existing",
+    ])
+    assert args.skip_existing is True

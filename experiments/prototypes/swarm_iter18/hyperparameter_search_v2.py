@@ -397,6 +397,11 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
         help="Path to existing trials.json to resume from",
     )
     parser.add_argument(
+        "--skip_existing",
+        action="store_true",
+        help="Skip rungs whose checkpoint already exists on disk",
+    )
+    parser.add_argument(
         "--dry_run",
         action="store_true",
         help="Print commands but do not execute them",
@@ -667,12 +672,16 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
                     print(f"  Skipping already-completed ({trial.trial_id}, rung {rung_idx})")
                     continue
 
+                output_path = output_dir / f"{trial.slug()}_rung{rung_idx}.pth"
+                if args.skip_existing and output_path.exists():
+                    print(f"  Skipping existing checkpoint {output_path}")
+                    continue
+
                 print(
                     f"\n=== Trial {trial.trial_id:03d}/{len(trials):03d} "
                     f"rung {rung_idx + 1}/{len(budgets)} ({rung_epochs} epochs): {trial.slug()} ==="
                 )
 
-                output_path = output_dir / f"{trial.slug()}_rung{rung_idx}.pth"
                 cmd = build_command(trial, args, rung_epochs, output_path, dry_run=args.dry_run)
 
                 record: Dict[str, Any] = {
