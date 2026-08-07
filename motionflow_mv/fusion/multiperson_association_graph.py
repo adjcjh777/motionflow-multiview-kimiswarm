@@ -192,6 +192,16 @@ class MultiPersonAssociationGraph(nn.Module):
 
         edge_index = self.edge_index
         edge_type = self.edge_type
+        nodes_per_graph = V * P * J
+        offsets = torch.arange(
+            N,
+            device=x.device,
+            dtype=edge_index.dtype,
+        ) * nodes_per_graph
+        edge_index = (
+            edge_index[:, None, :] + offsets[None, :, None]
+        ).reshape(2, -1)
+        edge_type = edge_type.repeat(N)
         src_idx = edge_index[0]
         dst_idx = edge_index[1]
 
