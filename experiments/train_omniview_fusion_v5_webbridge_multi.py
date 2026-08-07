@@ -440,6 +440,43 @@ def budget_loss(weights: torch.Tensor, target_k: float) -> torch.Tensor:
     return F.mse_loss(active, torch.tensor(target_k, device=weights.device, dtype=weights.dtype))
 
 
+def _reprojection_loss(
+    pred_3d: torch.Tensor,
+    points_2d: torch.Tensor,
+    K: torch.Tensor,
+    R: torch.Tensor,
+    t: torch.Tensor,
+    view_mask: torch.Tensor,
+) -> torch.Tensor:
+    """Weighted 2D reprojection loss for the final 3D prediction.
+
+    Args:
+        pred_3d: (B, T, J, 3)
+        points_2d: (B, T, V, J, 2)
+        K: (B, T, V, 3, 3)
+        R: (B, T, V, 3, 3)
+        t: (B, T, V, 3)
+        view_mask: (B, T, V)
+
+    Returns:
+        Scalar MSE between projected pred_3d and points_2d.
+    """
+    B, T, V, J = points_2d.shape[0], points_2d.shape[1], points_2d.shape[2], points_2d.shape[3]
+    if K.dim() == 4:
+        K = K.unsqueeze(1).expand(-1, T, -1, -1, -1)
+        R = R.unsqueeze(1).expand(-1, T, -1, -1, -1)
+        t = t.unsqueeze(1).expand(-1, T, -1, -1)
+    X_h = torch.cat([pred_3d, torch.ones(B, T, J, 1, device=pred_3d.device, dtype=pred_3d.dtype)], dim=-1)
+    X_h = X_h.unsqueeze(2).expand(-1, -1, V, -1, -1)  # (B,T,V,J,4)
+    Rt = torch.cat([R, t.unsqueeze(-1)], dim=-1)
+    P = (K @ Rt).unsqueeze(3).expand(-1, -1, -1, J, -1, -1)  # (B,T,V,J,3,4)
+    x_h = (P @ X_h.unsqueeze(-1)).squeeze(-1)
+    x_pred = x_h[..., :2] / (x_h[..., 2:3] + 1e-8)
+    diff = x_pred - points_2d
+    mask = view_mask.unsqueeze(-1).unsqueeze(-1)
+    return (diff ** 2 * mask).sum() / (mask.sum() + 1e-8)
+
+
 # ---------------------------------------------------------------------------
 # Trainer wrapper
 # ---------------------------------------------------------------------------
@@ -614,6 +651,11 @@ def build_compute_loss(args: Namespace):
                 bgt = budget_loss(weights, args.adaptive_view_k)
                 loss = loss + args.budget_loss_weight * bgt
                 metrics["budget_loss"] = bgt.item()
+
+        if args.reproj_loss_weight > 0.0:
+            reproj = _reprojection_loss(pred_3d, x[..., :2], K_aug, R_aug, t_aug, view_mask)
+            loss = loss + args.reproj_loss_weight * reproj
+            metrics["reproj_loss"] = reproj.item()
 
         # Optional monotonic multi-view loss: error with a subset of views should
         # not be better than using all views.  This is only meaningful when the
@@ -961,6 +1003,7 @@ def parse_args() -> Namespace:
     parser.add_argument("--bone_loss_weight", type=float, default=0.05, help="Bone-length consistency weight")
     parser.add_argument("--attention_entropy_weight", type=float, default=0.0, help="Attention-entropy regularisation weight")
     parser.add_argument("--budget_loss_weight", type=float, default=0.0, help="Adaptive-view budget loss weight")
+    parser.add_argument("--reproj_loss_weight", type=float, default=0.0, help="2D reprojection loss weight")
     # Warm-start
     parser.add_argument("--warm_start", type=str, default=None, help="Path to v2/v3 checkpoint for warm-starting")
     parser.add_argument("--warm_start_freeze_epochs", type=int, default=0, help="Freeze encoder/transformer for N epochs after warm-start")
