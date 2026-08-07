@@ -56,6 +56,11 @@ class SkeletonGraphResidualRefiner(nn.Module):
         self.input_proj = nn.Linear(in_dim, hidden_dim)
         self.graph = GraphJointRelation(d=hidden_dim, n_views=1, num_layers=num_layers)
         self.output_proj = nn.Linear(hidden_dim, 3)
+        # Zero-init output and soft residual scale to stabilise the refiner:
+        # corrections start at zero and grow only when needed.
+        nn.init.zeros_(self.output_proj.weight)
+        nn.init.zeros_(self.output_proj.bias)
+        self.residual_scale = nn.Parameter(torch.tensor(0.01))
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Forward pass.
@@ -75,7 +80,7 @@ class SkeletonGraphResidualRefiner(nn.Module):
         h = h.unsqueeze(1)  # (B, 1, J, hidden_dim)
         h = self.graph(h, self.edge_index, self.edge_type)
         h = h.squeeze(1)  # (B, J, hidden_dim)
-        return self.output_proj(h)  # (B, J, 3)
+        return self.residual_scale * self.output_proj(h)  # (B, J, 3)
 
 
 class SkeletonGraphResidualRefinerWrapper(nn.Module):

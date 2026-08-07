@@ -162,6 +162,10 @@ class GraphJointRelation(nn.Module):
             msg = attn.unsqueeze(-1) * projected
             agg = torch.zeros_like(h)
             agg.index_add_(0, dst_idx, msg)
+            # Degree-normalized mean aggregation for stable residual propagation.
+            degree = torch.zeros(h.size(0), 1, device=h.device, dtype=h.dtype)
+            degree.index_add_(0, dst_idx, torch.ones(msg.size(0), 1, device=h.device, dtype=h.dtype))
+            agg = agg / degree.clamp(min=1.0)
 
             h = self.norms[layer_idx](h + agg)
 
