@@ -11,6 +11,7 @@ declare -A LAUNCHERS=(
   [v7_mixed_precision]="$ROOT/scripts/tmux_v7_mixed_precision.sh"
   [v8_mixed_robust]="$ROOT/scripts/tmux_v8_mixed_robust.sh"
   [v9_mixed_robust_reproj]="$ROOT/scripts/tmux_v9_mixed_robust_reproj.sh"
+  [v9_small_fast]="$ROOT/scripts/tmux_v9_small_fast.sh"
 )
 
 log "Monitor started (PID $$)."
