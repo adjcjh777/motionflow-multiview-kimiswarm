@@ -53,6 +53,7 @@ from motionflow_mv.fusion.prototypes.cross_view_graph_attention import (  # noqa
 from motionflow_mv.fusion.omniview_fusion_v5 import (  # noqa: E402
     OmniMultiViewFusionV5,
 )
+from motionflow_mv.losses.procrustes_loss import procrustes_mse_loss  # noqa: E402
 from motionflow_mv.training.trainer_v2 import TrainerV2, build_lr_scheduler  # noqa: E402
 
 
@@ -573,6 +574,12 @@ def build_compute_loss(args: Namespace):
             loss = loss + args.visibility_loss_weight * vis_loss
             metrics["vis_loss"] = vis_loss.item()
 
+        if args.pa_loss_weight > 0.0:
+            B, T, J, _ = pred_3d.shape
+            pa_loss = procrustes_mse_loss(pred_3d.view(B * T, J, 3), y.view(B * T, J, 3))
+            loss = loss + args.pa_loss_weight * pa_loss
+            metrics["pa_loss"] = pa_loss.item()
+
         if args.uncertainty_loss_weight > 0.0:
             nll = uncertainty_nll_loss(pred_3d, x[..., :2], x[..., 2], K_aug, R_aug, t_aug, L)
             loss = loss + args.uncertainty_loss_weight * nll
@@ -947,6 +954,7 @@ def parse_args() -> Namespace:
     parser.add_argument("--cam_aug_warmup_epochs", type=int, default=0, help="Warmup epochs before ramping")
     # Loss weights
     parser.add_argument("--visibility_loss_weight", type=float, default=0.1, help="Visibility BCE weight")
+    parser.add_argument("--pa_loss_weight", type=float, default=0.0, help="Weight for Procrustes-aligned MSE loss (0 disables)")
     parser.add_argument("--uncertainty_loss_weight", type=float, default=0.05, help="Uncertainty NLL weight")
     parser.add_argument("--temporal_loss_weight", type=float, default=0.02, help="Temporal consistency weight")
     parser.add_argument("--bone_loss_weight", type=float, default=0.05, help="Bone-length consistency weight")
