@@ -420,9 +420,12 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
             for layer in self.st_transformer:
                 feat = layer(feat, epipolar_bias=st_view_mask)
 
-        feat = feat.view(B, J, T, V, self.d).permute(0, 2, 3, 1, 4).reshape(
-            B * T, V, J, self.d
-        )
+        feat = feat.view(B, J, T, V, self.d)
+        # Zero out tokens from masked views so NaNs produced by softmax over
+        # fully-blocked positions cannot leak downstream in variable-view mode.
+        st_mask = view_mask_flat.view(B, T, V, 1, 1).permute(0, 3, 1, 2, 4)
+        feat = torch.where(st_mask.bool(), feat, torch.zeros_like(feat))
+        feat = feat.permute(0, 2, 3, 1, 4).reshape(B * T, V, J, self.d)
 
         # Anisotropic covariance prediction per (view, joint).
         raw_cov = self.covariance_head(feat)
