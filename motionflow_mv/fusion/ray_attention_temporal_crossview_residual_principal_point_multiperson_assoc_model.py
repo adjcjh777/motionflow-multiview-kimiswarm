@@ -99,13 +99,8 @@ class RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointMultiPersonA
             )
 
     def forward(self, x, cameras=None, K=None, R=None, t=None):
-        squeeze_output = False
-        if x.dim() == 4:
-            x = x.unsqueeze(1)
-            squeeze_output = True
-
         # Single-person input: fall back to the parent model unchanged.
-        if x.dim() == 5:
+        if x.dim() in (4, 5):
             return super().forward(x, cameras=cameras, K=K, R=R, t=t)
 
         if x.dim() != 6:
@@ -217,10 +212,6 @@ class RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointMultiPersonA
         # Reshape back to multi-person output.
         pred_3d = pred_3d.view(B, P, T, J, 3).permute(0, 2, 1, 3, 4)  # (B, T, P, J, 3)
         weights = weights.view(B, P, T, V, J).permute(0, 2, 3, 1, 4)  # (B, T, V, P, J)
-
-        if squeeze_output:
-            pred_3d = pred_3d.squeeze(1)
-            weights = weights.squeeze(1)
 
         if self.return_pp_delta:
             out = [pred_3d, weights, pp_delta]

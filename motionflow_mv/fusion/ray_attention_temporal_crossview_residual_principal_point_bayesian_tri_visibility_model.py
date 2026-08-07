@@ -105,12 +105,12 @@ class RayAttentionFusionModelBayesianTriV2Visibility(
         return effective_visibility
 
     def forward(self, x, cameras=None, K=None, R=None, t=None):
-        squeeze_output = False
-        if x.dim() == 4:
-            x = x.unsqueeze(1)
-            squeeze_output = True
-
-        B, T, V, J, _ = x.shape
+        squeeze_output = x.dim() == 4
+        if squeeze_output:
+            B, V, J, _ = x.shape
+            T = 1
+        else:
+            B, T, V, J, _ = x.shape
 
         out = super().forward(x, cameras=cameras, K=K, R=R, t=t)
 

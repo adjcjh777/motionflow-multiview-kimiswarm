@@ -8,8 +8,6 @@ weighted reprojection error of the predicted 3D skeleton with respect to the
 calibration errors.
 """
 
-import torch
-
 from .differentiable_bundle_adjustment import DifferentiableBundleAdjustment
 from .ray_attention_temporal_crossview_residual_principal_point_model import (
     RayAttentionFusionModelTemporalCrossviewResidualPrincipalPoint,
@@ -80,12 +78,10 @@ class RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointBundleAdjust
         # Run the anchor forward on the raw input to get its refined 3D output and
         # per-view weights, then post-process with a differentiable bundle
         # adjustment step.
-        squeeze_output = False
-        if x.dim() == 4:
-            x = x.unsqueeze(1)
-            squeeze_output = True
+        squeeze_output = x.dim() == 4
+        x_sequence = x.unsqueeze(1) if squeeze_output else x
 
-        B, T, V, J, _ = x.shape
+        B, T, V, J, _ = x_sequence.shape
         device = x.device
 
         if K is None:
@@ -101,16 +97,7 @@ class RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointBundleAdjust
 
         # Run anchor forward.  It handles all camera broadcasting internally and
         # returns (pred_3d, weights, [optional extras]).
-        anchor_out = super().forward(x, K=K, R=R, t=t)
-
-        if isinstance(anchor_out, (tuple, list)):
-            pred_3d = anchor_out[0]
-            weights = anchor_out[1]
-            extras = anchor_out[2:]
-        else:
-            pred_3d = anchor_out
-            weights = None
-            extras = ()
+        pred_3d, weights, *extras = super().forward(x, K=K, R=R, t=t)
 
         # Broadcast cameras the same way the anchor does, so shapes match (B, T, V, ...).
         if K_orig.dim() == 3:
@@ -122,14 +109,11 @@ class RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointBundleAdjust
             R_bt = R_orig.unsqueeze(1).expand(B, T, -1, -1, -1)
             t_bt = t_orig.unsqueeze(1).expand(B, T, -1, -1)
 
-        x_flat = x.reshape(B * T, V, J, 3)
+        x_flat = x_sequence.reshape(B * T, V, J, 3)
         points_2d = x_flat[..., :2].view(B, T, V, J, 2)
 
         pred_3d_bt = pred_3d.view(B, T, J, 3)
-        if weights is not None:
-            weights_bt = weights.view(B, T, V, J)
-        else:
-            weights_bt = torch.ones(B, T, V, J, device=device)
+        weights_bt = weights.view(B, T, V, J)
 
         pred_3d_refined = self.dba(
             pred_3d_bt,
@@ -143,8 +127,4 @@ class RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointBundleAdjust
         if squeeze_output:
             pred_3d_refined = pred_3d_refined.squeeze(1)
 
-        if extras:
-            return (pred_3d_refined, weights, *extras)
-        if weights is not None:
-            return pred_3d_refined, weights
-        return pred_3d_refined
+        return (pred_3d_refined, weights, *extras)

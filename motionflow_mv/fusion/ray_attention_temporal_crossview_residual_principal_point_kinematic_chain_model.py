@@ -75,29 +75,8 @@ class RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointKinematicCha
         )
 
     def forward(self, x, cameras=None, K=None, R=None, t=None):
-        squeeze_output = False
-        if x.dim() == 4:
-            x = x.unsqueeze(1)
-            squeeze_output = True
-
-        # Reuse the full anchor forward to obtain the PP-corrected raw 3-D pose
-        # and the camera tensors.  We call super().forward with the same inputs.
-        if self.return_pp_delta or self.return_visibility or self.focal_max_scale > 0.0:
-            # The anchor returns a tuple when auxiliary outputs are requested.
-            # We only need the 3-D pose (first element) and weights (second).
-            out = super().forward(x, cameras=cameras, K=K, R=R, t=t)
-            pred_3d = out[0]
-            extras = list(out[1:])
-        else:
-            pred_3d, weights = super().forward(x, cameras=cameras, K=K, R=R, t=t)
+        out = super().forward(x, cameras=cameras, K=K, R=R, t=t)
 
         # Apply the kinematic-chain graph refiner on the output skeleton.
-        pred_3d_refined = self.kinematic_chain_refiner(pred_3d)
-
-        if squeeze_output:
-            pred_3d_refined = pred_3d_refined.squeeze(1)
-
-        if self.return_pp_delta or self.return_visibility or self.focal_max_scale > 0.0:
-            # Replace the unrefined 3-D pose with the refined one in the tuple.
-            return (pred_3d_refined,) + tuple(extras)
-        return pred_3d_refined, weights
+        pred_3d_refined = self.kinematic_chain_refiner(out[0])
+        return (pred_3d_refined, *out[1:])
