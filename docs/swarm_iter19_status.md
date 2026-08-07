@@ -7,7 +7,7 @@
 
 | # | Workstream | Owner | Status |
 |---|-----------|-------|--------|
-| 1 | 4090 dense+graph v2 full run | local watchdog | Freeze Epoch 1 done (val_MPJPE=25.13 mm); 4 freeze epochs remaining |
+| 1 | 4090 dense+graph v2 full run | local watchdog | Freeze Epoch 2 done (val_MPJPE=25.23 mm); 3 freeze epochs remaining |
 | 2 | A800 dense+graph v2 scaling | subagent | cloning + data sync in progress |
 | 3 | WebBridge multi-dataset loader | subagent | manifests + loader in progress |
 | 4 | OmniMultiViewFusion v3 design | subagent | design doc + prototype in progress |
