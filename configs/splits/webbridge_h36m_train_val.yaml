@@ -1,0 +1,52 @@
+name: WebBridge Human3.6M
+skeleton: H36M 17-joint (4 views)
+note: Train on subject S1, validate on S9, test on S11. Units are meters. Files are
+  located under data/webbridge/h36m_meters/.
+train:
+- data/webbridge/h36m_meters/s_01_acts_02_multiview_m.npz
+- data/webbridge/h36m_meters/s_01_acts_03_multiview_m.npz
+- data/webbridge/h36m_meters/s_01_acts_04_multiview_m.npz
+- data/webbridge/h36m_meters/s_01_acts_05_multiview_m.npz
+- data/webbridge/h36m_meters/s_01_acts_06_multiview_m.npz
+- data/webbridge/h36m_meters/s_01_acts_07_multiview_m.npz
+- data/webbridge/h36m_meters/s_01_acts_08_multiview_m.npz
+- data/webbridge/h36m_meters/s_01_acts_09_multiview_m.npz
+- data/webbridge/h36m_meters/s_01_acts_10_multiview_m.npz
+- data/webbridge/h36m_meters/s_01_acts_11_multiview_m.npz
+- data/webbridge/h36m_meters/s_01_acts_12_multiview_m.npz
+- data/webbridge/h36m_meters/s_01_acts_13_multiview_m.npz
+- data/webbridge/h36m_meters/s_01_acts_14_multiview_m.npz
+- data/webbridge/h36m_meters/s_01_acts_15_multiview_m.npz
+- data/webbridge/h36m_meters/s_01_acts_16_multiview_m.npz
+val:
+- data/webbridge/h36m_meters/s_09_acts_02_multiview_m.npz
+- data/webbridge/h36m_meters/s_09_acts_03_multiview_m.npz
+- data/webbridge/h36m_meters/s_09_acts_04_multiview_m.npz
+- data/webbridge/h36m_meters/s_09_acts_05_multiview_m.npz
+- data/webbridge/h36m_meters/s_09_acts_06_multiview_m.npz
+- data/webbridge/h36m_meters/s_09_acts_07_multiview_m.npz
+- data/webbridge/h36m_meters/s_09_acts_08_multiview_m.npz
+- data/webbridge/h36m_meters/s_09_acts_09_multiview_m.npz
+- data/webbridge/h36m_meters/s_09_acts_10_multiview_m.npz
+- data/webbridge/h36m_meters/s_09_acts_11_multiview_m.npz
+- data/webbridge/h36m_meters/s_09_acts_12_multiview_m.npz
+- data/webbridge/h36m_meters/s_09_acts_13_multiview_m.npz
+- data/webbridge/h36m_meters/s_09_acts_14_multiview_m.npz
+- data/webbridge/h36m_meters/s_09_acts_15_multiview_m.npz
+- data/webbridge/h36m_meters/s_09_acts_16_multiview_m.npz
+test:
+- data/webbridge/h36m_meters/s_11_acts_02_multiview_m.npz
+- data/webbridge/h36m_meters/s_11_acts_03_multiview_m.npz
+- data/webbridge/h36m_meters/s_11_acts_04_multiview_m.npz
+- data/webbridge/h36m_meters/s_11_acts_05_multiview_m.npz
+- data/webbridge/h36m_meters/s_11_acts_06_multiview_m.npz
+- data/webbridge/h36m_meters/s_11_acts_07_multiview_m.npz
+- data/webbridge/h36m_meters/s_11_acts_08_multiview_m.npz
+- data/webbridge/h36m_meters/s_11_acts_09_multiview_m.npz
+- data/webbridge/h36m_meters/s_11_acts_10_multiview_m.npz
+- data/webbridge/h36m_meters/s_11_acts_11_multiview_m.npz
+- data/webbridge/h36m_meters/s_11_acts_12_multiview_m.npz
+- data/webbridge/h36m_meters/s_11_acts_13_multiview_m.npz
+- data/webbridge/h36m_meters/s_11_acts_14_multiview_m.npz
+- data/webbridge/h36m_meters/s_11_acts_15_multiview_m.npz
+- data/webbridge/h36m_meters/s_11_acts_16_multiview_m.npz

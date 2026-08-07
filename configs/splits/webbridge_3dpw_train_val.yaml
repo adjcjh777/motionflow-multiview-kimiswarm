@@ -1,0 +1,68 @@
+name: WebBridge 3DPW
+skeleton: 3DPW 24-joint (4 views)
+note: Pseudo multi-view generated from 3DPW monocular sequences. Uses converted/ (4
+  views, 24 joints), not converted_14views/. Train/validation/test follow the 3DPW
+  split directories.
+train:
+- data/webbridge/3dpw/converted/train/courtyard_arguing_00_pseudo.npz
+- data/webbridge/3dpw/converted/train/courtyard_backpack_00_pseudo.npz
+- data/webbridge/3dpw/converted/train/courtyard_basketball_00_pseudo.npz
+- data/webbridge/3dpw/converted/train/courtyard_bodyScannerMotions_00_pseudo.npz
+- data/webbridge/3dpw/converted/train/courtyard_box_00_pseudo.npz
+- data/webbridge/3dpw/converted/train/courtyard_capoeira_00_pseudo.npz
+- data/webbridge/3dpw/converted/train/courtyard_captureSelfies_00_pseudo.npz
+- data/webbridge/3dpw/converted/train/courtyard_dancing_01_pseudo.npz
+- data/webbridge/3dpw/converted/train/courtyard_giveDirections_00_pseudo.npz
+- data/webbridge/3dpw/converted/train/courtyard_golf_00_pseudo.npz
+- data/webbridge/3dpw/converted/train/courtyard_goodNews_00_pseudo.npz
+- data/webbridge/3dpw/converted/train/courtyard_jacket_00_pseudo.npz
+- data/webbridge/3dpw/converted/train/courtyard_laceShoe_00_pseudo.npz
+- data/webbridge/3dpw/converted/train/courtyard_rangeOfMotions_00_pseudo.npz
+- data/webbridge/3dpw/converted/train/courtyard_relaxOnBench_00_pseudo.npz
+- data/webbridge/3dpw/converted/train/courtyard_relaxOnBench_01_pseudo.npz
+- data/webbridge/3dpw/converted/train/courtyard_shakeHands_00_pseudo.npz
+- data/webbridge/3dpw/converted/train/courtyard_warmWelcome_00_pseudo.npz
+- data/webbridge/3dpw/converted/train/outdoors_climbing_00_pseudo.npz
+- data/webbridge/3dpw/converted/train/outdoors_climbing_01_pseudo.npz
+- data/webbridge/3dpw/converted/train/outdoors_climbing_02_pseudo.npz
+- data/webbridge/3dpw/converted/train/outdoors_freestyle_00_pseudo.npz
+- data/webbridge/3dpw/converted/train/outdoors_slalom_00_pseudo.npz
+- data/webbridge/3dpw/converted/train/outdoors_slalom_01_pseudo.npz
+val:
+- data/webbridge/3dpw/converted/validation/courtyard_basketball_01_pseudo.npz
+- data/webbridge/3dpw/converted/validation/courtyard_dancing_00_pseudo.npz
+- data/webbridge/3dpw/converted/validation/courtyard_drinking_00_pseudo.npz
+- data/webbridge/3dpw/converted/validation/courtyard_hug_00_pseudo.npz
+- data/webbridge/3dpw/converted/validation/courtyard_jumpBench_01_pseudo.npz
+- data/webbridge/3dpw/converted/validation/courtyard_rangeOfMotions_01_pseudo.npz
+- data/webbridge/3dpw/converted/validation/downtown_walkDownhill_00_pseudo.npz
+- data/webbridge/3dpw/converted/validation/outdoors_crosscountry_00_pseudo.npz
+- data/webbridge/3dpw/converted/validation/outdoors_freestyle_01_pseudo.npz
+- data/webbridge/3dpw/converted/validation/outdoors_golf_00_pseudo.npz
+- data/webbridge/3dpw/converted/validation/outdoors_parcours_00_pseudo.npz
+- data/webbridge/3dpw/converted/validation/outdoors_parcours_01_pseudo.npz
+test:
+- data/webbridge/3dpw/converted/test/downtown_arguing_00_pseudo.npz
+- data/webbridge/3dpw/converted/test/downtown_bar_00_pseudo.npz
+- data/webbridge/3dpw/converted/test/downtown_bus_00_pseudo.npz
+- data/webbridge/3dpw/converted/test/downtown_cafe_00_pseudo.npz
+- data/webbridge/3dpw/converted/test/downtown_car_00_pseudo.npz
+- data/webbridge/3dpw/converted/test/downtown_crossStreets_00_pseudo.npz
+- data/webbridge/3dpw/converted/test/downtown_downstairs_00_pseudo.npz
+- data/webbridge/3dpw/converted/test/downtown_enterShop_00_pseudo.npz
+- data/webbridge/3dpw/converted/test/downtown_rampAndStairs_00_pseudo.npz
+- data/webbridge/3dpw/converted/test/downtown_runForBus_00_pseudo.npz
+- data/webbridge/3dpw/converted/test/downtown_runForBus_01_pseudo.npz
+- data/webbridge/3dpw/converted/test/downtown_sitOnStairs_00_pseudo.npz
+- data/webbridge/3dpw/converted/test/downtown_stairs_00_pseudo.npz
+- data/webbridge/3dpw/converted/test/downtown_upstairs_00_pseudo.npz
+- data/webbridge/3dpw/converted/test/downtown_walkBridge_01_pseudo.npz
+- data/webbridge/3dpw/converted/test/downtown_walking_00_pseudo.npz
+- data/webbridge/3dpw/converted/test/downtown_walkUphill_00_pseudo.npz
+- data/webbridge/3dpw/converted/test/downtown_warmWelcome_00_pseudo.npz
+- data/webbridge/3dpw/converted/test/downtown_weeklyMarket_00_pseudo.npz
+- data/webbridge/3dpw/converted/test/downtown_windowShopping_00_pseudo.npz
+- data/webbridge/3dpw/converted/test/flat_guitar_01_pseudo.npz
+- data/webbridge/3dpw/converted/test/flat_packBags_00_pseudo.npz
+- data/webbridge/3dpw/converted/test/office_phoneCall_00_pseudo.npz
+- data/webbridge/3dpw/converted/test/outdoors_fencing_01_pseudo.npz

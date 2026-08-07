@@ -17,6 +17,23 @@ def load_split_manifest(path: str) -> Dict[str, List[str]]:
     }
 
 
+def load_multi_dataset_manifest(manifest_paths: List[str]) -> Dict[str, List[str]]:
+    """Load multiple manifests and concatenate train/val/test file lists.
+
+    Args:
+        manifest_paths: List of YAML manifest paths.
+
+    Returns:
+        {'train': [...], 'val': [...], 'test': [...]} with concatenated lists.
+    """
+    combined: Dict[str, List[str]] = {"train": [], "val": [], "test": []}
+    for path in manifest_paths:
+        split = load_split_manifest(path)
+        for key in combined:
+            combined[key].extend(split[key])
+    return combined
+
+
 def resolve_paths(project_root: str, paths: List[str]) -> List[str]:
     """Resolve relative paths in a manifest against the project root."""
     root = Path(project_root)
