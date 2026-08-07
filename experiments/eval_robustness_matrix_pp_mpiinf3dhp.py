@@ -1,15 +1,30 @@
-"""Unified 6-axis robustness matrix for the principal-point baseline.
+"""Unified 6-axis robustness matrix for the registered model family.
 
 Covers: rotation, translation, focal length, principal point, radial distortion,
 and occlusion (view/joint dropout).
 
+The matrix now works with any model in ``MODEL_CLASSES`` from
+``experiments/eval_full_metrics.py``.  The legacy principal-point baseline is
+still the default.
+
 Usage
 -----
+    # PP baseline (legacy default)
     python experiments/eval_robustness_matrix_pp_mpiinf3dhp.py \
+        --model crossview_residual_pp \
         --checkpoint outputs/ray_attention_temporal_crossview_residual_principal_point_full_ppw005_20ep.pth \
         --dataset data/webbridge/mpi_inf_3dhp/s_02_seq_01_v14_multiview_m.npz \
         --out_json outputs/robustness_matrix_pp_full.json \
         --out_md docs/tables/icra2027/robustness_matrix.md
+
+    # Hierarchical attention variant
+    python experiments/eval_robustness_matrix_pp_mpiinf3dhp.py \
+        --model hierarchical_view_temporal_joint_pp \
+        --checkpoint outputs/hierarchical_attention_pp_full_mpiinf3dhp.pth \
+        --dataset data/webbridge/mpi_inf_3dhp/s_02_seq_01_v14_multiview_m.npz \
+        --n_view_groups 2 --n_view_layers 2 --n_temporal_layers 2 --n_joint_graph_layers 1 \
+        --out_json outputs/robustness_matrix_hierarchical.json \
+        --out_md docs/tables/icra2027/robustness_matrix_hierarchical.md
 """
 
 import argparse
@@ -22,10 +37,10 @@ import torch
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+from eval_full_metrics import build_model, MODEL_CLASSES
 from motionflow_mv.calibration.perturb import perturb_radial_distortion
 from motionflow_mv.data.occlusion_aug import random_occlude_views, random_occlude_joints
 from motionflow_mv.eval.metrics import compute_all_metrics
-from motionflow_mv.fusion.ray_attention_temporal_crossview_residual_principal_point_model import RayAttentionFusionModelTemporalCrossviewResidualPrincipalPoint
 
 
 class TemporalClipDataset(torch.utils.data.Dataset):
@@ -132,7 +147,8 @@ def evaluate_condition(model, loader, cfg, device):
             if cfg.get("occlude_joints", 0.0) > 0.0:
                 xb = random_occlude_joints(xb, rate=cfg["occlude_joints"], per_view=True, per_sample=False)
 
-            pred, *_ = model(xb, K=K, R=R, t=t)
+            out = model(xb, K=K, R=R, t=t)
+            pred = out[0] if isinstance(out, tuple) else out
             preds.append(pred.cpu().numpy())
             gts.append(yb.cpu().numpy())
     preds = np.concatenate(preds, axis=0).reshape(-1, preds[0].shape[-2], 3) * 1000.0
@@ -141,7 +157,8 @@ def evaluate_condition(model, loader, cfg, device):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Unified 6-axis robustness matrix for PP baseline")
+    parser = argparse.ArgumentParser(description="Unified 6-axis robustness matrix for the registered model family")
+    parser.add_argument("--model", type=str, choices=list(MODEL_CLASSES), default="crossview_residual_pp")
     parser.add_argument("--checkpoint", type=str, required=True)
     parser.add_argument("--dataset", type=str, required=True)
     parser.add_argument("--out_json", type=str, default="outputs/robustness_matrix_pp_full.json")
@@ -149,7 +166,15 @@ def main():
     parser.add_argument("--clip_len", type=int, default=13)
     parser.add_argument("--d", type=int, default=64)
     parser.add_argument("--n_st_layers", type=int, default=2)
+    parser.add_argument("--n_temporal_layers", type=int, default=2)
+    parser.add_argument("--n_view_layers", type=int, default=2)
+    parser.add_argument("--n_view_groups", type=int, default=2)
+    parser.add_argument("--n_joint_graph_layers", type=int, default=1)
     parser.add_argument("--residual_hidden", type=int, default=128)
+    parser.add_argument("--graph_layers", type=int, default=3)
+    parser.add_argument("--k", type=int, default=4)
+    parser.add_argument("--target_k", type=int, default=4)
+    parser.add_argument("--min_views", type=int, default=2)
     parser.add_argument("--principal_point_hidden", type=int, default=64)
     parser.add_argument("--principal_point_max_offset", type=float, default=20.0)
     parser.add_argument("--focal_max_scale", type=float, default=0.0)
@@ -163,17 +188,30 @@ def main():
     n_views = data["camera_K"].shape[0]
     j = data["points_2d"].shape[2]
 
-    model = RayAttentionFusionModelTemporalCrossviewResidualPrincipalPoint(
-        j=j,
-        d=args.d,
-        n_views=n_views,
-        n_st_layers=args.n_st_layers,
-        residual_hidden=args.residual_hidden,
-        principal_point_hidden=args.principal_point_hidden,
-        principal_point_max_offset=args.principal_point_max_offset,
-        focal_max_scale=args.focal_max_scale,
-    ).to(device)
-    model.load_state_dict(torch.load(args.checkpoint, map_location="cpu", weights_only=True))
+    if args.model == "crossview_residual_pp":
+        # Preserve principal-point specific overrides for the legacy default.
+        from motionflow_mv.fusion.ray_attention_temporal_crossview_residual_principal_point_model import (
+            RayAttentionFusionModelTemporalCrossviewResidualPrincipalPoint,
+        )
+
+        model = RayAttentionFusionModelTemporalCrossviewResidualPrincipalPoint(
+            j=j,
+            d=args.d,
+            n_views=n_views,
+            n_st_layers=args.n_st_layers,
+            residual_hidden=args.residual_hidden,
+            principal_point_hidden=args.principal_point_hidden,
+            principal_point_max_offset=args.principal_point_max_offset,
+            focal_max_scale=args.focal_max_scale,
+        ).to(device)
+    else:
+        model = build_model(args, n_views, j).to(device)
+    state = torch.load(args.checkpoint, map_location="cpu", weights_only=True)
+    missing, unexpected = model.load_state_dict(state, strict=False)
+    if missing:
+        print(f"Warning: missing keys in checkpoint: {missing[:5]}")
+    if unexpected:
+        print(f"Warning: unexpected keys in checkpoint (ignored): {unexpected[:5]}")
     model.eval()
 
     dataset = TemporalClipDataset(args.dataset, args.clip_len, stride=args.val_stride)
@@ -221,7 +259,7 @@ def main():
 
     md_lines = [
         "| Condition | MPJPE (mm) | PA-MPJPE (mm) | PCK@50 | PCK@100 | PCK@150 | AUC |",
-        "|---|---:|---:|---:|---:|---:|---:|",
+        "|---|---|---:|---:|---:|---:|---:|---:|",
     ]
     for name, r in results.items():
         md_lines.append(
