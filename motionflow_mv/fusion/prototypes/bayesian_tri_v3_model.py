@@ -311,7 +311,12 @@ if __name__ == "__main__":
     cameras = _make_cameras(V)
     x = torch.rand(B, T, V, J, 3)
     model = RayAttentionFusionModelBayesianTriV3(
-        j=J, d=64, n_views=V, gn_iters=2, epipolar_loss_weight=0.05
+        j=J,
+        d=64,
+        n_views=V,
+        gn_iters=2,
+        epipolar_loss_weight=0.05,
+        return_pp_delta=True,
     )
     out = model(x, cameras=cameras)
     pred, weights, pp_delta, L3d, epi_loss = out

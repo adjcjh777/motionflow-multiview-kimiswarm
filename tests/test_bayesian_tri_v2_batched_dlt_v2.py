@@ -284,6 +284,7 @@ def test_bayesian_tri_v2_model_forward_backward_smoke():
         n_joint_layers=1,
         gn_iters=1,
         epipolar_loss_weight=0.0,
+        return_pp_delta=True,
     )
     pred, weights, pp_delta, epi_loss = model(x, cameras=cameras)
     assert pred.shape == (B, T, J, 3)
@@ -310,10 +311,10 @@ def test_bayesian_tri_v2_model_squeeze_output():
         gn_iters=1,
         epipolar_loss_weight=0.0,
     )
-    pred, weights, pp_delta, epi_loss = model(x, cameras=cameras)
+    pred, weights, epi_loss = model(x, cameras=cameras)
     assert pred.shape == (2, J, 3)
     assert weights.shape == (2, V, J)
-    assert pp_delta.shape == (2, V, 2)
+    assert epi_loss.shape == ()
 
 
 if __name__ == "__main__":

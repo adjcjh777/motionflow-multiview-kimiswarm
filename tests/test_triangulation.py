@@ -95,7 +95,12 @@ def test_bayesian_tri_v2_forward_backward():
     cameras = _make_cameras(V)
     x = torch.rand(B, T, V, J, 3)
     model = RayAttentionFusionModelBayesianTriV2(
-        j=J, d=64, n_views=V, gn_iters=2, epipolar_loss_weight=0.05
+        j=J,
+        d=64,
+        n_views=V,
+        gn_iters=2,
+        epipolar_loss_weight=0.05,
+        return_pp_delta=True,
     )
     pred, weights, pp_delta, epi_loss = model(x, cameras=cameras)
     assert pred.shape == (B, T, J, 3)

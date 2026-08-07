@@ -34,7 +34,12 @@ def test_bayesian_tri_v3_forward_backward():
     cameras = _make_cameras(V)
     x = torch.rand(B, T, V, J, 3)
     model = RayAttentionFusionModelBayesianTriV3(
-        j=J, d=64, n_views=V, gn_iters=2, epipolar_loss_weight=0.05
+        j=J,
+        d=64,
+        n_views=V,
+        gn_iters=2,
+        epipolar_loss_weight=0.05,
+        return_pp_delta=True,
     )
     pred, weights, pp_delta, L3d, epi_loss = model(x, cameras=cameras)
     assert pred.shape == (B, T, J, 3)
@@ -55,7 +60,7 @@ def test_bayesian_tri_v3_joint_precision_is_spd():
         j=J, d=32, n_views=V, gn_iters=1, epipolar_loss_weight=0.0
     )
     with torch.no_grad():
-        _, _, _, L3d, _ = model(x, cameras=cameras)
+        _, _, L3d, _ = model(x, cameras=cameras)
     # Build information matrix from Cholesky factor and check positive definiteness.
     Lambda = torch.matmul(L3d, L3d.transpose(-2, -1))
     eig = torch.linalg.eigvalsh(Lambda)
@@ -69,11 +74,11 @@ def test_bayesian_tri_v3_squeeze_output():
     model = RayAttentionFusionModelBayesianTriV3(
         j=J, d=32, n_views=V, gn_iters=1, epipolar_loss_weight=0.0
     )
-    pred, weights, pp_delta, L3d, epi_loss = model(x, cameras=cameras)
+    pred, weights, L3d, epi_loss = model(x, cameras=cameras)
     assert pred.shape == (2, J, 3)
     assert weights.shape == (2, V, J)
-    assert pp_delta.shape == (2, V, 2)
     assert L3d.shape == (2, J, 3, 3)
+    assert epi_loss.shape == ()
 
 
 if __name__ == "__main__":

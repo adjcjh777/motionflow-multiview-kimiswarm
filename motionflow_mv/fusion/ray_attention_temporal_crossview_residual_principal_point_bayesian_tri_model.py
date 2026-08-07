@@ -169,7 +169,7 @@ class RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointBayesianTri(
             principal_point_hidden=principal_point_hidden,
             principal_point_max_offset=principal_point_max_offset,
             focal_max_scale=focal_max_scale,
-            return_pp_delta=True,  # keep PP-delta branch for consistency
+            return_pp_delta=return_pp_delta,
             return_raw=return_raw,
         )
         self.return_covariance = return_covariance
@@ -540,7 +540,12 @@ if __name__ == "__main__":
     cameras = _make_cameras(V)
     x = torch.rand(B, T, V, J, 3)
     model = RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointBayesianTri(
-        j=J, d=64, n_views=V, gn_iters=2, epipolar_loss_weight=0.05
+        j=J,
+        d=64,
+        n_views=V,
+        gn_iters=2,
+        epipolar_loss_weight=0.05,
+        return_pp_delta=True,
     )
     pred, weights, pp_delta, epi_loss = model(x, cameras=cameras)
     assert pred.shape == (B, T, J, 3)
