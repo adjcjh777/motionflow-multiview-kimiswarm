@@ -8,13 +8,13 @@
 | # | Workstream | Owner | Status |
 |---|-----------|-------|--------|
 | 1 | 4090 dense+graph v2 full run | local watchdog | End-to-end Epoch 6, val_MPJPE=25.40 mm |
-| 2 | A800 MPI dense+graph v2 | local tmux | GPU 4, freeze epoch 3, val_MPJPE=25.62 mm |
-| 3 | A800 MPI OmniMultiViewFusion v3 | local | GPU 5, first epoch in progress |
-| 4 | A800 H36M dense+graph v2 | local | GPU 6, just started |
+| 2 | A800 MPI dense+graph v2 | local tmux | GPU 4, end-to-end Epoch 6, val_MPJPE=25.43 mm |
+| 3 | A800 MPI OmniMultiViewFusion v3 | local | GPU 5, first epoch in progress (slow) |
+| 4 | A800 H36M dense+graph v2 | local tmux | GPU 6, Epoch 1, val_MPJPE=24.46 mm |
 | 5 | WebBridge multi-dataset loader | subagent | **Done** – pushed to main (commit `4475018`) |
 | 6 | OmniMultiViewFusion v3 design | subagent | **Done** – pushed to main (commit `c9f2d2d`) |
-| 7 | Robustness/eval pipeline | local | v3 eval script + smoke test pushed; waiting for checkpoint |
-| 8 | 4090/A800 monitor | local | watching logs & GPUs, will run eval when checkpoint ready |
+| 7 | Robustness/eval pipeline | local | v3 eval script + smoke test pushed; auto-eval cron scheduled |
+| 8 | 4090/A800 monitor | local | scripts/auto_eval_when_ready.sh runs every 30 min |
 
 ## Latest 4090 results
 
