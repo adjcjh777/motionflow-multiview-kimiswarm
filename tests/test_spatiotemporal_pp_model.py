@@ -75,6 +75,32 @@ def test_return_pp_delta():
     assert pp_delta.shape == (B, T, V, 2)
 
 
+def test_single_frame_pp_and_focal_outputs_have_no_time_axis():
+    B, V, J = 2, 4, 17
+    cameras = _make_cameras(V)
+    x = torch.rand(B, V, J, 3)
+    model = SpatiotemporalPrincipalPointModel(
+        j=J,
+        d=32,
+        n_views=V,
+        n_heads=4,
+        n_temporal_layers=0,
+        n_view_layers=0,
+        n_joint_layers=0,
+        residual_hidden=32,
+        focal_max_scale=0.1,
+        return_pp_delta=True,
+    ).eval()
+
+    with torch.no_grad():
+        pred, weights, pp_delta, focal_scale = model(x, cameras=cameras)
+
+    assert pred.shape == (B, J, 3)
+    assert weights.shape == (B, V, J)
+    assert pp_delta.shape == (B, V, 2)
+    assert focal_scale.shape == (B, V)
+
+
 def test_parameter_count():
     J = 17
     model = SpatiotemporalPrincipalPointModel(j=J, d=64, n_views=4)

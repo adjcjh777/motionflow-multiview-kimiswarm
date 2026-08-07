@@ -248,7 +248,7 @@ def main():
             if args.pp_loss_weight > 0.0:
                 pred_pp_delta = outputs[2]
                 B, T = yb.shape[:2]
-                true_pp_delta = true_pp_delta.to(device).unsqueeze(1).expand(B, T, -1, -1).reshape(B * T, -1, 2)
+                true_pp_delta = true_pp_delta.to(device).unsqueeze(1).expand(B, T, -1, -1)
                 loss = loss + args.pp_loss_weight * criterion(pred_pp_delta, -true_pp_delta)
             if args.reproj_weight > 0.0:
                 points_2d = xb[..., :2]

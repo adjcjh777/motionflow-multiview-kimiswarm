@@ -356,7 +356,12 @@ class SpatiotemporalPrincipalPointModel(nn.Module):
             pp_delta = pp_delta.view(B, T, V, 2)
             if self.correct_focal:
                 focal_scale = focal_scale.view(B, T, V)
+                if squeeze_output:
+                    pp_delta = pp_delta.squeeze(1)
+                    focal_scale = focal_scale.squeeze(1)
                 return pred_3d, weights, pp_delta, focal_scale
+            if squeeze_output:
+                pp_delta = pp_delta.squeeze(1)
             return pred_3d, weights, pp_delta
 
         return pred_3d, weights
