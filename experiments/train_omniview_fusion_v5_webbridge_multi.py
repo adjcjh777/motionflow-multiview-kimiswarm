@@ -79,6 +79,7 @@ def build_model_from_args(
         "return_covariance": True,
         # v4 toggles
         "use_multiscale_fusion": args.use_multiscale_fusion,
+        "use_adaptive_multiscale_fusion": getattr(args, "use_adaptive_multiscale_fusion", False),
         "use_camera_conditioning": args.use_camera_conditioning,
         "use_epipolar_bias": args.use_epipolar_bias,
         "use_context_visibility": args.use_context_visibility,
@@ -1100,6 +1101,7 @@ def parse_args() -> Namespace:
     parser.add_argument("--epipolar_loss_weight", type=float, default=0.05, help="Epipolar loss weight passed to the model")
     # v4 toggles
     parser.add_argument("--use_multiscale_fusion", type=lambda x: x.lower() == "true", default=True, help="Enable hierarchical multi-scale fusion")
+    parser.add_argument("--use_adaptive_multiscale_fusion", action="store_true", help="Enable adaptive scale-selective multi-scale fusion")
     parser.add_argument("--use_camera_conditioning", type=lambda x: x.lower() == "true", default=True, help="Enable camera conditioning")
     parser.add_argument("--use_epipolar_bias", type=lambda x: x.lower() == "true", default=True, help="Enable epipolar-biased ST transformer")
     parser.add_argument("--use_context_visibility", type=lambda x: x.lower() == "true", default=True, help="Use context-aware visibility head")

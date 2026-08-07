@@ -82,6 +82,7 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
         min_visible_views: int = 2,
         graph_dropout: float = 0.0,
         use_multiscale_fusion: bool = True,
+        use_adaptive_multiscale_fusion: bool = False,
         use_camera_conditioning: bool = True,
         use_epipolar_bias: bool = True,
         multiscale_scales: List[int] = (1, 2, 4),  # type: ignore[assignment]
@@ -154,6 +155,20 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
             rotation_max_rot_deg=rotation_max_rot_deg,
             entropy_weight=entropy_weight,
         )
+
+        # Optional adaptive scale-selective multi-scale fusion (v12).
+        self.use_adaptive_multiscale_fusion = use_adaptive_multiscale_fusion
+        if use_adaptive_multiscale_fusion and self.multiscale_fusion is not None:
+            from motionflow_mv.fusion.adaptive_hierarchical_multiscale_fusion import (
+                AdaptiveHierarchicalMultiscaleFusion,
+            )
+            self.multiscale_fusion = AdaptiveHierarchicalMultiscaleFusion(
+                d=d,
+                n_views=n_views,
+                scales=multiscale_scales,
+                n_heads=n_heads,
+                dropout=0.1,
+            )
 
         self.use_camera_view_embedding = use_camera_view_embedding
         self.use_set_view_aggregator = use_set_view_aggregator
