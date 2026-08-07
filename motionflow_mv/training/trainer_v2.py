@@ -428,8 +428,14 @@ class TrainerV2:
                     if val_loss < best_metric:
                         best_metric = val_loss
                         self.save_checkpoint(checkpoint_path)
+                print(
+                    f"Epoch {self.epoch}: train_loss={train_metrics.get('loss', float('nan')):.6f}, "
+                    f"val_loss={val_metrics.get('loss', float('nan')):.6f}, "
+                    f"val_MPJPE={val_metrics.get('mpjpe', float('nan')) * 1000:.2f}mm"
+                )
             else:
                 self.history.append(entry)
+                print(f"Epoch {self.epoch}: train_loss={train_metrics.get('loss', float('nan')):.6f}")
             self.step_scheduler()
         return self.history
 

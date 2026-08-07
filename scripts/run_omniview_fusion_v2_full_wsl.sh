@@ -28,7 +28,7 @@ python "${ROOT}/experiments/train_omniview_fusion_v2_mpiinf3dhp.py" \
   --epochs 30 \
   --batch_size 8 \
   --train_samples 4000 \
-  --val_stride 1 \
+  --val_stride 10 \
   --lr 1e-3 \
   --lr_cosine \
   --lr_warmup_epochs 3 \
