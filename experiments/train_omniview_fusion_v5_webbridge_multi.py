@@ -360,6 +360,91 @@ def inject_outlier_views(
     return x
 
 
+def augment_occlusion_noise(
+    x: torch.Tensor,
+    prob: float = 0.0,
+    joint_occlusion_rate: float = 0.1,
+    multiview_occlusion_rate: float = 0.05,
+    temporal_occlusion_prob: float = 0.1,
+    per_joint_noise_std: float = 1.5,
+    per_view_noise_std: float = 0.5,
+    min_visible_joints: int = 5,
+) -> torch.Tensor:
+    """Joint-level occlusion and structured noise augmentation.
+
+    Simulates three failure modes beyond whole-view outliers:
+
+    1. Per-joint occlusion in a single view (confidence -> 0).
+    2. Multi-view joint occlusion: the same joint is occluded in several
+       correlated views.
+    3. Temporal joint occlusion: a joint is occluded across consecutive frames.
+
+    Also adds localized Gaussian noise to 2-D keypoints.
+
+    Args:
+        x: (B, T, V, J, 3) tensor of (x, y, confidence) observations.
+        prob: Per-clip probability of applying any augmentation in this family.
+        joint_occlusion_rate: Probability of occluding each (view, joint) pair.
+        multiview_occlusion_rate: Fraction of joints to occlude across multiple views.
+        temporal_occlusion_prob: Probability of applying a temporal occlusion streak.
+        per_joint_noise_std: Std of Gaussian noise added independently per joint.
+        per_view_noise_std: Std of shared Gaussian noise added per view.
+        min_visible_joints: Ensure at least this many joints remain visible per view.
+
+    Returns:
+        Augmented tensor (same shape as input).
+    """
+    if prob <= 0.0:
+        return x
+
+    x = x.clone()
+    B, T, V, J, _ = x.shape
+
+    for i in range(B):
+        if torch.rand(1, device=x.device).item() >= prob:
+            continue
+
+        # Per-joint single-view occlusions.
+        if joint_occlusion_rate > 0.0:
+            occ_mask = torch.rand(T, V, J, device=x.device) < joint_occlusion_rate
+            x[i, :, :, :, 2] = x[i, :, :, :, 2] * (~occ_mask).float()
+
+        # Multi-view joint occlusions.
+        if multiview_occlusion_rate > 0.0:
+            n_joints_to_occlude = max(1, int(multiview_occlusion_rate * J))
+            if n_joints_to_occlude > 0 and V > 1:
+                j_idx = torch.randperm(J, device=x.device)[:n_joints_to_occlude]
+                k_views = torch.randint(1, V, (1,)).item()
+                v_idx = torch.randperm(V, device=x.device)[:k_views]
+                x[i, :, v_idx[:, None], j_idx[None, :], 2] = 0.0
+
+        # Temporal joint occlusions.
+        if temporal_occlusion_prob > 0.0 and T > 2:
+            if torch.rand(1, device=x.device).item() < temporal_occlusion_prob:
+                j_idx = torch.randint(0, J, (1,), device=x.device).item()
+                streak_len = max(1, min(T, torch.randint(T // 4, T // 2 + 1, (1,)).item()))
+                start = torch.randint(0, max(1, T - streak_len + 1), (1,)).item()
+                x[i, start : start + streak_len, :, j_idx, 2] = 0.0
+
+        # Structured noise.
+        if per_joint_noise_std > 0.0:
+            noise_joint = torch.randn(T, V, J, 2, device=x.device, dtype=x.dtype) * per_joint_noise_std
+            x[i, :, :, :, :2] = x[i, :, :, :, :2] + noise_joint
+
+        if per_view_noise_std > 0.0:
+            noise_view = torch.randn(T, V, 1, 2, device=x.device, dtype=x.dtype) * per_view_noise_std
+            x[i, :, :, :, :2] = x[i, :, :, :, :2] + noise_view
+
+        # Safety: keep a minimum number of visible joints per view.
+        visible_per_view = (x[i, :, :, :, 2] > 0).float().sum(dim=-1)  # (T, V)
+        if visible_per_view.min().item() < min_visible_joints:
+            offending = visible_per_view < min_visible_joints  # (T, V)
+            for t, v in offending.nonzero(as_tuple=False):
+                x[i, t, v, :min_visible_joints, 2] = x[i, t, v, :min_visible_joints, 2].clamp(min=1e-3)
+
+    return x
+
+
 def augment_clip(
     x: torch.Tensor,
     *,
@@ -716,6 +801,19 @@ def build_compute_loss(args: Namespace):
                 offset_std=args.outlier_view_offset_std,
                 noise_std=args.outlier_view_noise_std,
                 min_views=args.min_views,
+            )
+
+        # Optional joint-level occlusion / structured noise augmentation.
+        if getattr(args, "occlusion_augment_prob", 0.0) > 0.0:
+            x = augment_occlusion_noise(
+                x,
+                prob=args.occlusion_augment_prob,
+                joint_occlusion_rate=args.occlusion_joint_rate,
+                multiview_occlusion_rate=args.occlusion_multiview_rate,
+                temporal_occlusion_prob=args.occlusion_temporal_prob,
+                per_joint_noise_std=args.occlusion_per_joint_noise_std,
+                per_view_noise_std=args.occlusion_per_view_noise_std,
+                min_visible_joints=args.occlusion_min_visible_joints,
             )
 
         # When using the mixed loader, padded views must be masked out.  The
@@ -1208,6 +1306,13 @@ def parse_args() -> Namespace:
     parser.add_argument("--outlier_view_max_views", type=int, default=1, help="Maximum number of views to corrupt when injecting outliers")
     parser.add_argument("--outlier_view_offset_std", type=float, default=10.0, help="Std dev of large per-view 2-D offset for outlier views (pixels)")
     parser.add_argument("--outlier_view_noise_std", type=float, default=15.0, help="Std dev of per-pixel Gaussian noise for outlier views (pixels)")
+    parser.add_argument("--occlusion_augment_prob", type=float, default=0.0, help="Per-clip probability of applying joint-level occlusion/noise augmentation (0 disables)")
+    parser.add_argument("--occlusion_joint_rate", type=float, default=0.1, help="Probability of occluding each (view, joint) pair")
+    parser.add_argument("--occlusion_multiview_rate", type=float, default=0.05, help="Fraction of joints to occlude across multiple views")
+    parser.add_argument("--occlusion_temporal_prob", type=float, default=0.1, help="Probability of temporal joint occlusion streak")
+    parser.add_argument("--occlusion_per_joint_noise_std", type=float, default=1.5, help="Std of per-joint 2-D noise (pixels)")
+    parser.add_argument("--occlusion_per_view_noise_std", type=float, default=0.5, help="Std of per-view shared 2-D noise (pixels)")
+    parser.add_argument("--occlusion_min_visible_joints", type=int, default=5, help="Minimum visible joints per view after occlusion")
     parser.add_argument("--variable_view_subset", action="store_true", help="Train with random view-subset sampling (k ~ Uniform(min_views, V))")
     parser.add_argument("--use_variable_view_training", action="store_true", help="Randomly sample and permute view subsets each batch")
     parser.add_argument("--variable_view_min_views", type=int, default=2, help="Minimum views in variable-view training subset")
