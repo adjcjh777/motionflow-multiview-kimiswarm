@@ -261,14 +261,30 @@ def augment_clip(
     dropout_rate: float = 0.0,
     view_dropout_rate: float = 0.0,
     min_views: int = 2,
+    variable_view_subset: bool = False,
 ) -> torch.Tensor:
-    """Lightweight per-clip augmentation with optional view dropout."""
+    """Lightweight per-clip augmentation with optional view dropout.
+
+    When ``variable_view_subset`` is True, instead of independent per-view
+    dropout we sample a random subset size ``k ~ Uniform(min_views, V)``
+    and keep exactly ``k`` views per clip. This forces the model to learn
+    from arbitrary view cardinalities.
+    """
     if noise_std > 0:
         x[..., :2] = x[..., :2] + torch.randn_like(x[..., :2]) * noise_std
     if dropout_rate > 0:
         mask = (torch.rand(x.shape[0], x.shape[1], x.shape[2], x.shape[3], device=x.device) > dropout_rate).float()
         x[..., 2] = x[..., 2] * mask
-    if view_dropout_rate > 0:
+    if variable_view_subset:
+        B = x.shape[0]
+        V = x.shape[2]
+        view_mask = torch.zeros(B, V, device=x.device)
+        for i in range(B):
+            k = torch.randint(min_views, V + 1, (1,)).item()
+            idx = torch.randperm(V)[:k]
+            view_mask[i, idx] = 1.0
+        x[..., 2] = x[..., 2] * view_mask.view(B, 1, V, 1)
+    elif view_dropout_rate > 0:
         B = x.shape[0]
         V = x.shape[2]
         view_mask = (torch.rand(B, V, device=x.device) > view_dropout_rate).float()
@@ -479,6 +495,7 @@ def build_compute_loss(args: Namespace):
             dropout_rate=args.confidence_dropout,
             view_dropout_rate=args.view_dropout_rate,
             min_views=args.min_views,
+            variable_view_subset=args.variable_view_subset,
         )
 
         # Optional calibration curriculum.  Applied to cameras before the model
@@ -798,6 +815,7 @@ def parse_args() -> Namespace:
     parser.add_argument("--confidence_dropout", type=float, default=0.0, help="Confidence dropout rate")
     parser.add_argument("--view_dropout_rate", type=float, default=0.0, help="Probability of dropping a full view")
     parser.add_argument("--min_views", type=int, default=2, help="Minimum kept views during view dropout")
+    parser.add_argument("--variable_view_subset", action="store_true", help="Train with random view-subset sampling (k ~ Uniform(min_views, V))")
     # Calibration curriculum
     parser.add_argument("--cam_aug_schedule", type=str, default="none", choices=["none", "extended_curriculum", "extended_intrinsics_curriculum"], help="Camera perturbation schedule")
     parser.add_argument("--cam_aug_rot", type=float, default=0.5, help="Rotation perturbation std (degrees)")
