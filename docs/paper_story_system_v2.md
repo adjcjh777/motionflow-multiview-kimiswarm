@@ -305,7 +305,50 @@ The system must be evaluated with robot-relevant metrics, not just MPJPE:
 
 ---
 
-## 10. Related files
+## 10. v4 direction: View-mask-aware adaptive multi-view fusion
+
+### 10.1 Why v4 is needed
+
+The v2/v3 anchor is strong under clean, fixed-view conditions, but real-world deployment breaks those assumptions:
+
+- **Variable views.** H36M v2 shows 2-view MPJPE  1990 mm and 3-view  1620 mm.
+- **Occlusion / view dropout.** 30 % view dropout degrades MPI-INF-3DHP to 18.15 mm; 30 % joint occlusion to 16.99 mm.
+- **Calibration drift.** rot_0.5°  16.89 mm and focal_1 %  19.13 mm remain unsolved.
+
+### 10.2 v4 headline modules
+
+| Module | What it adds | Paper section |
+|--------|--------------|---------------|
+| **View-mask-aware visibility gating v2** | Per-joint context visibility with uncertainty scaling | 4.1 |
+| **Adaptive view selector** | Budgeted top-k view selection per joint | 4.2 |
+| **Rotation correction head** | Bounded SO(3) residual before triangulation | 4.3 |
+| **Skeleton-graph residual refiner** | Graph propagation over bone/symmetry edges | 4.4 |
+| **Kinematic-chain graph refiner** | Optional final temporal skeleton pass | 4.5 |
+| **Attention-entropy regularization** | Sharpens per-view triangulation weights | 4.6 |
+| **Calibration perturbation curriculum** | Progressive rot/focal/PP augmentation | 5.1 |
+
+All modules are optional, individually togglable, and warm-startable from v2/v3 checkpoints (`strict=False`).
+
+### 10.3 Strongest v4 claims
+
+1. **MPI-INF-3DHP single model < 8.6 mm** (anchor: single 9.03 mm, ensemble 8.35 mm).
+2. **Variable-view k=2 MPJPE < 50 mm** (anchor: H36M v2 ~1990 mm).
+3. **30 % view dropout < 16.3 mm** (anchor: 18.15 mm).
+4. **rot_0.5° < 14 mm and focal_1 % < 15 mm** (anchor: 16.89 mm / 19.13 mm).
+5. **Model remains warm-startable and < 2.0 M parameters**.
+
+### 10.4 v4 deliverables
+
+- Design: `docs/v4_architecture_design_proposal.md`
+- Story: `docs/swarm_iter20/paper_story_v4.md`
+- Model: `motionflow_mv/fusion/omniview_fusion_v4.py`
+- Trainer: `experiments/train_omniview_fusion_v4_webbridge_multi.py`
+- Eval: `experiments/eval_omniview_fusion_v4_mpiinf3dhp.py`
+- Tests: `tests/test_omniview_fusion_v4.py`
+
+---
+
+## 11. Related files
 
 - System research design: `docs/motionflow_multiview_system_research_from_a800.md`
 - Paper story (predecessor): `docs/icra_cvpr_2027_paper_story.md`

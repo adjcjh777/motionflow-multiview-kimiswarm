@@ -133,6 +133,7 @@ Each package is independent and writes to a dedicated file/directory to avoid me
 *Owner:* explore  
 *File:* `docs/swarm_iter20/paper_story_v4.md`  
 *Task:* Update `docs/paper_story_system_v2.md` / `docs/icra_cvpr_2027_paper_story.md` with the v4 narrative: "View-mask-aware adaptive multi-view fusion for robust monocular-to-multiview human pose estimation".  Map each module to a paper section and list 3–5 strongest quantitative claims we can defend once v4 trains complete.  
+*Status:* **Done** — `docs/swarm_iter20/paper_story_v4.md` created; v4 narrative, module-to-section mapping, 5 quantitative claims, and ablation table outline added to both `docs/paper_story_system_v2.md` and `docs/icra_cvpr_2027_paper_story.md`.  
 *Success:* A 1-page narrative plus an ablation table outline.
 
 ### T20 — GitHub issue/PR automation and synthesis
