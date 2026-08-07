@@ -67,9 +67,10 @@ class RayAttentionFusionModelTemporalCrossviewResidualPrincipalPoint(RayAttentio
         """Return a per-view/per-joint visibility multiplier in [0, 1].
 
         Override this in subclasses to implement explicit occlusion/visibility
-        gating. The base model returns 1 so behavior is unchanged.
+        gating. The base model returns an all-ones tensor so behavior is
+        unchanged and the visibility output remains shape-compatible.
         """
-        return 1.0
+        return torch.ones_like(confidences)
 
     def forward(self, x, cameras=None, K=None, R=None, t=None):
         squeeze_output = False
