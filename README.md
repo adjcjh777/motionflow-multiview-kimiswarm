@@ -168,6 +168,18 @@ Recent additions:
   - `experiments/eval_temporal_refiner_shelf.py`: evaluate the temporal refiner vs DLT.
   - `experiments/train_temporal_synthetic.py`: pre-train the temporal refiner on synthetic 3D sequences.
   - `experiments/run_multiview_pipeline_shelf.py`: end-to-end multi-view pipeline demo on Shelf.
+  - `experiments/prototypes/swarm_iter18/convert_mpiinf3dhp_test_set.py`: convert the MPI-INF-3DHP test set (TS1-TS6) to canonical multi-view `.npz`. See `docs/mpiinf3dhp_test_set_conversion.md`.
+  - `scripts/convert_mpiinf3dhp_test_set_wsl.sh`: WSL runner for the above converter.
+
+## MPI-INF-3DHP test-set conversion
+
+The official MPI-INF-3DHP test set (TS1-TS6) can be converted to the project's canonical multi-view `.npz` format for inference-only evaluation.  Because public 3D GT is reserved for the official evaluation server, the resulting `.npz` files contain 2D keypoints and 14-camera calibration only; `joints_3d` is stored as an empty placeholder.
+
+```bash
+bash scripts/convert_mpiinf3dhp_test_set_wsl.sh
+```
+
+Output: `data/webbridge/mpi_inf_3dhp/test_set/TS{i}_v14_multiview.npz`. See `docs/mpiinf3dhp_test_set_conversion.md` for the full format.
 
 ## Iteration workflow
 
