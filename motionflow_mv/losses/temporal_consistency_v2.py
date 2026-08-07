@@ -105,10 +105,10 @@ def velocity_loss_v2(
     if loss_type == "l2":
         per_frame = (diff ** 2).sum(dim=-1)  # (..., T-1, J)
     elif loss_type == "huber":
-        per_coord = diff.abs()
-        quadratic = (per_coord ** 2).sum(dim=-1) * 0.5
-        linear = delta * per_coord.sum(dim=-1) - 0.5 * delta ** 2
-        per_frame = torch.where(per_coord.sum(dim=-1) <= delta, quadratic, linear)
+        norm = diff.norm(dim=-1)  # L2 norm of 3-D displacement
+        quadratic = 0.5 * norm ** 2
+        linear = delta * (norm - 0.5 * delta)
+        per_frame = torch.where(norm <= delta, quadratic, linear)
     else:
         raise ValueError(f"Unknown loss_type: {loss_type}")
 
@@ -171,10 +171,10 @@ def acceleration_loss_v2(
     if loss_type == "l2":
         per_frame = (diff ** 2).sum(dim=-1)
     elif loss_type == "huber":
-        per_coord = diff.abs()
-        quadratic = (per_coord ** 2).sum(dim=-1) * 0.5
-        linear = delta * per_coord.sum(dim=-1) - 0.5 * delta ** 2
-        per_frame = torch.where(per_coord.sum(dim=-1) <= delta, quadratic, linear)
+        norm = diff.norm(dim=-1)  # L2 norm of 3-D displacement
+        quadratic = 0.5 * norm ** 2
+        linear = delta * (norm - 0.5 * delta)
+        per_frame = torch.where(norm <= delta, quadratic, linear)
     else:
         raise ValueError(f"Unknown loss_type: {loss_type}")
 
