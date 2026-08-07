@@ -245,6 +245,53 @@ class SyntheticSmokeDataset(torch.utils.data.Dataset):
 # Augmentations
 # ---------------------------------------------------------------------------
 
+def inject_outlier_views(
+    x: torch.Tensor,
+    prob: float = 0.0,
+    max_views: int = 1,
+    offset_std: float = 10.0,
+    noise_std: float = 15.0,
+    min_views: int = 2,
+) -> torch.Tensor:
+    """Corrupt a random subset of views with large per-view offsets and pixel noise.
+
+    Args:
+        x: (B, T, V, J, 3) tensor of (x, y, confidence) observations.
+        prob: Per-clip probability of corrupting any views.
+        max_views: Maximum number of views to corrupt in a single clip.
+        offset_std: Standard deviation of the large per-view 2-D offset (pixels).
+        noise_std: Standard deviation of the per-pixel Gaussian noise (pixels).
+        min_views: Ensure at least this many views remain uncorrupted.
+
+    Returns:
+        A copy of the input tensor with selected views corrupted (confidence > 0).
+    """
+    if prob <= 0.0 or max_views <= 0:
+        return x
+
+    # Work on a clone so in-place indexing does not interfere with gradients
+    # on the tensor produced by ``augment_clip``.
+    x = x.clone()
+    B, T, V, J, _ = x.shape
+    for i in range(B):
+        if torch.rand(1, device=x.device).item() >= prob:
+            continue
+        k_max = min(max_views, max(0, V - min_views))
+        if k_max <= 0:
+            continue
+        k = torch.randint(1, k_max + 1, (1,)).item()
+        idx = torch.randperm(V, device=x.device)[:k]
+        if idx.numel() == 0:
+            continue
+        # Per-view large offset shared across the whole clip.
+        offset = torch.randn(1, idx.numel(), 1, 2, device=x.device, dtype=x.dtype) * offset_std
+        # Per-pixel Gaussian noise.
+        noise = torch.randn(T, idx.numel(), J, 2, device=x.device, dtype=x.dtype) * noise_std
+        x[i, :, idx, :, :2] = x[i, :, idx, :, :2] + offset + noise
+        # Confidence remains > 0 so the robust DLT path must down-weight the view.
+    return x
+
+
 def augment_clip(
     x: torch.Tensor,
     *,
@@ -389,7 +436,13 @@ def uncertainty_nll_loss(
     t: torch.Tensor,
     L: torch.Tensor,
 ) -> torch.Tensor:
-    """Negative log-likelihood of 2-D reprojection residuals under L L^T."""
+    """Negative log-likelihood of 2-D reprojection residuals under L L^T.
+
+    Computes the residual between predicted and observed 2-D keypoints, solves
+    ``L y = r`` for the Mahalanobis distance, and regularises the diagonals of
+    ``L`` to avoid singularities.  The loss is averaged over valid (visible)
+    joints and safely handles an empty valid mask.
+    """
     uv_pred = project_points_3d_to_2d(pred_3d, K, R, t)  # (B, T, V, J, 2)
     r = uv_pred - points_2d  # (B, T, V, J, 2)
     valid = confidences > 0  # (B, T, V, J)
@@ -400,13 +453,17 @@ def uncertainty_nll_loss(
     r_flat = r.reshape(-1, 2)[valid.reshape(-1)]
     L_flat = L.reshape(-1, 2, 2)[valid.reshape(-1)]
 
-    y = torch.linalg.solve(L_flat, r_flat.unsqueeze(-1)).squeeze(-1)
-    a = torch.linalg.solve(L_flat.transpose(-2, -1), y.unsqueeze(-1)).squeeze(-1)
-    mahalanobis = (r_flat * a).sum(dim=-1)
+    # Clamp diagonals to keep L invertible (out-of-place to keep autograd happy).
+    eye2 = torch.eye(2, device=L_flat.device, dtype=torch.bool)
+    diag = L_flat.diagonal(dim1=-2, dim2=-1).clamp(min=1e-6)
+    L_flat = L_flat * (~eye2) + eye2 * diag.unsqueeze(-2)
 
-    l00 = L_flat[..., 0, 0].clamp(min=1e-6)
-    l11 = L_flat[..., 1, 1].clamp(min=1e-6)
-    log_det = 2.0 * (torch.log(l00) + torch.log(l11))
+    # Solve L y = r and use ||y||^2 as the Mahalanobis distance.
+    y = torch.linalg.solve(L_flat, r_flat.unsqueeze(-1)).squeeze(-1)
+    mahalanobis = (y ** 2).sum(dim=-1)
+    mahalanobis = mahalanobis.clamp(0.0, 50.0)
+
+    log_det = 2.0 * (torch.log(L_flat[..., 0, 0]) + torch.log(L_flat[..., 1, 1]))
 
     nll = 0.5 * (mahalanobis + log_det + 2.0 * math.log(2.0 * math.pi))
     return nll.mean()
@@ -530,6 +587,19 @@ def build_compute_loss(args: Namespace):
             min_views=args.min_views,
             variable_view_subset=args.variable_view_subset,
         )
+
+        # Optional outlier-view augmentation: corrupt a random subset of views with
+        # large offsets and pixel noise.  Confidence remains > 0 so the robust DLT
+        # path must learn to down-weight the bad views.
+        if args.outlier_view_prob > 0.0:
+            x = inject_outlier_views(
+                x,
+                prob=args.outlier_view_prob,
+                max_views=args.outlier_view_max_views,
+                offset_std=args.outlier_view_offset_std,
+                noise_std=args.outlier_view_noise_std,
+                min_views=args.min_views,
+            )
 
         # When using the mixed loader, padded views must be masked out.  The
         # dataset_id encodes the source domain (0=H36M/4 views, 1=MPI/14 views).
@@ -663,10 +733,23 @@ def build_compute_loss(args: Namespace):
                 loss = loss + args.budget_loss_weight * bgt
                 metrics["budget_loss"] = bgt.item()
 
-        if args.reproj_loss_weight > 0.0:
+        # Optional reprojection-loss warmup: linearly ramp all reprojection
+        # weights from 0 over the first ``reproj_warmup_epochs`` epochs.
+        if args.reproj_warmup_epochs > 0:
+            current_epoch = getattr(model, "epoch", 1) - 1
+            reproj_warmup_scale = min(1.0, max(0.0, current_epoch / args.reproj_warmup_epochs))
+        else:
+            reproj_warmup_scale = 1.0
+
+        if args.reproj_loss_weight > 0.0 and reproj_warmup_scale > 0.0:
             reproj = _reprojection_loss(pred_3d, x[..., :2], K_aug, R_aug, t_aug, view_mask)
-            loss = loss + args.reproj_loss_weight * reproj
+            loss = loss + (args.reproj_loss_weight * reproj_warmup_scale) * reproj
             metrics["reproj_loss"] = reproj.item()
+
+        if args.aleatoric_reproj_loss_weight > 0.0 and reproj_warmup_scale > 0.0:
+            ar_nll = uncertainty_nll_loss(pred_3d, x[..., :2], x[..., 2], K_aug, R_aug, t_aug, L)
+            loss = loss + (args.aleatoric_reproj_loss_weight * reproj_warmup_scale) * ar_nll
+            metrics["aleatoric_reproj_loss"] = ar_nll.item()
 
         # Optional monotonic multi-view loss: error with a subset of views should
         # not be better than using all views.  This is only meaningful when the
@@ -997,6 +1080,10 @@ def parse_args() -> Namespace:
     parser.add_argument("--confidence_dropout", type=float, default=0.0, help="Confidence dropout rate")
     parser.add_argument("--view_dropout_rate", type=float, default=0.0, help="Probability of dropping a full view")
     parser.add_argument("--min_views", type=int, default=2, help="Minimum kept views during view dropout")
+    parser.add_argument("--outlier_view_prob", type=float, default=0.0, help="Probability of injecting outlier views per clip (0 disables)")
+    parser.add_argument("--outlier_view_max_views", type=int, default=1, help="Maximum number of views to corrupt when injecting outliers")
+    parser.add_argument("--outlier_view_offset_std", type=float, default=10.0, help="Std dev of large per-view 2-D offset for outlier views (pixels)")
+    parser.add_argument("--outlier_view_noise_std", type=float, default=15.0, help="Std dev of per-pixel Gaussian noise for outlier views (pixels)")
     parser.add_argument("--variable_view_subset", action="store_true", help="Train with random view-subset sampling (k ~ Uniform(min_views, V))")
     parser.add_argument("--use_variable_view_training", action="store_true", help="Randomly sample and permute view subsets each batch")
     parser.add_argument("--variable_view_min_views", type=int, default=2, help="Minimum views in variable-view training subset")
@@ -1022,6 +1109,8 @@ def parse_args() -> Namespace:
     parser.add_argument("--attention_entropy_weight", type=float, default=0.0, help="Attention-entropy regularisation weight")
     parser.add_argument("--budget_loss_weight", type=float, default=0.0, help="Adaptive-view budget loss weight")
     parser.add_argument("--reproj_loss_weight", type=float, default=0.0, help="2D reprojection loss weight")
+    parser.add_argument("--aleatoric_reproj_loss_weight", type=float, default=0.0, help="Aleatoric 2D reprojection NLL weight")
+    parser.add_argument("--reproj_warmup_epochs", type=int, default=0, help="Linearly ramp reprojection loss weights from 0 over this many epochs (0 disables)")
     # Warm-start
     parser.add_argument("--warm_start", type=str, default=None, help="Path to v2/v3 checkpoint for warm-starting")
     parser.add_argument("--warm_start_freeze_epochs", type=int, default=0, help="Freeze encoder/transformer for N epochs after warm-start")
