@@ -208,3 +208,5 @@ Remote tracking mirrors the same pattern (`origin/...`).
 ---
 
 *End of audit. Next recommended action: wait for the five in-flight GPU runs to reach at least epoch 5–10, then run a fresh ensemble evaluation with `--d 128` and update this file.*
+
+*Audit committed from `feat/swarm-iter18-omniview` at 2026-08-07 11:05 CST.*
