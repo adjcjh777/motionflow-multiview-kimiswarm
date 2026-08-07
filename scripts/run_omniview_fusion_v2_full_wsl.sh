@@ -6,6 +6,8 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 VENV=${MF_VENV:-${ROOT}/.venv}
 . "${VENV}/bin/activate"
 export PYTHONUNBUFFERED=1
+# Avoid duplicate OpenMP runtime crashes on WSL + 4090
+export KMP_DUPLICATE_LIB_OK=TRUE
 
 # Optional warm-start checkpoint.  Adjust or unset if not available.
 WARM_START="${WARM_START:-${ROOT}/outputs/bayesian_tri_v2_stabilized_mpiinf3dhp.pth}"
