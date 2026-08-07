@@ -52,6 +52,8 @@ class IntrinsicCorrection(nn.Module):
             nn.Linear(hidden, 3),  # dx, dy, focal log-scale
             nn.Tanh(),
         )
+        nn.init.zeros_(self.mlp[-2].weight)
+        nn.init.zeros_(self.mlp[-2].bias)
 
         # Fallback projector for the raw-observation path (8-D descriptor -> d).
         self.fallback_projector = nn.Linear(8, d)

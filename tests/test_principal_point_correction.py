@@ -15,7 +15,7 @@ from motionflow_mv.fusion.ray_attention_temporal_residual_principal_point_model 
 from motionflow_mv.fusion.ray_attention_temporal_residual_model import _make_cameras
 
 
-def test_principal_point_correction_bounds():
+def test_principal_point_correction_identity_initialization_and_bounds():
     N, V, J, d = 2, 4, 17, 64
     K = torch.eye(3).float().unsqueeze(0).unsqueeze(0).expand(N, V, -1, -1).contiguous()
     K[:, :, 0, 0] = 800.0
@@ -26,14 +26,26 @@ def test_principal_point_correction_bounds():
     feat = torch.randn(N, V, J, d)
     weights = torch.rand(N, V, J)
 
-    layer = PrincipalPointCorrection(d=d, hidden=64, max_offset=20.0)
-    K_corr, delta = layer(K, feat=feat, weights=weights)
+    layer = PrincipalPointCorrection(
+        d=d,
+        hidden=64,
+        max_offset=20.0,
+        max_focal_scale=0.1,
+    )
+    K_corr, delta, focal_scale = layer(K, feat=feat, weights=weights)
 
     assert K_corr.shape == K.shape
     assert delta.shape == (N, V, 2)
     assert (delta.abs() <= 20.0 + 1e-5).all()
-    # Near-identity at init (allow a few pixels due to random init).
-    assert delta.abs().mean() < 5.0
+    torch.testing.assert_close(delta, torch.zeros_like(delta), rtol=0, atol=0)
+    torch.testing.assert_close(focal_scale, torch.ones_like(focal_scale), rtol=0, atol=0)
+    torch.testing.assert_close(K_corr, K, rtol=0, atol=0)
+
+    x = torch.rand(N, V, J, 3)
+    K_raw, delta_raw, focal_raw = layer(K, x=x, weights=x[..., 2])
+    torch.testing.assert_close(delta_raw, torch.zeros_like(delta_raw), rtol=0, atol=0)
+    torch.testing.assert_close(focal_raw, torch.ones_like(focal_raw), rtol=0, atol=0)
+    torch.testing.assert_close(K_raw, K, rtol=0, atol=0)
 
 
 def test_principal_point_pooling_uses_exact_final_weights():
@@ -115,7 +127,7 @@ def test_principal_point_model_single_frame():
 
 
 if __name__ == "__main__":
-    test_principal_point_correction_bounds()
+    test_principal_point_correction_identity_initialization_and_bounds()
     test_principal_point_pooling_uses_exact_final_weights()
     test_principal_point_model_forward_and_grad()
     test_principal_point_model_single_frame()

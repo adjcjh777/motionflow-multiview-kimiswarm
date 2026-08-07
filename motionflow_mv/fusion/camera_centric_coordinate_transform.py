@@ -25,8 +25,8 @@ class CameraCentricCoordinateTransform(nn.Module):
     hidden:
         Hidden size of the residual predictor.
     max_rot_offset_deg:
-        Maximum rotation correction in degrees.  The residual is parameterised
-        by an so(3) vector and mapped through ``axis_angle_to_matrix``.
+        Maximum absolute value in degrees for each so(3) component.  The total
+        rotation angle is therefore bounded by ``sqrt(3) * max_rot_offset_deg``.
     max_trans_offset_m:
         Maximum absolute translation correction in meters.
     max_scale_delta:
@@ -62,6 +62,8 @@ class CameraCentricCoordinateTransform(nn.Module):
             nn.Linear(hidden, 3),
             nn.Tanh(),
         )
+        nn.init.zeros_(self.rot_mlp[-2].weight)
+        nn.init.zeros_(self.rot_mlp[-2].bias)
 
         # Translation head.
         self.trans_mlp = nn.Sequential(
@@ -72,6 +74,8 @@ class CameraCentricCoordinateTransform(nn.Module):
             nn.Linear(hidden, 3),
             nn.Tanh(),
         )
+        nn.init.zeros_(self.trans_mlp[-2].weight)
+        nn.init.zeros_(self.trans_mlp[-2].bias)
 
         # Scale head: positive scale near 1.0.
         self.scale_mlp = nn.Sequential(
@@ -82,6 +86,8 @@ class CameraCentricCoordinateTransform(nn.Module):
             nn.Linear(hidden, 1),
             nn.Tanh(),
         )
+        nn.init.zeros_(self.scale_mlp[-2].weight)
+        nn.init.zeros_(self.scale_mlp[-2].bias)
 
         # Fallback projector for the raw-observation path.
         self.fallback_projector = nn.Linear(15, d)
@@ -136,7 +142,7 @@ class CameraCentricCoordinateTransform(nn.Module):
         else:
             raise ValueError("Either feat or x must be provided.")
 
-        # Bounded residuals (all near zero / one at init because Tanh(0)=0).
+        # The zero-initialized final layers make these exact zero/one residuals.
         delta_rot = self.rot_mlp(pooled) * self.max_rot_offset  # (N, V, 3)
         delta_t = self.trans_mlp(pooled) * self.max_trans_offset  # (N, V, 3)
         scale_factor = self.scale_mlp(pooled).squeeze(-1) * self.max_scale_delta  # (N, V)

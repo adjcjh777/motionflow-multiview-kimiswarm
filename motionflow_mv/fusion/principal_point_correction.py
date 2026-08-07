@@ -58,6 +58,8 @@ class PrincipalPointCorrection(nn.Module):
             nn.Linear(hidden, 2),
             nn.Tanh(),
         )
+        nn.init.zeros_(self.mlp[-2].weight)
+        nn.init.zeros_(self.mlp[-2].bias)
 
         # Dedicated focal-length correction head, sharing the same pooled features.
         if max_focal_scale > 0:
@@ -69,6 +71,8 @@ class PrincipalPointCorrection(nn.Module):
                 nn.Linear(hidden, 1),
                 nn.Tanh(),
             )
+            nn.init.zeros_(self.focal_mlp[-2].weight)
+            nn.init.zeros_(self.focal_mlp[-2].bias)
         else:
             self.focal_mlp = None
 
