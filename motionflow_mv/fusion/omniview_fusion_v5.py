@@ -1,0 +1,581 @@
+"""OmniMultiViewFusion v5 — camera-conditioned, set-transformer multi-view fusion.
+
+OmniMultiViewFusionV5 subclasses :class:`OmniMultiViewFusionV4` and addresses the
+fixed-view-index limitation of the learned ``view_pos_embed`` embedding.
+
+New toggles
+-----------
+* ``use_camera_view_embedding`` – replace the learned view positional embedding
+  with an MLP conditioned on calibrated camera intrinsics and extrinsics.
+* ``use_set_view_aggregator`` – add a permutation-invariant set-transformer
+  (Induced Set Attention Blocks) over views before the time+view transformer.
+
+The model also accepts an explicit ``view_mask`` so that missing views can be
+masked out in confidences, weights, and triangulation.
+"""
+
+from __future__ import annotations
+
+from typing import List, Optional, Tuple
+
+import numpy as np
+import torch
+import torch.nn as nn
+
+from motionflow_mv.fusion.camera_conditioned_view_embedding import (
+    CameraConditionedViewEmbedding,
+)
+from motionflow_mv.fusion.omniview_fusion_v4 import OmniMultiViewFusionV4
+from motionflow_mv.fusion.variable_view_set_aggregator import (
+    VariableViewSetAggregator,
+)
+
+
+class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
+    """OmniMultiViewFusion v5 prototype.
+
+    Parameters
+    ----------
+    use_camera_view_embedding:
+        Replace the learned view positional embedding with a camera-conditioned
+        MLP of ``(K, R, t)``.
+    use_set_view_aggregator:
+        Apply a permutation-invariant set-transformer aggregator over views
+        before the time+view transformer.
+    camera_view_embedding_hidden:
+        Hidden dimension of the camera-conditioned view embedding MLP.
+    set_view_n_isab_layers:
+        Number of ISAB layers in the set aggregator.
+    set_view_num_inducing_points:
+        Number of inducing points in each ISAB.
+    set_view_dropout:
+        Dropout probability in the set aggregator attention layers.
+    See ``OmniMultiViewFusionV4`` for the remaining arguments.
+    """
+
+    def __init__(
+        self,
+        j: int = 17,
+        d: int = 64,
+        n_views: int = 4,
+        n_heads: int = 4,
+        n_joint_layers: int = 0,
+        n_st_layers: int = 2,
+        max_temporal_len: int = 256,
+        residual_hidden: int = 128,
+        principal_point_hidden: int = 64,
+        principal_point_max_offset: float = 20.0,
+        focal_max_scale: float = 0.0,
+        return_pp_delta: bool = False,
+        return_covariance: bool = True,
+        covariance_hidden: int = 64,
+        gn_iters: int = 2,
+        min_gn_damping: float = 1e-6,
+        max_gn_damping: float = 1e-2,
+        epipolar_loss_weight: float = 0.05,
+        graph_num_layers: int = 1,
+        visibility_threshold: float = 0.5,
+        min_visible_views: int = 2,
+        graph_dropout: float = 0.0,
+        use_multiscale_fusion: bool = True,
+        use_camera_conditioning: bool = True,
+        use_epipolar_bias: bool = True,
+        multiscale_scales: List[int] = (1, 2, 4),  # type: ignore[assignment]
+        camera_condition_dim: int = 32,
+        epipolar_temperature: float = 10.0,
+        use_context_visibility: bool = False,
+        use_skeleton_residual: bool = False,
+        use_kinematic_refiner: bool = False,
+        use_adaptive_view_selection: bool = False,
+        use_rotation_correction: bool = False,
+        use_entropy_regularization: bool = False,
+        adaptive_view_target_k: int = 2,
+        rotation_max_rot_deg: float = 2.0,
+        entropy_weight: float = 0.01,
+        use_camera_view_embedding: bool = False,
+        use_set_view_aggregator: bool = False,
+        camera_view_embedding_hidden: int = 32,
+        set_view_n_isab_layers: int = 2,
+        set_view_num_inducing_points: int = 32,
+        set_view_dropout: float = 0.0,
+    ):
+        super().__init__(
+            j=j,
+            d=d,
+            n_views=n_views,
+            n_heads=n_heads,
+            n_joint_layers=n_joint_layers,
+            n_st_layers=n_st_layers,
+            max_temporal_len=max_temporal_len,
+            residual_hidden=residual_hidden,
+            principal_point_hidden=principal_point_hidden,
+            principal_point_max_offset=principal_point_max_offset,
+            focal_max_scale=focal_max_scale,
+            return_pp_delta=return_pp_delta,
+            return_covariance=return_covariance,
+            covariance_hidden=covariance_hidden,
+            gn_iters=gn_iters,
+            min_gn_damping=min_gn_damping,
+            max_gn_damping=max_gn_damping,
+            epipolar_loss_weight=epipolar_loss_weight,
+            graph_num_layers=graph_num_layers,
+            visibility_threshold=visibility_threshold,
+            min_visible_views=min_visible_views,
+            graph_dropout=graph_dropout,
+            use_multiscale_fusion=use_multiscale_fusion,
+            use_camera_conditioning=use_camera_conditioning,
+            use_epipolar_bias=use_epipolar_bias,
+            multiscale_scales=multiscale_scales,
+            camera_condition_dim=camera_condition_dim,
+            epipolar_temperature=epipolar_temperature,
+            use_context_visibility=use_context_visibility,
+            use_skeleton_residual=use_skeleton_residual,
+            use_kinematic_refiner=use_kinematic_refiner,
+            use_adaptive_view_selection=use_adaptive_view_selection,
+            use_rotation_correction=use_rotation_correction,
+            use_entropy_regularization=use_entropy_regularization,
+            adaptive_view_target_k=adaptive_view_target_k,
+            rotation_max_rot_deg=rotation_max_rot_deg,
+            entropy_weight=entropy_weight,
+        )
+
+        self.use_camera_view_embedding = use_camera_view_embedding
+        self.use_set_view_aggregator = use_set_view_aggregator
+        self.camera_view_embedding_hidden = camera_view_embedding_hidden
+        self.set_view_n_isab_layers = set_view_n_isab_layers
+        self.set_view_num_inducing_points = set_view_num_inducing_points
+        self.set_view_dropout = set_view_dropout
+
+        if self.use_camera_view_embedding:
+            self.camera_view_embedding = CameraConditionedViewEmbedding(
+                d=d,
+                camera_hidden=camera_view_embedding_hidden,
+            )
+        else:
+            self.camera_view_embedding = None
+
+        if self.use_set_view_aggregator:
+            self.set_view_aggregator = VariableViewSetAggregator(
+                d=d,
+                n_heads=n_heads,
+                n_isab_layers=set_view_n_isab_layers,
+                num_inducing_points=set_view_num_inducing_points,
+                dropout=set_view_dropout,
+            )
+        else:
+            self.set_view_aggregator = None
+
+    def _prepare_view_mask(
+        self,
+        view_mask: Optional[torch.Tensor],
+        B: int,
+        T: int,
+        V: int,
+        device: torch.device,
+    ) -> torch.Tensor:
+        """Normalize ``view_mask`` to ``(B * T, V)``.
+
+        Accepted shapes: ``(B, T, V)``, ``(B, V)``, ``(N, V)`` where ``N`` is
+        already ``B * T``.
+        """
+        if view_mask is None:
+            return torch.ones(B * T, V, device=device)
+
+        if view_mask.dim() == 2:
+            # (N, V) or (B, V)
+            if view_mask.shape[0] == B and view_mask.shape[1] == V:
+                return view_mask.unsqueeze(1).expand(-1, T, -1).reshape(B * T, V)
+            elif view_mask.shape[0] == B * T and view_mask.shape[1] == V:
+                return view_mask
+            else:
+                raise ValueError(
+                    f"view_mask (N, V) shape {view_mask.shape} incompatible with "
+                    f"B={B}, T={T}, V={V}"
+                )
+        elif view_mask.dim() == 3:
+            # (B, T, V)
+            if view_mask.shape != (B, T, V):
+                raise ValueError(
+                    f"view_mask (B, T, V) shape {view_mask.shape} incompatible with "
+                    f"B={B}, T={T}, V={V}"
+                )
+            return view_mask.reshape(B * T, V)
+        else:
+            raise ValueError(
+                f"view_mask must have shape (B, T, V), (B, V) or (N, V), got {view_mask.shape}"
+            )
+
+    def _build_view_attention_mask(
+        self,
+        view_mask_flat: torch.Tensor,
+        B: int,
+        T: int,
+        V: int,
+        n_heads: int,
+        device: torch.device,
+    ) -> torch.Tensor:
+        """Build a simple attention mask for the time+view transformer.
+
+        Tokens from masked-out views are blocked from attending to any token and
+        from being attended to by any token.  The mask has the same layout as the
+        epipolar attention bias used by v4, i.e. ``(B*J*n_heads, T*V, T*V)``.
+
+        Args
+        ----
+        view_mask_flat:
+            ``(B * T, V)`` binary mask.
+        """
+        # mask_per_view: (B, T, V)
+        mask_per_view = view_mask_flat.view(B, T, V)
+        # token_mask: (B, T, V) -> (B, T*V)
+        token_mask = mask_per_view.reshape(B, T * V)
+        # Block masked tokens: attn_mask[b, i, j] = False if either token i or j is masked.
+        valid = token_mask.unsqueeze(2) * token_mask.unsqueeze(1)  # (B, T*V, T*V)
+        valid = valid.unsqueeze(1).expand(-1, n_heads, -1, -1)  # (B, n_heads, T*V, T*V)
+        # Expand to joint dimension: each joint uses the same temporal/view layout.
+        valid = valid.unsqueeze(2).expand(-1, -1, self.j, -1, -1)  # (B, n_heads, J, T*V, T*V)
+        valid = valid.permute(0, 2, 1, 3, 4).reshape(B * self.j * n_heads, T * V, T * V)
+        return valid.to(device)
+
+    def forward(
+        self,
+        x: torch.Tensor,
+        cameras: List[object] = None,
+        K: torch.Tensor = None,
+        R: torch.Tensor = None,
+        t: torch.Tensor = None,
+        view_mask: Optional[torch.Tensor] = None,
+    ) -> Tuple[torch.Tensor, ...]:
+        squeeze_output = False
+        if x.dim() == 4:
+            x = x.unsqueeze(1)
+            squeeze_output = True
+
+        B, T, V, J, _ = x.shape
+        device = x.device
+
+        if K is None:
+            if cameras is None:
+                raise ValueError("Either cameras or (K, R, t) must be provided")
+            from motionflow_mv.fusion.ray_attention_temporal_crossview_model import (
+                _cameras_to_tensors,
+            )
+            K, R, t = _cameras_to_tensors(cameras, device)
+
+        if K.dim() == 3:
+            K = K.unsqueeze(0).expand(B * T, -1, -1, -1)
+            R = R.unsqueeze(0).expand(B * T, -1, -1, -1)
+            t = t.unsqueeze(0).expand(B * T, -1, -1)
+        elif K.dim() == 4:
+            K = K.unsqueeze(1).expand(B, T, -1, -1, -1).reshape(B * T, V, 3, 3)
+            R = R.unsqueeze(1).expand(B, T, -1, -1, -1).reshape(B * T, V, 3, 3)
+            t = t.unsqueeze(1).expand(B, T, -1, -1).reshape(B * T, V, 3)
+        else:
+            raise ValueError("K must have shape (V, 3, 3) or (B, V, 3, 3)")
+
+        view_mask_flat = self._prepare_view_mask(view_mask, B, T, V, device)
+
+        x_flat = x.reshape(B * T, V, J, 3)
+        points_2d = x_flat[..., :2]
+        confidences = x_flat[..., 2]
+
+        # Apply view mask to confidences.
+        confidences = confidences * view_mask_flat.unsqueeze(-1)
+
+        # Principal-point / intrinsic correction before ray embedding.
+        correction_outputs = self.principal_point_correction(
+            K=K,
+            x=x_flat,
+            weights=confidences,
+        )
+        K_corrected = correction_outputs[0]
+        pp_delta = correction_outputs[1]
+        focal_scale = correction_outputs[2] if self.correct_focal else None
+
+        # Optional rotation correction on extrinsics.
+        if self.use_rotation_correction and self.rotation_correction_head is not None:
+            feat_rot = self._extract_frame_features(x_flat, K_corrected, R, t)
+            feat_rot_pooled = feat_rot.mean(dim=2)  # (B*T, V, d)
+            R, _ = self.rotation_correction_head(feat_rot_pooled, R)
+
+        # Per-frame v3 features (uses corrected intrinsics and possibly corrected R).
+        feat = self._extract_frame_features(x_flat, K_corrected, R, t)
+
+        # Optional dense joint-level self-attention (per-view).
+        if self.omni_joint_attn is not None:
+            feat_j = feat.permute(0, 2, 1, 3).reshape(B * T * V, J, self.d)
+            for layer in self.omni_joint_attn:
+                feat_j = layer(feat_j)
+            feat = feat_j.view(B * T, V, J, self.d)
+
+        # Graph-joint attention over (view, joint) skeleton graph.
+        feat = self._apply_graph_joint_attention(feat, J)
+
+        # Camera conditioning.
+        if self.camera_conditioning is not None:
+            feat = self.camera_conditioning(feat, K_corrected, R, t)
+
+        # Hierarchical multi-scale temporal/cross-view fusion.
+        if self.multiscale_fusion is not None:
+            feat = feat.view(B, T, V, J, self.d)
+            feat = self.multiscale_fusion(feat)
+            feat = feat.view(B * T, V, J, self.d)
+
+        # Optional camera-conditioned view embedding.
+        if self.use_camera_view_embedding and self.camera_view_embedding is not None:
+            view_emb = self.camera_view_embedding(K_corrected, R, t)  # (B*T, V, d)
+            view_emb = view_emb.view(B, T, V, self.d)
+            feat = feat.view(B, T, V, J, self.d)
+            feat = feat + view_emb.unsqueeze(3)
+        else:
+            feat = feat.view(B, T, V, J, self.d)
+            view_emb = self.view_pos_embed[:V].view(1, 1, V, 1, self.d)
+            feat = feat + view_emb
+
+        # Optional permutation-invariant set aggregator over views.
+        if self.use_set_view_aggregator and self.set_view_aggregator is not None:
+            feat = self.set_view_aggregator(feat)
+
+        # Spatio-temporal (time + view) attention with optional epipolar bias.
+        time_emb = self.time_pos_embed[:T].view(1, T, 1, 1, self.d)
+        feat = feat + time_emb
+        feat = feat.permute(0, 3, 1, 2, 4).reshape(B * J, T * V, self.d)
+
+        # Prepare a simple view mask for the ST transformer.
+        st_view_mask = self._build_view_attention_mask(
+            view_mask_flat, B, T, V, self.n_heads, device
+        )
+
+        if self.use_epipolar_bias:
+            from motionflow_mv.fusion.epipolar_transformer_bias import (
+                build_temporal_bias_from_frames,
+            )
+
+            epi_bias = self.epipolar_bias(K_corrected, R, t, points_2d)
+            epi_bias = epi_bias.view(B, T, V, V)
+            # Combine epipolar bias with the view mask.
+            attn_mask = build_temporal_bias_from_frames(
+                epi_bias, n_heads=self.n_heads, n_joints=J
+            )
+            attn_mask = attn_mask * st_view_mask
+            for layer in self.st_transformer:
+                feat = layer(feat, epipolar_bias=attn_mask)
+        else:
+            # Standard transformer layers do not accept a per-token mask; we zero
+            # out features for masked views as a simple fallback. The mask is also
+            # propagated into weights below.
+            feat = feat.view(B, J, T, V, self.d)
+            feat = feat * view_mask_flat.view(B, 1, 1, V, 1)
+            feat = feat.view(B * J, T * V, self.d)
+            for layer in self.st_transformer:
+                feat = layer(feat)
+
+        feat = feat.view(B, J, T, V, self.d).permute(0, 2, 3, 1, 4).reshape(
+            B * T, V, J, self.d
+        )
+
+        # Anisotropic covariance prediction per (view, joint).
+        raw_cov = self.covariance_head(feat)
+        L = self._cholesky_to_covariance(raw_cov)
+        precision = 1.0 / (
+            L[..., 0, 0].clamp(min=1e-4) * L[..., 1, 1].clamp(min=1e-4)
+        )
+
+        # Visibility gating: optional context-aware head or v3 fallback.
+        visibility = self._visibility_multiplier(feat, confidences)
+
+        # Per-frame weight prediction and triangulation.
+        feat_for_weight = feat.permute(0, 2, 1, 3)
+        w_logits = self.weight_head(feat_for_weight).squeeze(-1)
+        weights = torch.sigmoid(w_logits).permute(0, 2, 1)
+
+        # Optional adaptive view selection.
+        budget_loss = torch.tensor(0.0, device=device)
+        if self.use_adaptive_view_selection and self.adaptive_view_selector is not None:
+            selector_mask, budget_loss = self.adaptive_view_selector(feat)
+            weights = weights * selector_mask
+
+        # Apply view mask to weights before triangulation.
+        weights = weights * view_mask_flat.unsqueeze(-1)
+        weights = weights * confidences * precision * visibility
+        weights = weights.clamp(min=1e-4, max=1e4)
+
+        Rt = torch.cat([R, t[..., None]], dim=-1)
+        P = K_corrected @ Rt
+
+        from motionflow_mv.fusion.triangulation import triangulate_dlt_batched_lstsq
+
+        pred_3d_raw = triangulate_dlt_batched_lstsq(points_2d, P, weights)
+
+        # Adaptive Gauss-Newton refinement.
+        feat_pooled = feat.mean(dim=1)
+        damping = self.damping_head(feat_pooled).squeeze(-1)
+        damping = self.min_gn_damping + (
+            self.max_gn_damping - self.min_gn_damping
+        ) * damping
+
+        from motionflow_mv.fusion.ray_attention_temporal_crossview_residual_principal_point_bayesian_tri_model import (
+            _adaptive_gauss_newton,
+        )
+
+        pred_3d_gn = _adaptive_gauss_newton(
+            points_2d,
+            weights,
+            K_corrected,
+            R,
+            t,
+            pred_3d_raw,
+            damping,
+            num_iters=self.gn_iters,
+        )
+
+        # Residual refinement head.
+        residual_input = torch.cat([feat_pooled, pred_3d_gn], dim=-1)
+        delta = self.residual_mlp(residual_input)
+        pred_3d = pred_3d_gn + delta
+
+        # Optional final kinematic-chain refiner.
+        if self.use_kinematic_refiner and self.kinematic_refiner is not None:
+            pred_3d = pred_3d + self.kinematic_refiner(pred_3d)
+
+        # Epipolar consistency loss.
+        epi_loss = self._epipolar_consistency_loss(points_2d, K_corrected, R, t, L)
+        epi_loss = self.epipolar_loss_weight * epi_loss
+
+        # Optional entropy regularisation on triangulation weights.
+        if (
+            self.use_entropy_regularization
+            and self.attention_entropy_loss is not None
+        ):
+            epi_loss = epi_loss + self.attention_entropy_loss(weights)
+
+        pred_3d = pred_3d.view(B, T, J, 3)
+        weights = weights.view(B, T, V, J)
+        L = L.view(B, T, V, J, 2, 2)
+        visibility = visibility.view(B, T, V, J)
+
+        if squeeze_output:
+            pred_3d = pred_3d.squeeze(1)
+            weights = weights.squeeze(1)
+            L = L.squeeze(1)
+            visibility = visibility.squeeze(1)
+
+        out = (pred_3d, weights, visibility, L, epi_loss)
+
+        if self.return_pp_delta:
+            out += (pp_delta,)
+            if self.correct_focal:
+                out += (focal_scale,)
+
+        return out
+
+
+def _make_cameras(n_views: int = 4):
+    """Build a simple circular rig of pinhole cameras (helper for smoke tests)."""
+    from motionflow_mv.calibration.camera import Camera
+
+    cameras = []
+    for i in range(n_views):
+        theta = 2 * np.pi * i / n_views
+        c = np.array([3 * np.cos(theta), 3 * np.sin(theta), 1.0])
+        forward = -c / np.linalg.norm(c)
+        up = np.array([0.0, 0.0, 1.0])
+        right = np.cross(forward, up)
+        right /= np.linalg.norm(right)
+        up = np.cross(right, forward)
+        R = np.stack([right, up, -forward], axis=0)
+        t = -R @ c
+        K = np.eye(3)
+        K[0, 0] = K[1, 1] = 800.0
+        K[0, 2] = 320.0
+        K[1, 2] = 240.0
+        cameras.append(Camera(K=K, R=R, t=t))
+    return cameras
+
+
+if __name__ == "__main__":
+    # T01 CPU smoke test: B=2, T=9, V=4, J=17.
+    B, T, V, J = 2, 9, 4, 17
+    cameras = _make_cameras(V)
+    x = torch.rand(B, T, V, J, 3)
+
+    # Default v5 configuration (camera embedding + set aggregator off, v4 path).
+    model = OmniMultiViewFusionV5(
+        j=J,
+        d=64,
+        n_views=V,
+        graph_num_layers=1,
+        use_multiscale_fusion=True,
+        use_camera_conditioning=True,
+        use_epipolar_bias=True,
+    )
+    pred, weights, visibility, covariance, epi_loss = model(x, cameras=cameras)
+    assert pred.shape == (B, T, J, 3)
+    assert weights.shape == (B, T, V, J)
+    assert visibility.shape == (B, T, V, J)
+    assert covariance.shape == (B, T, V, J, 2, 2)
+    assert epi_loss.numel() == 1
+
+    loss = pred.mean() + epi_loss
+    loss.backward()
+    assert any(p.grad is not None for p in model.parameters())
+    print("OmniMultiViewFusionV5 default-toggle CPU smoke test passed (T=9)")
+
+    # v5 with camera embedding + set aggregator enabled.
+    model_full = OmniMultiViewFusionV5(
+        j=J,
+        d=64,
+        n_views=V,
+        graph_num_layers=1,
+        use_multiscale_fusion=True,
+        use_camera_conditioning=True,
+        use_epipolar_bias=True,
+        use_camera_view_embedding=True,
+        use_set_view_aggregator=True,
+        set_view_n_isab_layers=2,
+        set_view_num_inducing_points=32,
+    )
+    pred2, weights2, visibility2, covariance2, epi_loss2 = model_full(
+        x, cameras=cameras
+    )
+    assert pred2.shape == (B, T, J, 3)
+    assert weights2.shape == (B, T, V, J)
+    assert visibility2.shape == (B, T, V, J)
+    assert covariance2.shape == (B, T, V, J, 2, 2)
+    assert epi_loss2.numel() == 1
+    loss2 = pred2.mean() + epi_loss2
+    loss2.backward()
+    assert any(p.grad is not None for p in model_full.parameters())
+    print(
+        "OmniMultiViewFusionV5 camera-embedding + set-aggregator CPU smoke test passed (T=9)"
+    )
+
+    # Variable view mask with V=2.
+    V2 = 2
+    cameras_v2 = _make_cameras(V2)
+    x_v2 = torch.rand(B, T, V2, J, 3)
+    view_mask = torch.zeros(B, T, V2)
+    view_mask[:, :, 0] = 1.0
+    view_mask[:, :, 1] = 0.0
+    model_v2 = OmniMultiViewFusionV5(
+        j=J,
+        d=64,
+        n_views=V2,
+        graph_num_layers=1,
+        use_multiscale_fusion=True,
+        use_camera_conditioning=True,
+        use_epipolar_bias=True,
+        use_camera_view_embedding=True,
+        use_set_view_aggregator=True,
+    )
+    pred3, weights3, visibility3, covariance3, epi_loss3 = model_v2(
+        x_v2, cameras=cameras_v2, view_mask=view_mask
+    )
+    assert pred3.shape == (B, T, J, 3)
+    assert weights3.shape == (B, T, V2, J)
+    assert visibility3.shape == (B, T, V2, J)
+    assert covariance3.shape == (B, T, V2, J, 2, 2)
+    assert epi_loss3.numel() == 1
+    # Masked-out view should have near-zero weights.
+    assert weights3[:, :, 1, :].abs().max().item() < 1e-3
+    print("OmniMultiViewFusionV5 variable-view mask CPU smoke test passed (V=2)")
