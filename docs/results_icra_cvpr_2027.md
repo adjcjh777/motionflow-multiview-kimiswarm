@@ -92,6 +92,26 @@
 | Variable-view MPJPE@k (smoke) | **done** | `docs/figures/variable_views_crossview_residual_smoke.png` |
 | WebBridge benchmark v2 (smoke) | **done** | s2/v14 14.71, s3/v14 14.70, s1/v4 27.95 mm MPJPE |
 
+## Variable-view MPJPE@k — Bayesian Tri v2 stabilized (d=128)
+
+| k | MPJPE (mm) | std | subsets |
+|---|-----------:|---:|---:|
+| 2 | 280.02 | 82.38 | 10 |
+| 3 | 174.39 | 97.58 | 10 |
+| 4 | 113.04 | 17.26 | 10 |
+| 5 | 98.30 | 50.33 | 10 |
+| 6 | 70.95 | 14.94 | 10 |
+| 7 | 51.35 | 15.79 | 10 |
+| 8 | 41.74 | 13.63 | 10 |
+| 9 | 39.10 | 12.63 | 10 |
+| 10 | 28.28 | 7.21 | 10 |
+| 11 | 27.99 | 8.48 | 10 |
+| 12 | 23.98 | 4.73 | 10 |
+| 13 | 15.47 | 2.04 | 10 |
+| 14 | 8.99 | 0.00 | 1 |
+
+*Checkpoint: `outputs/bayesian_tri_v2_stabilized_mpiinf3dhp.pth`, 10 subsets per k, full S2/Seq1 validation.*
+
 ## Variable-view MPJPE@k (smoke, crossview-residual baseline)
 
 | k | MPJPE (mm) | std | subsets |
