@@ -1,0 +1,51 @@
+# P18 Cross-Dataset WebBridge Benchmark Manifest
+#
+# This manifest is a sample covering all five target datasets.
+# It is consumed by experiments/run_webbridge_benchmark.py.
+#
+# NOTE: The checkpoint path below is a placeholder. The actual 17-joint
+# mixed-dataset checkpoint must be trained before running real inference.
+
+model_config:
+  model: crossview_residual_pp
+  checkpoint: outputs/P18_cross_dataset_17joint.pth
+  source_n_views: 14
+  clip_len: 13
+  d: 64
+  n_st_layers: 2
+  residual_hidden: 128
+  batch_size: 8
+  gt_scale: 1.0
+  camera_scale: 1.0
+
+datasets:
+  # MPI-INF-3DHP (28 joints in the raw .npz; this harness expects the
+  # model to consume 28 joints or to evaluate on the native skeleton.
+  # For the common 17-joint benchmark, use a model trained on the
+  # mapped 17-joint MPI data via WebBridgeMixedDataset.)
+  - name: mpi_s2_seq1
+    path: data/webbridge/mpi_inf_3dhp/s_02_seq_01_v14_multiview_m.npz
+
+  - name: mpi_s1_seq1
+    path: data/webbridge/mpi_inf_3dhp/s_01_seq_01_v14_multiview_m.npz
+
+  # Human3.6M test subjects, action "Discussion" (02)
+  - name: h36m_s9_act02
+    path: data/webbridge/h36m_meters/s_09_acts_02_multiview_m.npz
+
+  - name: h36m_s11_act02
+    path: data/webbridge/h36m_meters/s_11_acts_02_multiview_m.npz
+
+  # AIST++ held-out sequences (style split documented in P18 plan)
+  - name: aistpp_gBR_ch01
+    path: data/webbridge/aistpp_canonical/gBR_sBM_cAll_d04_mBR0_ch01_multiview.npz
+
+  - name: aistpp_gWA_ch01
+    path: data/webbridge/aistpp_canonical/gWA_sBM_cAll_d27_mWA2_ch01_multiview.npz
+
+  # Shelf / Campus
+  - name: shelf_seq1_train
+    path: data/webbridge/shelf_campus/shelf_seq1_train_v5_multiview_m.npz
+
+  - name: campus_seq1_train
+    path: data/webbridge/shelf_campus/campus_seq1_train_v3_multiview_m.npz
