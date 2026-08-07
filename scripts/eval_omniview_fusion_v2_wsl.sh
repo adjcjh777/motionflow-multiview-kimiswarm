@@ -16,9 +16,10 @@ python -u experiments/eval_omniview_fusion_v2_mpiinf3dhp.py \
     --dataset "$DATASET" \
     --clip_len 13 \
     --d 128 \
-    --residual_hidden 128 \
-    --n_st_layers 2 \
-    --graph_num_layers 1 \
+    --residual_hidden 256 \
+    --n_st_layers 3 \
+    --graph_num_layers 0 \
+    --n_joint_layers 0 \
     --n_heads 4 \
     --batch_size 8 \
     --val_stride 50 \

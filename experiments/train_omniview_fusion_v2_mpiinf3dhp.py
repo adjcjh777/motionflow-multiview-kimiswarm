@@ -504,7 +504,7 @@ def load_warm_start(model: torch.nn.Module, checkpoint_path: str) -> None:
 
 def freeze_old_params(model: torch.nn.Module) -> None:
     """Freeze everything except the new Omni-specific heads."""
-    new_prefixes = ("graph_joint_attention", "visibility_head")
+    new_prefixes = ("graph_joint_attention", "visibility_head", "joint_attn")
     for name, param in model.named_parameters():
         if not name.startswith(new_prefixes):
             param.requires_grad = False
@@ -532,6 +532,7 @@ def parse_args() -> Namespace:
     parser.add_argument("--residual_hidden", type=int, default=128, help="Residual MLP hidden size")
     parser.add_argument("--n_st_layers", type=int, default=2, help="Spatio-temporal transformer layers")
     parser.add_argument("--graph_num_layers", type=int, default=1, help="Graph-joint attention layers")
+    parser.add_argument("--n_joint_layers", type=int, default=0, help="Dense joint-level transformer layers")
     parser.add_argument("--n_heads", type=int, default=4, help="Attention heads")
     parser.add_argument("--epipolar_loss_weight", type=float, default=0.05, help="Epipolar loss weight passed to the model")
     # Training
@@ -652,6 +653,7 @@ def main():
         n_st_layers=args.n_st_layers,
         residual_hidden=args.residual_hidden,
         graph_num_layers=args.graph_num_layers,
+        n_joint_layers=args.n_joint_layers,
         epipolar_loss_weight=args.epipolar_loss_weight,
         return_pp_delta=False,
         return_covariance=True,

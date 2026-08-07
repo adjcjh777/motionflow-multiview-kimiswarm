@@ -188,6 +188,7 @@ def build_model(args: argparse.Namespace, n_views: int, j: int) -> OmniMultiView
         n_st_layers=args.n_st_layers,
         residual_hidden=args.residual_hidden,
         graph_num_layers=args.graph_num_layers,
+        n_joint_layers=args.n_joint_layers,
         return_pp_delta=False,
         return_covariance=True,
     )
@@ -453,6 +454,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--residual_hidden", type=int, default=128, help="Residual MLP hidden size")
     parser.add_argument("--n_st_layers", type=int, default=2, help="Spatio-temporal transformer layers")
     parser.add_argument("--graph_num_layers", type=int, default=1, help="Graph-joint attention layers")
+    parser.add_argument("--n_joint_layers", type=int, default=0, help="Dense joint-level transformer layers")
     parser.add_argument("--n_heads", type=int, default=4, help="Attention heads")
     # Evaluation
     parser.add_argument("--clip_len", type=int, default=13, help="Temporal clip length")

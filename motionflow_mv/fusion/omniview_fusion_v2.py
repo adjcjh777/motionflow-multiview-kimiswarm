@@ -37,8 +37,8 @@ import numpy as np
 import torch
 import torch.nn as nn
 
-from motionflow_mv.fusion.prototypes.cross_view_graph_attention import (
-    CrossViewGraphAttention,
+from motionflow_mv.fusion.graph_joint_attention_v2 import GraphJointAttentionV2
+from motionflow_mv.fusion.graph_joint_relation import (
     H36M_17_PARENTS,
     H36M_17_SYMMETRY_PAIRS,
     MPI_INF_3DHP_28_PARENTS,
@@ -78,7 +78,7 @@ class OmniMultiViewFusionV2(RayAttentionFusionModelBayesianTriV2):
         d: int = 64,
         n_views: int = 4,
         n_heads: int = 4,
-        n_joint_layers: int = 1,
+        n_joint_layers: int = 0,
         n_st_layers: int = 2,
         max_temporal_len: int = 256,
         residual_hidden: int = 128,
@@ -97,8 +97,8 @@ class OmniMultiViewFusionV2(RayAttentionFusionModelBayesianTriV2):
         min_visible_views: int = 2,
         graph_dropout: float = 0.0,
     ):
-        # n_joint_layers is kept for API compatibility but ignored because
-        # joint reasoning is handled by the graph attention block.
+        # The dense joint-attention layers are handled here, not by the ancestor,
+        # so we always ask the ancestor to create none of its own.
         super().__init__(
             j=j,
             d=d,
@@ -134,26 +134,44 @@ class OmniMultiViewFusionV2(RayAttentionFusionModelBayesianTriV2):
             nn.Linear(d // 2, 1),
         )
 
-        # Graph-joint attention block.
-        self.graph_joint_attention = CrossViewGraphAttention(
-            d=d,
-            n_views=n_views,
-            n_layers=graph_num_layers,
-            n_heads=n_heads,
-            n_edge_types=4,
-            dropout=graph_dropout,
-        )
+        # Optional dense joint-level self-attention (per-view) for capacity.
+        self.n_joint_layers = n_joint_layers
+        if n_joint_layers > 0:
+            layer = nn.TransformerEncoderLayer(
+                d_model=d,
+                nhead=n_heads,
+                dim_feedforward=d * 4,
+                dropout=0.1,
+                batch_first=True,
+            )
+            self.joint_attn = nn.ModuleList([layer for _ in range(n_joint_layers)])
+        else:
+            self.joint_attn = None
 
-        # Register a default skeleton graph for H36M 17 joints. For MPI-INF-3DHP
-        # the graph can be rebuilt via ``rebuild_graph``.
-        self._j = j
-        self._current_j = j
-        self.graph_joint_attention.build_edge_index(
-            j=j,
-            parents=H36M_17_PARENTS,
-            symmetry_pairs=H36M_17_SYMMETRY_PAIRS,
-            add_self_loops=True,
-        )
+        # Optional graph-joint attention block. When graph_num_layers == 0 the
+        # module is omitted entirely so the no-graph ablation is truly graph-free.
+        self.graph_num_layers = graph_num_layers
+        if graph_num_layers > 0:
+            self.graph_joint_attention = GraphJointAttentionV2(
+                d=d,
+                n_views=n_views,
+                n_layers=graph_num_layers,
+                n_heads=n_heads,
+                n_edge_types=4,
+                dropout=graph_dropout,
+            )
+            # Register a default skeleton graph for H36M 17 joints. For MPI-INF-3DHP
+            # the graph can be rebuilt via ``rebuild_graph``.
+            self._j = j
+            self._current_j = j
+            self.graph_joint_attention.build_edge_index(
+                j=j,
+                parents=H36M_17_PARENTS,
+                symmetry_pairs=H36M_17_SYMMETRY_PAIRS,
+                add_self_loops=True,
+            )
+        else:
+            self.graph_joint_attention = None
 
     def rebuild_graph(self, j: int, dataset: str = "h36m") -> None:
         """Rebuild the (view, joint) graph for a different skeleton.
@@ -172,6 +190,8 @@ class OmniMultiViewFusionV2(RayAttentionFusionModelBayesianTriV2):
         else:
             raise ValueError(f"Unknown dataset for graph building: {dataset}")
 
+        if self.graph_joint_attention is None:
+            return
         self.graph_joint_attention.build_edge_index(
             j=j,
             parents=parents,
@@ -193,6 +213,8 @@ class OmniMultiViewFusionV2(RayAttentionFusionModelBayesianTriV2):
         Returns:
             (N, V, J, d)
         """
+        if self.graph_joint_attention is None:
+            return feat
         if j != self._current_j:
             # Auto-rebuild graph if the input joint count changes. This is a
             # convenience for variable-view / cross-dataset inference.
@@ -276,6 +298,13 @@ class OmniMultiViewFusionV2(RayAttentionFusionModelBayesianTriV2):
 
         # Per-frame v3 features (uses corrected intrinsics).
         feat = self._extract_frame_features(x_flat, K_corrected, R, t)  # (B*T, V, J, d)
+
+        # ---- NEW: dense joint-level self-attention (optional capacity) ----
+        if self.joint_attn is not None:
+            feat_j = feat.permute(0, 2, 1, 3).reshape(B * T * V, J, self.d)
+            for layer in self.joint_attn:
+                feat_j = layer(feat_j)
+            feat = feat_j.view(B * T, V, J, self.d)
 
         # ---- NEW: graph-joint attention over (view, joint) skeleton graph ----
         feat = self._apply_graph_joint_attention(feat, J)  # (B*T, V, J, d)
