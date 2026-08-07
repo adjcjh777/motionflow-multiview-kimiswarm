@@ -533,12 +533,12 @@ def _validate_dataset_consistency(
             for s, paths in sorted(grouped.items())
         )
         raise ValueError(
-            "Mixed skeletons/views detected across the selected manifests. "
-            "OmniMultiViewFusionV2 requires a single (n_views, n_joints) configuration.\n"
+            "Mixed (n_views, n_joints) configurations detected across the selected manifests. "
+            "OmniMultiViewFusionV2 is instantiated once per run and therefore requires all "
+            "selected files to share the same view count and skeleton.\n"
             f"Detected configurations:\n{summary}\n"
-            "Recommended fix: pass only manifests that share the same skeleton, "
-            "e.g. --manifest configs/splits/webbridge_h36m_train_val.yaml "
-            "--manifest configs/splits/webbridge_aistpp_train_val.yaml (both 17 joints)."
+            "Recommended fix: pass only manifests that share the same (n_views, n_joints), "
+            "e.g. train on MPI-INF-3DHP only, or 3DPW only."
         )
 
     n_views, n_joints = shapes[0]

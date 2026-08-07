@@ -1,10 +1,12 @@
 name: WebBridge All Datasets Combined
-note: 'Combined train/val split across H36M (17 joints), MPI-INF-3DHP (28 joints),
-  3DPW (24 joints), and AIST++ (17 joints). OmniMultiViewFusionV2 is instantiated
-  for a single skeleton, so you must train per-skeleton subsets. Use --manifest configs/splits/webbridge_h36m_train_val.yaml
-  or pass multiple manifests to train on a consistent skeleton. A common strategy:
-  train 17-joint models on H36M+AIST++, 28-joint models on MPI-INF-3DHP, and 24-joint
-  models on 3DPW.'
+note: 'Combined train/val split across H36M (17 joints / 4 views), MPI-INF-3DHP
+  (28 joints / 14 views), 3DPW (24 joints / 4 views), and AIST++ (17 joints /
+  9 views). OmniMultiViewFusionV2 is instantiated once per run, so all selected
+  files must share the same (n_views, n_joints). Train per-subset, e.g. MPI-INF-3DHP
+  only, 3DPW only, or H36M only. Use --manifest configs/splits/webbridge_h36m_train_val.yaml
+  for H36M. A common strategy: 17-joint/4-view models on H36M, 28-joint/14-view
+  models on MPI-INF-3DHP, 24-joint/4-view models on 3DPW, and 17-joint/9-view
+  models on AIST++.'
 train:
 - data/webbridge/h36m_meters/s_01_acts_02_multiview_m.npz
 - data/webbridge/h36m_meters/s_01_acts_03_multiview_m.npz
