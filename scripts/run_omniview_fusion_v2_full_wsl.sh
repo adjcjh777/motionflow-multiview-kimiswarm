@@ -23,7 +23,7 @@ python "${ROOT}/experiments/train_omniview_fusion_v2_mpiinf3dhp.py" \
   --d 128 \
   --residual_hidden 256 \
   --n_st_layers 3 \
-  --graph_num_layers 1 \
+  --graph_num_layers 0 \
   --n_heads 4 \
   --epochs 30 \
   --batch_size 8 \
@@ -42,4 +42,4 @@ python "${ROOT}/experiments/train_omniview_fusion_v2_mpiinf3dhp.py" \
   --temporal_loss_weight 0.02 \
   --bone_loss_weight 0.05 \
   ${WARM_START_ARGS} \
-  --output "${ROOT}/outputs/omniview_fusion_v2_d128.pth"
+  --output "${ROOT}/outputs/omniview_fusion_v2_d128_no_graph.pth"
