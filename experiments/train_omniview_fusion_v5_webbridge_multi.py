@@ -607,6 +607,7 @@ def build_compute_loss(args: Namespace):
 
         if args.visibility_loss_weight > 0.0:
             visible_target = (x[..., 2] > 0).float()
+            visibility = torch.nan_to_num(visibility, nan=0.5, posinf=1.0, neginf=0.0).clamp(0.0, 1.0)
             vis_loss = F.binary_cross_entropy(visibility, visible_target)
             loss = loss + args.visibility_loss_weight * vis_loss
             metrics["vis_loss"] = vis_loss.item()

@@ -464,6 +464,11 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
 
         # Visibility gating: optional context-aware head or v3 fallback.
         visibility = self._visibility_multiplier(feat, confidences)
+        # Defensive: visibility head can produce NaN/Inf when upstream features
+        # are corrupted; clamp to a valid probability before returning / using
+        # it in BCE losses downstream.
+        visibility = torch.nan_to_num(visibility, nan=0.5, posinf=1.0, neginf=0.0)
+        visibility = visibility.clamp(0.0, 1.0)
 
         # Per-frame weight prediction and triangulation.
         feat_for_weight = feat.permute(0, 2, 1, 3)
