@@ -11,7 +11,7 @@
 | Dataset | Model / ensemble | MPJPE (mm) | PA-MPJPE (mm) | PCK@50 | AUC | Source |
 |---|---|---:|---:|---:|---:|---|
 | MPI-INF-3DHP S2/Seq1 | Bayesian Tri v2 ensemble (stabilized + aug) | **8.35** | 5.29 | 1.000 | **0.9444** | `outputs/bayesian_tri_v2_ensemble_2_eval.json` |
-| MPI-INF-3DHP S2/Seq1 | Bayesian Tri v2 ensemble (4-checkpoint) | 8.61 | 5.38 | 1.000 | 0.9426 | `outputs/bayesian_tri_v2_ensemble_eval.json` |
+| MPI-INF-3DHP S2/Seq1 | Bayesian Tri v2 ensemble (earlier stabilized + aug snapshot) | 8.61 | 5.38 | 1.000 | 0.9426 | `outputs/bayesian_tri_v2_ensemble_eval.json` |
 | MPI-INF-3DHP S2/Seq1 | `bayesian_tri_v2_stabilized_mpiinf3dhp` (single) | 9.03 | 5.69 | 1.000 | 0.9398 | `outputs/bayesian_tri_v2_stabilized_mpiinf3dhp_eval.json` |
 | MPI-INF-3DHP S2/Seq1 | Iter16 anchor (`RayAttentionFusionModelTemporalCrossviewResidualPrincipalPoint`) | 8.75 | 4.95 | — | — | `docs/results_iter16.md` |
 | Human3.6M S5/Act2 | CamPE+GraphJR (d=64, h=128) | 0.62 | 0.70 | 0.9993 | 0.9936 | `docs/experiment_log_icra_cvpr_2027.md` |

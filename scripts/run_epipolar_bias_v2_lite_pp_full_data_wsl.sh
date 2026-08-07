@@ -30,7 +30,7 @@ python -u experiments/train_ray_attention_temporal_crossview_residual_principal_
   --epochs 50 --train_samples 2000 --batch_size 6 --val_stride 50 \
   --lr 3e-4 --lr_cosine --lr_warmup_epochs 3 --lr_min 1e-6 \
   --grad_clip_norm 1.0 \
-  --pp_loss_weight 0.2 --epipolar_loss_weight 0.02 --reproj_weight 0.0 \
+  --pp_loss_weight 0.2 --reproj_weight 0.0 \
   --cam_aug_pp 5.0 --cam_aug_focal 0.01 \
   --cam_aug_schedule extended_intrinsics_curriculum --cam_aug_intrinsics_ramp_epochs 5 \
   --pp_pretrain_epochs 3 \

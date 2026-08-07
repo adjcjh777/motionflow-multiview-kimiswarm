@@ -57,6 +57,9 @@ from motionflow_mv.fusion.ray_attention_temporal_crossview_factorized_residual_p
 from motionflow_mv.fusion.ray_attention_temporal_crossview_residual_principal_point_dynamic_gate_model import (
     RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointDynamicGate,
 )
+from motionflow_mv.fusion.ray_attention_temporal_crossview_residual_principal_point_graph_model import (
+    RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointGraph,
+)
 from motionflow_mv.fusion.ray_attention_temporal_crossview_residual_principal_point_graph_skeleton_residual_model import (
     RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointGraphSkeletonResidual,
 )
@@ -81,6 +84,9 @@ from motionflow_mv.fusion.ray_attention_temporal_crossview_residual_principal_po
 )
 from motionflow_mv.fusion.ray_attention_temporal_crossview_residual_principal_point_epipolar_bias_v2_model import (
     RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointEpipolarBiasV2,
+)
+from motionflow_mv.fusion.ray_attention_temporal_crossview_residual_principal_point_epipolar_bias_v2_lite_model import (
+    RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointEpipolarBiasV2Lite,
 )
 from motionflow_mv.fusion.ray_attention_temporal_crossview_residual_camera_conditioned_model import (
     RayAttentionFusionModelTemporalCrossviewResidualCameraConditioned,
@@ -111,6 +117,7 @@ MODEL_CLASSES = {
     "crossview_residual_pp_visibility_v2": CrossviewResidualVisibilityV2,
     "factorized_pp": RayAttentionFusionModelTemporalCrossviewFactorizedResidualPrincipalPoint,
     "dynamic_gate_pp": RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointDynamicGate,
+    "graph_joint_relation_pp": RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointGraph,
     "graph_skeleton_residual_pp": RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointGraphSkeletonResidual,
     "epipolar_pp": RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointEpipolar,
     "splat_pp": RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointSplat,
@@ -120,6 +127,7 @@ MODEL_CLASSES = {
     "bayesian_tri_v2_visibility_pp": RayAttentionFusionModelBayesianTriV2Visibility,
     "bayesian_tri_v2_attention_entropy_pp": RayAttentionFusionModelBayesianTriV2AttentionEntropy,
     "epipolar_bias_v2_pp": RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointEpipolarBiasV2,
+    "epipolar_bias_v2_lite_pp": RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointEpipolarBiasV2Lite,
     "camera_conditioned_pp": RayAttentionFusionModelTemporalCrossviewResidualCameraConditioned,
     "hierarchical_view_temporal_joint_pp": RayAttentionFusionModelHierarchicalViewTemporalJointResidualPrincipalPoint,
 }
@@ -171,7 +179,7 @@ def build_model(args, n_views, j):
         "d": args.d,
         "n_views": n_views,
     }
-    if args.model in {"crossview_residual", "crossview_residual_pp", "crossview_residual_pp_visibility", "crossview_residual_pp_visibility_uncertainty_v1", "dynamic_gate_pp", "graph_skeleton_residual_pp", "epipolar_pp", "splat_pp", "kinematic_chain_pp", "bayesian_tri_pp", "bayesian_tri_v2_pp", "bayesian_tri_v2_visibility_pp", "bayesian_tri_v2_attention_entropy_pp", "epipolar_bias_v2_pp", "camera_conditioned_pp", "hierarchical_view_temporal_joint_pp"}:
+    if args.model in {"crossview_residual", "crossview_residual_pp", "crossview_residual_pp_visibility", "crossview_residual_pp_visibility_uncertainty_v1", "dynamic_gate_pp", "graph_joint_relation_pp", "graph_skeleton_residual_pp", "epipolar_pp", "splat_pp", "kinematic_chain_pp", "bayesian_tri_pp", "bayesian_tri_v2_pp", "bayesian_tri_v2_visibility_pp", "bayesian_tri_v2_attention_entropy_pp", "epipolar_bias_v2_pp", "epipolar_bias_v2_lite_pp", "camera_conditioned_pp", "hierarchical_view_temporal_joint_pp"}:
         kwargs["n_st_layers"] = args.n_st_layers
         kwargs["residual_hidden"] = args.residual_hidden
     elif args.model == "factorized_pp":

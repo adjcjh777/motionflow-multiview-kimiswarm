@@ -82,12 +82,9 @@ from motionflow_mv.fusion.ray_attention_temporal_crossview_residual_principal_po
 from motionflow_mv.fusion.ray_attention_temporal_crossview_residual_principal_point_epipolar_bias_v2_model import (
     RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointEpipolarBiasV2,
 )
-try:
-    from motionflow_mv.fusion.ray_attention_temporal_crossview_residual_principal_point_epipolar_bias_v2_lite_model import (
-        RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointEpipolarBiasV2Lite,
-    )
-except ImportError:  # pragma: no cover
-    RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointEpipolarBiasV2Lite = None
+from motionflow_mv.fusion.ray_attention_temporal_crossview_residual_principal_point_epipolar_bias_v2_lite_model import (
+    RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointEpipolarBiasV2Lite,
+)
 
 try:
     from motionflow_mv.fusion.ray_attention_temporal_crossview_residual_camera_conditioned_model import (
@@ -290,7 +287,7 @@ def main():
     parser.add_argument("--output", type=str, default="outputs/ray_attention_temporal_crossview_residual_principal_point_mpiinf3dhp.pth")
     parser.add_argument("--pp_pretrain_epochs", type=int, default=0, help="Number of initial epochs to train only the principal_point_correction head")
     parser.add_argument("--splat_loss_weight", type=float, default=0.0, help="Weight for Gaussian-splatting pose regularizer loss (splat model only)")
-    parser.add_argument("--epipolar_loss_weight", type=float, default=0.0, help="Weight for epipolar consistency auxiliary loss (bayesian_tri model only)")
+    parser.add_argument("--epipolar_loss_weight", type=float, default=0.0, help="Weight for epipolar consistency auxiliary loss in Bayesian Tri variants")
     args = parser.parse_args()
 
     set_seed(args.seed)
@@ -329,6 +326,16 @@ def main():
             return_raw=args.return_raw_3d or args.reproj_raw_weight > 0.0,
             return_gate=True,
         ).to(device)
+    elif args.model_type == "graph_joint_relation":
+        model = RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointGraph(
+            j=j, d=args.d, n_views=n_views, n_st_layers=args.n_st_layers,
+            residual_hidden=args.residual_hidden,
+            principal_point_hidden=args.principal_point_hidden,
+            principal_point_max_offset=args.principal_point_max_offset,
+            focal_max_scale=args.focal_max_scale,
+            return_pp_delta=True,
+            graph_num_layers=1,
+        ).to(device)
     elif args.model_type == "epipolar":
         model = RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointEpipolar(
             j=j, d=args.d, n_views=n_views, n_st_layers=args.n_st_layers,
@@ -346,6 +353,16 @@ def main():
             principal_point_max_offset=args.principal_point_max_offset,
             focal_max_scale=args.focal_max_scale,
             return_pp_delta=True,
+        ).to(device)
+    elif args.model_type == "epipolar_bias_v2_lite_pp":
+        model = RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointEpipolarBiasV2Lite(
+            j=j, d=args.d, n_views=n_views, n_st_layers=args.n_st_layers,
+            residual_hidden=args.residual_hidden,
+            principal_point_hidden=args.principal_point_hidden,
+            principal_point_max_offset=args.principal_point_max_offset,
+            focal_max_scale=args.focal_max_scale,
+            return_pp_delta=True,
+            return_raw=args.return_raw_3d or args.reproj_raw_weight > 0.0,
         ).to(device)
     elif args.model_type == "graph_skeleton_residual":
         model = RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointGraphSkeletonResidual(

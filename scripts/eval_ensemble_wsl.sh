@@ -12,12 +12,11 @@ export CUDA_VISIBLE_DEVICES=""
 MODEL="${1:-bayesian_tri_v2_pp}"
 OUT_JSON="${2:-outputs/bayesian_tri_v2_ensemble_eval.json}"
 
-# List of d=128 candidate checkpoints; only existing ones are passed.
+# Homogeneous Bayesian Tri v2 checkpoints; only existing ones are passed.
 CHECKPOINTS=(
     outputs/bayesian_tri_v2_stabilized_mpiinf3dhp.pth
     outputs/bayesian_tri_v2_aug_mpiinf3dhp.pth
     outputs/bayesian_tri_v2_full_data_mpiinf3dhp.pth
-    outputs/epipolar_bias_v2_lite_pp_full_data_mpiinf3dhp.pth
 )
 
 ARGS=()
