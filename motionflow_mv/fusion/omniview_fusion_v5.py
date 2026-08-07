@@ -108,6 +108,7 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
         perceiver_n_heads: int = 4,
         perceiver_dropout: float = 0.0,
         use_full_precision_dlt: bool = False,
+        use_robust_dlt_reweight: bool = False,
         use_domain_embedding: bool = False,
         num_domains: int = 2,
     ):
@@ -163,6 +164,7 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
         self.perceiver_n_heads = perceiver_n_heads
         self.perceiver_dropout = perceiver_dropout
         self.use_full_precision_dlt = use_full_precision_dlt
+        self.use_robust_dlt_reweight = use_robust_dlt_reweight
         self.use_domain_embedding = use_domain_embedding
         if self.use_domain_embedding:
             self.domain_embedding = nn.Embedding(num_domains, d)
@@ -470,6 +472,20 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
             P = K_corrected @ Rt
             from motionflow_mv.fusion.triangulation import triangulate_dlt_batched_lstsq
             pred_3d_raw = triangulate_dlt_batched_lstsq(points_2d, P, weights, precision_matrix=precision_matrix)
+            if self.use_robust_dlt_reweight:
+                # One-step robust reweighting based on predicted covariance.
+                pred_3d_h = torch.cat(
+                    [pred_3d_raw, torch.ones(pred_3d_raw.shape[0], pred_3d_raw.shape[1], 1, device=pred_3d_raw.device, dtype=pred_3d_raw.dtype)],
+                    dim=-1,
+                )  # (N, J, 4)
+                x_h = (P.unsqueeze(2) @ pred_3d_h.unsqueeze(1).unsqueeze(-1)).squeeze(-1)  # (N, V, J, 3)
+                x_pred = x_h[..., :2] / (x_h[..., 2:3] + 1e-8)  # (N, V, J, 2)
+                residual = x_pred - points_2d  # (N, V, J, 2)
+                residual_col = residual.unsqueeze(-1)  # (N, V, J, 2, 1)
+                mahal = residual_col.transpose(-2, -1) @ precision_matrix @ residual_col  # (N, V, J, 1, 1)
+                rho = torch.exp(-mahal.squeeze(-1).squeeze(-1) / 2.0).clamp(min=1e-3)
+                weights_robust = weights * rho * view_mask_flat.unsqueeze(-1)
+                pred_3d_raw = triangulate_dlt_batched_lstsq(points_2d, P, weights_robust, precision_matrix=precision_matrix)
         else:
             weights = weights * confidences * precision * visibility
             weights = weights.clamp(min=1e-4, max=1e4)

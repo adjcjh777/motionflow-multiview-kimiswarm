@@ -913,6 +913,7 @@ def parse_args() -> Namespace:
     parser.add_argument("--perceiver_n_heads", type=int, default=4, help="Number of attention heads in Perceiver aggregator")
     parser.add_argument("--perceiver_dropout", type=float, default=0.0, help="Dropout in Perceiver aggregator")
     parser.add_argument("--use_full_precision_dlt", action="store_true", help="Use full 2x2 precision matrix in DLT triangulation")
+    parser.add_argument("--use_robust_dlt_reweight", action="store_true", help="Robust reweighting pass inside full-precision DLT triangulation")
     parser.add_argument("--use_domain_embedding", action="store_true", help="Add a learnable per-dataset embedding (requires --use_mixed_loader)")
     parser.add_argument("--num_domains", type=int, default=2, help="Number of dataset domains for the embedding")
     parser.add_argument("--monotonic_loss_weight", type=float, default=0.0, help="Weight for monotonic multi-view ranking loss")
@@ -1060,6 +1061,7 @@ def main():
         "perceiver_dropout": args.perceiver_dropout,
         # v7 toggles
         "use_full_precision_dlt": args.use_full_precision_dlt,
+        "use_robust_dlt_reweight": args.use_robust_dlt_reweight,
         "use_domain_embedding": args.use_domain_embedding,
         "num_domains": args.num_domains,
     }
