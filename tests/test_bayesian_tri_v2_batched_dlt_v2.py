@@ -63,6 +63,20 @@ def _project_points(points_3d, cameras):
     return points_2d, proj_matrices
 
 
+def _numpy_lstsq_reference(points_2d, proj_matrices, weights):
+    rows = []
+    for (u, v), P, weight in zip(points_2d, proj_matrices, weights):
+        scale = np.sqrt(weight + 1e-6)
+        rows.extend(
+            [
+                scale * (u * P[2] - P[0]),
+                scale * (v * P[2] - P[1]),
+            ]
+        )
+    A = np.stack(rows)
+    return np.linalg.lstsq(A[:, :3], -A[:, 3], rcond=None)[0]
+
+
 def test_batched_dlt_v2_minimum_two_views():
     """DLT should recover a point from only two views."""
     cameras = _make_cameras(n_views=2)
@@ -213,11 +227,47 @@ def test_batched_dlt_v2_matches_naive_numpy():
             pred_np = triangulate_dlt(
                 points_2d_np[n, :, j, :],
                 proj_matrices_np,
-                weights[0, :, j].detach().numpy(),
+                weights[n, :, j].detach().numpy(),
             )
             np.testing.assert_allclose(
                 pred_batched[n, j].detach().numpy(), pred_np, atol=1e-7
             )
+
+
+def test_batched_dlt_v2_routes_weights_per_batch():
+    B, V, J = 2, 4, 2
+    cameras = _make_cameras(V)
+    points_3d = np.random.default_rng(31).uniform(-1.0, 1.0, (B, J, 3))
+    points_2d_np, proj_matrices_np = _project_points(points_3d, cameras)
+    points_2d_np += np.random.default_rng(731).normal(0.0, 2.0, points_2d_np.shape)
+    patterns = np.array(
+        [
+            [1.0, 1.0, 1e-3, 1e-3],
+            [1e-3, 1e-3, 1.0, 1.0],
+        ]
+    )
+    weights_np = np.repeat(patterns[:, :, None], J, axis=2)
+
+    pred = triangulate_dlt_batched_lstsq(
+        torch.from_numpy(points_2d_np).to(torch.float64),
+        torch.from_numpy(proj_matrices_np).to(torch.float64),
+        torch.from_numpy(weights_np).to(torch.float64),
+    ).detach().numpy()
+
+    for n in range(B):
+        for j in range(J):
+            expected = _numpy_lstsq_reference(
+                points_2d_np[n, :, j], proj_matrices_np, weights_np[n, :, j]
+            )
+            np.testing.assert_allclose(pred[n, j], expected, atol=1e-8, rtol=1e-8)
+
+    correct = _numpy_lstsq_reference(
+        points_2d_np[1, :, 0], proj_matrices_np, weights_np[1, :, 0]
+    )
+    wrong_batch = _numpy_lstsq_reference(
+        points_2d_np[1, :, 0], proj_matrices_np, weights_np[0, :, 0]
+    )
+    assert np.linalg.norm(correct - wrong_batch) > 1e-3
 
 
 def test_bayesian_tri_v2_model_forward_backward_smoke():
