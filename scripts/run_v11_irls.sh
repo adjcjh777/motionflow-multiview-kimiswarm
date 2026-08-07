@@ -12,7 +12,7 @@ python -u experiments/train_omniview_fusion_v5_webbridge_multi.py \
     --use_domain_embedding \
     --d 128 --residual_hidden 256 --n_st_layers 3 \
     --graph_num_layers 1 --n_joint_layers 1 --n_heads 4 \
-    --epochs 60 --batch_size 16 --train_samples 10000 --val_stride 10 \
+    --epochs 20 --batch_size 16 --train_samples 2000 --val_stride 10 \
     --lr 1e-3 --lr_cosine --lr_warmup_epochs 3 --lr_min 1e-6 \
     --max_grad_norm 1.0 --ema_decay 0.999 \
     --use_multiscale_fusion true --use_camera_conditioning true --use_epipolar_bias true \

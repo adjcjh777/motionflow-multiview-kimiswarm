@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
-# v10 full experiment: aleatoric reprojection + outlier-view augmentation + reproj warmup.
-# Runs on a single A800 GPU.
+# v10 ablation: no outlier augmentation.
 set -euo pipefail
 
 CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-0}
@@ -26,7 +25,7 @@ python -u experiments/train_omniview_fusion_v5_webbridge_multi.py \
     --pa_loss_weight 0.5 --monotonic_loss_weight 0.1 --monotonic_margin 5.0 \
     --reproj_loss_weight 0.1 --reproj_warmup_epochs 3 \
     --aleatoric_reproj_loss_weight 0.1 \
-    --outlier_view_prob 0.3 --outlier_view_max_views 1 \
+    --outlier_view_prob 0.0 --outlier_view_max_views 1 \
     --outlier_view_offset_std 10.0 --outlier_view_noise_std 15.0 \
-    --output outputs/omniview_fusion_v10_aleatoric_outlier.pth \
-    > outputs/omniview_fusion_v10_aleatoric_outlier.log 2>&1
+    --output outputs/omniview_fusion_v10_no_outlier.pth \
+    > outputs/omniview_fusion_v10_no_outlier.log 2>&1
