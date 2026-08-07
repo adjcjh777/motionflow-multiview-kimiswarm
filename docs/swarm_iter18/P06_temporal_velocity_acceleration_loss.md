@@ -47,7 +47,7 @@ scalar = loss(pred_3d, gt_3d, mask=None, joint_weights=None)
 |---------|---------------|
 | Velocity term | First-order finite difference along temporal axis. |
 | Acceleration term | Second-order central finite difference. |
-| Robust loss | Switch between ``"l2"`` and ``"huber"``. |
+| Robust loss | Switch between ``"l2"`` and standard ``"huber"``. |
 | Validity mask | ``(..., T, J)`` mask; transitions touching invalid frames are ignored. |
 | Per-joint weights | ``(J,)`` weights scale each joint's contribution. |
 | Reduction | ``"mean"``, ``"sum"``, or ``"none"``. |

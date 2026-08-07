@@ -3,7 +3,7 @@
 This module extends the basic velocity + acceleration losses in
 ``motionflow_mv.losses.temporal_consistency`` with:
 
-* optional Huber (smooth L1) robustness,
+* optional Huber robustness,
 * per-joint weights / visibility masks,
 * per-joint and per-frame loss outputs,
 * safe handling of very short sequences (``T < 2`` for velocity,
