@@ -78,13 +78,15 @@ def test_dynamic_gate_keeps_raw_before_gate_pair():
         principal_point_hidden=8,
         return_pp_delta=True,
         return_raw=True,
+        return_visibility=True,
         return_gate=True,
     ).eval()
 
     with torch.no_grad():
         output = model(x, K=K, R=R, t=t)
 
-    assert output[-3].shape == (B, T, J, 3)
+    assert output[-4].shape == (B, T, J, 3)
+    assert torch.equal(output[-3], torch.ones_like(output[-3]))
     assert output[-2].shape == (B, T, V, J)
     assert output[-1].shape == (B, T, V, J)
 

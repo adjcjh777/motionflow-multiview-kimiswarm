@@ -115,11 +115,13 @@ class ActionAwareRayAttentionFusionModelTemporalCrossviewResidualPrincipalPoint(
             feat = layer(feat)
         feat = feat.view(B, J, T, V, self.d).permute(0, 2, 3, 1, 4).reshape(B * T, V, J, self.d)
 
+        visibility = self._visibility_multiplier(feat, confidences)
+
         # Per-frame weight prediction with coarse corrected intrinsics.
         feat_for_weight = feat.permute(0, 2, 1, 3)  # (B*T, J, V, d)
         w_logits = self.weight_head(feat_for_weight).squeeze(-1)  # (B*T, J, V)
         weights = torch.sigmoid(w_logits).permute(0, 2, 1)  # (B*T, V, J)
-        weights = weights * confidences
+        weights = weights * confidences * visibility
         weights = weights.clamp(min=1e-4)
 
         from .ray_attention_model import _triangulate_weighted_dlt
@@ -136,22 +138,26 @@ class ActionAwareRayAttentionFusionModelTemporalCrossviewResidualPrincipalPoint(
 
         pred_3d = pred_3d.view(B, T, J, 3)
         weights = weights.view(B, T, V, J)
+        if self.return_visibility:
+            visibility = visibility.view(B, T, V, J)
 
         if squeeze_output:
             pred_3d = pred_3d.squeeze(1)
             weights = weights.squeeze(1)
+            if self.return_visibility:
+                visibility = visibility.squeeze(1)
 
         raw_3d = pred_3d_raw.view(B, T, J, 3)
         if squeeze_output:
             raw_3d = raw_3d.squeeze(1)
 
+        out = [pred_3d, weights]
         if self.return_pp_delta:
-            out = [pred_3d, weights, pp_delta]
+            out.append(pp_delta)
             if self.correct_focal:
                 out.append(focal_scale)
-            if self.return_raw:
-                out.append(raw_3d)
-            return tuple(out)
         if self.return_raw:
-            return pred_3d, weights, raw_3d
-        return pred_3d, weights
+            out.append(raw_3d)
+        if self.return_visibility:
+            out.append(visibility)
+        return tuple(out)
