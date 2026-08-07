@@ -23,7 +23,7 @@ from typing import Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
 import torch
-from torch.utils.data import ConcatDataset, DataLoader, Dataset
+from torch.utils.data import ConcatDataset, DataLoader, Dataset, Sampler
 
 
 # Largest WebBridge rig is MPI-INF-3DHP with 14 calibrated views.
@@ -250,6 +250,26 @@ def webbridge_mixed_collate_fn(
     dataset_ids = torch.tensor([b[5] for b in batch], dtype=torch.long)
     return x, y, K, R, t, dataset_ids
 
+
+class BalancedMixedSampler(Sampler):
+    """Sample equally from each sub-dataset of a ConcatDataset."""
+
+    def __init__(self, concat_dataset: ConcatDataset, num_samples: int | None = None):
+        self.datasets = concat_dataset.datasets
+        self.cumulative_sizes = concat_dataset.cumulative_sizes
+        self.num_samples = num_samples if num_samples is not None else sum(len(ds) for ds in self.datasets)
+
+    def __iter__(self):
+        n_datasets = len(self.datasets)
+        offsets = [0] + list(self.cumulative_sizes[:-1])
+        for _ in range(self.num_samples):
+            ds_idx = random.randint(0, n_datasets - 1)
+            ds = self.datasets[ds_idx]
+            sample_idx = random.randint(0, len(ds) - 1)
+            yield sample_idx + offsets[ds_idx]
+
+    def __len__(self):
+        return self.num_samples
 
 def build_webbridge_mixed_dataloaders(
     train_paths: Sequence[str],
