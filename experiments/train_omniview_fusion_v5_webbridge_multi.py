@@ -57,6 +57,69 @@ from motionflow_mv.losses.procrustes_loss import procrustes_mse_loss  # noqa: E4
 from motionflow_mv.training.trainer_v2 import TrainerV2, build_lr_scheduler  # noqa: E402
 
 
+def build_model_from_args(
+    args: Namespace,
+    n_joints: int,
+    n_views: int,
+    device: Optional[torch.device] = None,
+) -> torch.nn.Module:
+    """Build and return an ``OmniMultiViewFusionV5`` model from CLI args."""
+
+    model_kwargs: Dict[str, Any] = {
+        "j": n_joints,
+        "d": args.d,
+        "n_views": n_views,
+        "n_heads": args.n_heads,
+        "n_joint_layers": args.n_joint_layers,
+        "n_st_layers": args.n_st_layers,
+        "residual_hidden": args.residual_hidden,
+        "graph_num_layers": args.graph_num_layers,
+        "epipolar_loss_weight": args.epipolar_loss_weight,
+        "return_pp_delta": False,
+        "return_covariance": True,
+        # v4 toggles
+        "use_multiscale_fusion": args.use_multiscale_fusion,
+        "use_camera_conditioning": args.use_camera_conditioning,
+        "use_epipolar_bias": args.use_epipolar_bias,
+        "use_context_visibility": args.use_context_visibility,
+        "use_skeleton_residual": args.use_skeleton_residual,
+        "use_kinematic_refiner": args.use_kinematic_refiner,
+        "use_adaptive_view_selection": args.use_adaptive_view_selection,
+        "use_rotation_correction": args.use_rotation_correction,
+        "use_entropy_regularization": args.use_entropy_regularization,
+        # v5 toggles
+        "use_camera_view_embedding": args.use_camera_view_embedding,
+        "use_set_view_aggregator": args.use_set_view_aggregator,
+        "camera_view_embedding_hidden": args.camera_view_embedding_hidden,
+        "set_view_n_isab_layers": args.set_view_n_isab_layers,
+        "set_view_num_inducing_points": args.set_view_num_inducing_points,
+        "set_view_dropout": args.set_view_dropout,
+        # v6 toggles
+        "use_perceiver_aggregator": args.use_perceiver_aggregator,
+        "perceiver_n_latents": args.perceiver_n_latents,
+        "perceiver_n_layers": args.perceiver_n_layers,
+        "perceiver_n_heads": args.perceiver_n_heads,
+        "perceiver_dropout": args.perceiver_dropout,
+        # v7 toggles
+        "use_full_precision_dlt": args.use_full_precision_dlt,
+        "use_robust_dlt_reweight": args.use_robust_dlt_reweight,
+        "use_domain_embedding": args.use_domain_embedding,
+        "num_domains": args.num_domains,
+    }
+    if args.adaptive_view_k is not None:
+        model_kwargs["adaptive_view_target_k"] = args.adaptive_view_k
+
+    model = OmniMultiViewFusionV5(**model_kwargs)
+
+    if n_joints != 17 and n_joints == 28 and hasattr(model, "rebuild_graph"):
+        model.rebuild_graph(n_joints, dataset="mpiinf3dhp")
+
+    if device is not None:
+        model = model.to(device)
+
+    return model
+
+
 def set_seed(seed: int):
     random.seed(seed)
     np.random.seed(seed)
@@ -1174,55 +1237,7 @@ def main():
     # ------------------------------------------------------------------
     # Model
     # ------------------------------------------------------------------
-    model_kwargs = {
-        "j": n_joints,
-        "d": args.d,
-        "n_views": n_views,
-        "n_heads": args.n_heads,
-        "n_joint_layers": args.n_joint_layers,
-        "n_st_layers": args.n_st_layers,
-        "residual_hidden": args.residual_hidden,
-        "graph_num_layers": args.graph_num_layers,
-        "epipolar_loss_weight": args.epipolar_loss_weight,
-        "return_pp_delta": False,
-        "return_covariance": True,
-        # v4 toggles
-        "use_multiscale_fusion": args.use_multiscale_fusion,
-        "use_camera_conditioning": args.use_camera_conditioning,
-        "use_epipolar_bias": args.use_epipolar_bias,
-        "use_context_visibility": args.use_context_visibility,
-        "use_skeleton_residual": args.use_skeleton_residual,
-        "use_kinematic_refiner": args.use_kinematic_refiner,
-        "use_adaptive_view_selection": args.use_adaptive_view_selection,
-        "use_rotation_correction": args.use_rotation_correction,
-        "use_entropy_regularization": args.use_entropy_regularization,
-        # v5 toggles
-        "use_camera_view_embedding": args.use_camera_view_embedding,
-        "use_set_view_aggregator": args.use_set_view_aggregator,
-        "camera_view_embedding_hidden": args.camera_view_embedding_hidden,
-        "set_view_n_isab_layers": args.set_view_n_isab_layers,
-        "set_view_num_inducing_points": args.set_view_num_inducing_points,
-        "set_view_dropout": args.set_view_dropout,
-        # v6 toggles
-        "use_perceiver_aggregator": args.use_perceiver_aggregator,
-        "perceiver_n_latents": args.perceiver_n_latents,
-        "perceiver_n_layers": args.perceiver_n_layers,
-        "perceiver_n_heads": args.perceiver_n_heads,
-        "perceiver_dropout": args.perceiver_dropout,
-        # v7 toggles
-        "use_full_precision_dlt": args.use_full_precision_dlt,
-        "use_robust_dlt_reweight": args.use_robust_dlt_reweight,
-        "use_domain_embedding": args.use_domain_embedding,
-        "num_domains": args.num_domains,
-    }
-    if args.adaptive_view_k is not None:
-        model_kwargs["adaptive_view_target_k"] = args.adaptive_view_k
-
-    model = OmniMultiViewFusionV5(**model_kwargs).to(device)
-
-    if n_joints != 17:
-        if n_joints == 28 and hasattr(model, "rebuild_graph"):
-            model.rebuild_graph(n_joints, dataset="mpiinf3dhp")
+    model = build_model_from_args(args, n_joints, n_views, device=device)
 
     print(f"Model params: {sum(p.numel() for p in model.parameters())}")
 
@@ -1265,6 +1280,17 @@ def main():
 
     output_path = Path(args.output)
     output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    # Save the training configuration immediately so that even partial runs can be
+    # evaluated / resumed without guessing the exact hyper-parameters.
+    try:
+        import json
+
+        config_path = output_path.with_suffix(".config.json")
+        with open(config_path, "w") as f:
+            json.dump(vars(args), f, indent=2, default=str)
+    except Exception as exc:
+        print(f"Warning: could not save training config: {exc}")
 
     if freeze_epochs > 0:
         print(f"Freezing encoder / ST-transformer for {freeze_epochs} epoch(s)...")
