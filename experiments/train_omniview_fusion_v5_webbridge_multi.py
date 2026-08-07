@@ -684,6 +684,13 @@ def build_compute_loss(args: Namespace):
             loss = loss + args.monotonic_loss_weight * mono
             metrics["monotonic_loss"] = mono.item()
 
+        # Defensive: a single degenerate batch (singular geometry, corrupted data,
+        # or numerical overflow) can otherwise explode the model and make the rest
+        # of the epoch unusable.  Drop/clip such batches before backward.
+        if not loss.isfinite():
+            loss = torch.zeros_like(loss)
+        loss = loss.clamp(max=1e6)
+
         return loss, metrics
 
     return compute_loss
