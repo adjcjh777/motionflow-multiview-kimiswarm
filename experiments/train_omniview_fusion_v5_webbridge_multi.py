@@ -53,6 +53,10 @@ from motionflow_mv.fusion.prototypes.cross_view_graph_attention import (  # noqa
 from motionflow_mv.fusion.omniview_fusion_v5 import (  # noqa: E402
     OmniMultiViewFusionV5,
 )
+from motionflow_mv.losses.kinematic_v15 import (  # noqa: E402
+    joint_limit_loss,
+    temporal_bone_length_loss,
+)
 from motionflow_mv.losses.procrustes_loss import procrustes_mse_loss  # noqa: E402
 from motionflow_mv.training.trainer_v2 import TrainerV2, build_lr_scheduler  # noqa: E402
 
@@ -753,7 +757,11 @@ def temporal_consistency_loss(
 def build_compute_loss(args: Namespace):
     """Build the compute_loss closure used by TrainerV2."""
     parents = None
-    if args.bone_loss_weight > 0.0:
+    if (
+        args.bone_loss_weight > 0.0
+        or args.joint_limit_weight > 0.0
+        or args.temporal_bone_weight > 0.0
+    ):
         try:
             parents = get_parent_indices(args.j)
         except ValueError:
@@ -932,6 +940,24 @@ def build_compute_loss(args: Namespace):
             bl = bone_length_loss(pred_3d, y, parents)
             loss = loss + args.bone_loss_weight * bl
             metrics["bone_loss"] = bl.item()
+
+        if args.joint_limit_weight > 0.0 and parents is not None:
+            jl = joint_limit_loss(
+                pred_3d,
+                parents,
+                max_flexion_deg=args.joint_limit_max_flexion,
+            )
+            loss = loss + args.joint_limit_weight * jl
+            metrics["joint_limit_loss"] = jl.item()
+
+        if (
+            args.temporal_bone_weight > 0.0
+            and parents is not None
+            and pred_3d.shape[1] > 1
+        ):
+            tbl = temporal_bone_length_loss(pred_3d, parents)
+            loss = loss + args.temporal_bone_weight * tbl
+            metrics["temporal_bone_loss"] = tbl.item()
 
         if args.attention_entropy_weight > 0.0:
             if entropy_loss_out is not None:
@@ -1337,6 +1363,9 @@ def parse_args() -> Namespace:
     parser.add_argument("--temporal_acceleration_weight", type=float, default=0.0,
                         help="Relative weight of acceleration smoothness within the temporal loss (0 disables)")
     parser.add_argument("--bone_loss_weight", type=float, default=0.05, help="Bone-length consistency weight")
+    parser.add_argument("--joint_limit_weight", type=float, default=0.0, help="Joint-limit (hyper-extension) auxiliary loss weight")
+    parser.add_argument("--joint_limit_max_flexion", type=float, default=160.0, help="Maximum allowed interior joint angle in degrees")
+    parser.add_argument("--temporal_bone_weight", type=float, default=0.0, help="Temporal bone-length consistency weight")
     parser.add_argument("--attention_entropy_weight", type=float, default=0.0, help="Attention-entropy regularisation weight")
     parser.add_argument("--budget_loss_weight", type=float, default=0.0, help="Adaptive-view budget loss weight")
     parser.add_argument("--reproj_loss_weight", type=float, default=0.0, help="2D reprojection loss weight")
