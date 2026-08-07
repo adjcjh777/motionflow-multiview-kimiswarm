@@ -19,6 +19,9 @@ from motionflow_mv.fusion.ray_attention_temporal_crossview_residual_principal_po
 from motionflow_mv.fusion.ray_attention_temporal_crossview_residual_principal_point_epipolar_model import (
     RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointEpipolar,
 )
+from motionflow_mv.fusion.ray_attention_temporal_crossview_residual_principal_point_epipolar_dynamic_gate_model import (
+    RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointEpipolarDynamicGate,
+)
 
 
 def _inputs(batch=1, time=2, views=2, joints=17):
@@ -104,6 +107,32 @@ def test_epipolar_returns_raw_in_trainer_slot():
         output = model(x, K=K, R=R, t=t)
 
     assert output[-1].shape == (B, T, J, 3)
+
+
+def test_epipolar_dynamic_gate_keeps_diagnostics_before_gate_pair():
+    B, T, V, J = 1, 2, 2, 17
+    x, K, R, t = _inputs(B, T, V, J)
+    model = RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointEpipolarDynamicGate(
+        j=J,
+        d=16,
+        n_views=V,
+        n_heads=4,
+        n_joint_layers=0,
+        n_st_layers=0,
+        residual_hidden=16,
+        principal_point_hidden=8,
+        return_raw=True,
+        return_visibility=True,
+        return_gate=True,
+    ).eval()
+
+    with torch.no_grad():
+        output = model(x, K=K, R=R, t=t)
+
+    assert output[-4].shape == (B, T, J, 3)
+    assert torch.equal(output[-3], torch.ones_like(output[-3]))
+    assert output[-2].shape == (B, T, V, J)
+    assert output[-1].shape == (B, T, V, J)
 
 
 def test_hierarchical_entropy_keeps_raw_before_scalar_loss():

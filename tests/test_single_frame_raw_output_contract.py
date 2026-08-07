@@ -12,6 +12,9 @@ sys.path.insert(0, str(ROOT))
 from motionflow_mv.fusion.ray_attention_hierarchical_view_temporal_joint_residual_principal_point_model import (
     RayAttentionFusionModelHierarchicalViewTemporalJointResidualPrincipalPoint,
 )
+from motionflow_mv.fusion.action_aware_principal_point_model import (
+    ActionAwareRayAttentionFusionModelTemporalCrossviewResidualPrincipalPoint,
+)
 from motionflow_mv.fusion.ray_attention_temporal_crossview_residual_camera_conditioned_model import (
     RayAttentionFusionModelTemporalCrossviewResidualCameraConditioned,
 )
@@ -36,6 +39,9 @@ from motionflow_mv.fusion.ray_attention_temporal_crossview_residual_principal_po
 from motionflow_mv.fusion.ray_attention_temporal_crossview_residual_principal_point_splat_model import (
     RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointSplat,
 )
+from motionflow_mv.fusion.semantic_action_conditional_fusion_model import (
+    RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointSemanticActionConditional,
+)
 from motionflow_mv.fusion.ray_attention_temporal_crossview_residual_principal_point_visibility_transformer_model import (
     RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointVisibilityTransformer,
 )
@@ -43,6 +49,12 @@ from motionflow_mv.fusion.ray_attention_temporal_crossview_residual_principal_po
 
 MODEL_FACTORIES = [
     lambda common: RayAttentionFusionModelTemporalCrossviewResidualPrincipalPoint(**common),
+    lambda common: ActionAwareRayAttentionFusionModelTemporalCrossviewResidualPrincipalPoint(
+        **common
+    ),
+    lambda common: RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointSemanticActionConditional(
+        **common
+    ),
     lambda common: RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointCameraCentric(
         **common, camera_centric_hidden=8
     ),

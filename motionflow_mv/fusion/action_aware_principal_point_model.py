@@ -141,8 +141,17 @@ class ActionAwareRayAttentionFusionModelTemporalCrossviewResidualPrincipalPoint(
             pred_3d = pred_3d.squeeze(1)
             weights = weights.squeeze(1)
 
+        raw_3d = pred_3d_raw.view(B, T, J, 3)
+        if squeeze_output:
+            raw_3d = raw_3d.squeeze(1)
+
         if self.return_pp_delta:
+            out = [pred_3d, weights, pp_delta]
             if self.correct_focal:
-                return pred_3d, weights, pp_delta, focal_scale
-            return pred_3d, weights, pp_delta
+                out.append(focal_scale)
+            if self.return_raw:
+                out.append(raw_3d)
+            return tuple(out)
+        if self.return_raw:
+            return pred_3d, weights, raw_3d
         return pred_3d, weights
