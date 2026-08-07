@@ -365,6 +365,8 @@ def main():
             focal_max_scale=args.focal_max_scale,
             return_pp_delta=True,
             return_covariance=False,
+            return_raw=args.return_raw_3d or args.reproj_raw_weight > 0.0,
+            epipolar_loss_weight=args.epipolar_loss_weight,
         ).to(device)
     elif args.model_type == "bayesian_tri_v2":
         model = RayAttentionFusionModelBayesianTriV2(
@@ -375,6 +377,8 @@ def main():
             focal_max_scale=args.focal_max_scale,
             return_pp_delta=True,
             return_covariance=False,
+            return_raw=args.return_raw_3d or args.reproj_raw_weight > 0.0,
+            epipolar_loss_weight=args.epipolar_loss_weight,
         ).to(device)
     elif args.model_type == "bayesian_tri_v2_visibility":
         model = RayAttentionFusionModelBayesianTriV2Visibility(
@@ -385,6 +389,8 @@ def main():
             focal_max_scale=args.focal_max_scale,
             return_pp_delta=True,
             return_covariance=False,
+            return_raw=args.return_raw_3d or args.reproj_raw_weight > 0.0,
+            epipolar_loss_weight=args.epipolar_loss_weight,
         ).to(device)
     elif args.model_type == "bayesian_tri_v2_attention_entropy":
         model = RayAttentionFusionModelBayesianTriV2AttentionEntropy(
@@ -395,6 +401,8 @@ def main():
             focal_max_scale=args.focal_max_scale,
             return_pp_delta=True,
             return_covariance=False,
+            return_raw=args.return_raw_3d or args.reproj_raw_weight > 0.0,
+            epipolar_loss_weight=args.epipolar_loss_weight,
             attention_entropy_weight=args.attention_entropy_weight,
         ).to(device)
     elif args.model_type == "crossview_contrast":
@@ -626,7 +634,16 @@ def main():
                     mask = (conf > 0) if args.reproj_mask_dropout else None
                     loss_type = "charbonnier" if args.reproj_robust else "mse"
                     if args.reproj_raw_weight > 0.0:
-                        raw_3d = outputs[-1]
+                        if args.model_type == "bayesian_tri_v2_visibility":
+                            raw_3d = outputs[-3]
+                        elif args.model_type in (
+                            "bayesian_tri",
+                            "bayesian_tri_v2",
+                            "bayesian_tri_v2_attention_entropy",
+                        ):
+                            raw_3d = outputs[-2]
+                        else:
+                            raw_3d = outputs[-1]
                         loss = loss + args.reproj_raw_weight * robust_reprojection_loss(
                             raw_3d, points_2d, K, R, t,
                             confidences=conf, mask=mask, loss_type=loss_type,
@@ -646,12 +663,18 @@ def main():
                         pred, points_2d, K, R, t, log_std, confidences=conf,
                     )
                     loss = loss + args.splat_loss_weight * loss_splat
-                if args.model_type in ("bayesian_tri", "bayesian_tri_v2"):
+                if args.model_type in (
+                    "bayesian_tri",
+                    "bayesian_tri_v2",
+                    "bayesian_tri_v2_attention_entropy",
+                ):
                     epi_loss = outputs[-1]  # scalar
-                    loss = loss + args.epipolar_loss_weight * epi_loss
+                    # epi_loss is already scaled in model forward.
+                    loss = loss + epi_loss
                 if args.model_type == "bayesian_tri_v2_visibility":
                     epi_loss = outputs[-1]  # scalar
-                    loss = loss + args.epipolar_loss_weight * epi_loss
+                    # epi_loss is already scaled in model forward.
+                    loss = loss + epi_loss
                     visibility = outputs[-2]  # (B, T, V, J)
                     visible_target = (xb[..., 2] > 0).float()
                     vis_loss = F.binary_cross_entropy(visibility, visible_target)

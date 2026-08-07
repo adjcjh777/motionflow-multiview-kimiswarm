@@ -1,6 +1,6 @@
 """Bayesian Tri v2 with attention-entropy regularisation on triangulation weights.
 
-Subclasses ``RayAttentionFusionModelBayesianTriV2`` and adds an per-joint
+Subclasses ``RayAttentionFusionModelBayesianTriV2`` and adds a per-joint
 entropy penalty on the normalised per-view triangulation weights. The loss
 can be returned as an extra auxiliary term so the trainer can add it.
 """
@@ -23,7 +23,7 @@ class RayAttentionFusionModelBayesianTriV2AttentionEntropy(
     attention_entropy_weight:
         Weight for the entropy penalty (default 0.01). Set to 0.0 to disable.
     entropy_temperature:
-        Temperature applied to weights before entropy computation.
+        Temperature applied to normalised weights before entropy computation.
     See ``RayAttentionFusionModelBayesianTriV2`` for the remaining args.
     """
 
@@ -47,6 +47,7 @@ class RayAttentionFusionModelBayesianTriV2AttentionEntropy(
         max_gn_damping: float = 1e-2,
         epipolar_loss_weight: float = 0.05,
         return_covariance: bool = False,
+        return_raw: bool = False,
         attention_entropy_weight: float = 0.01,
         entropy_temperature: float = 1.0,
     ):
@@ -69,6 +70,7 @@ class RayAttentionFusionModelBayesianTriV2AttentionEntropy(
             max_gn_damping=max_gn_damping,
             epipolar_loss_weight=epipolar_loss_weight,
             return_covariance=return_covariance,
+            return_raw=return_raw,
         )
         self.attention_entropy_weight = attention_entropy_weight
         self.entropy_temperature = entropy_temperature
@@ -77,18 +79,17 @@ class RayAttentionFusionModelBayesianTriV2AttentionEntropy(
         """Compute per-joint entropy of normalised view weights.
 
         Args:
-            weights: (B*T, V, J) non-negative weights.
+            weights: (..., V, J) non-negative weights.
 
         Returns:
             Scalar entropy penalty (encourages concentrated weights).
         """
-        # Normalise over views.
-        p = weights / (weights.sum(dim=1, keepdim=True) + 1e-8)
-        # Add temperature to avoid log(0).
-        p = torch.clamp(p, min=1e-8)
-        # We return negative entropy as a penalty to minimise.
-        entropy = -(p * torch.log(p)).sum(dim=1).mean()
-        return -entropy / self.entropy_temperature
+        # Temperature-scaled normalisation over views. At temperature 1 this is
+        # exactly weights / sum(weights); lower temperatures sharpen it.
+        logits = torch.log(torch.clamp(weights, min=1e-8)) / self.entropy_temperature
+        log_p = torch.log_softmax(logits, dim=-2)
+        entropy = -(torch.exp(log_p) * log_p).sum(dim=-2).mean()
+        return entropy
 
     def forward(self, x, cameras=None, K=None, R=None, t=None):
         out = super().forward(x, cameras=cameras, K=K, R=R, t=t)
@@ -101,10 +102,8 @@ class RayAttentionFusionModelBayesianTriV2AttentionEntropy(
         # keeps the change minimal.
         # To avoid duplication, we instead approximate the penalty from the weights
         # tensor returned in the output tuple (out[1]).
-        weights = out[1]  # (B, T, V, J)
-        B, T, V, J = weights.shape
-        weights_flat = weights.reshape(B * T, V, J).permute(0, 2, 1)  # (B*T, J, V)
-        entropy_penalty = self._entropy_loss(weights_flat)
+        weights = out[1]  # (B, T, V, J) or (B, V, J)
+        entropy_penalty = self._entropy_loss(weights)
         epi_loss = out[-1]
         total_aux = epi_loss + self.attention_entropy_weight * entropy_penalty
 

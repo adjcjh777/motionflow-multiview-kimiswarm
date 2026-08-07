@@ -50,6 +50,7 @@ class RayAttentionFusionModelBayesianTriV2Visibility(
         max_gn_damping: float = 1e-2,
         epipolar_loss_weight: float = 0.05,
         return_covariance: bool = False,
+        return_raw: bool = False,
         visibility_hidden: int = 64,
         visibility_threshold: float = 0.5,
         min_visible_views: int = 2,
@@ -73,6 +74,7 @@ class RayAttentionFusionModelBayesianTriV2Visibility(
             max_gn_damping=max_gn_damping,
             epipolar_loss_weight=epipolar_loss_weight,
             return_covariance=return_covariance,
+            return_raw=return_raw,
         )
         self.visibility_threshold = visibility_threshold
         self.min_visible_views = min_visible_views

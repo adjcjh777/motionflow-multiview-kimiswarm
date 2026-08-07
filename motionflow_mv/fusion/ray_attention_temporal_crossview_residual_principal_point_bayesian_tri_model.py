@@ -149,6 +149,7 @@ class RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointBayesianTri(
         principal_point_max_offset: float = 20.0,
         focal_max_scale: float = 0.0,
         return_pp_delta: bool = False,
+        return_raw: bool = False,
         return_covariance: bool = False,
         covariance_hidden: int = 64,
         gn_iters: int = 2,
@@ -169,6 +170,7 @@ class RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointBayesianTri(
             principal_point_max_offset=principal_point_max_offset,
             focal_max_scale=focal_max_scale,
             return_pp_delta=True,  # keep PP-delta branch for consistency
+            return_raw=return_raw,
         )
         self.return_covariance = return_covariance
         self.gn_iters = gn_iters
@@ -363,6 +365,12 @@ class RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointBayesianTri(
         if self.return_covariance:
             out += (L,)
 
+        if self.return_raw:
+            raw_3d = pred_3d_raw.view(B, T, J, 3)
+            if squeeze_output:
+                raw_3d = raw_3d.squeeze(1)
+            out += (raw_3d,)
+
         # Always append the auxiliary epipolar loss so the trainer can use it.
         out += (epi_loss,)
         return out
@@ -494,6 +502,12 @@ class RayAttentionFusionModelBayesianTriV2(
 
         if self.return_covariance:
             out += (L,)
+
+        if self.return_raw:
+            raw_3d = pred_3d_raw.view(B, T, J, 3)
+            if squeeze_output:
+                raw_3d = raw_3d.squeeze(1)
+            out += (raw_3d,)
 
         out += (epi_loss,)
         return out
