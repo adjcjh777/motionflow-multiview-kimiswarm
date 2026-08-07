@@ -43,6 +43,7 @@ def gaussian_splatting_pose_loss(
     confidences: torch.Tensor = None,
     eps: float = 1e-4,
     trace_weight: float = 1e-4,
+    log_std_view: torch.Tensor = None,
 ) -> torch.Tensor:
     """Negative log-likelihood of 2-D observations under projected 3-D Gaussians.
 
@@ -66,6 +67,10 @@ def gaussian_splatting_pose_loss(
         Small constant for numerical stability.
     trace_weight:
         Weight for the covariance-trace regularizer.
+    log_std_view: (B, T, V, J, 3), optional
+        Residual log standard deviations per view/joint.  If provided, the
+        per-view std is ``exp(log_std + log_std_view)``, allowing the model to
+        adapt the projected covariance per camera.
 
     Returns
     -------
@@ -113,12 +118,20 @@ def gaussian_splatting_pose_loss(
     # Chain rule with rotation.
     J = J_uv @ R_exp  # (B, T, V, J, 2, 3)
 
-    # 3-D covariance from predicted log std.
-    std = log_std.exp().clamp(min=0.01, max=10.0)  # (B, T, J, 3)
-    Sigma_3d = torch.diag_embed(std ** 2)  # (B, T, J, 3, 3)
+    # 3-D covariance from predicted log std (and optional per-view residual).
+    if log_std_view is not None:
+        log_std_total = log_std.unsqueeze(2) + log_std_view  # (B, T, V, J, 3)
+        std = log_std_total.exp().clamp(min=0.01, max=10.0)  # (B, T, V, J, 3)
+        Sigma_3d = torch.diag_embed(std ** 2)  # (B, T, V, J, 3, 3)
+    else:
+        std = log_std.exp().clamp(min=0.01, max=10.0)  # (B, T, J, 3)
+        Sigma_3d = torch.diag_embed(std ** 2)  # (B, T, J, 3, 3)
 
     # Project to 2-D.
-    Sigma_2d = J @ Sigma_3d.unsqueeze(2) @ J.transpose(-2, -1)
+    if log_std_view is not None:
+        Sigma_2d = J @ Sigma_3d @ J.transpose(-2, -1)
+    else:
+        Sigma_2d = J @ Sigma_3d.unsqueeze(2) @ J.transpose(-2, -1)
     Sigma_2d = Sigma_2d + eps * torch.eye(2, device=Sigma_2d.device, dtype=Sigma_2d.dtype).view(
         1, 1, 1, 1, 2, 2
     )
