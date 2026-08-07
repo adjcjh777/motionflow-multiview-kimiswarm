@@ -29,7 +29,7 @@ def procrustes_align(pred: torch.Tensor, target: torch.Tensor, eps: float = 1e-8
     # Optimal uniform scale: argmin_s ||s*p - t||^2 = (p·t) / (p·p)
     pred_norm = (pred_c ** 2).sum(dim=(1, 2), keepdim=True)
     scale = (pred_c * target_c).sum(dim=(1, 2), keepdim=True) / (pred_norm + eps)
-    pred_c = pred_c * scale.unsqueeze(-1)
+    pred_c = pred_c * scale
 
     # Cross-covariance for the optimal rotation.
     H = torch.bmm(pred_c.transpose(1, 2), target_c)  # (B, 3, 3)
