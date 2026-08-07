@@ -21,7 +21,11 @@
 - **No-graph ablation**: clean MPJPE ~25.3 mm (baseline).
 - **Dense+graph v2 (freeze phase)**: val_MPJPE = 25.13 mm → 25.37 mm across 5 freeze epochs.
 - **A800 MPI v2**: val_MPJPE improved to 25.07 mm at freeze epoch 2, currently 25.62 mm at epoch 3.
-- **A800 H36M v2**: launched to expand scale beyond MPI-INF-3DHP.
+- **A800 H36M v2**: launched to expand scale beyond MPI-INF-3DHP; fixed S9/S11 unit inconsistency in h36m_meters and restarted.
+
+## Notes
+
+- **Data quality**: H36M val/test (S9/S11) were 1000x too large in h36m_meters; corrected by converting from h36m_corrected. scripts/convert_h36m_to_meters.sh updated to handle all subjects.
 
 ## Next decisions
 
