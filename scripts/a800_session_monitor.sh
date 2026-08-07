@@ -10,9 +10,8 @@ log() { echo "[$(date -Iseconds)] $*" | tee -a "$LOG"; }
 declare -A LAUNCHERS=(
   [v4_varview_adaptive_mpi]="$ROOT/scripts/tmux_v4_varview_adaptive_mpi.sh"
   [v6_mpi_isab]="$ROOT/scripts/tmux_v6_mpi_isab.sh"
-  [v6_mpi_perceiver]="$ROOT/scripts/tmux_v6_mpi_perceiver.sh"
   [v6_h36m_isab]="$ROOT/scripts/tmux_v6_h36m_isab.sh"
-  # [v7_mixed_precision]="$ROOT/scripts/tmux_v7_mixed_precision.sh"
+  [v8_mixed_robust]="$ROOT/scripts/tmux_v8_mixed_robust.sh"
 )
 
 log "Monitor started (PID $$)."
