@@ -2,17 +2,41 @@
 a learnable camera-centric coordinate transform.
 
 Subclasses ``RayAttentionFusionModelTemporalCrossviewResidualPrincipalPoint``
-and adds a bounded per-view SE(3)+scale transform after intrinsics correction and
-before ray embedding / triangulation.
+and adds a bounded per-view SE(3) correction before triangulation, followed by
+per-view ray-depth scale fusion around the corrected camera centers.
 """
 
 import torch
 import torch.nn as nn
 
 from .camera_centric_coordinate_transform import CameraCentricCoordinateTransform
+from .ray_attention_model import _compute_rays
 from .ray_attention_temporal_crossview_residual_principal_point_model import (
     RayAttentionFusionModelTemporalCrossviewResidualPrincipalPoint,
 )
+
+
+def _apply_per_view_ray_depth_scale(
+    points_3d: torch.Tensor,
+    points_2d: torch.Tensor,
+    scale: torch.Tensor,
+    weights: torch.Tensor,
+    K: torch.Tensor,
+    R: torch.Tensor,
+    t: torch.Tensor,
+) -> torch.Tensor:
+    """Fuse per-view ray-depth residuals around the camera centers."""
+    rays = _compute_rays(points_2d, K, R, t)
+    camera_centers = -torch.einsum("bvij,bvj->bvi", R.transpose(-2, -1), t)
+    relative = points_3d[:, None, :, :] - camera_centers[:, :, None, :]
+    ray_depth = (relative * rays).sum(dim=-1)
+    ray_delta = (
+        (scale[:, :, None] - 1.0)[..., None]
+        * ray_depth[..., None]
+        * rays
+    )
+    weighted_delta = (ray_delta * weights[..., None]).sum(dim=1)
+    return points_3d + weighted_delta / weights.sum(dim=1)[..., None]
 
 
 class RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointCameraCentric(
@@ -179,13 +203,15 @@ class RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointCameraCentri
         P = K_corrected @ Rt
         pred_3d_raw = _triangulate_weighted_dlt(points_2d, weights, P)  # (B*T, J, 3)
 
-        # Apply per-view scale to the triangulated result if needed.  The scale
-        # is defined in camera-centric ray depth, so it acts on the reconstructed
-        # depth relative to each camera center.  Here we simply scale the final
-        # raw triangulation by the average per-view scale as a residual correction
-        # to avoid re-projecting every joint per view.
-        avg_scale = scale.mean(dim=-1, keepdim=True)  # (B*T, 1)
-        pred_3d_raw = pred_3d_raw * avg_scale.unsqueeze(-1)
+        pred_3d_raw = _apply_per_view_ray_depth_scale(
+            pred_3d_raw,
+            points_2d,
+            scale,
+            weights,
+            K_corrected,
+            R_corrected,
+            t_corrected,
+        )
 
         # Residual refinement head.
         feat_pooled = feat.mean(dim=1)  # (B*T, J, d)

@@ -1,6 +1,12 @@
 """Identity-initialization contract for learned camera corrections."""
 
+import sys
+from pathlib import Path
+
 import torch
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
 
 from motionflow_mv.fusion.camera_centric_coordinate_transform import (
     CameraCentricCoordinateTransform,
