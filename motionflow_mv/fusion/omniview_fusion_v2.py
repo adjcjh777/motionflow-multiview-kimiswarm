@@ -391,7 +391,10 @@ class OmniMultiViewFusionV2(RayAttentionFusionModelBayesianTriV2):
             visibility = visibility.squeeze(1)
 
         # Build output tuple.
-        out = (pred_3d, weights, visibility, L, epi_loss)
+        out = (pred_3d, weights, visibility)
+        if self.return_covariance:
+            out += (L,)
+        out += (epi_loss,)
 
         if self.return_pp_delta:
             out += (pp_delta,)
