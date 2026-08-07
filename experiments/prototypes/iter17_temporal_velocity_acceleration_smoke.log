@@ -1,0 +1,6 @@
+Device: cpu
+n_views=4, j=17, clip_len=9, d=32, n_st_layers=1, residual_hidden=64, velocity_weight=0.2, acceleration_weight=0.2, params=50230
+Epoch 1: train_loss=0.000747, val_loss=0.000021, val_MPJPE=5.16mm (saved)
+Epoch 2: train_loss=0.000060, val_loss=0.000011, val_MPJPE=2.50mm (saved)
+Epoch 3: train_loss=0.000034, val_loss=0.000010, val_MPJPE=2.27mm (saved)
+Best val MPJPE: 2.27mm -> outputs\iter17_temporal_velocity_acceleration_smoke.pth
