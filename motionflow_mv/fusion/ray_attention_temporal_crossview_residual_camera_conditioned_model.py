@@ -287,15 +287,19 @@ class RayAttentionFusionModelTemporalCrossviewResidualCameraConditioned(
             if self.return_visibility:
                 visibility = visibility.squeeze(1)
 
+        raw_3d = pred_3d_raw.view(B, T, J, 3)
+        if squeeze_output:
+            raw_3d = raw_3d.squeeze(1)
+
         if self.return_pp_delta:
             out = [pred_3d, weights, pp_delta]
             if self.correct_focal:
                 out.insert(3, focal_scale)
             if self.return_raw:
-                out.append(pred_3d_raw.view(B, T, J, 3))
+                out.append(raw_3d)
             return tuple(out)
         if self.return_visibility:
             return pred_3d, weights, visibility
         if self.return_raw:
-            return pred_3d, weights, pred_3d_raw.view(B, T, J, 3)
+            return pred_3d, weights, raw_3d
         return pred_3d, weights

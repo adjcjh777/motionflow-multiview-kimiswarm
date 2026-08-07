@@ -164,6 +164,10 @@ class RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointCompletion(
             if pred_2d_completed is not None:
                 pred_2d_completed = pred_2d_completed.squeeze(1)
 
+        raw_3d = pred_3d_raw.view(B, T, J, 3)
+        if squeeze_output:
+            raw_3d = raw_3d.squeeze(1)
+
         # Build return tuple in the same order as the parent, with completion appended.
         out = [pred_3d, weights]
         if self.return_pp_delta:
@@ -175,7 +179,7 @@ class RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointCompletion(
         if self.return_completion:
             out.append(pred_2d_completed)
         if self.return_raw:
-            out.append(pred_3d_raw.view(B, T, J, 3))
+            out.append(raw_3d)
 
         if len(out) == 1:
             return out[0]
