@@ -150,11 +150,14 @@ class GraphJointRelation(nn.Module):
 
             attn = torch.sigmoid(self.edge_attn(torch.cat([src, dst], dim=-1))).squeeze(-1)
 
-            projected = torch.zeros_like(src)
-            for t in range(3):
-                mask = edge_type == t
-                if mask.any():
-                    projected[mask] = self.edge_proj[t](src[mask])
+            # Vectorized per-type edge projection.
+            # edge_type in {0,1,2}; for each edge pick the corresponding
+            # projection matrix/bias and apply in one batched mm.
+            W = torch.stack([proj.weight for proj in self.edge_proj], dim=0)  # (3, d, d)
+            b = torch.stack([proj.bias for proj in self.edge_proj], dim=0)     # (3, d)
+            W_sel = W[edge_type]  # (E, d, d)
+            b_sel = b[edge_type]  # (E, d)
+            projected = torch.bmm(W_sel, src.unsqueeze(-1)).squeeze(-1) + b_sel
 
             msg = attn.unsqueeze(-1) * projected
             agg = torch.zeros_like(h)
