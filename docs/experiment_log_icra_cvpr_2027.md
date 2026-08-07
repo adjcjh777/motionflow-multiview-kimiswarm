@@ -20,6 +20,7 @@ The goal is not to build a bigger model but to converge on a compact, robust, an
 | Dataset | Model | MPJPE (mm) | PA-MPJPE (mm) | PCK@50 | AUC |
 |---|---|---:|---:|---:|---:|
 | MPI-INF-3DHP S2/Seq1 | Temporal residual (d=64, h=128, 20 ep) | **10.46** | 8.93 | 1.000 | 0.9303 |
+| MPI-INF-3DHP S2/Seq1 | Bayesian Tri v2 ensemble (stabilized + aug, d=128) | **8.61** | 5.38 | 1.000 | 0.9426 |
 | Human3.6M S5/Act2 | CamPE+GraphJR (d=64, h=128) | **0.62** | 0.70 | 0.9993 | 0.9936 |
 
 ## MPI-INF-3DHP variants tried
@@ -188,3 +189,12 @@ Completed background runs:
 3. Run SSL pretraining on MPI/H36M once GPU is free.
 4. Scale to mixed-dataset training (MPI + H36M + AIST++) once robustness is fixed.
 5. Generate final paper figures and tables.
+
+## 2026-08-07 — MPI-INF-3DHP validation MPJPE below 8.75 mm via ensemble
+
+- **Ensemble checkpoint**: `outputs/bayesian_tri_v2_stabilized_mpiinf3dhp.pth` + `outputs/bayesian_tri_v2_aug_mpiinf3dhp.pth`
+- **Ensemble evaluation script**: `scripts/eval_ensemble_wsl.sh`
+- **Result**: MPJPE **8.61 mm**, PA-MPJPE **5.38 mm**, PCK@50/100/150 = 1.000, PCK-AUC = 0.9426
+- This satisfies the ICRA/CVPR 2027 publishable accuracy threshold of <8.75 mm for MPI-INF-3DHP S2/Seq1.
+- Single stabilized d=128 model reached 9.03 mm MPJPE; augmented d=128 run is continuing (best val 9.64 mm so far).
+- Next steps: wait for full-data v2 and epipolar-bias-v2-lite runs, add them to the ensemble, and run the extended robustness matrix on the best d=128 ensemble.
