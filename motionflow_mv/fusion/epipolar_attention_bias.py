@@ -49,9 +49,9 @@ def compute_epipolar_distance(
     # Inverse intrinsics.
     K_inv = torch.inverse(K)  # (B, V, 3, 3)
 
-    # For every src/dst pair compute F_{dst,src}.
-    # R_rel[v_src, v_dst] = R_dst R_src^T  (world rotation from src to dst)
-    # t_rel[v_src, v_dst] = t_dst - R_rel t_src
+    # For every dst/src pair compute F_{dst,src}.
+    # R_rel[v_dst, v_src] = R_dst R_src^T  (world rotation from src to dst)
+    # t_rel[v_dst, v_src] = t_dst - R_rel t_src
     R_src = R.unsqueeze(1)            # (B, 1, V, 3, 3)
     R_dst = R.unsqueeze(2)            # (B, V, 1, 3, 3)
     t_src = t.unsqueeze(1)            # (B, 1, V, 3)
@@ -73,19 +73,13 @@ def compute_epipolar_distance(
     ones = torch.ones(B, V, points_2d.shape[2], 1, device=device, dtype=dtype)
     pts = torch.cat([points_2d, ones], dim=-1)  # (B, V, J, 3)
 
-    # Epipolar line in dst: l = F_src_dst @ x_src.
-    # F indexed as (B, V_src, V_dst, 3, 3); we need line in dst for src->dst.
-    # For a given src i and dst j, l_j = F[j, i] @ x_i.
-    # pts shape (B, V, J, 3); rearrange to (B, V_src, 1, J, 3) for matmul.
-    F_mat = F.permute(0, 2, 1, 3, 4)  # (B, V_dst, V_src, 3, 3) -> easier to loop? use einsum
+    # Epipolar constraint: x_dst^T F_{dst,src} x_src = 0.
+    # ``F`` is laid out as (B, V_dst, V_src, 3, 3); return distances in
+    # documented (B, V_src, V_dst, J) order.
+    l = torch.einsum("bdsmn,bsjn->bsdjm", F, pts)
 
-    # Use einsum: F_mat[b, j, i, :, :] * pts[b, i, k, :] -> l[b, j, i, k, :]
-    # F (B, V_src, V_dst, 3, 3). For each src i, dst j.
-    # F_exp[b,i,j,3,3] @ pts_src[b,i,J,3]^T -> l[b,i,j,J,3]
-    l = torch.einsum("bijmn,bikn->bijkm", F, pts)  # (B, V_src, V_dst, J, 3)
-
-    # Distance from point in dst to line l.
-    numerator = torch.abs(torch.einsum("bijkm,bjkm->bijk", l, pts))  # (B, V_src, V_dst, J)
+    # Distance from the destination point to its line in the destination view.
+    numerator = torch.abs(torch.einsum("bsdjm,bdjm->bsdj", l, pts))
     denom = torch.sqrt(l[..., 0] ** 2 + l[..., 1] ** 2 + eps)  # (B, V_src, V_dst, J)
     dist = numerator / denom
     return dist
