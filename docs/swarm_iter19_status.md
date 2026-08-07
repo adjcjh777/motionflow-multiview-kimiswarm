@@ -7,8 +7,8 @@
 
 | # | Workstream | Owner | Status |
 |---|-----------|-------|--------|
-| 1 | 4090 dense+graph v2 full run | local watchdog | Freeze Epoch 3 done (val_MPJPE=25.35 mm); 2 freeze epochs remaining |
-| 2 | A800 dense+graph v2 scaling | subagent | venv ready, requirements installing, data 963 MB |
+| 1 | 4090 dense+graph v2 full run | local watchdog | Freeze Epoch 4 done (val_MPJPE=25.41 mm); 1 freeze epoch remaining |
+| 2 | A800 dense+graph v2 scaling | subagent | Training running on A800 GPU 5 (PID 45618) |
 | 3 | WebBridge multi-dataset loader | subagent | **Done** – pushed to main (commit `4475018`) |
 | 4 | OmniMultiViewFusion v3 design | subagent | **Done** – pushed to main (commit `c9f2d2d`) |
 | 5 | Robustness/eval pipeline | subagent | **Done** – pushed to main (commit `4475018`); real no-graph eval running |
