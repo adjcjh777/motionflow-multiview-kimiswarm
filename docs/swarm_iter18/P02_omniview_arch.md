@@ -3,7 +3,7 @@
 **Branch:** `feat/swarm-iter18-omniview`  
 **Author:** Kimi Code subagent  
 **Date:** 2026-08-07  
-**Status:** Architecture + skeleton implementation  
+**Status:** Architecture + skeleton implementation (committed as P02)
 
 ## 1. Goal
 
