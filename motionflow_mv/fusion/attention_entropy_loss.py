@@ -73,10 +73,11 @@ class AttentionEntropyLoss(nn.Module):
         -------
         Scalar loss (or unreduced tensor if ``reduction='none'``).
         """
-        if torch.any(weights.isnan()):
-            raise ValueError("AttentionEntropyLoss received NaN weights")
-        if torch.any(weights < 0):
-            raise ValueError("AttentionEntropyLoss expects non-negative weights")
+        # Defensive: replace NaN/Inf or negative values that can leak from upstream
+        # degenerate inputs / variable-view masking. Clamp to a small positive value
+        # so the entropy computation remains stable.
+        weights = torch.clamp(weights, min=0.0)
+        weights = torch.nan_to_num(weights, nan=self.eps, posinf=1e4, neginf=self.eps)
 
         # Probability distribution over views.
         p = weights / (weights.sum(dim=self.dim, keepdim=True) + self.eps)

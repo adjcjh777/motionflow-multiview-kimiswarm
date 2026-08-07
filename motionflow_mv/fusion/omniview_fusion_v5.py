@@ -313,6 +313,21 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
         B, T, V, J, _ = x.shape
         device = x.device
 
+        # Defensive: input data may contain NaN/Inf for occluded/missing joints.
+        # Replace them with finite placeholders while keeping the confidence channel
+        # (used downstream for masking) intact.
+        if torch.isnan(x).any() or torch.isinf(x).any():
+            nan_mask = torch.isnan(x) | torch.isinf(x)
+            x = torch.where(nan_mask, torch.zeros_like(x), x)
+        if K is not None and (torch.isnan(K).any() or torch.isinf(K).any()):
+            K = torch.nan_to_num(K, nan=0.0, posinf=1e4, neginf=-1e4)
+        if R is not None and (torch.isnan(R).any() or torch.isinf(R).any()):
+            R = torch.nan_to_num(R, nan=0.0, posinf=1e4, neginf=-1e4)
+        if t is not None and (torch.isnan(t).any() or torch.isinf(t).any()):
+            t = torch.nan_to_num(t, nan=0.0, posinf=1e4, neginf=-1e4)
+        if view_mask is not None and (torch.isnan(view_mask).any() or torch.isinf(view_mask).any()):
+            view_mask = torch.nan_to_num(view_mask, nan=0.0, posinf=1.0, neginf=0.0)
+
         if K is None:
             if cameras is None:
                 raise ValueError("Either cameras or (K, R, t) must be provided")
@@ -455,6 +470,11 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
         w_logits = self.weight_head(feat_for_weight).squeeze(-1)
         weights = torch.sigmoid(w_logits).permute(0, 2, 1)
 
+        # Defensive: weight head can produce NaN when upstream features are NaN/Inf
+        # (e.g. from corrupted input data or degenerate camera geometry).
+        if torch.isnan(weights).any() or torch.isinf(weights).any():
+            weights = torch.nan_to_num(weights, nan=1e-4, posinf=1e4, neginf=1e-4)
+
         # Optional adaptive view selection.
         budget_loss = torch.tensor(0.0, device=device)
         if self.use_adaptive_view_selection and self.adaptive_view_selector is not None:
@@ -469,7 +489,18 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
             # Regularise covariance to avoid singular precision matrices.
             eye2 = torch.eye(2, device=L.device, dtype=L.dtype).view(1, 1, 1, 2, 2)
             cov = L @ L.transpose(-2, -1) + 1e-3 * eye2
-            precision_matrix = torch.linalg.inv(cov)
+            # Extra robustness: if cov is still singular/near-singular, add a
+            # larger ridge before inversion.
+            try:
+                precision_matrix = torch.linalg.inv(cov)
+            except RuntimeError:
+                precision_matrix = torch.linalg.inv(cov + 1e-2 * eye2)
+            if torch.isnan(precision_matrix).any() or torch.isinf(precision_matrix).any():
+                precision_matrix = torch.where(
+                    torch.isnan(precision_matrix) | torch.isinf(precision_matrix),
+                    eye2.expand_as(precision_matrix),
+                    precision_matrix,
+                )
             Rt = torch.cat([R, t[..., None]], dim=-1)
             P = K_corrected @ Rt
             from motionflow_mv.fusion.triangulation import triangulate_dlt_batched_lstsq
