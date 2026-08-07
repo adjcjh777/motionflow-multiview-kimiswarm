@@ -448,7 +448,7 @@ def _reprojection_loss(
     t: torch.Tensor,
     view_mask: torch.Tensor,
 ) -> torch.Tensor:
-    """Weighted 2D reprojection loss for the final 3D prediction.
+    """Robust, focal-normalized 2D reprojection loss for the final 3D prediction.
 
     Args:
         pred_3d: (B, T, J, 3)
@@ -459,7 +459,7 @@ def _reprojection_loss(
         view_mask: (B, T, V)
 
     Returns:
-        Scalar MSE between projected pred_3d and points_2d.
+        Scalar robust reprojection error in focal-length units.
     """
     B, T, V, J = points_2d.shape[0], points_2d.shape[1], points_2d.shape[2], points_2d.shape[3]
     if K.dim() == 4:
@@ -473,8 +473,18 @@ def _reprojection_loss(
     x_h = (P @ X_h.unsqueeze(-1)).squeeze(-1)
     x_pred = x_h[..., :2] / (x_h[..., 2:3] + 1e-8)
     diff = x_pred - points_2d
+
+    # Normalize by focal length so reprojection error is in focal-length units
+    # and on a comparable scale to the 3-D MSE loss (meters^2).
+    f = (K[..., 0, 0] + K[..., 1, 1]) / 2.0  # (B, T, V)
+    f = f.unsqueeze(-1).unsqueeze(-1)  # (B, T, V, 1, 1)
+    diff = diff / (f + 1e-6)
+
+    # Charbonnier / pseudo-Huber loss for robustness to outliers.
+    rho = torch.sqrt(diff ** 2 + 1e-4 ** 2)
+
     mask = view_mask.unsqueeze(-1).unsqueeze(-1)
-    return (diff ** 2 * mask).sum() / (mask.sum() + 1e-8)
+    return (rho * mask).sum() / (mask.sum() + 1e-8)
 
 
 # ---------------------------------------------------------------------------
