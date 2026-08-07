@@ -113,6 +113,36 @@ def test_full_model_return_field_contract():
     assert model.residual_mlp.field.field_head.weight.grad is not None
 
 
+def test_full_model_supports_no_grad_inference():
+    B, T, V, J = 1, 2, 2, 17
+    x = torch.rand(B, T, V, J, 3)
+    K, R, t = _make_cameras(V)
+    t[1, 0] = -1.0
+    model = RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointImplicitField(
+        j=J,
+        d=16,
+        n_views=V,
+        n_heads=4,
+        n_joint_layers=0,
+        n_st_layers=0,
+        residual_hidden=16,
+        principal_point_hidden=8,
+        field_hidden=16,
+        field_layers=2,
+        field_iters=2,
+        return_field=True,
+    ).eval()
+
+    with torch.no_grad():
+        pred, weights, field_values = model(x, K=K, R=R, t=t)
+
+    assert pred.shape == (B, T, J, 3)
+    assert weights.shape == (B, T, V, J)
+    assert field_values.shape == (B, T, J)
+    assert not pred.requires_grad
+    assert not field_values.requires_grad
+
+
 if __name__ == "__main__":
     test_refiner_forward_backward()
     test_full_model_forward_backward()

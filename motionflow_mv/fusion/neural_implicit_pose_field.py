@@ -204,16 +204,21 @@ class NeuralImplicitPoseFieldRefiner(nn.Module):
         feat = residual_input[..., :-3]
         pos = residual_input[..., -3:]
         pos0 = pos
+        outer_grad_enabled = torch.is_grad_enabled()
 
         field_values = None
         for _ in range(self.n_iters):
-            # Ensure the position requires grad so we can query the field
-            # gradient.
-            pos = pos.requires_grad_(True)
-            f = self.field(pos, feat)  # (N, J)
-            grad = torch.autograd.grad(
-                f.sum(), pos, create_graph=True, retain_graph=True
-            )[0]  # (N, J, 3)
+            with torch.enable_grad():
+                if not outer_grad_enabled:
+                    pos = pos.detach()
+                pos = pos.requires_grad_(True)
+                f = self.field(pos, feat)  # (N, J)
+                grad = torch.autograd.grad(
+                    f.sum(),
+                    pos,
+                    create_graph=outer_grad_enabled,
+                    retain_graph=outer_grad_enabled,
+                )[0]  # (N, J, 3)
 
             # Detach the normal direction so backward is first-order w.r.t. the
             # field network; the update still depends on the field value itself.
@@ -222,9 +227,13 @@ class NeuralImplicitPoseFieldRefiner(nn.Module):
             unit_grad = grad / grad_norm
             # Newton step: move along the unit normal by f / ||grad||.
             pos = pos - self.step_size * (f.unsqueeze(-1) / grad_norm) * unit_grad
-            field_values = f
+            field_values = f if outer_grad_enabled else f.detach()
 
         delta = pos - pos0
+        if not outer_grad_enabled:
+            delta = delta.detach()
+            if field_values is not None:
+                field_values = field_values.detach()
         if self.capture_field:
             self.last_field_values = field_values
         if self.return_field:
