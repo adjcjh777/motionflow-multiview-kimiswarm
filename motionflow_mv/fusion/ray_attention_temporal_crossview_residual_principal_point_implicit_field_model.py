@@ -28,6 +28,9 @@ class RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointImplicitFiel
         Number of Newton-style field-refinement steps (default 1).
     field_step_size:
         Step-size multiplier for each Newton step (default 0.5).
+    return_field:
+        If ``True``, append the per-joint implicit field values to the model
+        output tuple.
     See ``RayAttentionFusionModelTemporalCrossviewResidualPrincipalPoint`` for
     the remaining arguments.
     """
@@ -51,5 +54,23 @@ class RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointImplicitFiel
             num_layers=field_layers,
             n_iters=field_iters,
             step_size=field_step_size,
-            return_field=return_field,
+            return_field=False,
+            capture_field=return_field,
         )
+
+    def forward(self, x, cameras=None, K=None, R=None, t=None):
+        out = super().forward(x, cameras=cameras, K=K, R=R, t=t)
+        if not self.return_field:
+            return out
+
+        if x.dim() == 4:
+            B, T = x.shape[0], 1
+            squeeze_output = True
+        else:
+            B, T = x.shape[:2]
+            squeeze_output = False
+
+        field_values = self.residual_mlp.last_field_values.view(B, T, self.j)
+        if squeeze_output:
+            field_values = field_values.squeeze(1)
+        return (*out, field_values)

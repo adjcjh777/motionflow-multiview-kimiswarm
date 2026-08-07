@@ -159,6 +159,9 @@ class NeuralImplicitPoseFieldRefiner(nn.Module):
     return_field:
         If ``True``, ``forward`` also returns the final field values for
         auxiliary losses.
+    capture_field:
+        If ``True``, retain the final values for a containing model while
+        keeping the tensor-only return contract.
     """
 
     def __init__(
@@ -171,6 +174,7 @@ class NeuralImplicitPoseFieldRefiner(nn.Module):
         step_size: float = 0.5,
         pe_freq: int = 6,
         return_field: bool = False,
+        capture_field: bool = False,
     ):
         super().__init__()
         self.field = NeuralImplicitPoseField(
@@ -183,6 +187,8 @@ class NeuralImplicitPoseFieldRefiner(nn.Module):
         self.n_iters = n_iters
         self.step_size = step_size
         self.return_field = return_field
+        self.capture_field = capture_field
+        self.last_field_values = None
 
     def forward(self, residual_input: torch.Tensor) -> torch.Tensor:
         """Refine the raw triangulated pose toward the implicit field zero-set.
@@ -219,6 +225,8 @@ class NeuralImplicitPoseFieldRefiner(nn.Module):
             field_values = f
 
         delta = pos - pos0
+        if self.capture_field:
+            self.last_field_values = field_values
         if self.return_field:
             return delta, field_values
         return delta

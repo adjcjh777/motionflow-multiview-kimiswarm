@@ -81,6 +81,38 @@ def test_full_model_forward_backward():
     print(f"full implicit-field model smoke passed (loss={loss.item():.4f})")
 
 
+def test_full_model_return_field_contract():
+    B, T, V, J = 1, 2, 2, 17
+    x = torch.rand(B, T, V, J, 3)
+    K, R, t = _make_cameras(V)
+    t[1, 0] = -1.0
+    model = RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointImplicitField(
+        j=J,
+        d=16,
+        n_views=V,
+        n_heads=4,
+        n_joint_layers=0,
+        n_st_layers=0,
+        residual_hidden=16,
+        principal_point_hidden=8,
+        field_hidden=16,
+        field_layers=2,
+        field_iters=1,
+        return_pp_delta=True,
+        return_field=True,
+    )
+
+    pred, weights, pp_delta, field_values = model(x, K=K, R=R, t=t)
+    loss = pred.square().mean() + field_values.square().mean()
+    loss.backward()
+
+    assert pred.shape == (B, T, J, 3)
+    assert weights.shape == (B, T, V, J)
+    assert pp_delta.shape == (B * T, V, 2)
+    assert field_values.shape == (B, T, J)
+    assert model.residual_mlp.field.field_head.weight.grad is not None
+
+
 if __name__ == "__main__":
     test_refiner_forward_backward()
     test_full_model_forward_backward()
