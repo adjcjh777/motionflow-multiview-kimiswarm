@@ -705,7 +705,8 @@ def main():
     if freeze_epochs > 0:
         print(f"Freezing encoder / ST-transformer for {freeze_epochs} epoch(s)...")
         freeze_old_params(model)
-        for _ in range(freeze_epochs):
+        for freeze_i in range(freeze_epochs):
+            trainer.epoch += 1
             train_metrics = trainer.train_epoch(train_loader)
             val_metrics = trainer.evaluate(val_loader, compute_metric=build_eval_metric())
             trainer.step_scheduler()
