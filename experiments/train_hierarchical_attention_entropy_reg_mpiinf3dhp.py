@@ -433,7 +433,7 @@ def main():
                 mask = (conf > 0) if args.reproj_mask_dropout else None
                 loss_type = "charbonnier" if args.reproj_robust else "mse"
                 if args.reproj_raw_weight > 0.0:
-                    raw_3d = outputs[-1]
+                    raw_3d = outputs[-2]
                     loss = loss + args.reproj_raw_weight * robust_reprojection_loss(
                         raw_3d, points_2d, K, R, t,
                         confidences=conf, mask=mask, loss_type=loss_type,

@@ -651,7 +651,9 @@ def main():
                     mask = (conf > 0) if args.reproj_mask_dropout else None
                     loss_type = "charbonnier" if args.reproj_robust else "mse"
                     if args.reproj_raw_weight > 0.0:
-                        if args.model_type == "bayesian_tri_v2_visibility":
+                        if args.model_type == "dynamic_gate":
+                            raw_3d = outputs[-3]
+                        elif args.model_type == "bayesian_tri_v2_visibility":
                             raw_3d = outputs[-3]
                         elif args.model_type in (
                             "bayesian_tri",

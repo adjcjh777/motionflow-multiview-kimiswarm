@@ -128,13 +128,17 @@ class RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointDynamicGate(
             if self.return_visibility:
                 visibility = visibility.squeeze(1)
 
+        raw_3d = pred_3d_raw.view(B, T, J, 3)
+        if squeeze_output:
+            raw_3d = raw_3d.squeeze(1)
+
+        out = [pred_3d, weights]
         if self.return_pp_delta:
-            out = [pred_3d, weights, pp_delta]
+            out.append(pp_delta)
             if self.correct_focal:
-                out.insert(3, focal_scale)
-            if self.return_gate:
-                out.extend([gate_weights, gate_logits])
-            return tuple(out)
+                out.append(focal_scale)
+        if self.return_raw:
+            out.append(raw_3d)
         if self.return_gate:
-            return pred_3d, weights, gate_weights, gate_logits
-        return pred_3d, weights
+            out.extend([gate_weights, gate_logits])
+        return tuple(out)
