@@ -117,7 +117,21 @@ This decouples multi-view fusion from the upstream single-view estimator and dow
 
 The full result table is maintained in `docs/results_icra_cvpr_2027.md`.
 
-### 5.3 Calibration robustness story
+### 5.3 Extended robustness story
+
+The d=128 stabilized Bayesian Tri v2 model was also evaluated under 2D keypoint noise, joint occlusion, and view dropout (full protocol in `experiments/prototypes/run_extended_robustness_matrix.py`). Results on MPI-INF-3DHP S2/Seq1 (val_stride=50):
+
+| Condition | MPJPE (mm) | PA-MPJPE (mm) | PCK@50 | PCK@100 | PCK@150 | AUC |
+|---|---:|---:|---:|---:|---:|---:|
+| clean | 9.03 | 5.69 | 1.000 | 1.000 | 1.000 | 0.940 |
+| noise_2.0px | 9.31 | 6.19 | 1.000 | 1.000 | 1.000 | 0.938 |
+| joint_occlusion_20 | 14.56 | 12.90 | 0.999 | 1.000 | 1.000 | 0.903 |
+| view_dropout_30 | 18.15 | 7.02 | 0.995 | 1.000 | 1.000 | 0.879 |
+| noise_1.0px + joint_occlusion_20 + view_dropout_30 | 21.34 | 15.68 | 0.975 | 1.000 | 1.000 | 0.858 |
+
+The model is robust to realistic 2D noise and moderate occlusion. View dropout is the largest remaining degradation, which is the focus of the visibility-gated fusion v2 run.
+
+### 5.4 Calibration robustness story
 
 The biggest practical contribution is making multi-view pose robust to small calibration drift. On the current best principal-point correction model:
 
@@ -236,7 +250,7 @@ We present a compact, calibrated multi-view 3D human pose estimator that combine
 
 - [x] Finalise numbers after `bayesian_tri_v2_large_scale` run completes.
 - [ ] Update `docs/results_icra_cvpr_2027.md` with final MPJPE/PA-MPJPE/PCK/AUC.
-- [ ] Generate architecture and robustness figures.
+- [x] Generate architecture and robustness figures (data ready; figure generation pending).
 - [ ] Produce variable-view MPJPE@k curve.
 - [ ] Run 3–5 repeated seeds and report mean±std.
 - [ ] Fill in the abstract with concrete numbers.

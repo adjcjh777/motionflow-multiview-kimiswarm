@@ -32,6 +32,27 @@
 | cxcy_3px | 11.41 | 5.75 |
 | cxcy_5px | 13.87 | 6.61 |
 
+## Extended robustness — Bayesian Tri v2 d=128 stabilized (noise / occlusion / view dropout)
+
+| Condition | MPJPE (mm) | PA-MPJPE (mm) | PCK@50 | PCK@100 | PCK@150 | AUC |
+|---|---:|---:|---:|---:|---:|---:|
+| clean | 9.03 | 5.69 | 1.000 | 1.000 | 1.000 | 0.940 |
+| noise_0.5px | 9.05 | 5.73 | 1.000 | 1.000 | 1.000 | 0.940 |
+| noise_1.0px | 9.10 | 5.83 | 1.000 | 1.000 | 1.000 | 0.939 |
+| noise_2.0px | 9.31 | 6.19 | 1.000 | 1.000 | 1.000 | 0.938 |
+| joint_occlusion_10 | 11.43 | 9.20 | 1.000 | 1.000 | 1.000 | 0.924 |
+| joint_occlusion_20 | 14.56 | 12.90 | 0.999 | 1.000 | 1.000 | 0.903 |
+| joint_occlusion_30 | 16.99 | 15.98 | 0.994 | 1.000 | 1.000 | 0.887 |
+| view_dropout_10 | 12.03 | 6.06 | 1.000 | 1.000 | 1.000 | 0.920 |
+| view_dropout_30 | 18.15 | 7.02 | 0.995 | 1.000 | 1.000 | 0.879 |
+| view_dropout_50 | 23.89 | 8.86 | 0.949 | 1.000 | 1.000 | 0.841 |
+| noise_1.0px + joint_occlusion_20 | 14.24 | 12.74 | 1.000 | 1.000 | 1.000 | 0.905 |
+| noise_1.0px + view_dropout_30 | 18.07 | 7.25 | 0.982 | 1.000 | 1.000 | 0.879 |
+| joint_occlusion_20 + view_dropout_30 | 22.02 | 15.45 | 0.964 | 1.000 | 1.000 | 0.853 |
+| noise_1.0px + joint_occlusion_20 + view_dropout_30 | 21.34 | 15.68 | 0.975 | 1.000 | 1.000 | 0.858 |
+
+*Evaluated on the full MPI-INF-3DHP S2/Seq1 validation sequence with `val_stride=50`.*
+
 ## Negative results
 
 ### Two-stage refined PP correction
