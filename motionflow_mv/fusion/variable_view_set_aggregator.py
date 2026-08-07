@@ -47,13 +47,19 @@ class InducedSetAttentionBlock(nn.Module):
         )
         self.norm = nn.LayerNorm(d)
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(
+        self,
+        x: torch.Tensor,
+        key_padding_mask: torch.Tensor | None = None,
+    ) -> torch.Tensor:
         """Apply one ISAB.
 
         Args
         ----
         x:
             ``(B, V, d)`` where ``V`` may vary across batches.
+        key_padding_mask:
+            ``(B, V)`` boolean mask; ``True`` marks padded/missing views.
 
         Returns
         -------
@@ -63,7 +69,9 @@ class InducedSetAttentionBlock(nn.Module):
         inducing = self.inducing_points.unsqueeze(0).expand(B, -1, -1)  # (B, I, d)
 
         # Encode: attend from inducing points to the input set.
-        h, _ = self.attn_enc(inducing, x, x)  # (B, I, d)
+        h, _ = self.attn_enc(
+            inducing, x, x, key_padding_mask=key_padding_mask
+        )  # (B, I, d)
         # Decode: attend from input set back to inducing points.
         out, _ = self.attn_dec(x, h, h)  # (B, V, d)
         return self.norm(x + out)
@@ -108,24 +116,63 @@ class VariableViewSetAggregator(nn.Module):
             ]
         )
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(
+        self,
+        x: torch.Tensor,
+        view_mask: torch.Tensor | None = None,
+    ) -> torch.Tensor:
         """Aggregate view tokens.
 
         Args
         ----
         x:
             ``(B, T, V, J, d)`` tokens.
+        view_mask:
+            Optional binary mask of shape ``(B, T, V)`` or ``(B, V)``.
+            A value of ``0`` means the view is absent for that sample/time.
 
         Returns
         -------
-        Aggregated tokens of the same shape ``(B, T, V, J, d)``.  The operation is
-        permutation-equivariant over the ``V`` dimension.
+        Aggregated tokens of the same shape ``(B, T, V, J, d)``.  Masked-out views
+        are zeroed.
         """
         B, T, V, J, d = x.shape
         x = x.permute(0, 2, 3, 1, 4).reshape(B, V, J * T, d)
         x = x.permute(0, 2, 1, 3).reshape(B * J * T, V, d)
+
+        key_mask: torch.Tensor | None = None
+        if view_mask is not None:
+            if view_mask.dim() == 2:
+                key_mask = (
+                    view_mask.unsqueeze(1)
+                    .expand(-1, T, -1)
+                    .reshape(B * T, V)
+                    .unsqueeze(1)
+                    .expand(-1, J, -1)
+                    .reshape(B * J * T, V)
+                    .bool()
+                )
+            elif view_mask.dim() == 3:
+                key_mask = (
+                    view_mask.reshape(B * T, V)
+                    .unsqueeze(1)
+                    .expand(-1, J, -1)
+                    .reshape(B * J * T, V)
+                    .bool()
+                )
+            else:
+                raise ValueError(
+                    f"view_mask must be (B, T, V) or (B, V), got {view_mask.shape}"
+                )
+            key_mask = ~key_mask  # True where view is absent
+
         for layer in self.layers:
-            x = layer(x)
+            x = layer(x, key_padding_mask=key_mask)
+
+        # Zero out masked views so they cannot leak downstream.
+        if key_mask is not None:
+            x = x.masked_fill(key_mask.unsqueeze(-1), 0.0)
+
         x = x.view(B, J * T, V, d).permute(0, 2, 1, 3).reshape(B, V, T, J, d)
         x = x.permute(0, 2, 1, 3, 4)  # (B, T, V, J, d)
         return x
@@ -149,9 +196,13 @@ if __name__ == "__main__":
     perm = torch.randperm(V)
     x_perm = x[:, :, perm, :, :]
     out_perm = agg(x_perm)
-    # Small floating-point drift is expected across unrelated MHA calls; the
-    # outputs are permutation-equivariant up to numerical precision.
     assert torch.allclose(out[:, :, perm, :, :], out_perm, atol=1e-6, rtol=1e-4)
+
+    # Masking: dropped views should be zeroed.
+    view_mask = torch.zeros(B, T, V)
+    view_mask[:, :, :2] = 1.0
+    out_masked = agg(x, view_mask=view_mask)
+    assert out_masked[:, :, 2:, :].abs().max().item() < 1e-6
 
     # Gradient sanity.
     loss = out.sum()

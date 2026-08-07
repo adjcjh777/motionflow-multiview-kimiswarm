@@ -212,28 +212,38 @@ def build_model(args: argparse.Namespace, n_views: int, j: int) -> OmniMultiView
         entropy_weight=args.entropy_weight,
         adaptive_view_target_k=args.adaptive_view_target_k,
         rotation_max_rot_deg=args.rotation_max_rot_deg,
-        # v5-specific toggles
+        # v5 toggles
         use_camera_view_embedding=args.use_camera_view_embedding,
         use_set_view_aggregator=args.use_set_view_aggregator,
         camera_view_embedding_hidden=args.camera_view_embedding_hidden,
         set_view_n_isab_layers=args.set_view_n_isab_layers,
         set_view_num_inducing_points=args.set_view_num_inducing_points,
         set_view_dropout=args.set_view_dropout,
+        # v6 toggles
+        use_perceiver_aggregator=args.use_perceiver_aggregator,
+        perceiver_n_latents=args.perceiver_n_latents,
+        perceiver_n_layers=args.perceiver_n_layers,
+        perceiver_n_heads=args.perceiver_n_heads,
+        perceiver_dropout=args.perceiver_dropout,
     )
     if j != 17:
         model.rebuild_graph(j, dataset="mpiinf3dhp")
     return model
 
 
-def load_checkpoint(model: torch.nn.Module, checkpoint_path: str) -> None:
+def load_checkpoint(model: torch.nn.Module, checkpoint_path: str) -> dict:
     state = torch.load(checkpoint_path, map_location="cpu", weights_only=True)
-    if isinstance(state, dict) and "model" in state:
-        state = state["model"]
+    config = None
+    if isinstance(state, dict):
+        config = state.get("config")
+        if "model" in state:
+            state = state["model"]
     missing, unexpected = model.load_state_dict(state, strict=False)
     if missing:
         print(f"Checkpoint load: missing keys {missing[:10]}")
     if unexpected:
         print(f"Checkpoint load: unexpected keys ignored {unexpected[:10]}")
+    return config
 
 
 # ---------------------------------------------------------------------------
@@ -557,6 +567,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--set_view_n_isab_layers", type=int, default=2, help="Number of ISAB layers in the set aggregator")
     parser.add_argument("--set_view_num_inducing_points", type=int, default=32, help="Number of inducing points in each ISAB")
     parser.add_argument("--set_view_dropout", type=float, default=0.0, help="Dropout probability in the set aggregator attention layers")
+    # v6 toggles
+    parser.add_argument("--use_perceiver_aggregator", action="store_true", help="Use Perceiver-style view aggregator")
+    parser.add_argument("--perceiver_n_latents", type=int, default=16, help="Number of latent vectors in Perceiver aggregator")
+    parser.add_argument("--perceiver_n_layers", type=int, default=2, help="Number of Perceiver latent layers")
+    parser.add_argument("--perceiver_n_heads", type=int, default=4, help="Number of attention heads in Perceiver aggregator")
+    parser.add_argument("--perceiver_dropout", type=float, default=0.0, help="Dropout in Perceiver aggregator")
     # Evaluation
     parser.add_argument("--clip_len", type=int, default=13, help="Temporal clip length")
     parser.add_argument("--batch_size", type=int, default=8, help="Batch size")
@@ -618,6 +634,29 @@ def main():
         collate_fn=collate_fn,
         num_workers=0,
     )
+
+    # ------------------------------------------------------------------
+    # Restore training config (if available) so model flags match the checkpoint.
+    # ------------------------------------------------------------------
+    if args.checkpoint and args.checkpoint != "__smoke__":
+        state = torch.load(args.checkpoint, map_location="cpu", weights_only=True)
+        if isinstance(state, dict) and "config" in state:
+            saved = state["config"]
+            protected = {
+                "checkpoint",
+                "dataset",
+                "out_json",
+                "out_csv",
+                "smoke",
+                "run_robustness",
+                "run_variable_views",
+            }
+            for k, v in saved.items():
+                if k in protected:
+                    continue
+                if not hasattr(args, k) or getattr(args, k) is None:
+                    setattr(args, k, v)
+            print("Restored model config from checkpoint.")
 
     # ------------------------------------------------------------------
     # Model

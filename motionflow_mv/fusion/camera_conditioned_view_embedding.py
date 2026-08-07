@@ -23,15 +23,30 @@ class CameraConditionedViewEmbedding(nn.Module):
         Hidden dimension of the two-layer MLP.
     """
 
-    def __init__(self, d: int, camera_hidden: int = 32):
+    def __init__(self, d: int, camera_hidden: int = 32, normalize_cameras: bool = True):
         super().__init__()
         self.d = d
         self.camera_hidden = camera_hidden
+        self.normalize_cameras = normalize_cameras
         self.mlp = nn.Sequential(
             nn.Linear(9 + 9 + 3, camera_hidden),
             nn.ReLU(),
             nn.Linear(camera_hidden, d),
         )
+
+    def _normalize(self, K: torch.Tensor, t: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+        """Normalize intrinsics and translation to a canonical scale.
+
+        Focal lengths are divided by 1000 px, principal points by a typical
+        image half-size, and translation by 10 (world units in meters).
+        Rotation matrices are left unchanged because they are already unitary.
+        """
+        K = K.clone()
+        K[..., 0, 0] = K[..., 0, 0] / 1000.0
+        K[..., 1, 1] = K[..., 1, 1] / 1000.0
+        K[..., 0, 2] = K[..., 0, 2] / 320.0
+        K[..., 1, 2] = K[..., 1, 2] / 240.0
+        return K, t / 10.0
 
     def forward(
         self,
@@ -60,6 +75,9 @@ class CameraConditionedViewEmbedding(nn.Module):
             K = K.unsqueeze(0)
             R = R.unsqueeze(0)
             t = t.unsqueeze(0)
+
+        if self.normalize_cameras:
+            K, t = self._normalize(K, t)
 
         N, V, _, _ = K.shape
         camera_feat = torch.cat(

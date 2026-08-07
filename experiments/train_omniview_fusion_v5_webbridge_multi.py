@@ -563,6 +563,22 @@ def build_compute_loss(args: Namespace):
                 loss = loss + args.budget_loss_weight * bgt
                 metrics["budget_loss"] = bgt.item()
 
+        # Optional monotonic multi-view loss: error with a subset of views should
+        # not be better than using all views.  This is only meaningful when the
+        # model is trained with variable-view subsets.
+        if args.monotonic_loss_weight > 0.0 and view_mask is not None:
+            with torch.no_grad():
+                out_full = model(x, K=K_aug, R=R_aug, t=t_aug, view_mask=None)
+            pred_full = out_full[0]
+            err_subset = F.mse_loss(pred_3d, y)
+            err_full = F.mse_loss(pred_full, y)
+            active = view_mask.sum(dim=(1, 2)).max().item() / max(1, view_mask.shape[1])
+            k_active = max(2, int(round(active)))
+            margin = (args.monotonic_margin / 1000.0) / max(1, k_active)
+            mono = torch.clamp(err_subset - err_full - margin, min=0.0)
+            loss = loss + args.monotonic_loss_weight * mono
+            metrics["monotonic_loss"] = mono.item()
+
         return loss, metrics
 
     return compute_loss
@@ -800,6 +816,14 @@ def parse_args() -> Namespace:
     parser.add_argument("--set_view_n_isab_layers", type=int, default=2, help="Number of ISAB layers in set aggregator")
     parser.add_argument("--set_view_num_inducing_points", type=int, default=32, help="Number of inducing points per ISAB")
     parser.add_argument("--set_view_dropout", type=float, default=0.0, help="Dropout in set aggregator")
+    # v6 toggles
+    parser.add_argument("--use_perceiver_aggregator", action="store_true", help="Use Perceiver-style view aggregator instead of ISAB")
+    parser.add_argument("--perceiver_n_latents", type=int, default=16, help="Number of latent vectors in Perceiver aggregator")
+    parser.add_argument("--perceiver_n_layers", type=int, default=2, help="Number of Perceiver latent layers")
+    parser.add_argument("--perceiver_n_heads", type=int, default=4, help="Number of attention heads in Perceiver aggregator")
+    parser.add_argument("--perceiver_dropout", type=float, default=0.0, help="Dropout in Perceiver aggregator")
+    parser.add_argument("--monotonic_loss_weight", type=float, default=0.0, help="Weight for monotonic multi-view ranking loss")
+    parser.add_argument("--monotonic_margin", type=float, default=5.0, help="Margin (mm) for monotonic multi-view loss")
     # Training
     parser.add_argument("--epochs", type=int, default=30, help="Number of training epochs")
     parser.add_argument("--batch_size", type=int, default=8, help="Batch size")
@@ -931,6 +955,12 @@ def main():
         "set_view_n_isab_layers": args.set_view_n_isab_layers,
         "set_view_num_inducing_points": args.set_view_num_inducing_points,
         "set_view_dropout": args.set_view_dropout,
+        # v6 toggles
+        "use_perceiver_aggregator": args.use_perceiver_aggregator,
+        "perceiver_n_latents": args.perceiver_n_latents,
+        "perceiver_n_layers": args.perceiver_n_layers,
+        "perceiver_n_heads": args.perceiver_n_heads,
+        "perceiver_dropout": args.perceiver_dropout,
     }
     if args.adaptive_view_k is not None:
         model_kwargs["adaptive_view_target_k"] = args.adaptive_view_k
@@ -1017,7 +1047,20 @@ def main():
         print(f"Best val MPJPE: {best_mpjpe * 1000:.2f}mm -> {output_path}")
 
     # Always save the final checkpoint as well.
-    trainer.save_checkpoint(str(output_path.with_suffix("")) + "_final.pth")
+    final_path = str(output_path.with_suffix("")) + "_final.pth"
+    trainer.save_checkpoint(final_path)
+
+    # Save the training configuration so the eval script can reconstruct the model
+    # with the exact flags used during training.
+    config_path = output_path.with_suffix(".config.json")
+    try:
+        import json
+
+        with open(config_path, "w") as f:
+            json.dump(vars(args), f, indent=2)
+        print(f"Saved training config -> {config_path}")
+    except Exception as exc:
+        print(f"Warning: could not save training config: {exc}")
 
 
 if __name__ == "__main__":

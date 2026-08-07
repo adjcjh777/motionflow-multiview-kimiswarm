@@ -25,7 +25,11 @@ import torch.nn as nn
 from motionflow_mv.fusion.camera_conditioned_view_embedding import (
     CameraConditionedViewEmbedding,
 )
+from motionflow_mv.fusion.epipolar_transformer_bias import (
+    EpipolarBiasedTransformerEncoderLayer,
+)
 from motionflow_mv.fusion.omniview_fusion_v4 import OmniMultiViewFusionV4
+from motionflow_mv.fusion.perceiver_view_aggregator import PerceiverViewAggregator
 from motionflow_mv.fusion.variable_view_set_aggregator import (
     VariableViewSetAggregator,
 )
@@ -94,10 +98,15 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
         entropy_weight: float = 0.01,
         use_camera_view_embedding: bool = False,
         use_set_view_aggregator: bool = False,
+        use_perceiver_aggregator: bool = False,
         camera_view_embedding_hidden: int = 32,
         set_view_n_isab_layers: int = 2,
         set_view_num_inducing_points: int = 32,
         set_view_dropout: float = 0.0,
+        perceiver_n_latents: int = 16,
+        perceiver_n_layers: int = 2,
+        perceiver_n_heads: int = 4,
+        perceiver_dropout: float = 0.0,
     ):
         super().__init__(
             j=j,
@@ -141,10 +150,15 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
 
         self.use_camera_view_embedding = use_camera_view_embedding
         self.use_set_view_aggregator = use_set_view_aggregator
+        self.use_perceiver_aggregator = use_perceiver_aggregator
         self.camera_view_embedding_hidden = camera_view_embedding_hidden
         self.set_view_n_isab_layers = set_view_n_isab_layers
         self.set_view_num_inducing_points = set_view_num_inducing_points
         self.set_view_dropout = set_view_dropout
+        self.perceiver_n_latents = perceiver_n_latents
+        self.perceiver_n_layers = perceiver_n_layers
+        self.perceiver_n_heads = perceiver_n_heads
+        self.perceiver_dropout = perceiver_dropout
 
         if self.use_camera_view_embedding:
             self.camera_view_embedding = CameraConditionedViewEmbedding(
@@ -164,6 +178,35 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
             )
         else:
             self.set_view_aggregator = None
+
+        if self.use_perceiver_aggregator:
+            self.perceiver_aggregator = PerceiverViewAggregator(
+                d=d,
+                n_heads=perceiver_n_heads,
+                n_latents=perceiver_n_latents,
+                n_layers=perceiver_n_layers,
+                dropout=perceiver_dropout,
+            )
+        else:
+            self.perceiver_aggregator = None
+
+        # Make sure the ST transformer can accept an additive attention mask even
+        # when epipolar bias is disabled.
+        if not self.use_epipolar_bias:
+            self.st_transformer = nn.ModuleList(
+                [
+                    EpipolarBiasedTransformerEncoderLayer(
+                        d_model=self.d,
+                        nhead=self.n_heads,
+                        dim_feedforward=self.d * 4,
+                        dropout=0.1,
+                        batch_first=True,
+                        norm_first=True,
+                    )
+                    for _ in range(len(self.st_transformer))
+                ]
+            )
+            self.epipolar_bias = None
 
     def _prepare_view_mask(
         self,
@@ -214,28 +257,34 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
         n_heads: int,
         device: torch.device,
     ) -> torch.Tensor:
-        """Build a simple attention mask for the time+view transformer.
+        """Build an additive attention mask for the time+view transformer.
 
         Tokens from masked-out views are blocked from attending to any token and
-        from being attended to by any token.  The mask has the same layout as the
-        epipolar attention bias used by v4, i.e. ``(B*J*n_heads, T*V, T*V)``.
+        from being attended to by any token.  The returned tensor is ``0`` for
+        allowed attention and ``-1e9`` for blocked attention, matching the
+        convention of ``nn.MultiheadAttention`` additive masks.
 
         Args
         ----
         view_mask_flat:
             ``(B * T, V)`` binary mask.
+
+        Returns
+        -------
+        ``(B*J*n_heads, T*V, T*V)`` additive mask ready for ``attn_mask=``.
         """
         # mask_per_view: (B, T, V)
         mask_per_view = view_mask_flat.view(B, T, V)
         # token_mask: (B, T, V) -> (B, T*V)
         token_mask = mask_per_view.reshape(B, T * V)
-        # Block masked tokens: attn_mask[b, i, j] = False if either token i or j is masked.
+        # Block masked tokens: attn_mask[b, i, j] is blocked if either token is masked.
         valid = token_mask.unsqueeze(2) * token_mask.unsqueeze(1)  # (B, T*V, T*V)
         valid = valid.unsqueeze(1).expand(-1, n_heads, -1, -1)  # (B, n_heads, T*V, T*V)
         # Expand to joint dimension: each joint uses the same temporal/view layout.
         valid = valid.unsqueeze(2).expand(-1, -1, self.j, -1, -1)  # (B, n_heads, J, T*V, T*V)
         valid = valid.permute(0, 2, 1, 3, 4).reshape(B * self.j * n_heads, T * V, T * V)
-        return valid.to(device)
+        valid = valid.float()
+        return valid * 0.0 + (1.0 - valid) * -1e9
 
     def forward(
         self,
@@ -321,54 +370,53 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
             feat = self.multiscale_fusion(feat)
             feat = feat.view(B * T, V, J, self.d)
 
-        # Optional camera-conditioned view embedding.
+        # View embedding: learned positional embedding plus optional camera
+        # conditioned embedding as a residual.  Keeping the learned embedding helps
+        # fixed-view accuracy while the camera embedding enables variable views.
+        feat = feat.view(B, T, V, J, self.d)
+        view_emb = self.view_pos_embed[:V].view(1, 1, V, 1, self.d)
+        feat = feat + view_emb
         if self.use_camera_view_embedding and self.camera_view_embedding is not None:
-            view_emb = self.camera_view_embedding(K_corrected, R, t)  # (B*T, V, d)
-            view_emb = view_emb.view(B, T, V, self.d)
-            feat = feat.view(B, T, V, J, self.d)
-            feat = feat + view_emb.unsqueeze(3)
-        else:
-            feat = feat.view(B, T, V, J, self.d)
-            view_emb = self.view_pos_embed[:V].view(1, 1, V, 1, self.d)
-            feat = feat + view_emb
+            camera_emb = self.camera_view_embedding(K_corrected, R, t)  # (B*T, V, d)
+            camera_emb = camera_emb.view(B, T, V, 1, self.d)
+            feat = feat + camera_emb
 
-        # Optional permutation-invariant set aggregator over views.
-        if self.use_set_view_aggregator and self.set_view_aggregator is not None:
-            feat = self.set_view_aggregator(feat)
+        # Optional permutation-invariant view aggregator over views.
+        if self.use_perceiver_aggregator and self.perceiver_aggregator is not None:
+            feat = self.perceiver_aggregator(feat, view_mask=view_mask)
+        elif self.use_set_view_aggregator and self.set_view_aggregator is not None:
+            feat = self.set_view_aggregator(feat, view_mask=view_mask)
 
         # Spatio-temporal (time + view) attention with optional epipolar bias.
         time_emb = self.time_pos_embed[:T].view(1, T, 1, 1, self.d)
         feat = feat + time_emb
         feat = feat.permute(0, 3, 1, 2, 4).reshape(B * J, T * V, self.d)
 
-        # Prepare a simple view mask for the ST transformer.
+        # Prepare an additive view mask for the ST transformer.
         st_view_mask = self._build_view_attention_mask(
             view_mask_flat, B, T, V, self.n_heads, device
         )
 
-        if self.use_epipolar_bias:
+        if self.use_epipolar_bias and self.epipolar_bias is not None:
             from motionflow_mv.fusion.epipolar_transformer_bias import (
                 build_temporal_bias_from_frames,
             )
 
             epi_bias = self.epipolar_bias(K_corrected, R, t, points_2d)
             epi_bias = epi_bias.view(B, T, V, V)
-            # Combine epipolar bias with the view mask.
+            # Combine epipolar bias with the view mask via addition (both are
+            # additive masks, with -1e9 for blocked positions).
             attn_mask = build_temporal_bias_from_frames(
                 epi_bias, n_heads=self.n_heads, n_joints=J
             )
-            attn_mask = attn_mask * st_view_mask
+            attn_mask = attn_mask + st_view_mask
             for layer in self.st_transformer:
                 feat = layer(feat, epipolar_bias=attn_mask)
         else:
-            # Standard transformer layers do not accept a per-token mask; we zero
-            # out features for masked views as a simple fallback. The mask is also
-            # propagated into weights below.
-            feat = feat.view(B, J, T, V, self.d)
-            feat = feat * view_mask_flat.view(B, 1, T, V, 1)
-            feat = feat.view(B * J, T * V, self.d)
+            # The ST transformer has been replaced with EpipolarBiasedTransformerEncoder
+            # layers, so they accept an additive attn_mask even without epipolar bias.
             for layer in self.st_transformer:
-                feat = layer(feat)
+                feat = layer(feat, epipolar_bias=st_view_mask)
 
         feat = feat.view(B, J, T, V, self.d).permute(0, 2, 3, 1, 4).reshape(
             B * T, V, J, self.d
