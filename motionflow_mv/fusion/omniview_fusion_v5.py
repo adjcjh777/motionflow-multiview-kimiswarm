@@ -466,7 +466,9 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
         if self.use_full_precision_dlt:
             weights = weights * confidences * visibility
             weights = weights.clamp(min=1e-4, max=1e4)
-            cov = L @ L.transpose(-2, -1)
+            # Regularise covariance to avoid singular precision matrices.
+            eye2 = torch.eye(2, device=L.device, dtype=L.dtype).view(1, 1, 1, 2, 2)
+            cov = L @ L.transpose(-2, -1) + 1e-3 * eye2
             precision_matrix = torch.linalg.inv(cov)
             Rt = torch.cat([R, t[..., None]], dim=-1)
             P = K_corrected @ Rt
@@ -483,9 +485,12 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
                 residual = x_pred - points_2d  # (N, V, J, 2)
                 residual_col = residual.unsqueeze(-1)  # (N, V, J, 2, 1)
                 mahal = residual_col.transpose(-2, -1) @ precision_matrix @ residual_col  # (N, V, J, 1, 1)
-                rho = torch.exp(-mahal.squeeze(-1).squeeze(-1) / 2.0).clamp(min=1e-3)
-                weights_robust = weights * rho * view_mask_flat.unsqueeze(-1)
-                pred_3d_raw = triangulate_dlt_batched_lstsq(points_2d, P, weights_robust, precision_matrix=precision_matrix)
+                mahal = mahal.squeeze(-1).squeeze(-1).clamp(min=0.0, max=50.0)
+                rho = torch.exp(-mahal / 2.0).clamp(min=1e-3, max=1.0)
+                # Detach robust weights so the second solve does not backprop through
+                # the (potentially unstable) precision/covariance head.
+                weights_robust = (weights * rho * view_mask_flat.unsqueeze(-1)).detach()
+                pred_3d_raw = triangulate_dlt_batched_lstsq(points_2d, P, weights_robust, precision_matrix=precision_matrix.detach())
         else:
             weights = weights * confidences * precision * visibility
             weights = weights.clamp(min=1e-4, max=1e4)
