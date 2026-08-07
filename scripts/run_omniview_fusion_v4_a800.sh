@@ -112,6 +112,14 @@ find_free_gpu() {
             util=100
         fi
 
+        # Skip GPUs that are already occupied by other long-running processes
+        # (e.g. VLLM workers) even if utilization is reported as 0%.
+        mem_used=$(nvidia-smi --id="$gpu" --query-gpu=memory.used --format=csv,noheader,nounits 2>/dev/null | tr -d ' ' || echo "999999")
+        if [[ -n "$mem_used" && "$mem_used" =~ ^[0-9]+$ && "$mem_used" -gt 2000 ]]; then
+            log "GPU $gpu has ${mem_used} MiB in use; skipping."
+            continue
+        fi
+
         if (( util < best_util )); then
             best_util="$util"
             best_gpu="$gpu"
