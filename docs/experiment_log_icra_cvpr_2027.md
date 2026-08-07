@@ -213,3 +213,20 @@ Completed background runs:
 - This satisfies the ICRA/CVPR 2027 publishable accuracy threshold of <8.75 mm for MPI-INF-3DHP S2/Seq1.
 - Single stabilized d=128 model reached 9.03 mm MPJPE; augmented d=128 run is continuing (best val 9.64 mm so far).
 - Next steps: wait for full-data v2 and epipolar-bias-v2-lite runs, add them to the ensemble, and run the extended robustness matrix on the best d=128 ensemble.
+
+## 2026-08-07 (late) — v7/v8/v9 mixed-dataset training hardening
+
+- **Launched**: four mixed-dataset WebBridge runs on A800-D:
+  - `v7_mixed_precision` (GPU 7): mixed-dataset + full-precision DLT, d=128, n_st_layers=3
+  - `v8_mixed_robust` (GPU 6): v7 + robust covariance-aware DLT reweighting
+  - `v9_mixed_robust_reproj` (GPU 4): v8 + 2D reprojection loss
+  - `v9_small_fast` (GPU 5): smaller fast validation run (d=64, n_st_layers=2)
+- **Bugs fixed**:
+  - `AttentionEntropyLoss received NaN weights` — added NaN/Inf sanitisation on model inputs, weight-head output, and in the entropy loss itself.
+  - Visibility BCE assertion crash (`input_val >= zero && input_val <= one`) — clamp visibility output to [0,1] and sanitise before BCE.
+  - Exploding loss in robust reweight runs — clamp precision matrix to [-1e3, 1e3] and clamp reweighted DLT weights to [1e-4, 1e4].
+- **Monitoring**: added per-step `log_interval=50` prints in `TrainerV2` so long epochs no longer appear silent.
+- **Status** (initial):
+  - `v7` stable, step-50 loss ~55
+  - `v8/v9/v9_small_fast` first showed exploding losses; patched and restarted
+- **Next**: collect first-epoch val MPJPE for v7/v8/v9 and decide which components to keep/merge.
