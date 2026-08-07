@@ -135,6 +135,8 @@ class OmniMultiViewFusionV2(RayAttentionFusionModelBayesianTriV2):
         )
 
         # Optional dense joint-level self-attention (per-view) for capacity.
+        # Use a distinct attribute so we do not overwrite the ancestor's
+        # (empty) joint_attn ModuleList.
         self.n_joint_layers = n_joint_layers
         if n_joint_layers > 0:
             layer = nn.TransformerEncoderLayer(
@@ -144,9 +146,9 @@ class OmniMultiViewFusionV2(RayAttentionFusionModelBayesianTriV2):
                 dropout=0.1,
                 batch_first=True,
             )
-            self.joint_attn = nn.ModuleList([layer for _ in range(n_joint_layers)])
+            self.omni_joint_attn = nn.ModuleList([layer for _ in range(n_joint_layers)])
         else:
-            self.joint_attn = None
+            self.omni_joint_attn = None
 
         # Optional graph-joint attention block. When graph_num_layers == 0 the
         # module is omitted entirely so the no-graph ablation is truly graph-free.
@@ -300,9 +302,9 @@ class OmniMultiViewFusionV2(RayAttentionFusionModelBayesianTriV2):
         feat = self._extract_frame_features(x_flat, K_corrected, R, t)  # (B*T, V, J, d)
 
         # ---- NEW: dense joint-level self-attention (optional capacity) ----
-        if self.joint_attn is not None:
+        if self.omni_joint_attn is not None:
             feat_j = feat.permute(0, 2, 1, 3).reshape(B * T * V, J, self.d)
-            for layer in self.joint_attn:
+            for layer in self.omni_joint_attn:
                 feat_j = layer(feat_j)
             feat = feat_j.view(B * T, V, J, self.d)
 

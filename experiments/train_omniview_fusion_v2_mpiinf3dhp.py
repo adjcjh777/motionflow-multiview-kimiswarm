@@ -504,7 +504,7 @@ def load_warm_start(model: torch.nn.Module, checkpoint_path: str) -> None:
 
 def freeze_old_params(model: torch.nn.Module) -> None:
     """Freeze everything except the new Omni-specific heads."""
-    new_prefixes = ("graph_joint_attention", "visibility_head", "joint_attn")
+    new_prefixes = ("graph_joint_attention", "visibility_head", "omni_joint_attn")
     for name, param in model.named_parameters():
         if not name.startswith(new_prefixes):
             param.requires_grad = False
