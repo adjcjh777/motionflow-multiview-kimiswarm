@@ -3,6 +3,9 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+VENV=${MF_VENV:-${ROOT}/.venv}
+. "${VENV}/bin/activate"
+export PYTHONUNBUFFERED=1
 
 # Optional warm-start checkpoint.  Adjust or unset if not available.
 WARM_START="${WARM_START:-${ROOT}/outputs/bayesian_tri_v2_stabilized.pth}"

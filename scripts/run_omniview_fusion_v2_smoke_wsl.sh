@@ -3,11 +3,9 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-
-SMOKE_FLAG=""
-if [[ "${1:-}" == "--smoke" ]]; then
-  SMOKE_FLAG="--smoke"
-fi
+VENV=${MF_VENV:-${ROOT}/.venv}
+. "${VENV}/bin/activate"
+export PYTHONUNBUFFERED=1
 
 python "${ROOT}/experiments/train_omniview_fusion_v2_mpiinf3dhp.py" \
   --train "${ROOT}/data/webbridge/mpi_inf_3dhp/s_01_seq_01_v14_multiview_m.npz" \
