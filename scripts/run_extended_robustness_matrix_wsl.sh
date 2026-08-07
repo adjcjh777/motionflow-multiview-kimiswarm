@@ -23,7 +23,7 @@ export CUDA_VISIBLE_DEVICES=-1
 OUT_DIR="outputs/extended_robustness_matrix_${MODEL}"
 mkdir -p "$OUT_DIR"
 
-python "experiments/prototypes/run_extended_robustness_matrix.py" \
+.venv/bin/python "experiments/prototypes/run_extended_robustness_matrix.py" \
     --model "$MODEL" \
     --checkpoint "$CHECKPOINT" \
     --dataset "$DATASET" \
