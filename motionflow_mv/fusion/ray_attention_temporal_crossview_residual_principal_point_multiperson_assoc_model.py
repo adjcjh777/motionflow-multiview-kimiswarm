@@ -118,17 +118,17 @@ class RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointMultiPersonA
             from .ray_attention_temporal_crossview_model import _cameras_to_tensors
             K, R, t = _cameras_to_tensors(cameras, device)
 
-        # Expand camera matrices over the batch/time dimensions.
+        # Expand camera matrices in the same (B, P, T) order as x_flat.
         if K.dim() == 3:
-            K = K.unsqueeze(0).expand(B * T, -1, -1, -1)
-            R = R.unsqueeze(0).expand(B * T, -1, -1, -1)
-            t = t.unsqueeze(0).expand(B * T, -1, -1)
-        elif K.dim() == 4:
-            K = K.unsqueeze(1).expand(B, T, -1, -1, -1).reshape(B * T, V, 3, 3)
-            R = R.unsqueeze(1).expand(B, T, -1, -1, -1).reshape(B * T, V, 3, 3)
-            t = t.unsqueeze(1).expand(B, T, -1, -1).reshape(B * T, V, 3)
-        else:
+            K = K.unsqueeze(0).expand(B, -1, -1, -1)
+            R = R.unsqueeze(0).expand(B, -1, -1, -1)
+            t = t.unsqueeze(0).expand(B, -1, -1)
+        elif K.dim() != 4:
             raise ValueError("K must have shape (V, 3, 3) or (B, V, 3, 3)")
+
+        K = K[:, None, None].expand(B, P, T, V, 3, 3).reshape(B * P * T, V, 3, 3)
+        R = R[:, None, None].expand(B, P, T, V, 3, 3).reshape(B * P * T, V, 3, 3)
+        t = t[:, None, None].expand(B, P, T, V, 3).reshape(B * P * T, V, 3)
 
         # Reshape multi-person input to a single batch dimension over people.
         # x: (B, T, V, P, J, 3) -> (B*P, T, V, J, 3)
@@ -141,7 +141,7 @@ class RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointMultiPersonA
 
         # Principal-point / intrinsic correction (per-person).
         correction_outputs = self.principal_point_correction(
-            K=K.repeat_interleave(P, dim=0),
+            K=K,
             x=x_flat,
             weights=confidences,
         )
@@ -153,8 +153,8 @@ class RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointMultiPersonA
         feat = self._extract_frame_features(
             x_flat,
             K_corrected,
-            R.repeat_interleave(P, dim=0),
-            t.repeat_interleave(P, dim=0),
+            R,
+            t,
         )  # (B*P*T, V, J, d)
 
         # Spatio-temporal (time + view) attention.
@@ -174,13 +174,13 @@ class RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointMultiPersonA
         if self.assoc_graph is not None and P > 1:
             # (B*P*T, V, J, d) -> (B*T, V, P, J, d)
             feat_assoc = feat.view(B, P, T, V, J, self.d)
-            feat_assoc = feat_assoc.permute(0, 3, 2, 1, 4, 5).reshape(
+            feat_assoc = feat_assoc.permute(0, 2, 3, 1, 4, 5).reshape(
                 B * T, V, P, J, self.d
             )
             parents, sym_pairs = self._skeleton_edges(J)
             feat_assoc = self.assoc_graph(feat_assoc, parents, sym_pairs)
             feat = feat_assoc.view(B, T, V, P, J, self.d)
-            feat = feat.permute(0, 4, 1, 2, 5, 3).reshape(
+            feat = feat.permute(0, 3, 1, 2, 4, 5).reshape(
                 B * P * T, V, J, self.d
             )
 
@@ -196,10 +196,7 @@ class RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointMultiPersonA
 
         from .ray_attention_model import _triangulate_weighted_dlt
 
-        Rt = torch.cat(
-            [R.repeat_interleave(P, dim=0), t.repeat_interleave(P, dim=0)[..., None]],
-            dim=-1,
-        )  # (B*P*T, V, 3, 4)
+        Rt = torch.cat([R, t[..., None]], dim=-1)  # (B*P*T, V, 3, 4)
         P_mat = K_corrected @ Rt
         pred_3d_raw = _triangulate_weighted_dlt(points_2d, weights, P_mat)  # (B*P*T, J, 3)
 
@@ -212,6 +209,11 @@ class RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointMultiPersonA
         # Reshape back to multi-person output.
         pred_3d = pred_3d.view(B, P, T, J, 3).permute(0, 2, 1, 3, 4)  # (B, T, P, J, 3)
         weights = weights.view(B, P, T, V, J).permute(0, 2, 3, 1, 4)  # (B, T, V, P, J)
+        pp_delta = pp_delta.view(B, P, T, V, 2).permute(0, 2, 3, 1, 4)
+        if self.correct_focal:
+            focal_scale = focal_scale.view(B, P, T, V).permute(0, 2, 3, 1)
+        if self.return_visibility:
+            visibility = visibility.view(B, P, T, V, J).permute(0, 2, 3, 1, 4)
 
         if self.return_pp_delta:
             out = [pred_3d, weights, pp_delta]
