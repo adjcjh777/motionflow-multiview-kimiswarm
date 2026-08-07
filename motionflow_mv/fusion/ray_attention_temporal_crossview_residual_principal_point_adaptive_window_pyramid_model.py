@@ -94,7 +94,9 @@ class AdaptiveWindowPyramidLayer(nn.Module):
             mask[i, start:end] = 0.0
         return mask
 
-    def forward(self, feat: torch.Tensor) -> torch.Tensor:
+    def forward(
+        self, feat: torch.Tensor, return_scale_weights: bool = False
+    ) -> torch.Tensor | tuple[torch.Tensor, torch.Tensor]:
         """Apply multi-scale temporal attention and fuse with a learned gate.
 
         Args
@@ -128,6 +130,8 @@ class AdaptiveWindowPyramidLayer(nn.Module):
         scale_weights = self.gate(gate_input)  # (B, T, V, J, S)
 
         fused = (scale_weights.unsqueeze(-1) * stacked).sum(dim=-2)  # (B, T, V, J, d)
+        if return_scale_weights:
+            return fused, scale_weights
         return fused
 
 
@@ -254,7 +258,10 @@ class RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointAdaptiveWind
         feat = feat + time_emb + view_emb
 
         for layer in self.pyramid_layers:
-            feat = layer(feat)
+            if self.return_scale_weights:
+                feat, scale_weights = layer(feat, return_scale_weights=True)
+            else:
+                feat = layer(feat)
 
         # Reshape back to the per-frame layout the rest of the anchor expects.
         feat = feat.reshape(B * T, V, J, self.d)
@@ -286,6 +293,8 @@ class RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointAdaptiveWind
         if squeeze_output:
             pred_3d = pred_3d.squeeze(1)
             weights = weights.squeeze(1)
+            if self.return_scale_weights:
+                scale_weights = scale_weights.squeeze(1)
 
         if self.return_pp_delta:
             out = [pred_3d, weights, pp_delta]
