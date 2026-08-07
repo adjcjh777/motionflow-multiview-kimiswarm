@@ -1186,6 +1186,7 @@ def main():
             eval_metric=build_eval_metric(),
             checkpoint_path=str(output_path),
             save_best=True,
+            log_interval=50,
         )
 
         best = min(history, key=lambda e: e.get("val", {}).get("loss", float("inf")))

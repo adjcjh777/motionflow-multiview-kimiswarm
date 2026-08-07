@@ -338,8 +338,19 @@ class TrainerV2:
             step_metrics["grad_norm"] = grad_norm
         return step_metrics
 
-    def train_epoch(self, dataloader: torch.utils.data.DataLoader) -> Dict[str, float]:
-        """Train for one epoch and return averaged metrics."""
+    def train_epoch(
+        self,
+        dataloader: torch.utils.data.DataLoader,
+        log_interval: int = 0,
+    ) -> Dict[str, float]:
+        """Train for one epoch and return averaged metrics.
+
+        Parameters
+        ----------
+        log_interval:
+            If ``> 0``, print a running average of the loss every ``log_interval``
+            steps.  Useful for monitoring long epochs on slow filesystems.
+        """
         self.model.train()
         running: Dict[str, float] = {}
         count = 0
@@ -348,6 +359,9 @@ class TrainerV2:
             count += 1
             for k, v in step_metrics.items():
                 running[k] = running.get(k, 0.0) + v
+            if log_interval > 0 and count % log_interval == 0:
+                avg_loss = running.get("loss", 0.0) / count
+                print(f"  train step {count}: loss={avg_loss:.6f}")
         return {k: v / count for k, v in running.items()}
 
     @torch.no_grad()
@@ -409,17 +423,26 @@ class TrainerV2:
         eval_metric: Optional[Callable[[nn.Module, Any, torch.device], Dict[str, Any]]] = None,
         checkpoint_path: Optional[str] = None,
         save_best: bool = True,
+        log_interval: int = 0,
     ) -> List[Dict[str, Any]]:
         """Train for ``epochs`` epochs and optionally evaluate/ checkpoint.
 
-        Returns the per-epoch history list.
+        Parameters
+        ----------
+        log_interval:
+            If ``> 0``, print a running average of the loss every ``log_interval``
+            steps.  Useful for monitoring long epochs on slow filesystems.
+
+        Returns
+        -------
+        The per-epoch history list.
         """
         best_metric = float("inf")
         for _ in range(epochs):
             self.epoch += 1
             if hasattr(self, "model"):
                 self.model.epoch = self.epoch
-            train_metrics = self.train_epoch(train_loader)
+            train_metrics = self.train_epoch(train_loader, log_interval=log_interval)
             entry = {"epoch": self.epoch, "train": train_metrics}
             if val_loader is not None:
                 val_metrics = self.evaluate(val_loader, compute_metric=eval_metric)
