@@ -507,24 +507,26 @@ def build_compute_loss(args: Namespace):
         # variable effective number of actual views per batch.
         if args.use_variable_view_training:
             B, T, V_full = x.shape[0], x.shape[1], x.shape[2]
-            # Curriculum: raise the minimum number of active views over epochs so
-            # early training sees harder low-view subsets and later training sees
-            # the full target distribution.
+            # Curriculum: gradually raise the maximum number of active views
+            # over epochs. Early epochs see smaller view subsets (easier), later
+            # epochs see the full target distribution.
             progress = min(1.0, (getattr(model, "epoch", 1) - 1) / max(1, args.epochs))
-            k_min_eff = (
-                args.variable_view_min_views_start
-                + (args.variable_view_min_views - args.variable_view_min_views_start)
+            k_max_start = args.variable_view_max_views_start
+            if k_max_start is None:
+                k_max_start = args.variable_view_max_views
+            k_max_eff = (
+                k_max_start
+                + (args.variable_view_max_views - k_max_start)
                 * (progress ** args.variable_view_curriculum_alpha)
             )
-            k_min_eff = int(round(k_min_eff))
-            k_min_eff = min(args.variable_view_min_views, max(args.variable_view_min_views_start, k_min_eff))
-            k_min_eff = max(2, k_min_eff)  # triangulation needs at least two views
+            k_max_eff = int(round(k_max_eff))
+            k_max_eff = min(args.variable_view_max_views, max(k_max_start, k_max_eff))
+            k_max_eff = max(args.variable_view_min_views, min(k_max_eff, V_full))
             k = torch.randint(
-                k_min_eff,
-                args.variable_view_max_views + 1,
+                args.variable_view_min_views,
+                k_max_eff + 1,
                 (1,),
             ).item()
-            k = min(k, V_full)
             view_mask = torch.zeros(B, T, V_full, device=device)
             for i in range(B):
                 selected = torch.randperm(V_full)[:k]
@@ -925,8 +927,8 @@ def parse_args() -> Namespace:
     parser.add_argument("--variable_view_min_views", type=int, default=2, help="Minimum views in variable-view training subset")
     parser.add_argument("--variable_view_max_views", type=int, default=4, help="Maximum views in variable-view training subset")
     parser.add_argument("--variable_view_permute", action="store_true", help="Permute selected view order during variable-view training")
-    parser.add_argument("--variable_view_curriculum_alpha", type=float, default=1.0, help="Curriculum exponent for variable-view minimum (1.0=linear)")
-    parser.add_argument("--variable_view_min_views_start", type=int, default=2, help="Minimum views at epoch 0 (curriculum start)")
+    parser.add_argument("--variable_view_curriculum_alpha", type=float, default=1.0, help="Curriculum exponent for variable-view maximum (1.0=linear)")
+    parser.add_argument("--variable_view_max_views_start", type=int, default=None, help="Maximum views at epoch 0 (curriculum start); defaults to variable_view_max_views")
     # Calibration curriculum
     parser.add_argument("--cam_aug_schedule", type=str, default="none", choices=["none", "extended_curriculum", "extended_intrinsics_curriculum"], help="Camera perturbation schedule")
     parser.add_argument("--cam_aug_rot", type=float, default=0.5, help="Rotation perturbation std (degrees)")
