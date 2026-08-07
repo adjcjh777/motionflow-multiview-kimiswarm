@@ -18,6 +18,7 @@ import torch
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+from motionflow_mv.data.occlusion_aug import random_occlude_joints, random_occlude_views
 from motionflow_mv.eval.metrics import compute_all_metrics
 from motionflow_mv.fusion.ray_attention_temporal_residual_model import RayAttentionFusionModelTemporalResidual
 
@@ -95,6 +96,21 @@ def corrupt_extrinsics(R, t, rot_std_deg, trans_std):
     return R_out, t_out
 
 
+def apply_occlusion(x, occlude_views_rate=0.0, occlude_joints_rate=0.0):
+    """Apply random view/joint occlusion to a single clip or batch tensor.
+
+    Args:
+        x: Tensor of shape (..., V, J, C) with confidence in last channel.
+        occlude_views_rate: Probability of dropping each whole view.
+        occlude_joints_rate: Probability of dropping each (view, joint) detection.
+    """
+    if occlude_views_rate > 0.0:
+        x = random_occlude_views(x, rate=occlude_views_rate, per_sample=False)
+    if occlude_joints_rate > 0.0:
+        x = random_occlude_joints(x, rate=occlude_joints_rate, per_view=True, per_sample=False)
+    return x
+
+
 def build_model(args, n_views, j):
     return RayAttentionFusionModelTemporalResidual(
         j=j,
@@ -132,8 +148,13 @@ def evaluate_perturbed(model, dataset, cfg, batch_size, device):
 
         def __getitem__(self, idx):
             x, y, K, R, t = self.base[idx]
-            K = corrupt_intrinsics(K.unsqueeze(0), self.cfg["focal_err"], self.cfg["cxcy_err"]).squeeze(0)
+            K = corrupt_intrinsics(K, self.cfg["focal_err"], self.cfg["cxcy_err"])
             R, t = corrupt_extrinsics(R, t, self.cfg["rot_std"], self.cfg["trans_std"])
+            x = apply_occlusion(
+                x,
+                occlude_views_rate=self.cfg.get("occlude_views", 0.0),
+                occlude_joints_rate=self.cfg.get("occlude_joints", 0.0),
+            )
             return x, y, K, R, t
 
     loader = torch.utils.data.DataLoader(
@@ -158,7 +179,11 @@ def main():
     parser.add_argument("--val_stride", type=int, default=1, help="Stride for validation clips")
     parser.add_argument("--out_json", type=str, default="outputs/perturb_model_eval.json")
     parser.add_argument("--use_reproj_gate", action="store_true", help="Use reprojection-error gate in the residual head")
+    parser.add_argument("--seed", type=int, default=42, help="Random seed for reproducible perturbations and occlusion masks")
     args = parser.parse_args()
+
+    torch.manual_seed(args.seed)
+    np.random.seed(args.seed)
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     data = np.load(args.dataset)
@@ -189,6 +214,13 @@ def main():
         "focal_2pct": {"rot_std": 0.0, "trans_std": 0.0, "focal_err": 0.02, "cxcy_err": 0.0},
         "cxcy_3px": {"rot_std": 0.0, "trans_std": 0.0, "focal_err": 0.0, "cxcy_err": 3.0},
         "cxcy_5px": {"rot_std": 0.0, "trans_std": 0.0, "focal_err": 0.0, "cxcy_err": 5.0},
+        "view_dropout_0.2": {"rot_std": 0.0, "trans_std": 0.0, "focal_err": 0.0, "cxcy_err": 0.0, "occlude_views": 0.2},
+        "view_dropout_0.4": {"rot_std": 0.0, "trans_std": 0.0, "focal_err": 0.0, "cxcy_err": 0.0, "occlude_views": 0.4},
+        "view_dropout_0.6": {"rot_std": 0.0, "trans_std": 0.0, "focal_err": 0.0, "cxcy_err": 0.0, "occlude_views": 0.6},
+        "joint_dropout_0.2": {"rot_std": 0.0, "trans_std": 0.0, "focal_err": 0.0, "cxcy_err": 0.0, "occlude_joints": 0.2},
+        "joint_dropout_0.4": {"rot_std": 0.0, "trans_std": 0.0, "focal_err": 0.0, "cxcy_err": 0.0, "occlude_joints": 0.4},
+        "joint_dropout_0.6": {"rot_std": 0.0, "trans_std": 0.0, "focal_err": 0.0, "cxcy_err": 0.0, "occlude_joints": 0.6},
+        "view_joint_dropout_0.2": {"rot_std": 0.0, "trans_std": 0.0, "focal_err": 0.0, "cxcy_err": 0.0, "occlude_views": 0.2, "occlude_joints": 0.2},
     }
 
     robustness = {"clean": clean_summary}
