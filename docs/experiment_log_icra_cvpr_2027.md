@@ -73,6 +73,20 @@ The goal is not to build a bigger model but to converge on a compact, robust, an
   - Clean 0.5 px noise: **3.13 mm**
   - 2 px noise + 10% view dropout: **8.73 mm**
 
+## 2026-08-07 — Swarm Iteration 18 / OmniMultiViewFusion v2
+
+- **Swarm:** 20 parallel agents produced architecture docs, standalone modules (visibility gating, graph-joint attention, uncertainty-weighted triangulation, temporal consistency), prototypes, and evaluation/tracking scripts.
+- **Merged:** PR #72 into `main`.
+- **New issue:** #73 tracks the full d=128 OmniMultiViewFusion v2 training run.
+- **Current best:** Bayesian Tri v2 ensemble (stabilized + aug) at **8.35 mm MPJPE / 5.29 mm PA-MPJPE**.
+- **Variable-view results** (Bayesian Tri v2 stabilized, d=128):
+  - k=14: 8.99 mm
+  - k=10: 28.28 mm
+  - k=4: 113.04 mm
+  - k=2: 280.02 mm
+- **Running:** `omniview_v2_full` tmux session, d=128, warm-started from `bayesian_tri_v2_stabilized_mpiinf3dhp.pth`, freeze encoder for 5 epochs, 30 epochs total.
+- **Test set:** Downloaded MPI-INF-3DHP TS1-TS6 and converted to canonical `.npz` under `data/webbridge/mpi_inf_3dhp/test_set/`.
+
 ## Ongoing experiments
 
 - **Training-time camera calibration perturbation** (MPI-INF-3DHP):
