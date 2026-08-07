@@ -7,6 +7,9 @@ import torch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from experiments.prototypes.swarm_iter18.profile_bayesian_tri_v2_latency import (
+    InstrumentedBayesianTriV2,
+)
 from motionflow_mv.fusion.ray_attention_hierarchical_attention_entropy_reg_model import (
     RayAttentionFusionModelHierarchicalAttentionEntropyReg,
 )
@@ -149,6 +152,30 @@ def test_hierarchical_entropy_keeps_raw_before_scalar_loss():
         residual_hidden=16,
         principal_point_hidden=8,
         return_pp_delta=True,
+        return_raw=True,
+    ).eval()
+
+    with torch.no_grad():
+        output = model(x, K=K, R=R, t=t)
+
+    assert output[-2].shape == (B, T, J, 3)
+    assert output[-1].shape == ()
+
+
+def test_instrumented_bayesian_keeps_raw_before_scalar_loss():
+    B, T, V, J = 1, 2, 2, 17
+    x, K, R, t = _inputs(B, T, V, J)
+    model = InstrumentedBayesianTriV2(
+        j=J,
+        d=16,
+        n_views=V,
+        n_heads=4,
+        n_joint_layers=0,
+        n_st_layers=0,
+        residual_hidden=16,
+        principal_point_hidden=8,
+        covariance_hidden=8,
+        gn_iters=0,
         return_raw=True,
     ).eval()
 

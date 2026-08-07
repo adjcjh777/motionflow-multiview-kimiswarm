@@ -239,6 +239,12 @@ class InstrumentedBayesianTriV2(RayAttentionFusionModelBayesianTriV2):
         if self.return_covariance:
             out += (L,)
 
+        if self.return_raw:
+            raw_3d = pred_3d_raw.view(B, T, J, 3)
+            if squeeze_output:
+                raw_3d = raw_3d.squeeze(1)
+            out += (raw_3d,)
+
         out += (epi_loss,)
         return out
 
