@@ -8,7 +8,6 @@ mkdir -p "$ROOT"/outputs
 log() { echo "[$(date -Iseconds)] $*" | tee -a "$LOG"; }
 
 declare -A LAUNCHERS=(
-  [v6_mpi_isab]="$ROOT/scripts/tmux_v6_mpi_isab.sh"
   [v7_mixed_precision]="$ROOT/scripts/tmux_v7_mixed_precision.sh"
   [v8_mixed_robust]="$ROOT/scripts/tmux_v8_mixed_robust.sh"
   [v9_mixed_robust_reproj]="$ROOT/scripts/tmux_v9_mixed_robust_reproj.sh"
