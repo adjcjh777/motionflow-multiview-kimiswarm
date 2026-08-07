@@ -1,129 +1,243 @@
-"""Adaptive view selector for multi-view 3D pose estimation.
+"""Adaptive view selector for variable-view multi-view fusion.
 
-Predicts a per-view, per-joint soft/hard selection mask from spatio-temporal
-encoder tokens and optional ray geometry.  The mask is meant to be applied to
-triangulation weights so that occluded, noisy, or geometrically weak views are
-down-weighted.
+``AdaptiveViewSelector`` predicts per-view, per-joint binary selection
+masks.  During training it samples with Gumbel-softmax straight-through
+top-``k`` selection; during inference it uses deterministic hard top-``k``.
+A differentiable budget loss encourages the average number of selected views
+to match a target budget.
+
+The module is fully optional.  When ``use_selector=False`` the forward pass
+returns an all-ones mask and a zero budget loss, so downstream triangulation
+can bypass it without branch logic elsewhere.
 """
+
+from __future__ import annotations
+
+from typing import Tuple, Union
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
 
-def _compute_ray_geometry(points_2d, K, R, t):
-    """Return per-view, per-joint ray geometry features: ray angle and baseline."""
-    N, V, J, _ = points_2d.shape
-    ones = torch.ones(N, V, J, 1, device=points_2d.device, dtype=points_2d.dtype)
-    xy1 = torch.cat([points_2d, ones], dim=-1)  # (N, V, J, 3)
-
-    K_inv = torch.inverse(K)
-    d_cam = torch.einsum("nvic,nvkc->nvki", K_inv, xy1)
-    d_world = torch.einsum("nvic,nvkc->nvki", R.transpose(-2, -1), d_cam)
-    rays = d_world / (d_world.norm(dim=-1, keepdim=True) + 1e-8)
-
-    centers = -torch.einsum("nvij,nvj->nvi", R.transpose(-2, -1), t)
-    baselines = centers.unsqueeze(1) - centers.unsqueeze(2)  # (N, V, V, 3)
-    baseline_len = baselines.norm(dim=-1).mean(dim=-1)  # (N, V)
-
-    ray_dot = torch.einsum("nvjd,nujd->njv", rays, rays)  # average over other views
-    ray_angle = torch.acos(torch.clamp(ray_dot, -1.0, 1.0))
-
-    baseline_len = baseline_len.unsqueeze(-1).expand(N, V, J)
-    ray_angle = ray_angle.permute(0, 2, 1)  # (N, V, J)
-    return torch.stack([baseline_len, ray_angle], dim=-1)  # (N, V, J, 2)
-
-
 class AdaptiveViewSelector(nn.Module):
-    """Predict a per-view per-joint selection mask.
+    """Gumbel-softmax adaptive view selector.
 
     Parameters
     ----------
-    d: int
-        Feature dimension from the encoder.
-    n_views: int
-        Maximum / expected number of views.
-    k: int
-        Number of views to select at inference time.
-    tau: float
-        Gumbel-softmax temperature.
-    geo_features: bool
-        Whether to concatenate ray-geometry features to the token.
-    hard_inference: bool
-        If True, use hard topk mask at inference; otherwise keep soft.
+    d:
+        Input feature dimension.
+    n_views:
+        Number of views in the fixed-view rig.
+    n_joints:
+        Number of body joints (used only for shape validation / diagnostics).
+    target_k:
+        Target number of active views per joint.  May be an integer in
+        ``[1, n_views]`` or a float ratio in ``(0, 1]``.
+    temperature:
+        Temperature for the Gumbel-softmax relaxation.  Lower values make the
+        selection sharper.
+    budget_weight:
+        Weight of the budget loss that penalises deviations of the mean selected
+        view count from ``target_k``.
+    hard_training:
+        If True, the training forward pass returns a straight-through hard top-k
+        mask.  If False, returns the soft softmax probabilities.
+    use_selector:
+        If False, the module always returns an all-ones mask and zero loss.
     """
 
     def __init__(
         self,
-        d: int,
-        n_views: int,
-        k: int = 4,
-        tau: float = 0.5,
-        geo_features: bool = True,
-        hard_inference: bool = True,
+        d: int = 64,
+        n_views: int = 4,
+        n_joints: int = 17,
+        target_k: Union[int, float] = 2,
+        temperature: float = 0.5,
+        budget_weight: float = 0.01,
+        hard_training: bool = True,
+        use_selector: bool = True,
     ):
         super().__init__()
+        if d <= 0:
+            raise ValueError("d must be positive")
+        if n_views < 1:
+            raise ValueError("n_views must be at least 1")
+
         self.d = d
         self.n_views = n_views
-        self.k = k
-        self.tau = tau
-        self.geo_features = geo_features
-        self.hard_inference = hard_inference
+        self.n_joints = n_joints
+        self.temperature = temperature
+        self.budget_weight = budget_weight
+        self.hard_training = hard_training
+        self.use_selector = use_selector
 
-        geo_dim = 2 if geo_features else 0
-        self.score_mlp = nn.Sequential(
-            nn.Linear(d + geo_dim, d),
-            nn.ReLU(),
-            nn.Linear(d, d // 2),
-            nn.ReLU(),
-            nn.Linear(d // 2, 1),
+        self._target_k_float = float(target_k)
+        if 0.0 < target_k <= 1.0:
+            self.target_k = max(1, min(n_views, round(target_k * n_views)))
+        else:
+            self.target_k = int(max(1, min(n_views, round(target_k))))
+
+        self.logit_proj = nn.Linear(d, 1)
+
+    def extra_repr(self) -> str:  # noqa: D401
+        return (
+            f"n_views={self.n_views}, n_joints={self.n_joints}, "
+            f"target_k={self.target_k}, temperature={self.temperature}, "
+            f"budget_weight={self.budget_weight}, use_selector={self.use_selector}"
         )
 
-    def forward(self, feat, points_2d=None, K=None, R=None, t=None):
-        """Return (soft_mask, hard_mask, scores).
+    def _gumbel_noise(self, shape: torch.Size, device: torch.device) -> torch.Tensor:
+        """Return standard Gumbel(0,1) noise."""
+        uniform = torch.rand(shape, device=device)
+        # Clamp away from 0 and 1 so both logs stay finite, then compute
+        # -log(-log(uniform)) in the correct order.
+        eps = 1e-8
+        uniform = uniform.clamp(min=eps, max=1.0 - eps)
+        return -((-uniform.log()).log())
 
-        feat: (N, V, J, d)
-        points_2d, K, R, t: optional geometry inputs
+    def _topk_mask(
+        self,
+        logits: torch.Tensor,
+        training: bool,
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        """Build a top-k selection mask.
+
+        Args
+        ----
+        logits:
+            Per-view logits of shape ``(N, V, J)``.
+        training:
+            Whether to add Gumbel noise and use the softmax relaxation.
+
+        Returns
+        -------
+        mask:
+            Selected mask of shape ``(N, V, J)``.  During training this is the
+            straight-through hard mask when ``hard_training`` is enabled.
+        probs:
+            Softmax probabilities of shape ``(N, V, J)``.
+        hard_mask:
+            Non-differentiable hard top-k mask of shape ``(N, V, J)``.
         """
-        N, V, J, d = feat.shape
-
-        if self.geo_features:
-            if points_2d is None or K is None or R is None or t is None:
-                raise ValueError("geometry features requested but not provided")
-            geo = _compute_ray_geometry(points_2d, K, R, t)
-            x = torch.cat([feat, geo], dim=-1)
+        N, V, J = logits.shape
+        if training:
+            gumbel = self._gumbel_noise(logits.shape, logits.device)
+            scaled = (logits + gumbel) / self.temperature
         else:
-            x = feat
+            scaled = logits / self.temperature
 
-        scores = self.score_mlp(x).squeeze(-1)  # (N, V, J)
+        probs = F.softmax(scaled, dim=1)
 
+        # Hard top-k: select the k highest probability views per (N, J).
+        topk = min(self.target_k, V)
+        _, top_indices = torch.topk(probs, topk, dim=1)  # (N, k, J)
+        hard_mask = torch.zeros_like(probs)
+        hard_mask.scatter_(1, top_indices, 1.0)
+
+        if training and self.hard_training:
+            # Straight-through estimator: forward hard, backward through softmax.
+            mask = hard_mask + probs - probs.detach()
+        else:
+            # Inference always uses a deterministic hard top-k mask.
+            mask = hard_mask
+
+        return mask, probs, hard_mask
+
+    def forward(
+        self,
+        features: torch.Tensor,
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        """Forward pass.
+
+        Args
+        ----
+        features:
+            Per-view per-joint features of shape ``(N, V, J, d)``.
+
+        Returns
+        -------
+        mask:
+            Selection mask of shape ``(N, V, J)``.  In training this is a
+            differentiable (straight-through) mask; in inference it is a hard
+            one-hot top-k mask.
+        budget_loss:
+            Scalar budget loss.  Zero when ``use_selector=False`` or during
+            inference.
+        """
+        if not self.use_selector:
+            return torch.ones(
+                features.shape[0],
+                features.shape[1],
+                features.shape[2],
+                device=features.device,
+                dtype=features.dtype,
+            ), torch.tensor(0.0, device=features.device, dtype=features.dtype)
+
+        if features.dim() != 4:
+            raise ValueError("features must have shape (N, V, J, d)")
+
+        N, V, J, d = features.shape
+        if V != self.n_views or J != self.n_joints:
+            raise ValueError(
+                f"expected (V={self.n_views}, J={self.n_joints}), got ({V}, {J})"
+            )
+
+        logits = self.logit_proj(features).squeeze(-1)  # (N, V, J)
+        mask, probs, _ = self._topk_mask(logits, training=self.training)
+
+        # Budget loss on the *soft* probabilities so it has gradients.
         if self.training:
-            logits = torch.stack([scores, torch.zeros_like(scores)], dim=-1)  # (N, V, J, 2)
-            soft = F.gumbel_softmax(logits, tau=self.tau, hard=False)  # (N, V, J, 2)
-            soft_mask = soft[..., 0]
-            hard_mask = (soft_mask > 0.5).float() - soft_mask.detach() + soft_mask
+            selected_count = probs.sum(dim=1)  # (N, J)
+            budget_loss = (
+                (selected_count.mean() - self.target_k) ** 2
+                * self.budget_weight
+            )
         else:
-            if self.hard_inference:
-                _, topk_idx = torch.topk(scores, min(self.k, V), dim=1)  # (N, k, J)
-                hard_mask = torch.zeros_like(scores).scatter_(1, topk_idx, 1.0)
-                soft_mask = F.softmax(scores, dim=1)
-            else:
-                soft_mask = F.softmax(scores, dim=1)
-                hard_mask = soft_mask
+            budget_loss = torch.tensor(
+                0.0, device=features.device, dtype=features.dtype
+            )
 
-        return soft_mask, hard_mask, scores
+        return mask, budget_loss
 
 
 if __name__ == "__main__":
-    N, V, J, d = 2, 4, 17, 64
-    feat = torch.randn(N, V, J, d)
-    points_2d = torch.rand(N, V, J, 2) * 640
-    K = torch.eye(3).unsqueeze(0).unsqueeze(0).expand(N, V, 3, 3)
-    R = torch.eye(3).unsqueeze(0).unsqueeze(0).expand(N, V, 3, 3)
-    t = torch.zeros(N, V, 3)
+    # CPU smoke test: V=4, J=17, target_k=2.
+    V, J, d = 4, 17, 64
+    selector = AdaptiveViewSelector(
+        d=d,
+        n_views=V,
+        n_joints=J,
+        target_k=2,
+        temperature=0.5,
+        budget_weight=0.1,
+    )
 
-    selector = AdaptiveViewSelector(d=d, n_views=V, k=2)
-    soft, hard, scores = selector(feat, points_2d, K, R, t)
-    assert soft.shape == (N, V, J)
-    assert hard.shape == (N, V, J)
-    print("adaptive view selector sanity check passed")
+    # Training path with Gumbel-softmax straight-through top-k.
+    selector.train()
+    x = torch.rand(8, V, J, d)
+    mask, budget_loss = selector(x)
+    assert mask.shape == (8, V, J), mask.shape
+    assert torch.allclose(mask.sum(dim=1), torch.full((8, J), 2.0), atol=1e-5)
+    assert budget_loss.item() >= 0.0
+    print(f"training mask per-joint view count: {mask[0].sum(dim=0).unique()}")
+
+    # Inference path: deterministic hard top-k.
+    selector.eval()
+    with torch.no_grad():
+        mask_inf, budget_loss_inf = selector(x)
+    assert mask_inf.shape == (8, V, J)
+    assert torch.allclose(
+        mask_inf.sum(dim=1), torch.full((8, J), 2.0), atol=1e-5
+    )
+    assert set(mask_inf.unique().tolist()).issubset({0.0, 1.0})
+    print("inference hard top-k mask passed")
+
+    # Gradient sanity check.
+    selector.train()
+    x_grad = torch.rand(4, V, J, d, requires_grad=True)
+    mask, budget_loss = selector(x_grad)
+    loss = mask.mean() + budget_loss
+    loss.backward()
+    assert any(p.grad is not None for p in selector.parameters())
+    print("adaptive view selector CPU smoke test passed")

@@ -141,18 +141,60 @@ class KinematicChainGraphRefinerTemporal(nn.Module):
     """Temporal-aware wrapper that applies ``KinematicChainGraphRefiner`` per frame.
 
     Useful when the upstream model already outputs a temporal sequence
-    ``(B, T, J, 3)``.
+    ``(B, T, J, 3)``.  The wrapper can be disabled with ``enabled=False`` so that
+    v4 can toggle the final kinematic-chain refiner without re-wiring the
+    forward graph.
     """
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, enabled: bool = True, **kwargs):
         super().__init__()
+        self.enabled = enabled
         self.refiner = KinematicChainGraphRefiner(*args, **kwargs)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Refine ``(B, T, J, 3)`` or ``(B, J, 3)`` skeletons."""
+        if not self.enabled:
+            return x
         if x.dim() == 4:
             B, T, J, C = x.shape
             x_flat = x.reshape(B * T, J, C)
             out = self.refiner(x_flat)
             return out.reshape(B, T, J, C)
         return self.refiner(x)
+
+
+
+def _cpu_smoke():
+    """CPU smoke test on an H36M 17-joint skeleton."""
+    import torch
+
+    B, T, J, C = 2, 9, 17, 3
+    x = torch.randn(B, T, J, C)
+
+    # Enabled path.
+    refiner = KinematicChainGraphRefinerTemporal(j=J, hidden_dim=32, num_layers=2)
+    out = refiner(x)
+    assert out.shape == x.shape, f"Expected {x.shape}, got {out.shape}"
+    assert torch.isfinite(out).all()
+
+    # Disabled path should be identity.
+    refiner_off = KinematicChainGraphRefinerTemporal(
+        j=J, hidden_dim=32, num_layers=2, enabled=False
+    )
+    assert torch.equal(refiner_off(x), x)
+
+    # Non-temporal input (B, J, 3).
+    x2 = torch.randn(4, J, C)
+    out2 = refiner(x2)
+    assert out2.shape == x2.shape
+
+    # Gradient flow.
+    loss = out.sum()
+    loss.backward()
+    assert any(p.grad is not None for p in refiner.parameters())
+
+    print("KinematicChainGraphRefinerTemporal CPU smoke OK:", out.shape)
+
+
+if __name__ == "__main__":
+    _cpu_smoke()

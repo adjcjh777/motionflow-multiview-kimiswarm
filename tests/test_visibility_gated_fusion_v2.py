@@ -99,6 +99,51 @@ def test_visibility_gate_fallback_guard():
     assert torch.all(per_joint > 0)
 
 
+def test_visibility_gate_context_visibility_alias():
+    """use_context_visibility should be an alias for use_context."""
+    N, V, J, d = 2, 4, 17, 32
+    feat = torch.randn(N, V, J, d)
+    confidences = torch.rand(N, V, J)
+
+    gate_context = VisibilityGatedFusionV2(d=d, n_views=V, use_context=True)
+    gate_alias = VisibilityGatedFusionV2(
+        d=d, n_views=V, use_context=False, use_context_visibility=True
+    )
+    gate_off = VisibilityGatedFusionV2(
+        d=d, n_views=V, use_context=True, use_context_visibility=False
+    )
+
+    assert gate_context.visibility_head.use_context is True
+    assert gate_alias.visibility_head.use_context is True
+    assert gate_off.visibility_head.use_context is False
+
+    vis_alias = gate_alias(feat, confidences)
+    assert vis_alias.shape == (N, V, J)
+    assert torch.all((vis_alias >= 0) & (vis_alias <= 1))
+
+
+def test_visibility_gate_fallback_gradients_flow():
+    """Gradients should flow even when the fallback guard fires for every joint."""
+    N, V, J, d = 2, 4, 17, 32
+    gate = VisibilityGatedFusionV2(
+        d=d,
+        n_views=V,
+        min_visible_views=2,
+        visibility_threshold=0.5,
+    )
+    feat = torch.full((N, V, J, d), -10.0, requires_grad=True)
+    confidences = torch.ones(N, V, J)
+
+    vis = gate(feat, confidences)
+    vis.sum().backward()
+
+    # Fallback keeps visibility > 0, and the straight-through estimator lets
+    # gradients reach the input features.
+    assert torch.all(vis.sum(dim=1) > 0)
+    assert feat.grad is not None
+    assert not torch.all(feat.grad == 0)
+
+
 def test_crossview_v2_model_forward(cameras):
     """Cross-view v2 model should produce correct output shapes."""
     B, T, V, J = 2, 5, 4, 17

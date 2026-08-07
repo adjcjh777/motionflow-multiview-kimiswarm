@@ -261,7 +261,53 @@ We present a compact, calibrated multi-view 3D human pose estimator that combine
 
 ---
 
-## 11. Related files
+## 12. v4: View-mask-aware adaptive multi-view fusion
+
+### 12.1 Motivation
+
+The current best single model (9.03 mm) and ensemble (8.35 mm) are clean-accuracy anchors. For ICRA/CVPR 2027 we need the same accuracy **and** robustness to real-world capture conditions. v4 targets three remaining failure modes:
+
+- **Variable-view inference** (k=2,3) currently fails catastrophically on H36M v2 (~1990 mm / ~1620 mm).
+- **Occlusion / view dropout** is the largest degradation on MPI-INF-3DHP (18.15 mm at 30 % dropout).
+- **Calibration drift** in rotation and focal length remains weak (rot_0.5°  16.89 mm; focal_1 %  19.13 mm).
+
+### 12.2 v4 method additions
+
+| Module | Role in the paper |
+|--------|-------------------|
+| View-mask-aware visibility gating v2 (Section 4.1) | Replaces single-view visibility with per-joint context visibility across views; closes occlusion gap. |
+| Adaptive view selector (Section 4.2) | Budgeted top-k view selection; enables reliable 2–3 view inference. |
+| Rotation correction head (Section 4.3) | Bounded SO(3) residual before triangulation; fixes rotation drift. |
+| Skeleton-graph residual refiner (Section 4.4) | Replaces dense residual MLP with anatomical graph propagation. |
+| Kinematic-chain graph refiner (Section 4.5) | Optional final temporal skeleton pass. |
+| Attention-entropy regularization (Section 4.6) | Sharpens per-view triangulation weights. |
+| Calibration perturbation curriculum (Section 5.1) | Progressive rot/focal/PP augmentation during training. |
+
+All modules are optional and warm-start from v2/v3 checkpoints, keeping the geometry-first *triangulate, then residual* principle intact.
+
+### 12.3 v4 quantitative claims
+
+| Claim | v2/v3 anchor | v4 target | Evidence needed |
+|-------|--------------|-----------|-----------------|
+| MPI-INF-3DHP single-model accuracy | 9.03 mm | < 8.6 mm | Full v4 run on MPI S2/Seq1. |
+| Variable-view k=2 robustness | ~1990 mm (H36M v2) | < 50 mm | Variable-view eval wrapper. |
+| View-dropout robustness | 18.15 mm @ 30 % | < 16.3 mm | Robustness matrix v4. |
+| Rotation robustness | 16.89 mm @ 0.5° | < 14 mm | Robustness matrix v4. |
+| Focal-length robustness | 19.13 mm @ 1 % | < 15 mm | Robustness matrix v4. |
+| Model size / warm-start | < 1.1 M params | < 2.0 M params, `strict=False` load | Checkpoint compatibility test. |
+
+### 12.4 v4 files
+
+- Narrative: `docs/swarm_iter20/paper_story_v4.md`
+- Design: `docs/v4_architecture_design_proposal.md`
+- Model: `motionflow_mv/fusion/omniview_fusion_v4.py`
+- Trainer: `experiments/train_omniview_fusion_v4_webbridge_multi.py`
+- Evaluator: `experiments/eval_omniview_fusion_v4_mpiinf3dhp.py`
+- Tests: `tests/test_omniview_fusion_v4.py`
+
+---
+
+## 13. Related files
 
 - Implementation:
   - `motionflow_mv/fusion/ray_attention_temporal_crossview_residual_principal_point_bayesian_tri_model.py`
