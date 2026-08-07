@@ -193,6 +193,10 @@ def build_model(args: argparse.Namespace, n_views: int, j: int) -> OmniMultiView
         n_joint_layers=args.n_joint_layers,
         return_pp_delta=False,
         return_covariance=True,
+        # v3/v4 geometry toggles (must match training config)
+        use_multiscale_fusion=args.use_multiscale_fusion,
+        use_camera_conditioning=args.use_camera_conditioning,
+        use_epipolar_bias=args.use_epipolar_bias,
         # v4 toggles (default all False for warm-start compatibility)
         use_context_visibility=args.use_context_visibility,
         use_skeleton_residual=args.use_skeleton_residual,
@@ -515,6 +519,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--n_joint_layers", type=int, default=0, help="Dense joint-level transformer layers")
     parser.add_argument("--n_heads", type=int, default=4, help="Attention heads")
     # v4 toggles
+    parser.add_argument("--use_multiscale_fusion", action="store_true", help="Enable multiscale fusion")
+    parser.add_argument("--use_camera_conditioning", action="store_true", help="Enable camera conditioning")
+    parser.add_argument("--use_epipolar_bias", action="store_true", help="Enable epipolar bias")
     parser.add_argument("--use_context_visibility", action="store_true", help="Enable context-aware visibility head")
     parser.add_argument("--use_skeleton_residual", action="store_true", help="Enable skeleton-graph residual refiner")
     parser.add_argument("--use_kinematic_refiner", action="store_true", help="Enable kinematic-chain final refiner")
