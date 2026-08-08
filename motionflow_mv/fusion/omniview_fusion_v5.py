@@ -32,6 +32,7 @@ from motionflow_mv.fusion.cross_view_transformer_v17 import CrossViewTransformer
 from motionflow_mv.fusion.deformable_cross_view_attention import DeformableCrossViewAttention
 from motionflow_mv.fusion.omniview_fusion_v4 import OmniMultiViewFusionV4
 from motionflow_mv.fusion.perceiver_view_aggregator import PerceiverViewAggregator
+from motionflow_mv.fusion.temporal_perceiver_v19 import TemporalPerceiverRefiner
 from motionflow_mv.fusion.variable_view_set_aggregator import (
     VariableViewSetAggregator,
 )
@@ -104,6 +105,7 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
         use_perceiver_aggregator: bool = False,
         use_cross_view_transformer_v17: bool = False,
         use_deformable_cross_view_attention_v18: bool = False,
+        use_temporal_perceiver_v19: bool = False,
         camera_view_embedding_hidden: int = 32,
         set_view_n_isab_layers: int = 2,
         set_view_num_inducing_points: int = 32,
@@ -159,6 +161,8 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
             rotation_max_rot_deg=rotation_max_rot_deg,
             entropy_weight=entropy_weight,
         )
+
+        self.max_temporal_len = max_temporal_len
 
         # Optional adaptive scale-selective multi-scale fusion (v12).
         self.use_adaptive_multiscale_fusion = use_adaptive_multiscale_fusion
@@ -247,6 +251,21 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
             )
         else:
             self.deformable_cross_view_attention_v18 = None
+
+        self.use_temporal_perceiver_v19 = use_temporal_perceiver_v19
+        if self.use_temporal_perceiver_v19:
+            self.temporal_perceiver_refiner_v19 = TemporalPerceiverRefiner(
+                j=self.j,
+                in_dim=3,
+                d=64,
+                n_latents=32,
+                n_layers=2,
+                n_heads=4,
+                dropout=0.0,
+                max_temporal_len=self.max_temporal_len,
+            )
+        else:
+            self.temporal_perceiver_refiner_v19 = None
 
         # Make sure the ST transformer can accept an additive attention mask even
         # when epipolar bias is disabled.
@@ -681,6 +700,12 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
             epi_loss = epi_loss + self.attention_entropy_loss(weights)
 
         pred_3d = pred_3d.view(B, T, J, 3)
+
+        # Optional v19 temporal Perceiver refinement on the final per-frame 3D poses.
+        if self.use_temporal_perceiver_v19 and self.temporal_perceiver_refiner_v19 is not None:
+            residual_v19 = self.temporal_perceiver_refiner_v19(pred_3d)
+            pred_3d = pred_3d + residual_v19
+
         weights = weights.view(B, T, V, J)
         L = L.view(B, T, V, J, 2, 2)
         visibility = visibility.view(B, T, V, J)
