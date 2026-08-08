@@ -222,16 +222,42 @@ class DiffusionPoseRefinerV20(nn.Module):
         self,
         pose_init: torch.Tensor,
         feat: Optional[torch.Tensor] = None,
+        t: Optional[torch.Tensor] = None,
         train_targets: Optional[torch.Tensor] = None,
     ):
-        """Forward pass.  See class docstring for shapes."""
+        """Forward pass.
+
+        Parameters
+        ----------
+        pose_init:
+            ``(B, J, 3)`` or ``(B, T, J, 3)`` coarse 3D pose.
+        feat:
+            Optional conditioning features. Supported shapes:
+            ``(B, in_dim)``, ``(B, J, in_dim)`` (per-joint), or for spatiotemporal
+            inputs ``(B*T, in_dim)`` / ``(B*T, J, in_dim)``.
+        t:
+            Optional integer timesteps ``(B,)``. When provided (or when the module
+            is in training mode without ground-truth targets), a single
+            denoising step is performed starting from random noise, predicting
+            the residual that is added to ``pose_init``.
+        train_targets:
+            Optional ground-truth pose for diffusion training. When provided,
+            returns ``(refined_pose, diffusion_loss)``.
+        """
         orig_shape = pose_init.shape
         if pose_init.dim() == 4:
             # (B, T, J, 3) -> (B*T, J, 3)
             B, T, J, _ = pose_init.shape
             pose_init_flat = pose_init.reshape(B * T, J, 3)
             if feat is not None:
-                feat_flat = feat.reshape(B * T, -1) if feat.dim() == 2 else feat.reshape(B * T, -1)
+                if feat.dim() == 2:
+                    feat_flat = feat  # (B*T, in_dim)
+                elif feat.dim() == 3:
+                    feat_flat = feat  # (B*T, J, in_dim)
+                elif feat.dim() == 4:
+                    feat_flat = feat.reshape(B * T, J, -1)
+                else:
+                    feat_flat = feat.reshape(B * T, -1)
             else:
                 feat_flat = None
             if train_targets is not None:
@@ -245,17 +271,17 @@ class DiffusionPoseRefinerV20(nn.Module):
             J = pose_init_flat.shape[1]
 
         if train_targets_flat is not None:
-            # Training: predict noise and return diffusion loss + a deterministic
-            # refinement from a randomly sampled timestep.
+            # Training with targets: predict noise and return diffusion loss + a
+            # deterministic refinement from a randomly sampled timestep.
             residual_target = train_targets_flat - pose_init_flat
             residual_target = torch.clamp(residual_target, -self.max_residual, self.max_residual)
             B_local = pose_init_flat.shape[0]
-            t = torch.randint(0, self.num_diffusion_steps, (B_local,), device=pose_init.device)
+            t_train = torch.randint(0, self.num_diffusion_steps, (B_local,), device=pose_init.device)
             noise = torch.randn_like(residual_target)
-            noisy_residual = self._add_noise(residual_target, t, noise)
+            noisy_residual = self._add_noise(residual_target, t_train, noise)
 
             cond = self._build_conditioning(noisy_residual, pose_init_flat, feat_flat)
-            predicted_noise = self._denoise_step(noisy_residual, t, cond)
+            predicted_noise = self._denoise_step(noisy_residual, t_train, cond)
             loss = F.mse_loss(predicted_noise, noise)
 
             # Also return a deterministic refinement using the mean predictor.
@@ -264,7 +290,27 @@ class DiffusionPoseRefinerV20(nn.Module):
                 refined = refined.reshape(orig_shape)
             return refined, loss
 
-        # Inference
+        # Single-step residual prediction (training mode or explicit timestep).
+        if t is not None or self.training:
+            if t is None:
+                t = torch.randint(
+                    0,
+                    self.num_diffusion_steps,
+                    (pose_init_flat.shape[0],),
+                    device=pose_init.device,
+                )
+            else:
+                t = t.view(pose_init_flat.shape[0])
+            noise = torch.randn_like(pose_init_flat)
+            cond = self._build_conditioning(noise, pose_init_flat, feat_flat)
+            predicted_residual = self._denoise_step(noise, t, cond)
+            predicted_residual = torch.clamp(predicted_residual, -self.max_residual, self.max_residual)
+            refined = pose_init_flat + predicted_residual
+            if pose_init.dim() == 4:
+                refined = refined.reshape(orig_shape)
+            return refined
+
+        # Inference without explicit timestep: run full DDPM sampling.
         refined = self._sample(pose_init_flat, feat_flat)
         if pose_init.dim() == 4:
             refined = refined.reshape(orig_shape)
@@ -279,7 +325,12 @@ class DiffusionPoseRefinerV20(nn.Module):
         B_local, J_local, _ = noisy_residual.shape
         parts = [noisy_residual, pose_init]
         if feat is not None and self.in_dim > 0:
-            feat_expanded = feat[:, None, :].expand(-1, J_local, -1)
+            if feat.dim() == 2:
+                feat_expanded = feat[:, None, :].expand(-1, J_local, -1)
+            elif feat.dim() == 3:
+                feat_expanded = feat
+            else:
+                feat_expanded = feat[:, None, :].expand(-1, J_local, -1)
             parts.append(feat_expanded)
         return torch.cat(parts, dim=-1)
 

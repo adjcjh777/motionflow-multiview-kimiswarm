@@ -9,6 +9,8 @@ New toggles
   with an MLP conditioned on calibrated camera intrinsics and extrinsics.
 * ``use_set_view_aggregator`` – add a permutation-invariant set-transformer
   (Induced Set Attention Blocks) over views before the time+view transformer.
+* ``use_diffusion_refiner_v20`` – replace the deterministic residual MLP with a
+  lightweight diffusion-based pose refiner.
 
 The model also accepts an explicit ``view_mask`` so that missing views can be
 masked out in confidences, weights, and triangulation.
@@ -30,6 +32,7 @@ from motionflow_mv.fusion.epipolar_transformer_bias import (
 )
 from motionflow_mv.fusion.cross_view_transformer_v17 import CrossViewTransformerV17
 from motionflow_mv.fusion.deformable_cross_view_attention import DeformableCrossViewAttention
+from motionflow_mv.fusion.diffusion_pose_refiner_v20 import DiffusionPoseRefinerV20
 from motionflow_mv.fusion.omniview_fusion_v4 import OmniMultiViewFusionV4
 from motionflow_mv.fusion.perceiver_view_aggregator import PerceiverViewAggregator
 from motionflow_mv.fusion.temporal_perceiver_v19 import TemporalPerceiverRefiner
@@ -57,6 +60,10 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
         Number of inducing points in each ISAB.
     set_view_dropout:
         Dropout probability in the set aggregator attention layers.
+    use_diffusion_refiner_v20:
+        Replace the deterministic residual MLP with a diffusion-based refiner.
+    num_diffusion_steps:
+        Number of diffusion timesteps used by the v20 refiner.
     See ``OmniMultiViewFusionV4`` for the remaining arguments.
     """
 
@@ -106,6 +113,8 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
         use_cross_view_transformer_v17: bool = False,
         use_deformable_cross_view_attention_v18: bool = False,
         use_temporal_perceiver_v19: bool = False,
+        use_diffusion_refiner_v20: bool = False,
+        num_diffusion_steps: int = 10,
         camera_view_embedding_hidden: int = 32,
         set_view_n_isab_layers: int = 2,
         set_view_num_inducing_points: int = 32,
@@ -266,6 +275,18 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
             )
         else:
             self.temporal_perceiver_refiner_v19 = None
+
+        self.use_diffusion_refiner_v20 = use_diffusion_refiner_v20
+        self.num_diffusion_steps = num_diffusion_steps
+        if self.use_diffusion_refiner_v20:
+            self.diffusion_refiner_v20 = DiffusionPoseRefinerV20(
+                j=self.j,
+                in_dim=self.d,
+                residual_hidden=256,
+                num_diffusion_steps=num_diffusion_steps,
+            )
+        else:
+            self.diffusion_refiner_v20 = None
 
         # Make sure the ST transformer can accept an additive attention mask even
         # when epipolar bias is disabled.
@@ -679,10 +700,24 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
             num_iters=self.gn_iters,
         )
 
-        # Residual refinement head.
-        residual_input = torch.cat([feat_pooled, pred_3d_gn], dim=-1)
-        delta = self.residual_mlp(residual_input)
-        pred_3d = pred_3d_gn + delta
+        # Residual refinement head (deterministic MLP or diffusion-based v20).
+        if self.use_diffusion_refiner_v20 and self.diffusion_refiner_v20 is not None:
+            if self.training:
+                t_diff = torch.randint(
+                    0,
+                    self.num_diffusion_steps,
+                    (pred_3d_gn.shape[0],),
+                    device=device,
+                )
+                pred_3d = self.diffusion_refiner_v20(
+                    pred_3d_gn, feat=feat_pooled, t=t_diff
+                )
+            else:
+                pred_3d = self.diffusion_refiner_v20(pred_3d_gn, feat=feat_pooled)
+        else:
+            residual_input = torch.cat([feat_pooled, pred_3d_gn], dim=-1)
+            delta = self.residual_mlp(residual_input)
+            pred_3d = pred_3d_gn + delta
 
         # Optional final kinematic-chain refiner.
         if self.use_kinematic_refiner and self.kinematic_refiner is not None:
