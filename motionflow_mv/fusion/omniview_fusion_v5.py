@@ -311,7 +311,7 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
         if self.use_temporal_perceiver_v19:
             self.temporal_perceiver_refiner_v19 = TemporalPerceiverRefiner(
                 j=self.j,
-                in_dim=3,
+                in_dim=3 + self.d,
                 d=64,
                 n_latents=32,
                 n_layers=2,
@@ -918,8 +918,10 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
 
         # Optional v19 temporal Perceiver refinement on the final per-frame 3D poses.
         if self.use_temporal_perceiver_v19 and self.temporal_perceiver_refiner_v19 is not None:
-            residual_v19 = self.temporal_perceiver_refiner_v19(pred_3d)
-            pred_3d = pred_3d + residual_v19
+            # Feature-aware temporal perceiver: concat 3D pose with view-pooled ST features.
+            feat_pooled_v19 = feat_pooled.view(B, T, J, self.d)
+            temporal_input = torch.cat([pred_3d, feat_pooled_v19], dim=-1)
+            pred_3d = self.temporal_perceiver_refiner_v19(temporal_input, baseline_3d=pred_3d)
 
         # Optional v28 physical-space alignment.
         if self.use_physical_space_alignment_v28 and self.physical_space_alignment_v28 is not None:
