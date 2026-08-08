@@ -74,18 +74,7 @@ def gpu_free_mibs() -> list[tuple[int, int]]:
     return pairs
 
 
-def running_run_names() -> set[str]:
-    """Return the set of v31 run keys already running on A800."""
-    names: set[str] = set()
-    try:
-        out = a800_ssh("tmux ls 2>/dev/null || true")
-    except subprocess.CalledProcessError:
-        return names
-    for line in out.splitlines():
-        match = re.search(r"v31_top5_([^\s]+):", line)
-        if match:
-            names.add(match.group(1))
-    return names
+def used_gpus_from_tmux() -> set[int]:
     """Parse v31_top5 tmux sessions and return GPU indices already in use."""
     gpus: set[int] = set()
     try:
@@ -98,6 +87,20 @@ def running_run_names() -> set[str]:
         if match:
             gpus.add(int(match.group(1)))
     return gpus
+
+
+def running_run_names() -> set[str]:
+    """Return the set of v31 run keys already running on A800."""
+    names: set[str] = set()
+    try:
+        out = a800_ssh("tmux ls 2>/dev/null || true")
+    except subprocess.CalledProcessError:
+        return names
+    for line in out.splitlines():
+        match = re.search(r"v31_top5_([^\s]+):", line)
+        if match:
+            names.add(match.group(1))
+    return names
 
 
 def launch_run(name: str, extra_flags: str, output: str, gpu: int) -> None:
