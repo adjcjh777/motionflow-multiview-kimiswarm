@@ -40,6 +40,10 @@ from motionflow_mv.fusion.multiview_geometry_fusion_v25 import (  # noqa: E402
     GeometryAwareCrossViewAttention,
     MultiViewGeometryFusionV25,
 )
+from motionflow_mv.fusion.temporal_geometry_fusion_v26 import (  # noqa: E402
+    TemporalGeometryAttention,
+    TemporalGeometryFusionV26,
+)
 
 
 def _make_cameras(n_views: int = 4) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
@@ -103,12 +107,7 @@ def _geometry_attention_flops(
     input: Tuple[Any, ...],
     output: torch.Tensor,
 ) -> int:
-    """Custom FLOP handler for the geometry-aware cross-view attention block.
-
-    Accounts for the attention matmuls that the generic hook-based counter
-    cannot see because they are performed with ``torch.matmul`` rather than as
-    separate ``nn.Linear`` modules.
-    """
+    """Custom FLOP handler for the geometry-aware cross-view attention block."""
     tokens = input[0]  # (B, T, V, J, d)
     if tokens.dim() != 5:
         return 0
@@ -116,11 +115,28 @@ def _geometry_attention_flops(
     n_heads = module.n_heads
     d_head = d // n_heads
 
-    # QKV and output projection are already counted by the generic Linear hooks,
-    # so we only add the attention matmuls here.
-    # q @ k^T  : B*T*J * n_heads * V * V * d_head
-    # attn @ v : B*T*J * n_heads * V * V * d_head
+    # QKV and output projection are counted by the generic Linear hooks,
+    # only the attention matmuls are added here.
     flops = 2 * B * T * J * n_heads * V * V * d_head
+    return flops
+
+
+def _temporal_geometry_attention_flops(
+    module: TemporalGeometryAttention,
+    input: Tuple[Any, ...],
+    output: torch.Tensor,
+) -> int:
+    """Custom FLOP handler for the spatio-temporal geometry attention block."""
+    tokens = input[0]  # (B, T, V, J, d)
+    if tokens.dim() != 5:
+        return 0
+    B, T, V, J, d = tokens.shape
+    n_heads = module.n_heads
+    d_head = d // n_heads
+    W = module.temporal_window
+
+    # attention over (temporal_window * views) keys for each query view.
+    flops = 2 * B * T * J * n_heads * V * (W * V) * d_head
     return flops
 
 
@@ -181,6 +197,70 @@ def analyze_v25(
     return summary
 
 
+def analyze_v26(
+    batch_size: int = 2,
+    t: int = 4,
+    n_views: int = 4,
+    n_joints: int = 17,
+    d: int = 128,
+    n_heads: int = 4,
+    n_geometry_layers: int = 2,
+    n_ray_samples: int = 4,
+    temporal_window: int = 3,
+) -> Dict[str, Any]:
+    """Analyze the v26 temporal geometry fusion module."""
+    inputs = build_v25_inputs(batch_size=batch_size, t=t, n_views=n_views, n_joints=n_joints)
+    model = TemporalGeometryFusionV26(
+        d=d,
+        n_heads=n_heads,
+        n_views=n_views,
+        n_geometry_layers=n_geometry_layers,
+        n_temporal_layers=1,
+        n_ray_samples=n_ray_samples,
+        temporal_window=temporal_window,
+        use_geometry_attention=True,
+        use_temporal_geometry_attention=True,
+        use_learned_depth_triangulation=True,
+    )
+
+    custom_handlers = {
+        GeometryAwareCrossViewAttention: _geometry_attention_flops,
+        TemporalGeometryAttention: _temporal_geometry_attention_flops,
+    }
+    counter = FlopsCounter(custom_handlers=custom_handlers)
+    counter.register(model)
+    try:
+        with torch.no_grad():
+            model(
+                points_2d=inputs["points_2d"],
+                K=inputs["K"],
+                R=inputs["R"],
+                t=inputs["t"],
+                view_mask=inputs["view_mask"],
+            )
+    finally:
+        counter.remove()
+
+    params = count_parameters(model)
+    summary = {
+        "model": model.__class__.__name__,
+        "config": {
+            "d": d,
+            "n_heads": n_heads,
+            "n_views": n_views,
+            "n_geometry_layers": n_geometry_layers,
+            "n_ray_samples": n_ray_samples,
+            "temporal_window": temporal_window,
+            "batch_size": batch_size,
+            "t": t,
+            "n_joints": n_joints,
+        },
+        "parameters": params.to_dict(),
+        "flops": counter.flops_by_op.to_dict(),
+    }
+    return summary
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Profile model size and FLOPs for MotionFlow-MultiView models.",
@@ -189,7 +269,7 @@ def parse_args() -> argparse.Namespace:
         "--model",
         type=str,
         default="multiview_geometry_fusion_v25",
-        choices=["multiview_geometry_fusion_v25"],
+        choices=["multiview_geometry_fusion_v25", "temporal_geometry_fusion_v26"],
         help="Model variant to profile.",
     )
     parser.add_argument("--batch-size", type=int, default=2, help="Batch size for profiling.")
@@ -234,6 +314,17 @@ def main() -> int:
     args = parse_args()
     if args.model == "multiview_geometry_fusion_v25":
         summary = analyze_v25(
+            batch_size=args.batch_size,
+            t=args.t,
+            n_views=args.n_views,
+            n_joints=args.joints,
+            d=args.d,
+            n_heads=args.n_heads,
+            n_geometry_layers=args.n_geometry_layers,
+            n_ray_samples=args.n_ray_samples,
+        )
+    elif args.model == "temporal_geometry_fusion_v26":
+        summary = analyze_v26(
             batch_size=args.batch_size,
             t=args.t,
             n_views=args.n_views,
