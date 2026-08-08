@@ -132,6 +132,19 @@ RUNS = [
         "--use_geometry_view_joint_graph_network_v34 --v34_gvjgn_n_layers 2 --v34_gvjgn_n_heads 4",
         "omniview_fusion_v34_geometry_view_joint_graph_network_a800",
     ),
+    # v34 geometry-aware VJGN ablations.
+    (
+        "v34_geometry_view_joint_graph_network_n_layers_1",
+        "--use_hierarchical_multiview_v31 --v31_geometry_bias "
+        "--use_geometry_view_joint_graph_network_v34 --v34_gvjgn_n_layers 1 --v34_gvjgn_n_heads 4",
+        "omniview_fusion_v34_geometry_view_joint_graph_network_n_layers_1_a800",
+    ),
+    (
+        "v34_geometry_view_joint_graph_network_dropout_0_1",
+        "--use_hierarchical_multiview_v31 --v31_geometry_bias "
+        "--use_geometry_view_joint_graph_network_v34 --v34_gvjgn_n_layers 2 --v34_gvjgn_n_heads 4 --v34_gvjgn_dropout 0.1",
+        "omniview_fusion_v34_geometry_view_joint_graph_network_dropout_0_1_a800",
+    ),
     # v33 HMSP + v34 geometry-aware VJGN stack.
     (
         "v34_hmsp_geometry_vjgn_stack",
@@ -157,6 +170,17 @@ RUNS = [
         "--use_hierarchical_multiscale_spatial_pyramid_v33 --v33_hmsp_scales 1 2 4 "
         "--outlier_view_prob 0.3 --outlier_view_max_views 1",
         "omniview_fusion_v33_combined_all_three_plus_hmsp_a800",
+    ),
+    # v34 geometry-aware VJGN on top of v33 combined fixed (maximal v34 stack).
+    (
+        "v34_geometry_vjgn_combined_fixed_max",
+        "--use_uncertainty_aware_triangulation_v33 --v33_uat_loss_weight 0.01 "
+        "--use_outlier_view_rejection_v33 --v33_outlier_z_thresh 3.0 --v33_outlier_soft_beta 1.0 --v33_outlier_supervised_weight 0.01 "
+        "--use_hierarchical_multiview_v31 --v31_geometry_bias --use_ray_conditioned_attention_v33 --v33_n_heads 4 --v33_n_layers 2 --v33_use_ray_bias --v33_residual_gate_init -6.0 "
+        "--use_hierarchical_multiscale_spatial_pyramid_v33 --v33_hmsp_scales 1 2 4 "
+        "--use_geometry_view_joint_graph_network_v34 --v34_gvjgn_n_layers 2 --v34_gvjgn_n_heads 4 "
+        "--outlier_view_prob 0.3 --outlier_view_max_views 1 --weight_decay 1e-4",
+        "omniview_fusion_v34_geometry_vjgn_combined_fixed_max_a800",
     ),
 ]
 
