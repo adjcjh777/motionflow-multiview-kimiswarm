@@ -17,6 +17,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from .epipolar_attention_bias import compute_epipolar_distance
+from .outlier_view_detector import OutlierViewDetector
 from .triangulation import triangulate_dlt_batched_lstsq
 
 
@@ -214,6 +215,10 @@ class GeometryAwareCrossViewAttention(nn.Module):
         for p in self.out_proj.parameters():
             nn.init.zeros_(p)
 
+        # Optional debug hook for visualising / inspecting the attention map.
+        self.record_attention = False
+        self.last_attention: Optional[torch.Tensor] = None
+
     def forward(
         self,
         tokens: torch.Tensor,
@@ -258,6 +263,8 @@ class GeometryAwareCrossViewAttention(nn.Module):
 
         attn = F.softmax(scores, dim=-1)
         attn = torch.nan_to_num(attn, nan=0.0)
+        if self.record_attention:
+            self.last_attention = attn.detach().cpu()
         out = torch.matmul(attn, v)  # (N, h, V, d_h)
         out = out.transpose(1, 2).reshape(B * T * J, V, d)
         out = self.out_proj(out)
@@ -369,6 +376,9 @@ class MultiViewGeometryFusionV25(nn.Module):
     use_geometry_attention: enable geometry-aware cross-view attention.
     use_learned_depth_triangulation: enable learned depth-proposal triangulation.
     use_geometry_bundle_adjustment: reserved placeholder (currently no-op).
+    use_outlier_view_detector: enable robust outlier-view detection and down-weighting.
+    outlier_z_thresh: robust z-score threshold for the outlier detector.
+    outlier_soft_beta: softness of the exponential outlier down-weighting.
     dropout: dropout rate.
     """
 
@@ -383,6 +393,9 @@ class MultiViewGeometryFusionV25(nn.Module):
         use_learned_depth_triangulation: bool = True,
         use_geometry_bundle_adjustment: bool = False,
         use_camera_joint_graph: bool = False,
+        use_outlier_view_detector: bool = False,
+        outlier_z_thresh: float = 3.0,
+        outlier_soft_beta: float = 1.0,
         dropout: float = 0.1,
     ):
         super().__init__()
@@ -393,6 +406,7 @@ class MultiViewGeometryFusionV25(nn.Module):
         self.use_learned_depth_triangulation = use_learned_depth_triangulation
         self.use_geometry_bundle_adjustment = use_geometry_bundle_adjustment
         self.use_camera_joint_graph = use_camera_joint_graph
+        self.use_outlier_view_detector = use_outlier_view_detector
 
         self.ray_tokenizer = RayTokenizer(d=d, n_ray_samples=n_ray_samples)
 
@@ -407,6 +421,11 @@ class MultiViewGeometryFusionV25(nn.Module):
             self.depth_tri_head = DepthProposalTriangulation(n_views=n_views, n_ray_samples=n_ray_samples)
         else:
             self.depth_tri_head = None
+
+        if use_outlier_view_detector:
+            self.outlier_view_detector = OutlierViewDetector(z_thresh=outlier_z_thresh, soft_beta=outlier_soft_beta)
+        else:
+            self.outlier_view_detector = None
 
     def forward(
         self,
@@ -450,6 +469,14 @@ class MultiViewGeometryFusionV25(nn.Module):
 
         # Initial triangulation if not supplied.
         if pred_3d_init is None:
+            tri_weights = confidence if view_mask is None else confidence * view_mask[:, :, :, None]
+            pred_3d_init = triangulate_initial(pts, K, R, t, weights=tri_weights)
+
+        # Optional outlier-view detection and down-weighting.
+        if self.use_outlier_view_detector and self.outlier_view_detector is not None:
+            outlier_weights, _ = self.outlier_view_detector(pred_3d_init, pts, K, R, t, view_mask=view_mask)
+            confidence = confidence * outlier_weights
+            # Re-triangulate with outlier-down-weighted confidence for a cleaner seed.
             tri_weights = confidence if view_mask is None else confidence * view_mask[:, :, :, None]
             pred_3d_init = triangulate_initial(pts, K, R, t, weights=tri_weights)
 

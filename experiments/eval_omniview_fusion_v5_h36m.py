@@ -241,6 +241,64 @@ def load_checkpoint(model: torch.nn.Module, checkpoint_path: str) -> dict:
     return config
 
 
+def load_training_config(checkpoint_path: str, config_json: str | None = None) -> Dict[str, Any] | None:
+    """Load the training config saved alongside a checkpoint.
+
+    The training script writes ``<checkpoint>.config.json`` next to the
+    checkpoint.  If that file exists, return its contents; otherwise return
+    ``None``.  An explicit ``--config_json`` path overrides the default
+    side-car location.
+    """
+    if config_json is None:
+        candidate = Path(checkpoint_path).with_suffix(".config.json")
+    else:
+        candidate = Path(config_json)
+    if not candidate.exists():
+        return None
+    try:
+        with open(candidate, "r") as f:
+            return json.load(f)
+    except Exception as exc:
+        print(f"Warning: could not load config from {candidate}: {exc}")
+        return None
+
+
+# v25 architecture flags whose defaults should be inferred from the training
+# config when the user does not explicitly set them on the CLI.
+_V25_FLAG_NAMES = (
+    "use_multiview_geometry_fusion_v25",
+    "v25_use_geometry_attention",
+    "v25_use_learned_depth_triangulation",
+    "v25_use_geometry_bundle_adjustment",
+    "v25_use_camera_joint_graph",
+)
+
+
+def restore_v25_flags(args: argparse.Namespace, config: Dict[str, Any]) -> None:
+    """Infer v25 architecture flags from saved training config.
+
+    Boolean flags use ``default=None`` so we can distinguish "not set on the
+    CLI" from "explicitly disabled".  When a flag is unset, we copy the value
+    from the saved config; otherwise we leave the user's choice alone.
+    """
+    for name in _V25_FLAG_NAMES:
+        if getattr(args, name) is None:
+            value = config.get(name)
+            if isinstance(value, bool):
+                setattr(args, name, value)
+            elif isinstance(value, str):
+                setattr(args, name, value.lower() in {"true", "1", "yes"})
+            else:
+                setattr(args, name, False)
+
+
+def normalise_v25_flags(args: argparse.Namespace) -> None:
+    """Convert any remaining ``None`` v25 flags to ``False``."""
+    for name in _V25_FLAG_NAMES:
+        if getattr(args, name) is None:
+            setattr(args, name, False)
+
+
 # ---------------------------------------------------------------------------
 # Evaluation helpers
 # ---------------------------------------------------------------------------
@@ -526,6 +584,7 @@ def parse_args() -> argparse.Namespace:
     # Inputs
     parser.add_argument("--checkpoint", type=str, default=None, help="Path to trained OmniMultiViewFusionV5 checkpoint")
     parser.add_argument("--dataset", type=str, default=None, help="Path to H36M .npz (e.g. s_09_acts_02_multiview_m.npz)")
+    parser.add_argument("--config_json", type=str, default=None, help="Path to training config JSON (default: <checkpoint>.config.json)")
     parser.add_argument("--smoke", action="store_true", help="CPU/GPU smoke test on synthetic data")
     # Model
     parser.add_argument("--d", type=int, default=128, help="Model feature dimension")
@@ -560,12 +619,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--perceiver_n_layers", type=int, default=2, help="Number of Perceiver latent layers")
     parser.add_argument("--perceiver_n_heads", type=int, default=4, help="Number of attention heads in Perceiver aggregator")
     parser.add_argument("--perceiver_dropout", type=float, default=0.0, help="Dropout in Perceiver aggregator")
-    # v25 toggles
-    parser.add_argument("--use_multiview_geometry_fusion_v25", action="store_true", help="Enable v25 multi-view geometry fusion module")
-    parser.add_argument("--v25_use_geometry_attention", action="store_true", help="Enable v25 geometry-aware cross-view attention")
-    parser.add_argument("--v25_use_learned_depth_triangulation", action="store_true", help="Enable v25 learned depth-proposal triangulation")
-    parser.add_argument("--v25_use_geometry_bundle_adjustment", action="store_true", help="Enable v25 geometry bundle adjustment")
-    parser.add_argument("--v25_use_camera_joint_graph", action="store_true", help="Enable v25 camera-joint graph")
+    # v25 toggles.  default=None lets us tell "not supplied on CLI" apart from
+    # "explicitly disabled", so the saved training config can be honoured.
+    parser.add_argument("--use_multiview_geometry_fusion_v25", action="store_true", default=None, help="Enable v25 multi-view geometry fusion module")
+    parser.add_argument("--v25_use_geometry_attention", action="store_true", default=None, help="Enable v25 geometry-aware cross-view attention")
+    parser.add_argument("--v25_use_learned_depth_triangulation", action="store_true", default=None, help="Enable v25 learned depth-proposal triangulation")
+    parser.add_argument("--v25_use_geometry_bundle_adjustment", action="store_true", default=None, help="Enable v25 geometry bundle adjustment")
+    parser.add_argument("--v25_use_camera_joint_graph", action="store_true", default=None, help="Enable v25 camera-joint graph")
     parser.add_argument("--v25_geom_loss_weight", type=float, default=0.1, help="Weight for v25 geometry loss during training")
     # Evaluation
     parser.add_argument("--clip_len", type=int, default=13, help="Temporal clip length")
@@ -627,24 +687,15 @@ def main():
     )
 
     if args.checkpoint and args.checkpoint != "__smoke__":
-        state = torch.load(args.checkpoint, map_location="cpu", weights_only=True)
-        if isinstance(state, dict) and "config" in state:
-            saved = state["config"]
-            protected = {
-                "checkpoint",
-                "dataset",
-                "out_json",
-                "out_csv",
-                "smoke",
-                "run_robustness",
-                "run_variable_views",
-            }
-            for k, v in saved.items():
-                if k in protected:
-                    continue
-                if not hasattr(args, k) or getattr(args, k) is None:
-                    setattr(args, k, v)
-            print("Restored model config from checkpoint.")
+        # The training script saves architecture flags in a side-car
+        # ``<checkpoint>.config.json``.  Prefer that over any config embedded in
+        # the checkpoint state dict.
+        saved_config = load_training_config(args.checkpoint, args.config_json)
+        if saved_config is not None:
+            restore_v25_flags(args, saved_config)
+            print("Restored v25 flags from training config.")
+
+    normalise_v25_flags(args)
 
     model = build_model(args, n_views=n_views, j=n_joints).to(device)
     if args.checkpoint and args.checkpoint != "__smoke__":

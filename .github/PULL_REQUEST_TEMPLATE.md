@@ -28,6 +28,16 @@ If this PR supports an experiment, include the relevant context here:
 - **A800 job status (if applicable):**
 - **Key findings:**
 
+## v25 Geometry Fusion Round (if applicable)
+
+If this PR touches `MultiViewGeometryFusionV25` or its integration, also confirm:
+
+- [ ] `pytest tests/test_multiview_geometry_fusion_v25.py -q` passes
+- [ ] `v25_use_geometry_bundle_adjustment` starts as identity / no-op and is bounded
+- [ ] `v25_geom_loss_weight` is documented and defaults to `0.1`
+- [ ] No v21-style camera regression observed in smoke run
+- [ ] Related v25 issue is linked: <!-- e.g. Closes #<v25-issue> -->
+
 ## Checklist
 
 - [ ] Code follows the project style

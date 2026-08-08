@@ -143,6 +143,12 @@ class WebBridgeCanonical17Dataset(Dataset):
         sample that many random clips with replacement.
     stride:
         Stride between consecutive clips when ``n_samples`` is ``None``.
+    return_view_mask:
+        If ``True``, each sample also returns a ``(MAX_VIEWS,)`` boolean mask
+        with ``True`` entries for the real (non-padded) views.  This is
+        required by geometry-aware models such as
+        :class:`MultiViewGeometryFusionV25` so that padded views are ignored
+        during cross-view attention and depth-proposal triangulation.
     """
 
     def __init__(
@@ -152,6 +158,7 @@ class WebBridgeCanonical17Dataset(Dataset):
         clip_len: int,
         n_samples: Optional[int] = None,
         stride: int = 1,
+        return_view_mask: bool = False,
     ):
         if dataset_name not in SKELETON_MAPS:
             raise ValueError(
@@ -162,6 +169,7 @@ class WebBridgeCanonical17Dataset(Dataset):
         data = np.load(npz_path)
         joint_map = SKELETON_MAPS[dataset_name]
         src_j = int(data["joints_3d"].shape[1])
+        src_v = int(data["points_2d"].shape[1])
         if joint_map.max() >= src_j:
             raise ValueError(
                 f"Skeleton map for {dataset_name} references joint {joint_map.max()} "
@@ -173,6 +181,8 @@ class WebBridgeCanonical17Dataset(Dataset):
         self.clip_len = clip_len
         self.n_samples = n_samples
         self.total_frames = int(data["points_2d"].shape[0])
+        self.n_views = src_v
+        self.return_view_mask = return_view_mask
 
         points_2d, confidences, joints_3d = _reindex_and_pad_views(
             data["points_2d"],
@@ -215,6 +225,10 @@ class WebBridgeCanonical17Dataset(Dataset):
             dim=-1,
         )  # (T, V, J, 3)
         y = self.joints_3d[start:end]  # (T, J, 3)
+        if self.return_view_mask:
+            view_mask = torch.zeros(MAX_VIEWS, dtype=torch.bool)
+            view_mask[: self.n_views] = True
+            return x, y, self.camera_K, self.camera_R, self.camera_t, self.dataset_id, view_mask
         return x, y, self.camera_K, self.camera_R, self.camera_t, self.dataset_id
 
 
@@ -228,11 +242,12 @@ class WebBridgeMixedDataset(ConcatDataset):
         clip_len: int,
         n_samples: Optional[int] = None,
         stride: int = 1,
+        return_view_mask: bool = False,
     ):
         if len(npz_paths) != len(dataset_names):
             raise ValueError("npz_paths and dataset_names must have the same length")
         datasets = [
-            WebBridgeCanonical17Dataset(p, name, clip_len, n_samples, stride)
+            WebBridgeCanonical17Dataset(p, name, clip_len, n_samples, stride, return_view_mask)
             for p, name in zip(npz_paths, dataset_names)
         ]
         super().__init__(datasets)
@@ -251,6 +266,24 @@ def webbridge_mixed_collate_fn(
     return x, y, K, R, t, dataset_ids
 
 
+def webbridge_mixed_collate_fn_with_mask(
+    batch: List[Tuple],
+) -> Tuple[torch.Tensor, ...]:
+    """Collate mixed-dataset samples that include a per-sample view mask.
+
+    The view mask is stacked to ``(B, MAX_VIEWS)`` and returned as the last
+    element.  It should be expanded to ``(B, T, V)`` by the consumer.
+    """
+    x = torch.stack([b[0] for b in batch], dim=0)
+    y = torch.stack([b[1] for b in batch], dim=0)
+    K = torch.stack([b[2] for b in batch], dim=0)
+    R = torch.stack([b[3] for b in batch], dim=0)
+    t = torch.stack([b[4] for b in batch], dim=0)
+    dataset_ids = torch.tensor([b[5] for b in batch], dtype=torch.long)
+    view_mask = torch.stack([b[6] for b in batch], dim=0)
+    return x, y, K, R, t, dataset_ids, view_mask
+
+
 def build_webbridge_mixed_dataloaders(
     train_paths: Sequence[str],
     train_names: Sequence[str],
@@ -261,6 +294,7 @@ def build_webbridge_mixed_dataloaders(
     train_samples: int = 200,
     val_stride: int = 1,
     num_workers: int = 0,
+    return_view_mask: bool = False,
 ) -> Tuple[DataLoader, DataLoader]:
     """Build train/val DataLoaders for mixed WebBridge data.
 
@@ -280,22 +314,31 @@ def build_webbridge_mixed_dataloaders(
         Stride for validation clips.
     num_workers:
         ``DataLoader`` workers.
+    return_view_mask:
+        If ``True``, loaders return an additional per-sample view mask.
 
     Returns
     -------
     train_loader, val_loader
     """
     train_dataset = WebBridgeMixedDataset(
-        train_paths, train_names, clip_len, n_samples=train_samples
+        train_paths, train_names, clip_len, n_samples=train_samples,
+        return_view_mask=return_view_mask,
     )
     val_dataset = WebBridgeMixedDataset(
-        val_paths, val_names, clip_len, n_samples=None, stride=val_stride
+        val_paths, val_names, clip_len, n_samples=None, stride=val_stride,
+        return_view_mask=return_view_mask,
+    )
+    collate_fn = (
+        webbridge_mixed_collate_fn_with_mask
+        if return_view_mask
+        else webbridge_mixed_collate_fn
     )
     train_loader = DataLoader(
         train_dataset,
         batch_size=batch_size,
         shuffle=True,
-        collate_fn=webbridge_mixed_collate_fn,
+        collate_fn=collate_fn,
         num_workers=num_workers,
         pin_memory=num_workers > 0,
     )
@@ -303,7 +346,7 @@ def build_webbridge_mixed_dataloaders(
         val_dataset,
         batch_size=batch_size,
         shuffle=False,
-        collate_fn=webbridge_mixed_collate_fn,
+        collate_fn=collate_fn,
         num_workers=num_workers,
         pin_memory=num_workers > 0,
     )

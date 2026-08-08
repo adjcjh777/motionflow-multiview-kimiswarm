@@ -1,19 +1,9 @@
 #!/usr/bin/env bash
-# v25 small: v18 deformable cross-view attention + v25 multi-view geometry fusion.
-# Smoke / fast-iteration config: 20 epochs / 2k samples.
-#
-# Environment overrides:
-#   CUDA_VISIBLE_DEVICES  GPU index to use (default: 0)
-#   PYTHON                Python interpreter to use (default: python)
-#   OUTPUT                Checkpoint path (default: outputs/omniview_fusion_v25_geometry_fusion_small.pth)
-#   LOG                   Log path (default: outputs/omniview_fusion_v25_geometry_fusion_small.log)
+# v25 + KAP small: v18 deformable cross-view attention + v25 multi-view geometry fusion + v22 KAP.
 set -euo pipefail
 
 CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-0}
 PYTHON=${PYTHON:-python}
-OUTPUT=${OUTPUT:-outputs/omniview_fusion_v25_geometry_fusion_small.pth}
-LOG=${LOG:-outputs/omniview_fusion_v25_geometry_fusion_small.log}
-
 $PYTHON -u experiments/train_omniview_fusion_v5_webbridge_multi.py \
     --use_mixed_loader \
     --mixed_manifest configs/splits/webbridge_h36m_mpi_mixed_train_val.yaml \
@@ -27,6 +17,8 @@ $PYTHON -u experiments/train_omniview_fusion_v5_webbridge_multi.py \
     --v25_use_geometry_attention \
     --v25_use_learned_depth_triangulation \
     --v25_use_geometry_bundle_adjustment \
+    --use_kinematic_anthropometric_prior_v22 \
+    --kap_loss_weight 0.001 \
     --num_workers 0 \
     --d 128 --residual_hidden 256 --n_st_layers 3 \
     --graph_num_layers 1 --n_joint_layers 1 --n_heads 4 \
@@ -46,5 +38,5 @@ $PYTHON -u experiments/train_omniview_fusion_v5_webbridge_multi.py \
     --aleatoric_reproj_loss_weight 0.1 \
     --outlier_view_prob 0.3 --outlier_view_max_views 1 \
     --outlier_view_offset_std 10.0 --outlier_view_noise_std 15.0 \
-    --output $OUTPUT \
-    > $LOG 2>&1
+    --output outputs/omniview_fusion_v25_kap001_small.pth \
+    > outputs/omniview_fusion_v25_kap001_small.log 2>&1

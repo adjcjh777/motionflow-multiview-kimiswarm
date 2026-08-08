@@ -11,6 +11,7 @@ from .webbridge_mixed_dataset import (
     WebBridgeMixedDataset,
     build_webbridge_mixed_dataloaders,
     webbridge_mixed_collate_fn,
+    webbridge_mixed_collate_fn_with_mask,
 )
 
 __all__ = [
@@ -24,4 +25,5 @@ __all__ = [
     "WebBridgeMixedDataset",
     "build_webbridge_mixed_dataloaders",
     "webbridge_mixed_collate_fn",
+    "webbridge_mixed_collate_fn_with_mask",
 ]

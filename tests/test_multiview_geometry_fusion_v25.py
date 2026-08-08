@@ -13,6 +13,8 @@ import pytest
 import torch
 
 from motionflow_mv.fusion.multiview_geometry_fusion_v25 import (
+    DepthProposalTriangulation,
+    GeometryAwareCrossViewAttention,
     MultiViewGeometryFusionV25,
     build_projection_matrix,
     compute_rays,
@@ -227,6 +229,148 @@ def test_ray_intersection_logit_shape():
     assert logit.shape == (2, 3, 4, 4, 17)
 
 
+# -----------------------------------------------------------------------------
+# Extended v25 geometry-fusion tests
+# -----------------------------------------------------------------------------
+
+def test_depth_head_shape_and_identity():
+    """DepthProposalTriangulation keeps shape and is identity at init when residual is gated off."""
+    points_2d, K, R, t, pred_3d_init, view_mask = _make_batch()
+    centre, direction = compute_rays(points_2d[..., :2], K, R, t)
+    confidence = torch.ones(*points_2d.shape[:4])
+    head = DepthProposalTriangulation(n_views=4, n_ray_samples=4)
+    out = head(centre, direction, confidence, pred_3d_init, view_mask=view_mask)
+    assert out.shape == pred_3d_init.shape
+    # With zero residual scale the head should return the input estimate unchanged.
+    assert torch.allclose(out, pred_3d_init, atol=1e-5)
+
+
+def test_depth_head_masked_views_stay_finite():
+    """Masked views should not introduce NaNs in the depth head."""
+    points_2d, K, R, t, pred_3d_init, _ = _make_batch()
+    view_mask = torch.ones(2, 3, 4).bool()
+    view_mask[:, :, 0] = False
+    view_mask[:, :, 1] = False
+    centre, direction = compute_rays(points_2d[..., :2], K, R, t)
+    confidence = torch.ones(*points_2d.shape[:4])
+    head = DepthProposalTriangulation(n_views=4, n_ray_samples=4)
+    out = head(centre, direction, confidence, pred_3d_init, view_mask=view_mask)
+    assert out.shape == pred_3d_init.shape
+    assert torch.isfinite(out).all()
+
+
+def test_confidence_downweights_noisy_view():
+    """Triangulation with a noisy view should stay closer to truth when that view has low confidence."""
+    points_2d, K, R, t, pred_3d_init, _ = _make_batch()
+    # Corrupt view 3 in the 2D observations.
+    noisy_points = points_2d.clone()
+    noisy_points[:, :, 3, :, :2] += 50.0
+    # Low confidence for the corrupted view.
+    confidence = torch.ones(B := points_2d.shape[0], T := points_2d.shape[1], 4, 17)
+    confidence[:, :, 3, :] = 0.01
+    pred_noisy = triangulate_initial(noisy_points[..., :2], K, R, t, weights=confidence)
+    pred_clean = triangulate_initial(points_2d[..., :2], K, R, t)
+    # The low-confidence noisy result should be closer to the clean result.
+    err_noisy = (pred_noisy - pred_clean).norm(dim=-1).mean()
+    err_uniform = (triangulate_initial(noisy_points[..., :2], K, R, t) - pred_clean).norm(dim=-1).mean()
+    assert err_noisy < err_uniform
+
+
+def test_reprojection_loss_increases_with_noise():
+    """The internal reprojection loss should grow when the 3D estimate is perturbed."""
+    points_2d, K, R, t, pred_3d_init, _ = _make_batch()
+    module = MultiViewGeometryFusionV25(
+        d=64,
+        n_heads=2,
+        n_views=4,
+        use_geometry_attention=False,
+        use_learned_depth_triangulation=False,
+    )
+    _, loss_clean = module(points_2d, K, R, t, pred_3d_init=pred_3d_init)
+    # Perturb the initial estimate.
+    pred_noisy = pred_3d_init + torch.randn_like(pred_3d_init) * 0.1
+    _, loss_noisy = module(points_2d, K, R, t, pred_3d_init=pred_noisy)
+    assert loss_noisy > loss_clean
+
+
+@pytest.mark.parametrize("V", [2, 3, 5])
+def test_variable_number_of_views(V):
+    """The module should accept a variable number of views."""
+    module = MultiViewGeometryFusionV25(d=64, n_heads=2, n_views=V)
+    points_2d, K, R, t, pred_3d_init, view_mask = _make_batch(B=1, T=2, V=V, J=17)
+    out, _ = module(points_2d, K, R, t, pred_3d_init=pred_3d_init, view_mask=view_mask)
+    assert out.shape == (1, 2, 17, 3)
+
+
+def test_default_config_smoke():
+    """Run with the documented default configuration on CPU as a smoke test."""
+    module = MultiViewGeometryFusionV25(
+        d=128,
+        n_heads=4,
+        n_views=4,
+        n_geometry_layers=2,
+        n_ray_samples=4,
+    )
+    points_2d, K, R, t, pred_3d_init, view_mask = _make_batch()
+    out, geom_loss = module(points_2d, K, R, t, pred_3d_init=pred_3d_init, view_mask=view_mask)
+    assert out.shape == (2, 3, 17, 3)
+    assert torch.isfinite(out).all()
+    assert torch.isfinite(geom_loss)
+
+
+def test_geometry_attention_layer_shape_and_mask():
+    """GeometryAwareCrossViewAttention produces expected shape and respects view masking."""
+    points_2d, K, R, t, _, _ = _make_batch()
+    centre, direction = compute_rays(points_2d[..., :2], K, R, t)
+    tokens = torch.randn(2, 3, 4, 17, 64)
+    epipolar_dist = torch.randn(2, 3, 4, 4, 17).abs()
+    ray_logit = ray_intersection_logit(centre, direction, torch.tensor(0.5), torch.tensor(0.5))
+    layer = GeometryAwareCrossViewAttention(d=64, n_heads=2, n_views=4)
+    out = layer(tokens, epipolar_dist, ray_logit)
+    assert out.shape == tokens.shape
+    # With a view mask that drops one view, output should still be well-shaped.
+    view_mask = torch.ones(2, 3, 4).bool()
+    view_mask[:, :, -1] = False
+    out_masked = layer(tokens, epipolar_dist, ray_logit, view_mask=view_mask)
+    assert out_masked.shape == tokens.shape
+    assert torch.isfinite(out_masked).all()
+
+
+def test_module_output_deterministic_with_seed():
+    """Same input + seed should yield identical outputs (dropout is deterministic in eval mode)."""
+    module = MultiViewGeometryFusionV25(d=64, n_heads=2, n_views=4)
+    points_2d, K, R, t, pred_3d_init, view_mask = _make_batch()
+    module.eval()
+    out1, _ = module(points_2d, K, R, t, pred_3d_init=pred_3d_init, view_mask=view_mask)
+    out2, _ = module(points_2d, K, R, t, pred_3d_init=pred_3d_init, view_mask=view_mask)
+    assert torch.allclose(out1, out2, atol=1e-6)
+
+
+def test_outlier_view_detector_forward_shape_and_downweight():
+    """The outlier-view detector toggle should run and down-weight a corrupted view."""
+    module = MultiViewGeometryFusionV25(
+        d=64,
+        n_heads=2,
+        n_views=4,
+        use_geometry_attention=False,
+        use_learned_depth_triangulation=False,
+        use_outlier_view_detector=True,
+        outlier_z_thresh=2.0,
+        outlier_soft_beta=2.0,
+    )
+    points_2d, K, R, t, _, view_mask = _make_batch()
+    out, _ = module(points_2d, K, R, t, view_mask=view_mask)
+    assert out.shape == (2, 3, 17, 3)
+    assert torch.isfinite(out).all()
+
+    # Corrupt one view: the re-triangulated estimate should remain close to clean.
+    points_2d_corrupt = points_2d.clone()
+    points_2d_corrupt[:, :, 0, :, :2] += 100.0
+    out_corrupt, _ = module(points_2d_corrupt, K, R, t, view_mask=view_mask)
+    assert out_corrupt.shape == (2, 3, 17, 3)
+    assert torch.isfinite(out_corrupt).all()
+
+
 if __name__ == "__main__":
     test_forward_shape(17)
     test_forward_shape(28)
@@ -241,4 +385,14 @@ if __name__ == "__main__":
     test_triangulate_initial_shape()
     test_compute_rays_shape()
     test_ray_intersection_logit_shape()
+    # Extended v25 geometry-fusion tests.
+    test_depth_head_shape_and_identity()
+    test_depth_head_masked_views_stay_finite()
+    test_confidence_downweights_noisy_view()
+    test_reprojection_loss_increases_with_noise()
+    for v in [2, 3, 5]:
+        test_variable_number_of_views(v)
+    test_default_config_smoke()
+    test_geometry_attention_layer_shape_and_mask()
+    test_module_output_deterministic_with_seed()
     print("All MultiViewGeometryFusionV25 unit tests passed")

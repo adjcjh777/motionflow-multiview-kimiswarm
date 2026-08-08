@@ -1,0 +1,151 @@
+# v25 ablation matrix: loss weights, components, datasets
+#
+# Designed to run on A800-D once GPUs free up.  Locally, use --dry-run to validate
+# commands.  Each row is a single training run of
+# experiments/train_omniview_fusion_v5_webbridge_multi.py.
+#
+# Baseline: v18 deformable cross-view attention + v25 geometry fusion,
+#            v22 KAP disabled (add --use_kinematic_anthropometric_prior_v22
+#            and kap_loss_weight if you want the v23-style KAP stack).
+#
+# NOTE: v25_use_geometry_bundle_adjustment is currently a placeholder in the
+#       v25 module; it is kept here only for forward-compatibility.
+#
+# Recommended warm-start: a v23 checkpoint (v18 + KAP, no neural BA).
+
+output_dir: outputs/ablations/v25_matrix
+
+base:
+  script: experiments/train_omniview_fusion_v5_webbridge_multi.py
+  env:
+    PYTHONPATH: "."
+  args:
+    # Data
+    --use_mixed_loader: true
+    --mixed_manifest: "configs/splits/webbridge_h36m_mpi_mixed_train_val.yaml"
+    --use_full_precision_dlt: true
+    --use_robust_dlt_reweight: true
+    --use_irls_reweight: true
+    --use_domain_embedding: true
+
+    # v18 + v25
+    --use_deformable_cross_view_attention_v18: true
+    --use_multiview_geometry_fusion_v25: true
+    --v25_use_geometry_attention: true
+    --v25_use_learned_depth_triangulation: true
+    --v25_use_geometry_bundle_adjustment: true
+
+    # Loss weights (baseline)
+    --v25_geom_loss_weight: 0.1
+    --reproj_loss_weight: 0.1
+    --aleatoric_reproj_loss_weight: 0.1
+    --epipolar_loss_weight: 0.05
+    --reproj_warmup_epochs: 3
+
+    # Training
+    --num_workers: 0
+    --d: 128
+    --residual_hidden: 256
+    --n_st_layers: 3
+    --graph_num_layers: 1
+    --n_joint_layers: 1
+    --n_heads: 4
+    --epochs: 20
+    --batch_size: 16
+    --train_samples: 2000
+    --val_stride: 10
+    --lr: 1.0e-3
+    --lr_cosine: true
+    --lr_warmup_epochs: 3
+    --lr_min: 1.0e-6
+    --max_grad_norm: 1.0
+    --ema_decay: 0.999
+
+    # v4-v6 plumbing
+    --use_multiscale_fusion: true
+    --use_camera_conditioning: true
+    --use_epipolar_bias: true
+    --use_context_visibility: true
+    --use_skeleton_residual: true
+    --use_rotation_correction: true
+    --use_entropy_regularization: true
+    --attention_entropy_weight: 0.01
+    --use_camera_view_embedding: true
+    --use_set_view_aggregator: true
+
+    # Variable views / augmentation
+    --use_variable_view_training: true
+    --variable_view_min_views: 2
+    --variable_view_max_views: 14
+    --variable_view_max_views_start: 4
+    --variable_view_curriculum_alpha: 2.0
+    --variable_view_permute: true
+    --pa_loss_weight: 0.5
+    --monotonic_loss_weight: 0.1
+    --monotonic_margin: 5.0
+    --outlier_view_prob: 0.3
+    --outlier_view_max_views: 1
+    --outlier_view_offset_std: 10.0
+    --outlier_view_noise_std: 15.0
+
+variants:
+  # --------------------------------------------------------------------
+  # Components (mixed dataset, default loss weights)
+  # --------------------------------------------------------------------
+  - name: v25_full_mixed
+    note: "Full v25 stack on H36M+MPI mixed."
+    args:
+      --output: outputs/ablations/v25_matrix/v25_full_mixed.pth
+
+  - name: v25_no_geom_attention
+    note: "Disable geometry-aware cross-view attention."
+    args:
+      --no_v25_use_geometry_attention: true
+      --output: outputs/ablations/v25_matrix/v25_no_geom_attention.pth
+
+  - name: v25_no_learned_depth
+    note: "Disable learned depth-proposal triangulation."
+    args:
+      --no_v25_use_learned_depth_triangulation: true
+      --output: outputs/ablations/v25_matrix/v25_no_learned_depth.pth
+
+  # --------------------------------------------------------------------
+  # Loss weights (mixed dataset, full v25 stack)
+  # --------------------------------------------------------------------
+  - name: v25_geom_loss_0.01
+    note: "Low geometry consistency loss."
+    args:
+      --v25_geom_loss_weight: 0.01
+      --output: outputs/ablations/v25_matrix/v25_geom_loss_0.01.pth
+
+  - name: v25_geom_loss_0.5
+    note: "High geometry consistency loss."
+    args:
+      --v25_geom_loss_weight: 0.5
+      --output: outputs/ablations/v25_matrix/v25_geom_loss_0.5.pth
+
+  - name: v25_reproj_only_0.1
+    note: "Keep geometry loss low but raise pure 2D reprojection loss."
+    args:
+      --v25_geom_loss_weight: 0.01
+      --reproj_loss_weight: 0.5
+      --output: outputs/ablations/v25_matrix/v25_reproj_only_0.1.pth
+
+  # --------------------------------------------------------------------
+  # Datasets (full v25 stack, default loss weights)
+  # --------------------------------------------------------------------
+  - name: v25_h36m_only
+    note: "H36M-only training."
+    args:
+      --use_mixed_loader: false
+      --mixed_manifest: null
+      --manifest: "configs/splits/webbridge_h36m_train_val.yaml"
+      --output: outputs/ablations/v25_matrix/v25_h36m_only.pth
+
+  - name: v25_mpi_only
+    note: "MPI-INF-3DHP-only training."
+    args:
+      --use_mixed_loader: false
+      --mixed_manifest: null
+      --manifest: "configs/splits/webbridge_mpiinf3dhp_train_val_test.yaml"
+      --output: outputs/ablations/v25_matrix/v25_mpi_only.pth
