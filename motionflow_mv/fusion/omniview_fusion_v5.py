@@ -36,6 +36,7 @@ from motionflow_mv.fusion.diffusion_pose_refiner_v20 import DiffusionPoseRefiner
 from motionflow_mv.fusion.kinematic_anthropometric_prior_v22 import (
     KinematicAnthropometricPrior,
 )
+from motionflow_mv.fusion.smpl_prior_fusion_v22 import SMPLPriorHead
 from motionflow_mv.fusion.multiview_geometry_fusion_v25 import MultiViewGeometryFusionV25
 from motionflow_mv.fusion.temporal_geometry_fusion_v26 import TemporalGeometryFusionV26
 from motionflow_mv.fusion.test_time_self_evolution_v27 import TestTimeSelfEvolutionV27
@@ -143,6 +144,7 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
         v25_geom_loss_weight: float = 0.1,
         use_temporal_geometry_fusion_v26: bool = False,
         v26_temporal_window: int = 3,
+        v26_temporal_attention_residual_gate_init: float = 0.0,
         use_uncertainty_depth_proposals_v27: bool = False,
         v27_uncertainty_loss_weight: float = 0.01,
         v27_udp_n_mixtures: int = 1,
@@ -157,6 +159,10 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
         kap_use_angle_limit: bool = True,
         kap_max_flexion_deg: float = 160.0,
         kap_max_delta: float = 0.10,
+        use_smpl_prior_fusion_v22: bool = False,
+        smpl_model_path: Optional[str] = None,
+        smpl_prior_loss_weight: float = 0.1,
+        freeze_smpl_base: bool = False,
         num_diffusion_steps: int = 10,
         camera_view_embedding_hidden: int = 32,
         set_view_n_isab_layers: int = 2,
@@ -354,6 +360,23 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
         else:
             self.kinematic_anthropometric_prior_v22 = None
 
+        # Optional v22 SMPL prior fusion head.
+        self.use_smpl_prior_fusion_v22 = use_smpl_prior_fusion_v22
+        self.smpl_prior_loss_weight = smpl_prior_loss_weight
+        if self.use_smpl_prior_fusion_v22:
+            self.smpl_prior_head = SMPLPriorHead(
+                d=self.d,
+                n_joints=self.j,
+                smpl_model_path=smpl_model_path,
+            )
+            if freeze_smpl_base:
+                for param in super().parameters():
+                    param.requires_grad = False
+                for param in self.smpl_prior_head.parameters():
+                    param.requires_grad = True
+        else:
+            self.smpl_prior_head = None
+
         # Optional v25 multi-view geometry fusion.
         self.use_multiview_geometry_fusion_v25 = use_multiview_geometry_fusion_v25
         self.use_temporal_geometry_fusion_v26 = use_temporal_geometry_fusion_v26
@@ -364,6 +387,7 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
                 n_heads=self.n_heads,
                 n_views=n_views,
                 temporal_window=v26_temporal_window,
+                temporal_attention_residual_gate_init=v26_temporal_attention_residual_gate_init,
                 use_geometry_attention=v25_use_geometry_attention,
                 use_learned_depth_triangulation=v25_use_learned_depth_triangulation,
                 use_uncertainty_depth_proposals_v27=use_uncertainty_depth_proposals_v27,
@@ -878,10 +902,20 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
                 )
             else:
                 pred_3d = self.diffusion_refiner_v20(pred_3d_gn, feat=feat_pooled)
+            residual_input = torch.cat([feat_pooled, pred_3d_gn], dim=-1)
         else:
             residual_input = torch.cat([feat_pooled, pred_3d_gn], dim=-1)
             delta = self.residual_mlp(residual_input)
             pred_3d = pred_3d_gn + delta
+
+        # Optional v22 SMPL prior fusion.
+        smpl_out: Optional[Dict[str, torch.Tensor]] = None
+        if self.use_smpl_prior_fusion_v22 and self.smpl_prior_head is not None:
+            smpl_out = self.smpl_prior_head(residual_input)
+            if smpl_out is not None and "pred_joints_17" in smpl_out:
+                smpl_joints = smpl_out["pred_joints_17"].view(B * T, J, 3)
+                blend = smpl_out["blend"].view(B * T, 1, 1)
+                pred_3d = (1.0 - blend) * pred_3d + blend * smpl_joints
 
         # Optional final kinematic-chain refiner.
         if self.use_kinematic_refiner and self.kinematic_refiner is not None:
@@ -963,6 +997,9 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
             out += (pp_delta,)
             if self.correct_focal:
                 out += (focal_scale,)
+
+        if self.use_smpl_prior_fusion_v22:
+            out += (smpl_out,)
 
         return out
 

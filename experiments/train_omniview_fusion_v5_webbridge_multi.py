@@ -120,6 +120,11 @@ def build_model_from_args(
         "kap_loss_weight": getattr(args, "kap_loss_weight", 0.01),
         "kap_use_angle_limit": getattr(args, "kap_use_angle_limit", True),
         "kap_max_flexion_deg": getattr(args, "kap_max_flexion_deg", 160.0),
+        # v22 SMPL prior toggles
+        "use_smpl_prior_fusion_v22": getattr(args, "use_smpl_prior_fusion_v22", False),
+        "smpl_model_path": getattr(args, "smpl_model_path", None),
+        "smpl_prior_loss_weight": getattr(args, "smpl_prior_loss_weight", 0.1),
+        "freeze_smpl_base": getattr(args, "freeze_smpl_base", False),
         # v25 toggles
         "use_multiview_geometry_fusion_v25": getattr(args, "use_multiview_geometry_fusion_v25", False),
         "v25_geom_loss_weight": getattr(args, "v25_geom_loss_weight", 0.1),
@@ -132,6 +137,7 @@ def build_model_from_args(
         "v25_outlier_soft_beta": getattr(args, "v25_outlier_soft_beta", 1.0),
         "use_temporal_geometry_fusion_v26": getattr(args, "use_temporal_geometry_fusion_v26", False),
         "v26_temporal_window": getattr(args, "v26_temporal_window", 3),
+        "v26_temporal_attention_residual_gate_init": getattr(args, "v26_temporal_attention_residual_gate_init", 0.0),
         "use_uncertainty_depth_proposals_v27": getattr(args, "use_uncertainty_depth_proposals_v27", False),
         "v27_uncertainty_loss_weight": getattr(args, "v27_uncertainty_loss_weight", 0.01),
         "v27_udp_n_mixtures": getattr(args, "v27_udp_n_mixtures", 1),
@@ -936,6 +942,7 @@ def build_compute_loss(args: Namespace):
         epi_loss = out[4]
         entropy_loss_out = out[5] if len(out) > 5 else None
         budget_loss_out = out[6] if len(out) > 6 else None
+        smpl_out = out[-1] if (getattr(args, "use_smpl_prior_fusion_v22", False) and len(out) > 5) else None
 
         loss = F.mse_loss(pred_3d, y)
         metrics: Dict[str, Any] = {
@@ -944,6 +951,17 @@ def build_compute_loss(args: Namespace):
 
         if epi_loss is not None:
             loss = loss + epi_loss
+
+        # Optional v22 SMPL prior auxiliary loss.
+        if (
+            smpl_out is not None
+            and "pred_joints_17" in smpl_out
+            and args.smpl_prior_loss_weight > 0.0
+        ):
+            smpl_joints = smpl_out["pred_joints_17"].view(pred_3d.shape)
+            smpl_loss = F.mse_loss(smpl_joints, y)
+            loss = loss + args.smpl_prior_loss_weight * smpl_loss
+            metrics["smpl_loss"] = smpl_loss.item()
 
         if args.visibility_loss_weight > 0.0:
             visible_target = (x[..., 2] > 0).float()
@@ -1346,6 +1364,11 @@ def parse_args() -> Namespace:
     parser.add_argument("--use_neural_bundle_adjustment_v21", action="store_true", help="Use v21 neural bundle-adjustment pose/camera refiner")
     parser.add_argument("--use_kinematic_anthropometric_prior_v22", action="store_true", help="Use v22 kinematic anthropometric prior (SMPL-free bone-length prior)")
     parser.add_argument("--kap_loss_weight", type=float, default=0.01, help="Weight for v22 KAP loss")
+    # v22 SMPL prior toggles
+    parser.add_argument("--use_smpl_prior_fusion_v22", action="store_true", help="Use v22 SMPL prior fusion head")
+    parser.add_argument("--smpl_model_path", type=str, default=None, help="Path to SMPL_NEUTRAL.pkl (optional; if omitted, parameter predictions are returned but no body is forwarded)")
+    parser.add_argument("--smpl_prior_loss_weight", type=float, default=0.1, help="Weight for SMPL prior auxiliary MSE loss on predicted joints")
+    parser.add_argument("--freeze_smpl_base", action="store_true", help="Freeze base model parameters and train only the SMPL prior head")
     # v25 toggles
     parser.add_argument("--use_multiview_geometry_fusion_v25", action="store_true", help="Use v25 multi-view geometry fusion (ray-token + epipolar cross-view attention + learned depth triangulation)")
     parser.add_argument("--v25_geom_loss_weight", type=float, default=0.1, help="Weight for v25 geometry consistency loss")
@@ -1361,6 +1384,7 @@ def parse_args() -> Namespace:
     parser.add_argument("--v25_outlier_soft_beta", type=float, default=1.0, help="Softness of exponential down-weighting for v25 outlier-view detector")
     parser.add_argument("--use_temporal_geometry_fusion_v26", action="store_true", default=False, help="Use v26 temporal geometry fusion instead of v25")
     parser.add_argument("--v26_temporal_window", type=int, default=3, help="Temporal window size for v26 (must be odd)")
+    parser.add_argument("--v26_temporal_attention_residual_gate_init", type=float, default=0.0, help="Initial value of residual gate on v26 temporal attention (0.0 = warm-start from v25)")
     parser.add_argument("--use_uncertainty_depth_proposals_v27", action="store_true", default=False, help="Use v27 uncertainty-aware depth-proposal triangulation head in v25/v26")
     parser.add_argument("--v27_uncertainty_loss_weight", type=float, default=0.01, help="Weight for v27 uncertainty regularisation loss")
     parser.add_argument("--v27_udp_n_mixtures", type=int, default=1, help="Number of Gaussian mixture components for v27 depth proposals (default 1=single Gaussian)")

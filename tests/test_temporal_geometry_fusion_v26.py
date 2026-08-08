@@ -126,6 +126,24 @@ def test_identity_at_init():
     assert torch.allclose(out, pred_3d_init, atol=1e-5)
 
 
+def test_identity_at_init_with_temporal_attention_enabled():
+    """With residual gate initialised to 0, temporal attention is a no-op at init."""
+    module = TemporalGeometryFusionV26(
+        d=64,
+        n_heads=2,
+        n_views=4,
+        use_geometry_attention=False,
+        use_temporal_geometry_attention=True,
+        use_learned_depth_triangulation=False,
+    )
+    points_2d, K, R, t, pred_3d_init, view_mask = _make_batch()
+    out, _ = module(points_2d, K, R, t, pred_3d_init=pred_3d_init, view_mask=view_mask)
+    assert torch.allclose(out, pred_3d_init, atol=1e-5)
+    # Verify the gate was initialised to zero.
+    for layer in module.temporal_attn_layers:
+        assert layer.residual_gate.item() == pytest.approx(0.0, abs=1e-6)
+
+
 def test_identity_at_init_without_pred():
     module = TemporalGeometryFusionV26(
         d=64,
@@ -163,6 +181,34 @@ def test_gradient_flow():
     assert R.grad is not None
     assert t.grad is not None
     assert pred_3d_init.grad is not None
+
+
+def test_residual_gate_learnable():
+    """The residual gate should be learnable and scale the temporal attention."""
+    module = TemporalGeometryFusionV26(
+        d=64,
+        n_heads=2,
+        n_views=4,
+        use_geometry_attention=False,
+        use_temporal_geometry_attention=True,
+        use_learned_depth_triangulation=False,
+    )
+    points_2d, K, R, t, pred_3d_init, view_mask = _make_batch()
+    # At init the gate is zero, so the output equals the input estimate.
+    out_zero, _ = module(points_2d, K, R, t, pred_3d_init=pred_3d_init, view_mask=view_mask)
+    assert torch.allclose(out_zero, pred_3d_init, atol=1e-5)
+
+    # Setting the gate to a non-zero value should change the output.
+    for layer in module.temporal_attn_layers:
+        nn.init.constant_(layer.residual_gate, 1.0)
+    out_open, _ = module(points_2d, K, R, t, pred_3d_init=pred_3d_init, view_mask=view_mask)
+    assert not torch.allclose(out_open, pred_3d_init, atol=1e-5)
+
+    # The gate should receive gradients.
+    loss = out_open.mean()
+    loss.backward()
+    for layer in module.temporal_attn_layers:
+        assert layer.residual_gate.grad is not None
 
 
 # ---------------------------------------------------------------------------
@@ -229,8 +275,10 @@ if __name__ == "__main__":
     test_forward_shape(28)
     test_temporal_attention_forward_shape()
     test_identity_at_init()
+    test_identity_at_init_with_temporal_attention_enabled()
     test_identity_at_init_without_pred()
     test_gradient_flow()
+    test_residual_gate_learnable()
     test_view_mask_ignores_dropped_view()
     test_temporal_window_larger_than_clip(1)
     test_temporal_window_larger_than_clip(2)
