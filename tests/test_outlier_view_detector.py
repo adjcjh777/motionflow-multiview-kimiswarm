@@ -193,3 +193,32 @@ if __name__ == "__main__":
     test_varied_geometry(1, 1, 4, 17)
     test_varied_geometry(2, 3, 6, 28)
     print("All OutlierViewDetector tests passed")
+
+
+def test_adaptive_global_learnable_scales():
+    """Adaptive detector exposes global multiplicative scales and receives gradients."""
+    detector = OutlierViewDetector(z_thresh=2.0, soft_beta=2.0, adaptive=True)
+    X, points_2d, K, R, t, view_mask = _make_batch()
+    weights, _ = detector(X, points_2d, K, R, t, view_mask=view_mask)
+    # Clean data -> identity at init.
+    assert torch.allclose(weights, torch.ones_like(weights), atol=1e-5)
+    # Scales should receive gradients.
+    loss = weights.mean()
+    loss.backward()
+    assert detector.z_scale.grad is not None
+    assert detector.beta_scale.grad is not None
+
+
+def test_adaptive_per_joint_learnable_scales():
+    """Adaptive detector can learn per-joint scales when num_joints is provided."""
+    J = 17
+    detector = OutlierViewDetector(z_thresh=2.0, soft_beta=2.0, num_joints=J, adaptive=True)
+    X, points_2d, K, R, t, view_mask = _make_batch(J=J)
+    weights, _ = detector(X, points_2d, K, R, t, view_mask=view_mask)
+    assert weights.shape == (2, 3, 4, J)
+    assert torch.allclose(weights, torch.ones_like(weights), atol=1e-5)
+    loss = weights.mean()
+    loss.backward()
+    assert detector.z_scale.grad is not None
+    assert detector.beta_scale.grad is not None
+    assert detector.z_scale.shape == (J,)

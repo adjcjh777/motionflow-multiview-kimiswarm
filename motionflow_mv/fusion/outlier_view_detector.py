@@ -74,23 +74,56 @@ class OutlierViewDetector(nn.Module):
     soft_beta:
         Softness of the exponential down-weighting.  ``beta=0`` gives uniform
         weights; larger values more aggressively suppress outliers.
+    min_mad:
+        Floor on the median absolute deviation to avoid over-aggressive
+        down-weighting when all residuals are nearly identical.
     eps:
         Small constant to avoid division by zero when MAD is zero.
+    num_joints:
+        Number of joints.  When provided together with ``adaptive=True``,
+        per-joint threshold/softness scales are learned; otherwise a single
+        global scale is learned.
+    adaptive:
+        If True, learnable multiplicative scales for ``z_thresh`` and
+        ``soft_beta`` are added.  They are initialised to one, so the
+        detector is still identity at init.
     """
 
-    def __init__(self, z_thresh: float = 3.0, soft_beta: float = 1.0, min_mad: float = 0.5, eps: float = 1e-6):
+    def __init__(
+        self,
+        z_thresh: float = 3.0,
+        soft_beta: float = 1.0,
+        min_mad: float = 0.5,
+        eps: float = 1e-6,
+        num_joints: Optional[int] = None,
+        adaptive: bool = True,
+    ):
         super().__init__()
-        self.z_thresh = z_thresh
-        self.soft_beta = soft_beta
+        self.base_z_thresh = z_thresh
+        self.base_soft_beta = soft_beta
         self.min_mad = min_mad
         self.eps = eps
+        self.adaptive = adaptive
         # Learnable gate.  Initialised to zero so the module acts as identity.
         self.residual_scale = nn.Parameter(torch.tensor(0.0))
 
+        if self.adaptive:
+            if num_joints is not None and num_joints > 0:
+                # Per-joint multiplicative scales, initialised to one.
+                self.z_scale = nn.Parameter(torch.ones(num_joints))
+                self.beta_scale = nn.Parameter(torch.ones(num_joints))
+            else:
+                # Global multiplicative scales, initialised to one.
+                self.z_scale = nn.Parameter(torch.tensor(1.0))
+                self.beta_scale = nn.Parameter(torch.tensor(1.0))
+        else:
+            self.z_scale = None
+            self.beta_scale = None
+
     def extra_repr(self) -> str:  # noqa: D401
         return (
-            f"z_thresh={self.z_thresh}, soft_beta={self.soft_beta}, "
-            f"min_mad={self.min_mad}, eps={self.eps}"
+            f"base_z_thresh={self.base_z_thresh}, base_soft_beta={self.base_soft_beta}, "
+            f"min_mad={self.min_mad}, eps={self.eps}, adaptive={self.adaptive}"
         )
 
     def forward(
@@ -128,9 +161,25 @@ class OutlierViewDetector(nn.Module):
         mad_std = 1.4826 * mad
         z = (residual - median) / (mad_std + self.min_mad + self.eps)  # (B, T, V, J)
 
+        # Apply adaptive scales.  At init the scales equal one, so the
+        # behaviour is identical to the non-adaptive detector.
+        if self.adaptive and self.z_scale is not None and self.beta_scale is not None:
+            if self.z_scale.dim() == 1:
+                # Per-joint scales: broadcast to (1, 1, 1, J).
+                z_scale = self.z_scale.view(1, 1, 1, -1)
+                beta_scale = self.beta_scale.view(1, 1, 1, -1)
+            else:
+                z_scale = self.z_scale
+                beta_scale = self.beta_scale
+            z_thresh_eff = self.base_z_thresh * z_scale
+            soft_beta_eff = self.base_soft_beta * beta_scale
+        else:
+            z_thresh_eff = self.base_z_thresh
+            soft_beta_eff = self.base_soft_beta
+
         # Soft down-weighting for views beyond the threshold.
-        outlier_margin = torch.clamp(z - self.z_thresh, min=0.0)
-        consensus_weights = torch.exp(-self.soft_beta * outlier_margin)
+        outlier_margin = torch.clamp(z - z_thresh_eff, min=0.0)
+        consensus_weights = torch.exp(-soft_beta_eff * outlier_margin)
 
         # Learned gate: at init residual_scale == 0 -> weights == 1.
         gate = torch.sigmoid(self.residual_scale)
