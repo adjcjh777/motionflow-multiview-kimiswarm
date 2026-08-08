@@ -306,9 +306,11 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
 
         self.use_temporal_perceiver_v19 = use_temporal_perceiver_v19
         if self.use_temporal_perceiver_v19:
+            # Richer per-frame tokens: triangulated 3D pose + view-pooled ST features.
+            # This gives the perceiver both geometric and appearance/context cues.
             self.temporal_perceiver_refiner_v19 = TemporalPerceiverRefiner(
                 j=self.j,
-                in_dim=3,
+                in_dim=3 + self.d,
                 d=64,
                 n_latents=32,
                 n_layers=2,
@@ -915,8 +917,14 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
 
         # Optional v19 temporal Perceiver refinement on the final per-frame 3D poses.
         if self.use_temporal_perceiver_v19 and self.temporal_perceiver_refiner_v19 is not None:
-            residual_v19 = self.temporal_perceiver_refiner_v19(pred_3d)
-            pred_3d = pred_3d + residual_v19
+            # Rich per-frame tokens: triangulated 3D pose + view-pooled ST features.
+            # The pooled features provide visibility/appearance context beyond the
+            # bare 3-D coordinates, helping the perceiver correct occluded frames.
+            feat_pooled = feat.view(B, T, V, J, self.d).mean(dim=2)  # (B, T, J, d)
+            perceiver_input = torch.cat([pred_3d, feat_pooled], dim=-1)  # (B, T, J, 3+d)
+            pred_3d = self.temporal_perceiver_refiner_v19(
+                perceiver_input, baseline_3d=pred_3d
+            )
 
         # Optional v28 physical-space alignment.
         if self.use_physical_space_alignment_v28 and self.physical_space_alignment_v28 is not None:
