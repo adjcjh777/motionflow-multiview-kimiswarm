@@ -6,7 +6,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 mkdir -p outputs
 
-PYTHON=${PYTHON:-python3}
+PYTHON=${PYTHON:-.venv/bin/python3}
 LOG="outputs/omniview_fusion_v23_smoke_4090.log"
 
 $PYTHON -u experiments/train_omniview_fusion_v5_webbridge_multi.py \
