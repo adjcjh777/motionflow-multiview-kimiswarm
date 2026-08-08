@@ -131,6 +131,10 @@ class CrossViewTransformerV17(nn.Module):
         # Project concatenated world ray direction and camera centre to ``d``.
         self.ray_proj = nn.Linear(6, d)
 
+        # Zero-initialized residual gate so the module starts as identity and
+        # learns to inject cross-view information gradually.
+        self.residual_scale = nn.Parameter(torch.zeros(1))
+
     def _build_ray_embedding(
         self,
         K: torch.Tensor,
@@ -294,7 +298,19 @@ class CrossViewTransformerV17(nn.Module):
         if key_mask is not None:
             x_tokens = x_tokens.masked_fill(key_mask.unsqueeze(-1), 0.0)
 
-        return self._reshape_from_tokens(x_tokens, B, T, V, J, d)
+        out = self._reshape_from_tokens(x_tokens, B, T, V, J, d)
+        # Gated residual update: start as identity, learn cross-view contribution.
+        out = x + self.residual_scale * out
+        # Enforce view masking on the residual output as well.
+        if view_mask is not None:
+            # view_mask is (B, T, V) or (B, V); expand to (B, T, V, J, d)
+            if view_mask.dim() == 2:
+                B_, V_ = view_mask.shape
+                view_mask_5d = view_mask.view(B_, 1, V_, 1, 1).expand(B_, T, V_, J, d)
+            else:
+                view_mask_5d = view_mask.view(B, T, V, 1, 1).expand(B, T, V, J, d)
+            out = out * view_mask_5d
+        return out
 
 
 if __name__ == "__main__":

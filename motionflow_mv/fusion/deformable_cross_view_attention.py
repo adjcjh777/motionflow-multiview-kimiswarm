@@ -64,6 +64,10 @@ class DeformableCrossViewAttention(nn.Module):
         self.dropout = nn.Dropout(dropout)
         self.norm = nn.LayerNorm(d)
 
+        # Zero-initialized residual gate so the module starts as identity and
+        # learns the cross-view contribution gradually.
+        self.residual_scale = nn.Parameter(torch.zeros(1))
+
         # Learnable geometry gate.  Softplus keeps the contribution of epipolar
         # distance non-negative (larger distance -> smaller attention weight).
         self.geometry_scale = nn.Parameter(torch.tensor(1.0))
@@ -176,7 +180,8 @@ class DeformableCrossViewAttention(nn.Module):
         out = self.out_proj(out)
         out = self.dropout(out)
 
-        out = x_flat + out
+        # Gated residual update: start as identity, learn the cross-view contribution.
+        out = x_flat + self.residual_scale * out
         out = self.norm(out)
 
         # Zero out masked query views so they do not leak downstream.
