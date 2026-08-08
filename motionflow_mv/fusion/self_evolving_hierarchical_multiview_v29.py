@@ -147,8 +147,7 @@ class HierarchicalViewEncoderV29(nn.Module):
         # ---- Joint scale: per-joint cross-view attention -------------------
         # (B*T*J, V, d)
         joint_in = tokens.permute(0, 1, 3, 2, 4).reshape(B * T * J, V, d)
-        joint_mask = self._mask(view_mask, B, T, V, repeats=J)
-        joint_out = self.joint_attn(joint_in, src_key_padding_mask=joint_mask)
+        joint_out = self.joint_attn(joint_in)
         joint_out = joint_out.view(B, T, J, V, d).permute(0, 1, 3, 2, 4)  # (B, T, V, J, d)
         joint_out = self.joint_proj(joint_out)
 
@@ -165,8 +164,7 @@ class HierarchicalViewEncoderV29(nn.Module):
         part_scale_tokens = torch.cat(part_tokens_list, dim=3)  # (B, T, V, P, d)
         P = part_scale_tokens.shape[3]
         part_in = part_scale_tokens.permute(0, 1, 3, 2, 4).reshape(B * T * P, V, d)
-        part_mask = self._mask(view_mask, B, T, V, repeats=P)
-        part_out = self.part_attn(part_in, src_key_padding_mask=part_mask)
+        part_out = self.part_attn(part_in)
         part_out = part_out.view(B, T, P, V, d).permute(0, 1, 3, 2, 4)  # (B, T, V, P, d)
         part_out = self.part_proj(part_out)
 
@@ -185,10 +183,16 @@ class HierarchicalViewEncoderV29(nn.Module):
         body_token = tokens.mean(dim=3, keepdim=True)  # (B, T, V, 1, d)
         body_in = body_token.squeeze(3)  # (B, T, V, d)
         body_in = body_in.view(B * T, V, d)
-        body_mask = self._mask(view_mask, B, T, V, repeats=1)
-        body_out = self.body_attn(body_in, src_key_padding_mask=body_mask)
+        body_out = self.body_attn(body_in)
         body_out = body_out.view(B, T, V, d)
         body_out = self.body_proj(body_out[:, :, :, None, :]).expand(-1, -1, -1, J, -1)
+
+        # Zero out masked views after cross-view attention.
+        if view_mask is not None:
+            mask = view_mask[:, :, :, None, None]  # (B, T, V, 1, 1)
+            joint_out = joint_out * mask.float()
+            part_to_joint = part_to_joint * mask.float()
+            body_out = body_out * mask.float()
 
         # ---- Combine with learned scale weights ------------------------------
         scale_weights = F.softmax(self.scale_logits, dim=0)  # (3,)
