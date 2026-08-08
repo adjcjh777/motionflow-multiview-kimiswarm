@@ -38,7 +38,7 @@ DEFAULT_SSH_HOST = "a800-D"
 DEFAULT_ISSUE = 88
 DEFAULT_POLL_INTERVAL = 120  # seconds
 MAX_LOG_AGE_MINUTES = 120  # only monitor logs modified in the last 2 hours
-STATE_PATH = Path(".monitor_a800_state.json")
+DEFAULT_STATE_PATH = ".monitor_a800_state.json"
 
 
 @dataclass
@@ -77,22 +77,22 @@ def a800_ssh(cmd: str, ssh_host: str = DEFAULT_SSH_HOST) -> str:
     )
 
 
-def load_state() -> Dict[str, RunState]:
+def load_state(state_path: Path) -> Dict[str, RunState]:
     """Load per-run monitoring state from disk."""
-    if not STATE_PATH.exists():
+    if not state_path.exists():
         return {}
     try:
-        raw = json.loads(STATE_PATH.read_text(encoding="utf-8"))
+        raw = json.loads(state_path.read_text(encoding="utf-8"))
         return {k: RunState(**v) for k, v in raw.items()}
     except Exception as exc:
         _log(f"Warning: could not load state ({exc}); starting fresh.")
         return {}
 
 
-def save_state(state: Dict[str, RunState]) -> None:
+def save_state(state: Dict[str, RunState], state_path: Path) -> None:
     """Persist per-run monitoring state to disk."""
     raw = {k: {"last_val_step": v.last_val_step, "best_val": v.best_val} for k, v in state.items()}
-    STATE_PATH.write_text(json.dumps(raw, indent=2), encoding="utf-8")
+    state_path.write_text(json.dumps(raw, indent=2), encoding="utf-8")
 
 
 def parse_val_lines(text: str) -> List[Tuple[int, float]]:
@@ -200,6 +200,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     parser.add_argument("--ssh-host", default=DEFAULT_SSH_HOST, help="SSH host alias for A800-D")
     parser.add_argument("--issue", type=int, default=DEFAULT_ISSUE, help="GitHub issue number to post to")
     parser.add_argument("--poll-interval", type=int, default=DEFAULT_POLL_INTERVAL, help="Seconds between polls")
+    parser.add_argument("--state", default=DEFAULT_STATE_PATH, help="Path to the per-run monitoring state file")
     parser.add_argument("--once", action="store_true", help="Run a single polling cycle and exit")
     parser.add_argument("--dry-run", action="store_true", help="Log actions but do not post to GitHub")
     args = parser.parse_args(argv)
@@ -209,13 +210,14 @@ def main(argv: Optional[List[str]] = None) -> int:
         _log("No GitHub token found. Set GITHUB_TOKEN or include it in the git remote URL.")
         return 1
 
-    state = load_state()
-    _log(f"Monitoring A800-D logs every {args.poll_interval}s (issue #{args.issue}).")
+    state_path = Path(args.state)
+    state = load_state(state_path)
+    _log(f"Monitoring A800-D logs every {args.poll_interval}s (issue #{args.issue}, state={state_path}).")
 
     try:
         while True:
             state = poll_once(args.a800_repo, args.ssh_host, args.issue, token, state, args.dry_run)
-            save_state(state)
+            save_state(state, state_path)
             if args.once:
                 _log("Single-shot complete.")
                 break
@@ -223,7 +225,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     except KeyboardInterrupt:
         _log("Interrupted.")
     finally:
-        save_state(state)
+        save_state(state, state_path)
 
     return 0
 
