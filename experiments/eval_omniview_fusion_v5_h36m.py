@@ -227,6 +227,10 @@ def build_model(args: argparse.Namespace, n_views: int, j: int) -> OmniMultiView
         v25_geom_loss_weight=args.v25_geom_loss_weight,
         use_temporal_geometry_fusion_v26=args.use_temporal_geometry_fusion_v26,
         v26_temporal_window=args.v26_temporal_window,
+        use_test_time_self_evolution_v27=args.use_test_time_self_evolution_v27,
+        v27_tte_n_iters=args.v27_tte_n_iters,
+        v27_tte_sigma_reproj=args.v27_tte_sigma_reproj,
+        v27_tte_residual_thresh_mm=args.v27_tte_residual_thresh_mm,
     )
     return model
 
@@ -638,6 +642,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--v25_outlier_soft_beta", type=float, default=1.0, help="Softness of exponential down-weighting for v25 outlier-view detector")
     parser.add_argument("--use_temporal_geometry_fusion_v26", action="store_true", default=None, help="Enable v26 temporal geometry fusion")
     parser.add_argument("--v26_temporal_window", type=int, default=3, help="Temporal window size for v26")
+    # v27 toggles
+    parser.add_argument("--use_test_time_self_evolution_v27", action="store_true", default=False, help="Enable v27 test-time self-evolution at inference")
+    parser.add_argument("--v27_tte_n_iters", type=int, default=3, help="Number of iterations for v27 self-evolution")
+    parser.add_argument("--v27_tte_sigma_reproj", type=float, default=5.0, help="Cauchy kernel scale (pixels) for v27 self-evolution")
+    parser.add_argument("--v27_tte_residual_thresh_mm", type=float, default=0.5, help="Early-stop threshold (mm) for v27 self-evolution")
     parser.add_argument("--v25_geom_loss_weight", type=float, default=0.1, help="Weight for v25 geometry loss during training")
     # Evaluation
     parser.add_argument("--clip_len", type=int, default=13, help="Temporal clip length")
