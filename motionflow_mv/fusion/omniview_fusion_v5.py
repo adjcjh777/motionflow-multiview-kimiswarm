@@ -38,6 +38,9 @@ from motionflow_mv.fusion.kinematic_anthropometric_prior_v22 import (
 )
 from motionflow_mv.fusion.multiview_geometry_fusion_v25 import MultiViewGeometryFusionV25
 from motionflow_mv.fusion.temporal_geometry_fusion_v26 import TemporalGeometryFusionV26
+from motionflow_mv.fusion.uncertainty_aware_triangulation_v33 import (
+    UncertaintyAwareTriangulationV33,
+)
 from motionflow_mv.fusion.test_time_self_evolution_v27 import TestTimeSelfEvolutionV27
 from motionflow_mv.fusion.physical_space_alignment_v28 import (
     PhysicalSpaceAlignmentV28,
@@ -200,6 +203,12 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
         use_trajectory_consistency_v32: bool = False,
         v32_smooth_weight: float = 1e-3,
         v32_drift_weight: float = 1e-2,
+        # v33 uncertainty-aware triangulation
+        use_uncertainty_aware_triangulation_v33: bool = False,
+        v33_uat_loss_weight: float = 0.01,
+        v33_uat_log_var_min: float = -10.0,
+        v33_uat_log_var_max: float = 10.0,
+        v33_uat_covariance_hidden: int = 64,
         kap_loss_weight: float = 0.01,
         kap_use_angle_limit: bool = True,
         kap_max_flexion_deg: float = 160.0,
@@ -458,6 +467,19 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
             )
         else:
             self.multiview_geometry_fusion_v25 = None
+
+        # Optional v33 uncertainty-aware triangulation head.
+        self.use_uncertainty_aware_triangulation_v33 = use_uncertainty_aware_triangulation_v33
+        self.v33_uat_loss_weight = v33_uat_loss_weight
+        if self.use_uncertainty_aware_triangulation_v33:
+            self.uncertainty_aware_triangulation_v33 = UncertaintyAwareTriangulationV33(
+                d=self.d,
+                covariance_hidden=v33_uat_covariance_hidden,
+                log_var_min=v33_uat_log_var_min,
+                log_var_max=v33_uat_log_var_max,
+            )
+        else:
+            self.uncertainty_aware_triangulation_v33 = None
 
         # Optional v27 test-time self-evolution (inference only).
         self.use_test_time_self_evolution_v27 = use_test_time_self_evolution_v27
@@ -1045,6 +1067,24 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
                 confidence=confidences.view(B, T, V, J),
             )
             pred_3d_gn = pred_3d_gn_v25.view(B * T, J, 3)
+
+        # Optional v33 uncertainty-aware triangulation head.
+        if (
+            self.use_uncertainty_aware_triangulation_v33
+            and self.uncertainty_aware_triangulation_v33 is not None
+        ):
+            Rt = torch.cat([R, t.unsqueeze(-1)], dim=-1)
+            P = torch.matmul(K_corrected, Rt).view(B, T, V, 3, 4)
+            pred_3d_gn, uat_loss = self.uncertainty_aware_triangulation_v33(
+                points_2d=points_2d.view(B, T, V, J, 2),
+                confidences=confidences.view(B, T, V, J),
+                features=feat.view(B, T, V, J, self.d),
+                proj_matrices=P,
+                pred_3d_init=pred_3d_gn.view(B, T, J, 3),
+                view_mask=view_mask_flat.view(B, T, V),
+            )
+            pred_3d_gn = pred_3d_gn.view(B * T, J, 3)
+            geom_loss_v25 = geom_loss_v25 + self.v33_uat_loss_weight * uat_loss
 
         # Optional v27 test-time self-evolution.  Only active at eval to keep the
         # training graph simple and avoid extra forward passes.
