@@ -109,10 +109,15 @@ def active_sessions(prefix: str) -> int:
 
 
 def active_sessions_on_gpu(gpu: int) -> int:
+    """Count v29 sweep sessions assigned to ``gpu`` (ignore other tmux sessions)."""
     try:
         out = a800_ssh("tmux ls 2>/dev/null")
+        target = "v29_sweep_"  # prefix
         suffix = f"_gpu{gpu}:"
-        return sum(1 for line in out.splitlines() if suffix in line)
+        return sum(
+            1 for line in out.splitlines()
+            if line.strip().startswith(target) and suffix in line
+        )
     except subprocess.CalledProcessError:
         return 0
 
