@@ -188,10 +188,9 @@ def triangulate_dlt_batched_lstsq(
             Wv = W[:, v, :, :, :]  # (N, J, 2, 2)
             weighted_x = Wv[..., 0:1, 0:1] * row_x.unsqueeze(-2) + Wv[..., 0:1, 1:2] * row_y.unsqueeze(-2)
             weighted_y = Wv[..., 1:2, 0:1] * row_x.unsqueeze(-2) + Wv[..., 1:2, 1:2] * row_y.unsqueeze(-2)
-            weighted_x = weighted_x.squeeze(-2) * w_sqrt
-            weighted_y = weighted_y.squeeze(-2) * w_sqrt
-            A_rows.append(weighted_x)
-            A_rows.append(weighted_y)
+            weighted_x = weighted_x.squeeze(-2) * w_sqrt  # (N, J, 4)
+            weighted_y = weighted_y.squeeze(-2) * w_sqrt  # (N, J, 4)
+            A_rows.append(torch.stack([weighted_x, weighted_y], dim=2))  # (N, J, 2, 4)
 
         A = torch.cat(A_rows, dim=2)  # (N, J, 2V, 4)
         A3 = A[..., :3]
