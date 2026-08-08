@@ -163,7 +163,7 @@ class DeformableCrossViewAttention(nn.Module):
         # Apply key-view mask: masked-out views cannot be attended to.
         if view_mask is not None:
             key_mask = view_mask_flat.view(N, 1, 1, V, 1)  # (N, 1, 1, V, 1)
-            logits = logits.masked_fill(key_mask == 0, float("-inf"))
+            logits = logits.masked_fill(key_mask == 0, -1e9)
 
         # Soft attention weights over all key views (fully differentiable).
         weights = F.softmax(logits / F.softplus(self.tau).clamp_min(1e-3), dim=3)
