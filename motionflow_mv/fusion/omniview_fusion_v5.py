@@ -157,6 +157,10 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
         kap_use_angle_limit: bool = True,
         kap_max_flexion_deg: float = 160.0,
         kap_max_delta: float = 0.10,
+        kap_adaptive_prior: bool = False,
+        kap_adaptive_context_dim: int = 16,
+        kap_adaptive_hidden: int = 64,
+        kap_adaptive_regularization: float = 0.01,
         num_diffusion_steps: int = 10,
         camera_view_embedding_hidden: int = 32,
         set_view_n_isab_layers: int = 2,
@@ -350,6 +354,10 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
                 use_angle_limit=kap_use_angle_limit,
                 max_flexion_deg=kap_max_flexion_deg,
                 max_delta=kap_max_delta,
+                adaptive_prior=kap_adaptive_prior,
+                adaptive_context_dim=kap_adaptive_context_dim,
+                adaptive_hidden=kap_adaptive_hidden,
+                adaptive_regularization=kap_adaptive_regularization,
             )
         else:
             self.kinematic_anthropometric_prior_v22 = None
@@ -512,6 +520,7 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
         t: torch.Tensor = None,
         view_mask: Optional[torch.Tensor] = None,
         domain_id: Optional[torch.Tensor] = None,
+        target_3d: Optional[torch.Tensor] = None,
     ) -> Tuple[torch.Tensor, ...]:
         squeeze_output = False
         if x.dim() == 4:
@@ -520,6 +529,15 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
 
         B, T, V, J, _ = x.shape
         device = x.device
+
+        # Normalize target shape to (B, T, J, 3) if provided.
+        if target_3d is not None:
+            if target_3d.dim() == 3:
+                target_3d = target_3d.unsqueeze(1)
+            elif target_3d.dim() == 4:
+                pass
+            else:
+                raise ValueError("target_3d must have shape (B, J, 3) or (B, T, J, 3)")
 
         # Defensive: input data may contain NaN/Inf for occluded/missing joints.
         # Replace them with finite placeholders while keeping the confidence channel
@@ -866,16 +884,14 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
 
         # Residual refinement head (deterministic MLP or diffusion-based v20).
         if self.use_diffusion_refiner_v20 and self.diffusion_refiner_v20 is not None:
-            if self.training:
-                t_diff = torch.randint(
-                    0,
-                    self.num_diffusion_steps,
-                    (pred_3d_gn.shape[0],),
-                    device=device,
+            if self.training and target_3d is not None:
+                # During training, use the true target to compute the diffusion
+                # loss and a differentiable single-step refinement.
+                target_3d_flat = target_3d.view(B * T, J, 3)
+                pred_3d, diff_loss = self.diffusion_refiner_v20(
+                    pred_3d_gn, feat=feat_pooled, train_targets=target_3d_flat
                 )
-                pred_3d = self.diffusion_refiner_v20(
-                    pred_3d_gn, feat=feat_pooled, t=t_diff
-                )
+                epi_loss = epi_loss + diff_loss
             else:
                 pred_3d = self.diffusion_refiner_v20(pred_3d_gn, feat=feat_pooled)
         else:
