@@ -3,7 +3,7 @@
 # This script is intended to be run FROM the A800-D host (or via SSH).
 set -euo pipefail
 
-SESSION="v29_gpu0"
+SESSION="v29_gpu5"
 REPO="/mnt/nvme0n1p1/zhangzy/motionflow-multiview-kimiswarm-iter20"
 LOG="outputs/omniview_fusion_v29_full_seh_mv_a800.log"
 OUTPUT="outputs/omniview_fusion_v29_full_seh_mv_a800.pth"
@@ -14,7 +14,7 @@ if tmux has-session -t $SESSION 2>/dev/null; then
     exit 0
 fi
 
-tmux new-session -d -s $SESSION -n v29 "cd $REPO && CUDA_VISIBLE_DEVICES=0 python -u experiments/train_omniview_fusion_v5_webbridge_multi.py \
+tmux new-session -d -s $SESSION -n v29 "cd $REPO && CUDA_VISIBLE_DEVICES=5 python3 -u experiments/train_omniview_fusion_v5_webbridge_multi.py \
     --use_mixed_loader \
     --mixed_manifest configs/splits/webbridge_h36m_mpi_mixed_train_val.yaml \
     --use_full_precision_dlt \
@@ -34,7 +34,7 @@ tmux new-session -d -s $SESSION -n v29 "cd $REPO && CUDA_VISIBLE_DEVICES=0 pytho
     --num_workers 4 \
     --d 128 --residual_hidden 256 --n_st_layers 3 \
     --graph_num_layers 1 --n_joint_layers 1 --n_heads 4 \
-    --epochs 20 --batch_size 32 --train_samples 4000 --val_stride 10 \
+    --epochs 20 --batch_size 24 --train_samples 4000 --val_stride 10 \
     --lr 1e-3 --lr_cosine --lr_warmup_epochs 3 --lr_min 1e-6 \
     --max_grad_norm 1.0 --ema_decay 0.999 \
     --early_stopping_patience 3 --early_stopping_min_delta 0.001 \
