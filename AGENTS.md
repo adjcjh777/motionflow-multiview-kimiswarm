@@ -18,7 +18,7 @@ This file captures the current A800-D workflow, tmux conventions, and issue labe
 
 | Run | Description | Status |
 |-----|-------------|--------|
-| v25 small local | v18 + geometry fusion (small subset) | Restarted PID 16874 after GPU was blocked by duplicate processes; running |
+| v25 small local | v18 + geometry fusion + v25_dropout=0.2 | Restarted with dropout to mitigate overfitting; running |
 | v18 top-k ST | v18 deformable attention with straight-through top-k | Merged to main |
 | v19 temporal perceiver | Feature-aware temporal Perceiver | Merged to main |
 | v26 temporal gate | Warm-startable residual gate | Merged to main |
