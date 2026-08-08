@@ -11,6 +11,7 @@ remains fast.
 
 from __future__ import annotations
 
+import math
 from typing import Optional, Tuple
 
 import torch
@@ -68,7 +69,9 @@ class UncertaintyDepthProposalTriangulation(nn.Module):
         )
         # Initialise to a reasonable depth range.  When n_mixtures>1, spread the
         # component means across the range; otherwise place a single component in
-        # the middle.  All weights start uniform (logits 0) and sigmas start at 1.
+        # the middle.  Weights start uniform (logits 0).  Sigma is initialised
+        # to ~ the depth range so that the initial samples cover the same
+        # interval as the fixed v25 grid (warm-start / identity property).
         nn.init.zeros_(self.dist_mlp[-1].weight)
         with torch.no_grad():
             out_bias = self.dist_mlp[-1].bias.view(self.n_mixtures, 3)
@@ -77,7 +80,7 @@ class UncertaintyDepthProposalTriangulation(nn.Module):
                 out_bias[:, 1] = (init_z_min + init_z_max) / 2.0
             else:
                 out_bias[:, 1] = torch.linspace(init_z_min, init_z_max, self.n_mixtures)
-            out_bias[:, 2] = 0.0
+            out_bias[:, 2] = math.log(max(init_z_max - init_z_min, 1e-6))
 
         # Score each (view, sample) candidate.  Feat: candidate + current estimate + uncertainty.
         self.score_mlp = nn.Sequential(
