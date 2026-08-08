@@ -1,0 +1,7 @@
+D:\WSL_workspace\about_eassys\motionflow-multivie-kimiswarm\motionflow_mv\losses\focal_calibration_loss.py:17: SyntaxWarning: invalid escape sequence '\m'
+  \mathcal{L}_{\text{focal}}
+Device: cpu
+Model params: 126521
+Epoch 1: train_loss=2.271936, val_loss=0.002243, val_MPJPE=81.99mm
+Best val MPJPE: 81.99mm -> outputs\ablate_v26_v27_v28_smoke\v25_baseline.pth
+Saved training config -> outputs\ablate_v26_v27_v28_smoke\v25_baseline.config.json

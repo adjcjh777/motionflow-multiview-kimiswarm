@@ -1,0 +1,5 @@
+Device: cpu
+Model params: 131386
+Epoch 1: train_loss=2.283045, val_loss=0.002244, val_MPJPE=82.00mm
+Best val MPJPE: 82.00mm -> outputs\ablate_v26_v27_v28_smoke\v25_udp.pth
+Saved training config -> outputs\ablate_v26_v27_v28_smoke\v25_udp.config.json
