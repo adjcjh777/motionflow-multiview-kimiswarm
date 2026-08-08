@@ -94,3 +94,27 @@ def test_v26_udp_gmm_forward_backward():
     assert pred.shape == (2, 5, 17, 3)
     (pred.mean() + out[4]).backward()
     assert any(p.grad is not None for p in model.parameters())
+
+
+def test_v26_udp_gmm_v28_forward_backward():
+    K, R, t = _make_cameras(4)
+    model = OmniMultiViewFusionV5(
+        j=17,
+        d=32,
+        n_views=4,
+        n_st_layers=1,
+        graph_num_layers=1,
+        use_temporal_geometry_fusion_v26=True,
+        v26_temporal_window=3,
+        use_uncertainty_depth_proposals_v27=True,
+        v27_udp_n_mixtures=2,
+        use_physical_space_alignment_v28=True,
+        v28_floor_loss_weight=0.01,
+        v28_bone_temporal_weight=0.01,
+    )
+    x = torch.rand(2, 5, 4, 17, 3)
+    out = model(x, K=K, R=R, t=t)
+    pred = out[0]
+    assert pred.shape == (2, 5, 17, 3)
+    (pred.mean() + out[4]).backward()
+    assert any(p.grad is not None for p in model.parameters())
