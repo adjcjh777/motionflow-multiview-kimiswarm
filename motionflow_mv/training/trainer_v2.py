@@ -424,6 +424,8 @@ class TrainerV2:
         checkpoint_path: Optional[str] = None,
         save_best: bool = True,
         log_interval: int = 0,
+        early_stopping_patience: int = 0,
+        early_stopping_min_delta: float = 0.0,
     ) -> List[Dict[str, Any]]:
         """Train for ``epochs`` epochs and optionally evaluate/ checkpoint.
 
@@ -438,6 +440,7 @@ class TrainerV2:
         The per-epoch history list.
         """
         best_metric = float("inf")
+        epochs_without_improvement = 0
         for _ in range(epochs):
             self.epoch += 1
             if hasattr(self, "model"):
@@ -450,14 +453,23 @@ class TrainerV2:
                 self.history.append(entry)
                 if save_best and checkpoint_path is not None:
                     val_loss = val_metrics.get("loss", float("inf"))
-                    if val_loss < best_metric:
+                    if val_loss < best_metric - early_stopping_min_delta:
                         best_metric = val_loss
+                        epochs_without_improvement = 0
                         self.save_checkpoint(checkpoint_path)
+                    else:
+                        epochs_without_improvement += 1
                 print(
                     f"Epoch {self.epoch}: train_loss={train_metrics.get('loss', float('nan')):.6f}, "
                     f"val_loss={val_metrics.get('loss', float('nan')):.6f}, "
                     f"val_MPJPE={val_metrics.get('mpjpe', float('nan')) * 1000:.2f}mm"
                 )
+                if early_stopping_patience > 0 and epochs_without_improvement >= early_stopping_patience:
+                    print(
+                        f"Early stopping at epoch {self.epoch} (no val_loss improvement for "
+                        f"{early_stopping_patience} epochs)."
+                    )
+                    break
             else:
                 self.history.append(entry)
                 print(f"Epoch {self.epoch}: train_loss={train_metrics.get('loss', float('nan')):.6f}")

@@ -1447,6 +1447,9 @@ def parse_args() -> Namespace:
     # Warm-start
     parser.add_argument("--warm_start", type=str, default=None, help="Path to v2/v3 checkpoint for warm-starting")
     parser.add_argument("--warm_start_freeze_epochs", type=int, default=0, help="Freeze encoder/transformer for N epochs after warm-start")
+    # Early stopping
+    parser.add_argument("--early_stopping_patience", type=int, default=0, help="Stop training if val_loss does not improve for N epochs (0 disables)")
+    parser.add_argument("--early_stopping_min_delta", type=float, default=0.0, help="Minimum val_loss improvement to reset early stopping counter")
     # I/O
     parser.add_argument("--output", type=str, default="outputs/omniview_fusion_v5_webbridge_multi.pth", help="Checkpoint path")
     args = parser.parse_args()
@@ -1590,6 +1593,8 @@ def main():
             checkpoint_path=str(output_path),
             save_best=True,
             log_interval=50,
+            early_stopping_patience=args.early_stopping_patience,
+            early_stopping_min_delta=args.early_stopping_min_delta,
         )
 
         best = min(history, key=lambda e: e.get("val", {}).get("loss", float("inf")))
