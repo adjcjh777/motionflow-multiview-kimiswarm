@@ -154,6 +154,8 @@ def build_model_from_args(
     }
     if args.adaptive_view_k is not None:
         model_kwargs["adaptive_view_target_k"] = args.adaptive_view_k
+    if hasattr(args, "adaptive_view_budget_weight"):
+        model_kwargs["adaptive_view_budget_weight"] = args.adaptive_view_budget_weight
 
     model = OmniMultiViewFusionV5(**model_kwargs)
 
@@ -934,8 +936,8 @@ def build_compute_loss(args: Namespace):
         visibility = out[2]
         L = out[3]
         epi_loss = out[4]
-        entropy_loss_out = out[5] if len(out) > 5 else None
-        budget_loss_out = out[6] if len(out) > 6 else None
+        # v5 returns (pred_3d, weights, visibility, L, epi_loss, budget_loss).
+        budget_loss_out = out[5] if len(out) > 5 else None
 
         loss = F.mse_loss(pred_3d, y)
         metrics: Dict[str, Any] = {
@@ -1325,6 +1327,7 @@ def parse_args() -> Namespace:
     parser.add_argument("--use_rotation_correction", type=lambda x: x.lower() == "true", default=False, help="Use rotation correction head")
     parser.add_argument("--use_entropy_regularization", type=lambda x: x.lower() == "true", default=False, help="Enable entropy regularisation inside the model")
     parser.add_argument("--adaptive_view_k", type=int, default=None, help="Target k for adaptive view selection")
+    parser.add_argument("--adaptive_view_budget_weight", type=float, default=0.01, help="Internal budget-loss weight inside AdaptiveViewSelector")
     # v5 toggles
     parser.add_argument("--use_camera_view_embedding", action="store_true", help="Use camera-conditioned view embedding instead of learned view_pos_embed")
     parser.add_argument("--use_set_view_aggregator", action="store_true", help="Use set-transformer (ISAB) view aggregator before the time+view transformer")

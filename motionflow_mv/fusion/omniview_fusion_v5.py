@@ -121,6 +121,7 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
         use_rotation_correction: bool = False,
         use_entropy_regularization: bool = False,
         adaptive_view_target_k: int = 2,
+        adaptive_view_budget_weight: float = 0.01,
         rotation_max_rot_deg: float = 2.0,
         entropy_weight: float = 0.01,
         use_camera_view_embedding: bool = False,
@@ -210,6 +211,7 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
             use_rotation_correction=use_rotation_correction,
             use_entropy_regularization=use_entropy_regularization,
             adaptive_view_target_k=adaptive_view_target_k,
+            adaptive_view_budget_weight=adaptive_view_budget_weight,
             rotation_max_rot_deg=rotation_max_rot_deg,
             entropy_weight=entropy_weight,
         )
@@ -957,7 +959,7 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
             L = L.squeeze(1)
             visibility = visibility.squeeze(1)
 
-        out = (pred_3d, weights, visibility, L, epi_loss)
+        out = (pred_3d, weights, visibility, L, epi_loss, budget_loss)
 
         if self.return_pp_delta:
             out += (pp_delta,)

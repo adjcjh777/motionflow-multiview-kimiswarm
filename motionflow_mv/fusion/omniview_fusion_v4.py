@@ -112,6 +112,7 @@ class OmniMultiViewFusionV4(OmniMultiViewFusionV3):
         use_rotation_correction: bool = False,
         use_entropy_regularization: bool = False,
         adaptive_view_target_k: int = 2,
+        adaptive_view_budget_weight: float = 0.01,
         rotation_max_rot_deg: float = 2.0,
         entropy_weight: float = 0.01,
     ):
@@ -192,7 +193,7 @@ class OmniMultiViewFusionV4(OmniMultiViewFusionV3):
                 n_views=self.n_views,
                 n_joints=self.j,
                 target_k=adaptive_view_target_k,
-                budget_weight=0.01,
+                budget_weight=adaptive_view_budget_weight,
                 use_selector=True,
             )
         else:
