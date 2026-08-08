@@ -3,7 +3,8 @@
 set -euo pipefail
 
 cd /mnt/nvme0n1p1/zhangzy/motionflow-multiview-kimiswarm-iter20
-VENV="/mnt/nvme0n1p1/zhangzy/motionflow-multiview-kimiswarm/.venv/bin/python -u"
+PYTHON_BIN="/mnt/nvme0n1p1/zhangzy/motionflow-multiview-kimiswarm/.venv/bin/python"
+PYTHONPATH="/mnt/nvme0n1p1/zhangzy/motionflow-multiview-kimiswarm-iter20"
 
 run() {
     gpu=$1
@@ -11,7 +12,7 @@ run() {
     script=$3
     tmux kill-session -t "$name" 2>/dev/null || true
     tmux new-session -d -s "$name" \
-        "CUDA_VISIBLE_DEVICES=$gpu PYTHONPATH=/mnt/nvme0n1/zhangzy/motionflow-multiview-kimiswarm-iter20 $VENV bash $script"
+        "export CUDA_VISIBLE_DEVICES=$gpu PYTHONPATH=$PYTHONPATH; export PYTHON=$PYTHON_BIN; bash $script"
 }
 
 run 4 v23b_kap001_no_ba_gpu4 scripts/run_v23b_kap001_no_ba_a800_small.sh
