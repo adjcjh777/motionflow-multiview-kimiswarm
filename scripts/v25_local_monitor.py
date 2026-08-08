@@ -65,6 +65,9 @@ def append_records(records: list[dict], csv_path: Path) -> None:
     new = [r for r in records if r["epoch"] not in existing]
     if not new:
         return
+    now = time.strftime("%Y-%m-%dT%H:%M:%S%z")
+    for r in new:
+        r["timestamp"] = now
     fieldnames = ["timestamp", "epoch", "train_loss", "val_loss", "val_mpjpe_mm", "saved"]
     if not csv_path.exists():
         with csv_path.open("w", newline="") as f:
