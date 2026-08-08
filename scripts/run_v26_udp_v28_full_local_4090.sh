@@ -20,7 +20,7 @@ $PYTHON -u experiments/train_omniview_fusion_v5_webbridge_multi.py \
     --use_uncertainty_depth_proposals_v27 \
     --v27_uncertainty_loss_weight 0.01 \
     --use_physical_space_alignment_v28 \
-    --v28_floor_loss_weight 0.1 --v28_bone_temporal_weight 0.1 \
+    --v28_floor_loss_weight 0.01 --v28_bone_temporal_weight 0.01 \
     --v25_geom_loss_weight 0.1 \
     --v25_use_geometry_attention \
     --v25_use_learned_depth_triangulation \
