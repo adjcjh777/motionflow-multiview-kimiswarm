@@ -1,7 +1,7 @@
 """v33 uncertainty-aware triangulation head.
 
 Predicts per-view, per-joint 2-D log-variance from spatio-temporal features,
-re-weights the DLT triangulation with the resulting diagonal covariance, and
+re-weights the DLT triangulation with the resulting diagonal precision, and
 supervises the predicted uncertainty with a reprojection negative-log-likelihood
 loss.  The module is optional and identity at init: the residual refinement MLP
 is gated by a learnable scalar initialised to 0, so the baseline is preserved when
@@ -13,9 +13,48 @@ from typing import Optional
 import torch
 import torch.nn as nn
 
-from motionflow_mv.fusion.uncertainty_weighted_triangulation import (
-    triangulate_uncertainty_weighted_batched,
-)
+
+def _triangulate_precision_weighted_batched(
+    points_2d: torch.Tensor,
+    proj_matrices: torch.Tensor,
+    precision: torch.Tensor,
+) -> torch.Tensor:
+    """Batched DLT triangulation with per-axis precision weights.
+
+    Args:
+        points_2d: (N, V, J, 2)
+        proj_matrices: (N, V, 3, 4)
+        precision: (N, V, J, 2) positive per-axis precision (1 / variance).
+
+    Returns:
+        X: (N, J, 3)
+    """
+    N, V, J, _ = points_2d.shape
+    if proj_matrices.dim() == 3:
+        proj_matrices = proj_matrices.unsqueeze(0).expand(N, -1, -1, -1)
+
+    sqrt_precision = torch.sqrt(precision + 1e-8)  # (N, V, J, 2)
+
+    A_rows = []
+    for v in range(V):
+        P = proj_matrices[:, v, :, :]  # (N, 3, 4)
+        x = points_2d[:, v, :, 0]  # (N, J)
+        y = points_2d[:, v, :, 1]
+        # Each DLT row is a 4-vector.
+        row_x = x[..., None] * P[:, 2:3, :] - P[:, 0:1, :]  # (N, J, 4)
+        row_y = y[..., None] * P[:, 2:3, :] - P[:, 1:2, :]
+
+        w_x = sqrt_precision[:, v, :, 0].unsqueeze(-1)  # (N, J, 1)
+        w_y = sqrt_precision[:, v, :, 1].unsqueeze(-1)
+        A_view = torch.stack([row_x * w_x, row_y * w_y], dim=2)  # (N, J, 2, 4)
+        A_rows.append(A_view)
+
+    A = torch.cat(A_rows, dim=2)  # (N, J, 2V, 4)
+    A3 = A[..., :3]  # (N, J, 2V, 3)
+    b = -A[..., 3:]  # (N, J, 2V, 1)
+
+    X, *_ = torch.linalg.lstsq(A3, b)
+    return X.squeeze(-1)  # (N, J, 3)
 
 
 class _UncertaintyMLP(nn.Module):
@@ -105,35 +144,31 @@ class UncertaintyAwareTriangulationV33(nn.Module):
         log_var = self.uncertainty_mlp(features)  # (B, T, V, J, 2)
         log_var = torch.clamp(log_var, min=self.log_var_min, max=self.log_var_max)
 
-        # Build diagonal covariance matrices.
-        var = torch.exp(log_var)  # (B, T, V, J, 2)
-        covariances = torch.zeros(
-            B, T, V, J, 2, 2, device=log_var.device, dtype=log_var.dtype
-        )
-        covariances[..., 0, 0] = var[..., 0]
-        covariances[..., 1, 1] = var[..., 1]
+        # Convert to variance.  Add a small floor so division is safe.
+        var = torch.exp(log_var) + 1e-8  # (B, T, V, J, 2)
 
-        # Mask out unavailable views by setting covariance very high so they
+        # Mask out unavailable views by setting variance very high so they
         # contribute almost nothing to the weighted triangulation.
         if view_mask is not None:
-            covariances = torch.where(
-                view_mask.view(B, T, V, 1, 1, 1).bool(),
-                covariances,
-                torch.full_like(covariances, 1e6),
+            var = torch.where(
+                view_mask.view(B, T, V, 1, 1).bool(),
+                var,
+                torch.full_like(var, 1e6),
             )
 
         # Flatten batch and time for the batched triangulation helper.
         points_flat = points_2d.view(N, V, J, 2)
-        cov_flat = covariances.view(N, V, J, 2, 2)
         conf_flat = confidences.view(N, V, J)
         proj_flat = proj_matrices.view(N, V, 3, 4)
+        var_flat = var.view(N, V, J, 2)
 
         # 2. Precision-weighted triangulation.
-        pred_weighted = triangulate_uncertainty_weighted_batched(
+        # Per-axis precision = confidence / variance.
+        precision = conf_flat.unsqueeze(-1) / var_flat  # (N, V, J, 2)
+        pred_weighted = _triangulate_precision_weighted_batched(
             points_2d=points_flat,
             proj_matrices=proj_flat,
-            covariances=cov_flat,
-            confidences=conf_flat,
+            precision=precision,
         )  # (N, J, 3)
         pred_weighted = pred_weighted.view(B, T, J, 3)
 
@@ -148,7 +183,7 @@ class UncertaintyAwareTriangulationV33(nn.Module):
             points_2d,
             confidences,
             proj_matrices,
-            covariances,
+            var,
         )
 
         return pred_3d_ref, uncertainty_loss
@@ -159,12 +194,13 @@ class UncertaintyAwareTriangulationV33(nn.Module):
         points_2d: torch.Tensor,
         confidences: torch.Tensor,
         proj_matrices: torch.Tensor,
-        covariances: torch.Tensor,
+        var: torch.Tensor,
     ) -> torch.Tensor:
         """Compute reprojection negative log-likelihood.
 
         Loss = 0.5 * (r^T Σ^{-1} r + log det Σ) averaged over views with
-        positive confidence.
+        positive confidence.  For a diagonal covariance with axes var_x, var_y,
+        this reduces to ``sum(r_i^2 / var_i) + log(var_x * var_y)``.
         """
         # Reproject pred_3d into every view.
         uv_pred = self._project(pred_3d, proj_matrices)  # (B, T, V, J, 2)
@@ -176,7 +212,6 @@ class UncertaintyAwareTriangulationV33(nn.Module):
             return torch.tensor(0.0, device=pred_3d.device, dtype=pred_3d.dtype)
 
         # Diagonal precision-weighted squared residual.
-        var = torch.stack([covariances[..., 0, 0], covariances[..., 1, 1]], dim=-1)
         precision_residual = (r ** 2) / (var + 1e-8)  # (B, T, V, J, 2)
         quadratic = precision_residual.sum(dim=-1)  # (B, T, V, J)
 
