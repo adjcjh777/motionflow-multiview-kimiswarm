@@ -18,8 +18,8 @@ This file captures the current A800-D workflow, tmux conventions, and issue labe
 | Run | Description | Status |
 |-----|-------------|--------|
 | v26+UDP full | v26 + v27 UDP + early stopping + weight decay | Stopped; best epoch 2 val 44.72mm, then overfit to 122.11mm |
-| v26+UDP-GMM full | v26 + v27 UDP-GMM + early stopping + weight decay | Running (lr 3e-4, wd 5e-5, patience 3) |
-| v26+UDP+v28 full | v26 + v27 UDP + v28 physical-space alignment | Queued (lr 3e-4, wd 5e-5, patience 3) |
+| v26+UDP-GMM full | v26 + v27 UDP-GMM + early stopping + weight decay | Stopped; best epoch 4 val 40.27mm, then overfit |
+| v26+UDP+v28 full | v26 + v27 UDP + v28 physical-space alignment | Running (lr 3e-4, wd 5e-5, patience 3) |
 | v26+UDP-GMM+v28 full | v26 + v27 UDP-GMM + v28 physical-space alignment | Queued (lr 3e-4, wd 5e-5, patience 3) |
 | v13 temporal | Legacy v13 temporal run | Stopped to free GPU for v26 full queue |
 
