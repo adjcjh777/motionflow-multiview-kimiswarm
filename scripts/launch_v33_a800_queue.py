@@ -237,7 +237,12 @@ def gpu_free_mibs() -> list[tuple[int, int]]:
 
 
 def used_gpus_from_tmux() -> set[int]:
-    """Return GPU indices already used by v31/v32/v33 tmux sessions."""
+    """Return GPU indices already used by v31/v32/v33/v34/v35/v36 tmux sessions.
+
+    Note: this is kept for diagnostics only.  The poller now relies on free
+    memory rather than tmux names, so it can co-locate queued runs alongside
+    the long-running v31 top-5 sessions when sufficient memory is available.
+    """
     gpus: set[int] = set()
     try:
         out = a800_ssh("tmux ls 2>/dev/null || true")
@@ -285,28 +290,38 @@ def main() -> None:
         a800_ssh(f"cd {A800_REPO} && timeout 15 git pull origin main || true")
     except subprocess.CalledProcessError as e:
         print(f"Warning: git pull on A800 failed: {e}")
-    used_gpus = used_gpus_from_tmux()
+    tmux_gpus = used_gpus_from_tmux()
     already_running = running_run_names()
     queue = [(n, f, o) for n, f, o in queue if n not in already_running]
-    print(f"Already-used GPUs from tmux: {used_gpus}")
+    print(f"GPUs with tmux sessions (diagnostic): {tmux_gpus}")
     print(f"Already-running runs names: {already_running}")
     print(f"Remaining queue: {[n for n, _, _ in queue]}")
+
+    # Track which GPUs have been assigned a run in this poller session to avoid
+    # launching multiple runs on the same GPU in rapid succession.
+    launched_gpus: set[int] = set()
+
     while queue:
         pairs = gpu_free_mibs()
         candidates = [
             (g, f) for g, f in pairs
-            if f >= MIN_FREE_MIB and g not in used_gpus
+            if f >= MIN_FREE_MIB and g not in launched_gpus
         ]
         if not candidates:
+            # All candidate GPUs are busy; reset so we can try again next round
+            # after a full polling interval has passed.
+            launched_gpus.clear()
             print(f"No GPU with >= {MIN_FREE_MIB} MiB free; sleeping {POLL_INTERVAL}s")
             time.sleep(POLL_INTERVAL)
             continue
-        gpu, _ = max(candidates, key=lambda x: x[1])
-        used_gpus.add(gpu)
+        # Prefer the GPU with the most free memory.
+        gpu, free_mib = max(candidates, key=lambda x: x[1])
+        launched_gpus.add(gpu)
         name, extra_flags, output = queue.pop(0)
         launch_run(name, extra_flags, output, gpu)
+        print(f"GPU {gpu} has {free_mib} MiB free; launched {name}")
         time.sleep(60)
-    print("All v32/v33 runs launched.")
+    print("All v32/v33/v34/v35/v36 runs launched.")
 
 
 if __name__ == "__main__":
