@@ -1,0 +1,51 @@
+# Small-scale real-data benchmark manifest for the v25 small local 4090 checkpoint.
+# Runs only the first sequence from H36M val and MPI-INF-3DHP val for a fast
+# local RTX 4090 sanity check (< 30 min).
+#
+# Replace the checkpoint path with the actual v25 small local checkpoint once
+# training finishes.
+
+checkpoint: outputs/omniview_fusion_v25_geometry_fusion_small_local_4090.pth
+
+common_args:
+  d: 128
+  residual_hidden: 256
+  n_st_layers: 3
+  graph_num_layers: 1
+  n_joint_layers: 1
+  n_heads: 4
+  clip_len: 13
+  batch_size: 16
+  val_stride: 10
+  use_multiscale_fusion: true
+  use_camera_conditioning: true
+  use_epipolar_bias: true
+  use_context_visibility: true
+  use_skeleton_residual: true
+  use_rotation_correction: true
+  use_entropy_regularization: true
+  entropy_weight: 0.01
+  use_camera_view_embedding: true
+  use_set_view_aggregator: true
+  camera_view_embedding_hidden: 32
+  set_view_n_isab_layers: 2
+  set_view_num_inducing_points: 32
+  set_view_dropout: 0.0
+  use_multiview_geometry_fusion_v25: true
+  v25_use_geometry_attention: true
+  v25_use_learned_depth_triangulation: true
+  v25_use_geometry_bundle_adjustment: true
+  v25_geom_loss_weight: 0.1
+
+datasets:
+  - name: h36m_val
+    script: experiments/eval_omniview_fusion_v5_h36m.py
+    split_yaml: configs/splits/webbridge_h36m_train_val.yaml
+    split: val
+    limit: 1
+
+  - name: mpiinf3dhp_val
+    script: experiments/eval_omniview_fusion_v5_mpiinf3dhp.py
+    split_yaml: configs/splits/webbridge_mpiinf3dhp_train_val_test.yaml
+    split: val
+    limit: 1

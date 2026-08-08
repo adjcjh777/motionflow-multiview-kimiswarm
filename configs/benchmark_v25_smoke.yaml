@@ -1,0 +1,44 @@
+# Smoke benchmark manifest for an available OmniMultiViewFusionV5 checkpoint.
+#
+# Uses a CPU smoke checkpoint without v25 geometry fusion so the driver can be
+# validated end-to-end on the local RTX 4090 in a few minutes.
+#
+# Run with:
+#   python scripts/run_full_v5_benchmark_manifest.py \
+#       --manifest configs/benchmark_v25_smoke.yaml \
+#       --out outputs/benchmark_v25_smoke
+#
+# Dry-run:
+#   python scripts/run_full_v5_benchmark_manifest.py \
+#       --manifest configs/benchmark_v25_smoke.yaml \
+#       --out outputs/benchmark_v25_smoke_dry \
+#       --dry-run
+
+checkpoint: outputs/webbridge_data_expansion_v5_cpu_smoke.pth
+
+# Common model / evaluation args (taken from the checkpoint side-car config).
+common_args:
+  d: 32
+  residual_hidden: 64
+  n_st_layers: 1
+  graph_num_layers: 1
+  n_joint_layers: 0
+  n_heads: 4
+  clip_len: 9
+  batch_size: 2
+  val_stride: 1
+  # v4 toggles
+  use_multiscale_fusion: true
+  use_camera_conditioning: true
+  use_epipolar_bias: true
+  use_context_visibility: true
+  use_skeleton_residual: true
+
+datasets:
+  - name: h36m_smoke
+    script: experiments/eval_omniview_fusion_v5_h36m.py
+    smoke: true
+
+  - name: mpiinf3dhp_smoke
+    script: experiments/eval_omniview_fusion_v5_mpiinf3dhp.py
+    smoke: true
