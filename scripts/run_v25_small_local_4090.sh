@@ -28,7 +28,8 @@ $PYTHON -u experiments/train_omniview_fusion_v5_webbridge_multi.py \
     --graph_num_layers 1 --n_joint_layers 1 --n_heads 4 \
     --epochs $EPOCHS --batch_size $BATCH_SIZE --train_samples $TRAIN_SAMPLES --val_stride 10 \
     --lr 1e-3 --lr_cosine --lr_warmup_epochs 3 --lr_min 1e-6 \
-    --max_grad_norm 1.0 --ema_decay 0.999 \
+    --max_grad_norm 1.0 --ema_decay 0.999 \\
+    --early_stopping_patience 3 --early_stopping_min_delta 0.001 \
     --use_multiscale_fusion true --use_camera_conditioning true --use_epipolar_bias true \
     --use_context_visibility true --use_skeleton_residual true --use_rotation_correction true \
     --use_entropy_regularization true --attention_entropy_weight 0.01 \
