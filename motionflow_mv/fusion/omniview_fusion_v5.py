@@ -70,6 +70,9 @@ from motionflow_mv.fusion.geometry_view_joint_graph_network_v34 import (
 from motionflow_mv.fusion.temporal_view_joint_graph_network_v35 import (
     TemporalViewJointGraphNetworkV35,
 )
+from motionflow_mv.fusion.uncertainty_gated_iterative_graph_refinement_v36 import (
+    UncertaintyGatedIterativeGraphRefinementV36,
+)
 from motionflow_mv.fusion.camera_view_embedding_v31 import CameraConditionedViewEmbeddingV31
 from motionflow_mv.losses.physical_collision_penalty_v31 import PhysicalCollisionPenaltyV31
 from motionflow_mv.fusion.prototypes.cross_view_graph_attention import (
@@ -239,6 +242,13 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
         v35_tvjgn_n_layers: int = 2,
         v35_tvjgn_n_heads: int = 4,
         v35_tvjgn_dropout: float = 0.0,
+        # v36 uncertainty-gated iterative graph refinement
+        use_uncertainty_gated_iterative_graph_refinement_v36: bool = False,
+        v36_ugigr_n_layers: int = 1,
+        v36_ugigr_n_iters: int = 2,
+        v36_ugigr_n_heads: int = 4,
+        v36_ugigr_dropout: float = 0.0,
+        v36_ugigr_uncertainty_hidden: int = 64,
         # v32 temporal trajectory consistency
         use_trajectory_consistency_v32: bool = False,
         v32_smooth_weight: float = 1e-3,
@@ -691,6 +701,21 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
         else:
             self.temporal_view_joint_graph_network_v35 = None
 
+        # Optional v36 uncertainty-gated iterative graph refinement.
+        self.use_uncertainty_gated_iterative_graph_refinement_v36 = use_uncertainty_gated_iterative_graph_refinement_v36
+        if self.use_uncertainty_gated_iterative_graph_refinement_v36:
+            self.uncertainty_gated_iterative_graph_refinement_v36 = UncertaintyGatedIterativeGraphRefinementV36(
+                d=self.d,
+                n_views=n_views,
+                n_layers=v36_ugigr_n_layers,
+                n_iters=v36_ugigr_n_iters,
+                n_heads=v36_ugigr_n_heads,
+                dropout=v36_ugigr_dropout,
+                uncertainty_hidden=v36_ugigr_uncertainty_hidden,
+            )
+        else:
+            self.uncertainty_gated_iterative_graph_refinement_v36 = None
+
         # Optional v29 test-time self-evolution (with physical-space alignment).
         self.use_test_time_self_evolution_v29 = use_test_time_self_evolution_v29
         if self.use_test_time_self_evolution_v29:
@@ -1061,6 +1086,16 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
             and self.temporal_view_joint_graph_network_v35 is not None
         ):
             feat = feat + self.temporal_view_joint_graph_network_v35(
+                feat,
+                view_mask=view_mask_flat.view(B, T, V),
+            )
+
+        # Optional v36 uncertainty-gated iterative graph refinement (identity at init).
+        if (
+            self.use_uncertainty_gated_iterative_graph_refinement_v36
+            and self.uncertainty_gated_iterative_graph_refinement_v36 is not None
+        ):
+            feat = feat + self.uncertainty_gated_iterative_graph_refinement_v36(
                 feat,
                 view_mask=view_mask_flat.view(B, T, V),
             )
