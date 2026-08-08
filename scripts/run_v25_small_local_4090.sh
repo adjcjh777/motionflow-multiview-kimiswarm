@@ -6,6 +6,9 @@ CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-0}
 PYTHON=${PYTHON:-python}
 OUTPUT=${OUTPUT:-outputs/omniview_fusion_v25_geometry_fusion_small_local_4090.pth}
 LOG=${LOG:-outputs/omniview_fusion_v25_geometry_fusion_small_local_4090.log}
+EPOCHS=${EPOCHS:-20}
+TRAIN_SAMPLES=${TRAIN_SAMPLES:-500}
+BATCH_SIZE=${BATCH_SIZE:-16}
 
 $PYTHON -u experiments/train_omniview_fusion_v5_webbridge_multi.py \
     --use_mixed_loader \
@@ -23,7 +26,7 @@ $PYTHON -u experiments/train_omniview_fusion_v5_webbridge_multi.py \
     --num_workers 0 \
     --d 128 --residual_hidden 256 --n_st_layers 3 \
     --graph_num_layers 1 --n_joint_layers 1 --n_heads 4 \
-    --epochs 20 --batch_size 16 --train_samples 500 --val_stride 10 \
+    --epochs $EPOCHS --batch_size $BATCH_SIZE --train_samples $TRAIN_SAMPLES --val_stride 10 \
     --lr 1e-3 --lr_cosine --lr_warmup_epochs 3 --lr_min 1e-6 \
     --max_grad_norm 1.0 --ema_decay 0.999 \
     --use_multiscale_fusion true --use_camera_conditioning true --use_epipolar_bias true \
