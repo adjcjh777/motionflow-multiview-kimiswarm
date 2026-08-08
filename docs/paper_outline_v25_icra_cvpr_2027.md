@@ -145,6 +145,8 @@ L = L_3D_MSE + λ_reproj·L_reproj + λ_epi·L_epi + λ_cheir·L_cheir + λ_dept
 | v25 w/o GeoBA | Value of analytic camera refinement | v25 no-geoba |
 | v25 full | Geometry-first fusion | v25 |
 
+**Reproducible smoke ablation harness:** `experiments/architecture_paper_story_v25_ablation.py` (driven by `configs/architecture_paper_story_v25_smoke.yaml`) instantiates each variant on synthetic calibrated data, reports parameter count, forward latency, and a prediction-delta metric, and writes the table/charts to `outputs/architecture_paper_story/`.  Run it on the local RTX 4090 before training to verify the v25 toggles are wired correctly.
+
 ### 6.4 Robustness and calibration tests
 - 2D keypoint Gaussian noise.
 - Random joint occlusion.
