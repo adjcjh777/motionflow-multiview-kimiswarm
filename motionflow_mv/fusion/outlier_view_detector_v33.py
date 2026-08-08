@@ -51,6 +51,8 @@ class OutlierViewDetectorV33(nn.Module):
         Number of body-part groups for per-part scales.
     num_domains:
         Number of dataset domains for per-domain scales.
+    feature_dim:
+        Dimension of the per-joint feature tokens.
     feature_hidden:
         Hidden dimension of the feature-aware residual MLP.
     use_feature_gate:
@@ -71,6 +73,7 @@ class OutlierViewDetectorV33(nn.Module):
         num_joints: int = 17,
         num_parts: int = 5,
         num_domains: int = 3,
+        feature_dim: int = 64,
         feature_hidden: int = 64,
         use_feature_gate: bool = True,
         use_part_scale: bool = True,
@@ -86,8 +89,8 @@ class OutlierViewDetectorV33(nn.Module):
         self.use_domain_scale = use_domain_scale
         self.supervised_weight = supervised_weight
 
-        # Final down-weight gate.  Initialised to 0 -> identity at init.
-        self.residual_scale = nn.Parameter(torch.tensor(0.0))
+        # Final down-weight gate.  Initialised to -6 -> sigmoid ~0 so the block is identity at init.
+        self.residual_scale = nn.Parameter(torch.tensor(-6.0))
 
         # Per-joint threshold/softness scales.
         self.z_scale_joint = nn.Parameter(torch.ones(num_joints))
@@ -114,9 +117,12 @@ class OutlierViewDetectorV33(nn.Module):
             self.beta_scale_domain = None
 
         # Feature-aware residual adjustment.
+        # Operates directly on per-joint feature tokens (..., d) and produces a
+        # per-joint residual offset (delta) and a per-joint gate (alpha).
         if self.use_feature_gate:
+            self.feature_dim = feature_dim
             self.feature_mlp = nn.Sequential(
-                nn.Linear(num_joints, feature_hidden),  # operates on per-view token projected to J dims
+                nn.Linear(feature_dim, feature_hidden),
                 nn.ReLU(),
                 nn.Linear(feature_hidden, 2),
             )
@@ -124,6 +130,7 @@ class OutlierViewDetectorV33(nn.Module):
             nn.init.zeros_(self.feature_mlp[-1].bias)
             self.feature_mlp[-1].bias.data[1] = -3.0
         else:
+            self.feature_dim = feature_dim
             self.feature_mlp = None
 
     def _compute_part_ids(self, j: int, device: torch.device) -> torch.Tensor:
@@ -177,11 +184,7 @@ class OutlierViewDetectorV33(nn.Module):
         Returns:
             adjusted: (B, T, V, J)
         """
-        # Pool feature dimension to J values per view so the MLP is dimension-agnostic.
-        d = features.shape[-1]
-        # Project features to J-dimensional representation by averaging over channels.
-        feat_proj = features.mean(dim=-1)  # (B, T, V, J)
-        out = self.feature_mlp(feat_proj)  # (B, T, V, J, 2)
+        out = self.feature_mlp(features)  # (B, T, V, J, 2)
         delta = out[..., 0]
         alpha = out[..., 1]
         return residual + torch.sigmoid(alpha) * delta

@@ -106,41 +106,44 @@ class _RayConditionedCrossViewAttentionLayer(nn.Module):
             refined: (B, T, V, J, d)
         """
         B, T, V, J, d = tokens.shape
+        n_views = V
 
-        # Content + ray Q/K; content V.
+        # Content + ray Q/K; content values.
         Q = self.q_proj(tokens) + self.q_ray_proj(ray_emb)
         K = self.k_proj(tokens) + self.k_ray_proj(ray_emb)
-        V = self.v_proj(tokens)
+        values = self.v_proj(tokens)
 
-        # Reshape for multi-head: (B*T*J, n_heads, V, head_dim)
+        # Reshape for multi-head: (B*T*J, n_heads, n_views, head_dim)
         def _reshape(x):
-            return x.permute(0, 1, 3, 2, 4).reshape(B * T * J, V, self.n_heads, self.head_dim).transpose(1, 2)
+            return x.permute(0, 1, 3, 2, 4).reshape(B * T * J, n_views, self.n_heads, self.head_dim).transpose(1, 2)
 
         Q = _reshape(Q)  # (BTH, h, V, d_h)
         K = _reshape(K)
-        V = _reshape(V)
+        values = _reshape(values)
 
         scores = torch.matmul(Q, K.transpose(-2, -1)) / math.sqrt(self.head_dim)  # (BTH, h, V, V)
 
         if ray_bias is not None:
             # ray_bias: (B, T, V, V, J); permute to (B*T*J, V, V)
-            bias = ray_bias.permute(0, 1, 4, 2, 3).reshape(B * T * J, V, V)
+            bias = ray_bias.permute(0, 1, 4, 2, 3).reshape(B * T * J, n_views, n_views)
             bias = bias[:, None, :, :].expand(-1, self.n_heads, -1, -1)
             scores = scores + bias
 
         # Mask
         if view_mask is not None:
             mask = view_mask.bool()  # (B, T, V)
-            mask = mask.view(B * T, 1, V).expand(-1, V, -1)  # (B*T, V, V)
-            mask = mask.reshape(B * T, 1, V, V).expand(-1, J, -1, -1).reshape(B * T * J, 1, V, V)
+            mask = mask.view(B * T, 1, n_views).expand(-1, n_views, -1)  # (B*T, V, V)
+            mask = mask.reshape(B * T, 1, n_views, n_views).expand(-1, J, -1, -1).reshape(B * T * J, 1, n_views, n_views)
             scores = scores.masked_fill(~mask, float("-inf"))
 
         attn = F.softmax(scores, dim=-1)
         attn = self.dropout(attn)
 
-        out = torch.matmul(attn, V)  # (BTH, h, V, d_h)
+        out = torch.matmul(attn, values)  # (BTH, h, V, d_h)
         # Reshape back to (B, T, V, J, d)
-        out = out.transpose(1, 2).reshape(B, T, J, V, self.head_dim).reshape(B, T, J, V, d).permute(0, 1, 3, 2, 4)
+        out = out.transpose(1, 2).reshape(B, T, J, n_views, self.n_heads, self.head_dim)
+        out = out.reshape(B, T, J, n_views, d)
+        out = out.permute(0, 1, 3, 2, 4)
         out = self.out_proj(out)
         out = self.dropout(out)
         out = self.layer_norm(out)
