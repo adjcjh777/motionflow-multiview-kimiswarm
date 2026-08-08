@@ -88,6 +88,13 @@ def launch_run(name: str, extra_flags: str, output: str, gpu: int) -> None:
 
 def main() -> None:
     queue = list(RUNS)
+    # Pull the latest code on A800 once before launching anything.  The remote
+    # repo must contain the v31 modules or the per-run flags will fail.
+    print("Pulling latest main on A800-D...")
+    try:
+        a800_ssh(f"cd {A800_REPO} && git pull origin main")
+    except subprocess.CalledProcessError as e:
+        print(f"Warning: git pull on A800 failed: {e}")
     while queue:
         pairs = gpu_free_mibs()
         candidates = [(g, f) for g, f in pairs if f >= MIN_FREE_MIB]
