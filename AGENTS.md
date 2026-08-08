@@ -19,7 +19,8 @@ This file captures the current A800-D workflow, tmux conventions, and issue labe
 | Run | Description | Status |
 |-----|-------------|--------|
 | v25 small local | v18 + geometry fusion + v25_dropout=0.2 + train_samples=500 | Done; epoch 1 val_MPJPE 63.13 mm; early stopping or wait wrapper moved on |
-| v25 + v18 top-k ST local | v25 small + deformable top-k straight-through | Running; epoch 1 val_MPJPE 59.53 mm; epoch 2 in progress (Python PID 30576) |
+| v25 + v18 top-k ST local | v25 small + deformable top-k straight-through | Stopped after epoch 1 val_MPJPE 59.53 mm; no epoch 2 val (process exited); GPU now free |
+| v29c full SEH-MV local | v25 + v29 hierarchical + TTE + physical loss | Ready; launching now on RTX 4090 |
 | v18 top-k ST | v18 deformable attention with straight-through top-k | Merged to main |
 | v19 temporal perceiver | Feature-aware temporal Perceiver | Merged to main |
 | v26 temporal gate | Warm-startable residual gate | Merged to main |
