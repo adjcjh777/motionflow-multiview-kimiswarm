@@ -1,18 +1,13 @@
 #!/usr/bin/env bash
-# v24 small: v18 deformable cross-view attention + fixed v21 neural BA + v22 KAP.
-# The v21 camera-correction head is now initialised to identity (zero output).
-#
-# Environment overrides:
-#   CUDA_VISIBLE_DEVICES  GPU index to use (default: 0)
-#   PYTHON                Python interpreter to use (default: python)
-#   OUTPUT                Checkpoint path (default: outputs/omniview_fusion_v24_kap_fixed_ba_small.pth)
-#   LOG                   Log path (default: outputs/omniview_fusion_v24_kap_fixed_ba_small.log)
+# Local 4090 smoke test for v23: v18 + KAP, no neural BA.
+# Runs 1 epoch on 100 train samples and reports val_MPJPE.
 set -euo pipefail
 
-CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-0}
+cd "$(dirname "$0")/.."
+mkdir -p outputs
+
 PYTHON=${PYTHON:-python}
-OUTPUT=${OUTPUT:-outputs/omniview_fusion_v24_kap_fixed_ba_small.pth}
-LOG=${LOG:-outputs/omniview_fusion_v24_kap_fixed_ba_small.log}
+LOG="outputs/omniview_fusion_v23_smoke_4090.log"
 
 $PYTHON -u experiments/train_omniview_fusion_v5_webbridge_multi.py \
     --use_mixed_loader \
@@ -22,13 +17,12 @@ $PYTHON -u experiments/train_omniview_fusion_v5_webbridge_multi.py \
     --use_irls_reweight \
     --use_domain_embedding \
     --use_deformable_cross_view_attention_v18 \
-    --use_neural_bundle_adjustment_v21 \
     --use_kinematic_anthropometric_prior_v22 \
     --kap_loss_weight 0.01 \
     --num_workers 0 \
     --d 128 --residual_hidden 256 --n_st_layers 3 \
     --graph_num_layers 1 --n_joint_layers 1 --n_heads 4 \
-    --epochs 20 --batch_size 16 --train_samples 2000 --val_stride 10 \
+    --epochs 1 --batch_size 16 --train_samples 100 --val_stride 10 \
     --lr 1e-3 --lr_cosine --lr_warmup_epochs 3 --lr_min 1e-6 \
     --max_grad_norm 1.0 --ema_decay 0.999 \
     --use_multiscale_fusion true --use_camera_conditioning true --use_epipolar_bias true \
@@ -44,5 +38,8 @@ $PYTHON -u experiments/train_omniview_fusion_v5_webbridge_multi.py \
     --aleatoric_reproj_loss_weight 0.1 \
     --outlier_view_prob 0.3 --outlier_view_max_views 1 \
     --outlier_view_offset_std 10.0 --outlier_view_noise_std 15.0 \
-    --output $OUTPUT \
-    > $LOG 2>&1
+    --output outputs/omniview_fusion_v23_smoke_4090.pth \
+    > "$LOG" 2>&1
+
+echo "--- v23 smoke val_MPJPE ---"
+grep 'val_MPJPE=' "$LOG" | tail -n 1

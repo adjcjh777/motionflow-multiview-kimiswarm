@@ -1,18 +1,18 @@
 #!/usr/bin/env bash
-# v24 small: v18 deformable cross-view attention + fixed v21 neural BA + v22 KAP.
-# The v21 camera-correction head is now initialised to identity (zero output).
+# v24 full-scale: v18 deformable cross-view attention + fixed v21 neural BA + v22 KAP.
+# 60 epochs / 10k samples; otherwise identical to the v24 small configuration.
 #
 # Environment overrides:
 #   CUDA_VISIBLE_DEVICES  GPU index to use (default: 0)
 #   PYTHON                Python interpreter to use (default: python)
-#   OUTPUT                Checkpoint path (default: outputs/omniview_fusion_v24_kap_fixed_ba_small.pth)
-#   LOG                   Log path (default: outputs/omniview_fusion_v24_kap_fixed_ba_small.log)
+#   OUTPUT                Checkpoint path (default: outputs/omniview_fusion_v24_kap_fixed_ba_fullscale.pth)
+#   LOG                   Log path (default: outputs/omniview_fusion_v24_kap_fixed_ba_fullscale.log)
 set -euo pipefail
 
 CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-0}
 PYTHON=${PYTHON:-python}
-OUTPUT=${OUTPUT:-outputs/omniview_fusion_v24_kap_fixed_ba_small.pth}
-LOG=${LOG:-outputs/omniview_fusion_v24_kap_fixed_ba_small.log}
+OUTPUT=${OUTPUT:-outputs/omniview_fusion_v24_kap_fixed_ba_fullscale.pth}
+LOG=${LOG:-outputs/omniview_fusion_v24_kap_fixed_ba_fullscale.log}
 
 $PYTHON -u experiments/train_omniview_fusion_v5_webbridge_multi.py \
     --use_mixed_loader \
@@ -28,7 +28,7 @@ $PYTHON -u experiments/train_omniview_fusion_v5_webbridge_multi.py \
     --num_workers 0 \
     --d 128 --residual_hidden 256 --n_st_layers 3 \
     --graph_num_layers 1 --n_joint_layers 1 --n_heads 4 \
-    --epochs 20 --batch_size 16 --train_samples 2000 --val_stride 10 \
+    --epochs 60 --batch_size 16 --train_samples 10000 --val_stride 10 \
     --lr 1e-3 --lr_cosine --lr_warmup_epochs 3 --lr_min 1e-6 \
     --max_grad_norm 1.0 --ema_decay 0.999 \
     --use_multiscale_fusion true --use_camera_conditioning true --use_epipolar_bias true \
