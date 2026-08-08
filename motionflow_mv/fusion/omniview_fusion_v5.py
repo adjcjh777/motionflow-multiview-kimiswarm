@@ -33,6 +33,7 @@ from motionflow_mv.fusion.epipolar_transformer_bias import (
 from motionflow_mv.fusion.cross_view_transformer_v17 import CrossViewTransformerV17
 from motionflow_mv.fusion.deformable_cross_view_attention import DeformableCrossViewAttention
 from motionflow_mv.fusion.diffusion_pose_refiner_v20 import DiffusionPoseRefinerV20
+from motionflow_mv.fusion.neural_bundle_adjustment_v21 import NeuralBundleAdjustment
 from motionflow_mv.fusion.omniview_fusion_v4 import OmniMultiViewFusionV4
 from motionflow_mv.fusion.perceiver_view_aggregator import PerceiverViewAggregator
 from motionflow_mv.fusion.temporal_perceiver_v19 import TemporalPerceiverRefiner
@@ -114,6 +115,7 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
         use_deformable_cross_view_attention_v18: bool = False,
         use_temporal_perceiver_v19: bool = False,
         use_diffusion_refiner_v20: bool = False,
+        use_neural_bundle_adjustment_v21: bool = False,
         num_diffusion_steps: int = 10,
         camera_view_embedding_hidden: int = 32,
         set_view_n_isab_layers: int = 2,
@@ -287,6 +289,15 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
             )
         else:
             self.diffusion_refiner_v20 = None
+
+        self.use_neural_bundle_adjustment_v21 = use_neural_bundle_adjustment_v21
+        if self.use_neural_bundle_adjustment_v21:
+            self.neural_bundle_adjustment_v21 = NeuralBundleAdjustment(
+                n_iters=3,
+                camera_hidden=256,
+            )
+        else:
+            self.neural_bundle_adjustment_v21 = None
 
         # Make sure the ST transformer can accept an additive attention mask even
         # when epipolar bias is disabled.
@@ -699,6 +710,15 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
             damping,
             num_iters=self.gn_iters,
         )
+
+        # Optional v21 neural bundle-adjustment refinement of pose and cameras.
+        if (
+            self.use_neural_bundle_adjustment_v21
+            and self.neural_bundle_adjustment_v21 is not None
+        ):
+            pred_3d_gn, K_corrected, R, t = self.neural_bundle_adjustment_v21(
+                pred_3d_gn, points_2d, K_corrected, R, t, weights
+            )
 
         # Residual refinement head (deterministic MLP or diffusion-based v20).
         if self.use_diffusion_refiner_v20 and self.diffusion_refiner_v20 is not None:

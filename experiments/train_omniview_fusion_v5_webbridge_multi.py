@@ -113,6 +113,8 @@ def build_model_from_args(
         # v20 toggles
         "use_diffusion_refiner_v20": getattr(args, "use_diffusion_refiner_v20", False),
         "num_diffusion_steps": getattr(args, "num_diffusion_steps", 10),
+        # v21 toggles
+        "use_neural_bundle_adjustment_v21": getattr(args, "use_neural_bundle_adjustment_v21", False),
         # v7 toggles
         "use_full_precision_dlt": args.use_full_precision_dlt,
         "use_robust_dlt_reweight": args.use_robust_dlt_reweight,
@@ -1313,6 +1315,7 @@ def parse_args() -> Namespace:
     parser.add_argument("--use_temporal_perceiver_v19", action="store_true", help="Use v19 temporal Perceiver refiner on final 3D poses sequence")
     parser.add_argument("--use_diffusion_refiner_v20", action="store_true", help="Use v20 diffusion-based residual refiner instead of deterministic MLP")
     parser.add_argument("--num_diffusion_steps", type=int, default=10, help="Number of diffusion timesteps for v20 refiner")
+    parser.add_argument("--use_neural_bundle_adjustment_v21", action="store_true", help="Use v21 neural bundle-adjustment pose/camera refiner")
     parser.add_argument("--use_full_precision_dlt", action="store_true", help="Use full 2x2 precision matrix in DLT triangulation")
     parser.add_argument("--use_robust_dlt_reweight", action="store_true", help="Robust reweighting pass inside full-precision DLT triangulation")
     parser.add_argument("--use_irls_reweight", action="store_true", help="IRLS Cauchy robust reweighting after one-step robust DLT")
