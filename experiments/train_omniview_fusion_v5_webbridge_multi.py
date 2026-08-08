@@ -932,14 +932,20 @@ def build_compute_loss(args: Namespace):
             k_max_eff = int(round(k_max_eff))
             k_max_eff = min(args.variable_view_max_views, max(k_max_start, k_max_eff))
             k_max_eff = max(args.variable_view_min_views, min(k_max_eff, V_full))
-            k = torch.randint(
-                args.variable_view_min_views,
-                k_max_eff + 1,
-                (1,),
-            ).item()
+            # Domain-aware clamp: H36M has 4 real views, MPI has 14.  WebBridge
+            # and other domains fall back to the full tensor width.
+            domain_real_views = {0: 4, 1: 14}
             view_mask = torch.zeros(B, T, V_full, device=device)
             for i in range(B):
-                selected = torch.randperm(V_full)[:k]
+                real_v = V_full
+                if args.domain_aware_view_curriculum and dataset_id is not None:
+                    real_v = domain_real_views.get(dataset_id[i].item(), V_full)
+                k_i = torch.randint(
+                    args.variable_view_min_views,
+                    min(k_max_eff, real_v) + 1,
+                    (1,),
+                ).item()
+                selected = torch.randperm(V_full)[:k_i]
                 view_mask[i, :, selected] = 1.0
 
             if args.variable_view_permute:
@@ -1482,6 +1488,7 @@ def parse_args() -> Namespace:
     parser.add_argument("--variable_view_permute", action="store_true", help="Permute selected view order during variable-view training")
     parser.add_argument("--variable_view_curriculum_alpha", type=float, default=1.0, help="Curriculum exponent for variable-view maximum (1.0=linear)")
     parser.add_argument("--variable_view_max_views_start", type=int, default=None, help="Maximum views at epoch 0 (curriculum start); defaults to variable_view_max_views")
+    parser.add_argument("--domain_aware_view_curriculum", action="store_true", help="Clamp variable-view subset to the real number of cameras per domain (H36M=4, MPI=14)")
     # Calibration curriculum
     parser.add_argument("--cam_aug_schedule", type=str, default="none", choices=["none", "extended_curriculum", "extended_intrinsics_curriculum"], help="Camera perturbation schedule")
     parser.add_argument("--cam_aug_rot", type=float, default=0.5, help="Rotation perturbation std (degrees)")
