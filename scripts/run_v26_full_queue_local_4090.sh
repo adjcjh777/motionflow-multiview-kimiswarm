@@ -14,4 +14,7 @@ bash scripts/run_v26_udp_v28_full_local_4090.sh
 echo "[$(date)] Starting v26+UDP-GMM+v28 full local 4090 run..."
 bash scripts/run_v26_udp_gmm_v28_full_local_4090.sh
 
-echo "[$(date)] All full runs finished."
+echo "[$(date)] All full runs finished. Running post-queue benchmark..."
+bash scripts/benchmark_v26_full_queue_local_4090.sh
+
+echo "[$(date)] Post-queue benchmark finished."
