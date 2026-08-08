@@ -225,6 +225,24 @@ def build_model(args: argparse.Namespace, n_views: int, j: int) -> OmniMultiView
         perceiver_n_layers=args.perceiver_n_layers,
         perceiver_n_heads=args.perceiver_n_heads,
         perceiver_dropout=args.perceiver_dropout,
+        # v25/v26/v27 toggles
+        use_multiview_geometry_fusion_v25=args.use_multiview_geometry_fusion_v25,
+        v25_use_geometry_attention=args.v25_use_geometry_attention,
+        v25_use_learned_depth_triangulation=args.v25_use_learned_depth_triangulation,
+        v25_use_geometry_bundle_adjustment=args.v25_use_geometry_bundle_adjustment,
+        v25_use_camera_joint_graph=args.v25_use_camera_joint_graph,
+        v25_use_outlier_view_detector=args.v25_use_outlier_view_detector,
+        v25_outlier_z_thresh=args.v25_outlier_z_thresh,
+        v25_outlier_soft_beta=args.v25_outlier_soft_beta,
+        v25_geom_loss_weight=args.v25_geom_loss_weight,
+        use_temporal_geometry_fusion_v26=args.use_temporal_geometry_fusion_v26,
+        v26_temporal_window=args.v26_temporal_window,
+        use_uncertainty_depth_proposals_v27=args.use_uncertainty_depth_proposals_v27,
+        v27_uncertainty_loss_weight=args.v27_uncertainty_loss_weight,
+        use_test_time_self_evolution_v27=args.use_test_time_self_evolution_v27,
+        v27_tte_n_iters=args.v27_tte_n_iters,
+        v27_tte_sigma_reproj=args.v27_tte_sigma_reproj,
+        v27_tte_residual_thresh_mm=args.v27_tte_residual_thresh_mm,
     )
     if j != 17:
         model.rebuild_graph(j, dataset="mpiinf3dhp")
@@ -244,6 +262,56 @@ def load_checkpoint(model: torch.nn.Module, checkpoint_path: str) -> dict:
     if unexpected:
         print(f"Checkpoint load: unexpected keys ignored {unexpected[:10]}")
     return config
+
+
+def load_training_config(checkpoint_path: str, config_json: str | None = None) -> Dict[str, Any] | None:
+    """Load the training config saved alongside a checkpoint."""
+    if config_json is None:
+        candidate = Path(checkpoint_path).with_suffix(".config.json")
+    else:
+        candidate = Path(config_json)
+    if not candidate.exists():
+        return None
+    try:
+        with open(candidate, "r") as f:
+            return json.load(f)
+    except Exception as exc:
+        print(f"Warning: could not load config from {candidate}: {exc}")
+        return None
+
+
+# v25/v27 architecture flags whose defaults should be inferred from the
+# training config when the user does not explicitly set them on the CLI.
+_V25_FLAG_NAMES = (
+    "use_multiview_geometry_fusion_v25",
+    "v25_use_geometry_attention",
+    "v25_use_learned_depth_triangulation",
+    "v25_use_geometry_bundle_adjustment",
+    "v25_use_camera_joint_graph",
+    "v25_use_outlier_view_detector",
+    "use_temporal_geometry_fusion_v26",
+    "use_uncertainty_depth_proposals_v27",
+)
+
+
+def restore_v25_flags(args: argparse.Namespace, config: Dict[str, Any]) -> None:
+    """Infer v25/v26/v27 architecture flags from saved training config."""
+    for name in _V25_FLAG_NAMES:
+        if getattr(args, name) is None:
+            value = config.get(name)
+            if isinstance(value, bool):
+                setattr(args, name, value)
+            elif isinstance(value, str):
+                setattr(args, name, value.lower() in {"true", "1", "yes"})
+            else:
+                setattr(args, name, False)
+
+
+def normalise_v25_flags(args: argparse.Namespace) -> None:
+    """Convert any remaining ``None`` v25 flags to ``False``."""
+    for name in _V25_FLAG_NAMES:
+        if getattr(args, name) is None:
+            setattr(args, name, False)
 
 
 # ---------------------------------------------------------------------------
@@ -573,6 +641,24 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--perceiver_n_layers", type=int, default=2, help="Number of Perceiver latent layers")
     parser.add_argument("--perceiver_n_heads", type=int, default=4, help="Number of attention heads in Perceiver aggregator")
     parser.add_argument("--perceiver_dropout", type=float, default=0.0, help="Dropout in Perceiver aggregator")
+    # v25/v26/v27 toggles (default=None means infer from saved training config)
+    parser.add_argument("--use_multiview_geometry_fusion_v25", action="store_true", default=None, help="Enable v25 multi-view geometry fusion module")
+    parser.add_argument("--v25_use_geometry_attention", action="store_true", default=None, help="Enable v25 geometry-aware cross-view attention")
+    parser.add_argument("--v25_use_learned_depth_triangulation", action="store_true", default=None, help="Enable v25 learned depth-proposal triangulation")
+    parser.add_argument("--v25_use_geometry_bundle_adjustment", action="store_true", default=None, help="Enable v25 geometry bundle adjustment")
+    parser.add_argument("--v25_use_camera_joint_graph", action="store_true", default=None, help="Enable v25 camera-joint graph")
+    parser.add_argument("--v25_use_outlier_view_detector", action="store_true", default=None, help="Enable v25 outlier-view detector")
+    parser.add_argument("--v25_outlier_z_thresh", type=float, default=3.0, help="Robust z-score threshold for v25 outlier-view detector")
+    parser.add_argument("--v25_outlier_soft_beta", type=float, default=1.0, help="Softness of exponential down-weighting for v25 outlier-view detector")
+    parser.add_argument("--v25_geom_loss_weight", type=float, default=0.1, help="Weight for v25 geometry loss during training")
+    parser.add_argument("--use_temporal_geometry_fusion_v26", action="store_true", default=None, help="Enable v26 temporal geometry fusion")
+    parser.add_argument("--v26_temporal_window", type=int, default=3, help="Temporal window size for v26")
+    parser.add_argument("--use_uncertainty_depth_proposals_v27", action="store_true", default=None, help="Enable v27 uncertainty-aware depth-proposal triangulation")
+    parser.add_argument("--v27_uncertainty_loss_weight", type=float, default=0.01, help="Weight for v27 uncertainty regularisation loss")
+    parser.add_argument("--use_test_time_self_evolution_v27", action="store_true", default=False, help="Enable v27 test-time self-evolution at inference")
+    parser.add_argument("--v27_tte_n_iters", type=int, default=3, help="Number of iterations for v27 self-evolution")
+    parser.add_argument("--v27_tte_sigma_reproj", type=float, default=5.0, help="Cauchy kernel scale (pixels) for v27 self-evolution")
+    parser.add_argument("--v27_tte_residual_thresh_mm", type=float, default=0.5, help="Early-stop threshold (mm) for v27 self-evolution")
     # Evaluation
     parser.add_argument("--clip_len", type=int, default=13, help="Temporal clip length")
     parser.add_argument("--batch_size", type=int, default=8, help="Batch size")
@@ -661,6 +747,14 @@ def main():
     # ------------------------------------------------------------------
     # Model
     # ------------------------------------------------------------------
+    if args.checkpoint and args.checkpoint != "__smoke__":
+        saved_config = load_training_config(args.checkpoint)
+        if saved_config is not None:
+            restore_v25_flags(args, saved_config)
+            print("Restored v25/v26/v27 flags from training config.")
+
+    normalise_v25_flags(args)
+
     model = build_model(args, n_views=n_views, j=n_joints).to(device)
     if args.checkpoint and args.checkpoint != "__smoke__":
         load_checkpoint(model, args.checkpoint)
