@@ -47,7 +47,7 @@ This file captures the current A800-D workflow, tmux conventions, and issue labe
 | v33 outlier-view rejection | Learned feature-aware outlier detector | merged | Smoke + wired into OmniMultiViewFusionV5 |
 | v33 ray-conditioned attention | Geometry-biased ray cross-view attention | merged | Smoke + wired into OmniMultiViewFusionV5 |
 | v33 combined | uncertainty + outlier + ray | local 4090 | Epoch 1 val_MPJPE=25.78 mm; epoch 2 in progress |
-| v33 hierarchical multi-scale spatial pyramid | per-scale geometry-biased cross-view attention | local 4090 | Smoke running; synthetic smoke no regression vs v31 |
+| v33 hierarchical multi-scale spatial pyramid | per-scale geometry-biased cross-view attention | merged | Quick smoke: 55.59mm vs v31 55.28mm (no regression); A800 queued |
 | v33 HMSP A800 | full scale after v31 top-5 | A800-D | Queued in v33 A800 queue |
 | v32/v33 A800 queue | v31_physical_floor_only, v32 x5, v33 x4 | A800-D | Poller waiting for v31 top-5 to free GPUs 4-7 |
 | GitHub issues/PRs | Use API token from git remote URL | active | Issues/PRs created and merged via curl/GitHub API |
