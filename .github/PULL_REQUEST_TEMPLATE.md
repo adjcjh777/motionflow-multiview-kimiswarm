@@ -18,6 +18,7 @@ Briefly describe the purpose of this pull request and the experiment/model chang
 - [ ] Results summary (metrics, runtime, GPU):
 - [ ] Comparison against baseline:
 - [ ] No regression in existing tests / benchmarks
+- [ ] GitHub smoke tests pass locally (`bash scripts/run_github_smoke_tests.sh`)
 
 ## Experiment Context
 
