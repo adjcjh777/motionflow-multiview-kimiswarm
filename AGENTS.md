@@ -40,7 +40,7 @@ This file captures the current A800-D workflow, tmux conventions, and issue labe
 | Run | Description | GPU | Status |
 |-----|-------------|-----|--------|
 | v29 full SEH-MV | v25 + v29 hierarchical + TTE + physical loss (batch 24, d=128) | GPU5 | Running; first-epoch val_MPJPE pending |
-| v29a | hierarchical encoder only (no TTE, no physical) | GPU1 | Running; first-epoch val_MPJPE pending |
+| v29a | hierarchical encoder only (no TTE, no physical) | GPU1 | Epoch 1 val_MPJPE=28.12mm (worse than v25 small 18.31mm); epoch 2 running |
 | v29b | hierarchical + TTE (no physical) | GPU2 | Running; first-epoch val_MPJPE pending |
 | v29d | TTE + physical (no hierarchical) | GPU3 | Running; first-epoch val_MPJPE pending |
 | v29 20-run sweep | 20 hyper-parameter/variant configs queued and auto-launched as GPUs free | GPU4/5/6/7 | Restarted with TTE hang fix; see issue #109 |
