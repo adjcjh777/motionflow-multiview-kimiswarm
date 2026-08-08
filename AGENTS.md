@@ -34,17 +34,17 @@ This file captures the current A800-D workflow, tmux conventions, and issue labe
 | v13 temporal | Legacy v13 temporal run | Stopped to free GPU for v26 full queue |
 | v29c fast SEH-MV local | v29 full SEH-MV with fast config (clip_len=9, train_samples=100) | Killed; hung during first eval (TTE too expensive) |
 | v29e fast SEH-MV local | v29 hierarchical + physical loss, no TTE (clip_len=9, train_samples=100) | Killed; first-epoch val_MPJPE=91.38mm (small config unstable) |
-| v25 baseline fast local | v25 geometry fusion only, d=64, n_st_layers=2 (clip_len=9, train_samples=100) | Running on RTX 4090; first-epoch val_MPJPE pending |
+| v25 baseline fast local | v25 geometry fusion only, d=64, n_st_layers=2 (clip_len=9, train_samples=100) | Killed; first-epoch val_MPJPE=91.62mm (tiny fast config unreliable); GPU free |
 
 ### v29 SEH-MV A800-D runs
 
 | Run | Description | GPU | Status |
 |-----|-------------|-----|--------|
-| v29 full SEH-MV | v25 + v29 hierarchical + TTE + physical loss (batch 24, d=128) | GPU5 | Running; first-epoch val_MPJPE pending |
-| v29a | hierarchical encoder only (no TTE, no physical) | GPU1 | Epoch 1 val_MPJPE=28.12mm (worse than v25 small 18.31mm); epoch 2 running |
-| v29b | hierarchical + TTE (no physical) | GPU2 | Running; first-epoch val_MPJPE pending |
-| v29d | TTE + physical (no hierarchical) | GPU3 | Running; first-epoch val_MPJPE pending |
-| v29 20-run sweep | 20 hyper-parameter/variant configs queued and auto-launched as GPUs free | GPU4/5/6/7 | Restarted with TTE hang fix; see issue #109 |
+| v29 full SEH-MV | v25 + v29 hierarchical + TTE + physical loss (batch 24, d=128) | — | Killed; TTE at inference produces ~90mm val regardless of scale |
+| v29a | hierarchical encoder only (no TTE, no physical) | GPU1 | Epoch 1 val_MPJPE=28.12mm; epoch 2 val_MPJPE=47.85mm (overfitting) |
+| v29b | hierarchical + TTE (no physical) | GPU2 | Killed; epoch 1 val_MPJPE=90.35mm — TTE implementation is broken |
+| v29d | TTE + physical (no hierarchical) | GPU3 | Killed; epoch 1 val_MPJPE=90.28mm — same TTE failure |
+| v29 20-run sweep | Hierarchical-only + physical-loss ablations (TTE disabled) | GPU4/5/6/7 | Relaunched after killing all TTE variants; see issue #109 |
 
 - **Remote host:** `a800-D` (SSH)
 - **Remote repo:** `/mnt/nvme0n1p1/zhangzy/motionflow-multiview-kimiswarm-iter20`
