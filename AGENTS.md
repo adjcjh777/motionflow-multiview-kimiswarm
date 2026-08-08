@@ -19,6 +19,11 @@ This file captures the current A800-D workflow, tmux conventions, and issue labe
 | Run | Description | Status |
 |-----|-------------|--------|
 | v25 small local | v18 + geometry fusion (small subset) | Running (restarted with early_stopping_patience=3 after OOM); batch_size 16 |
+| v18 top-k ST | v18 deformable attention with straight-through top-k | Merged to main |
+| v19 temporal perceiver | Feature-aware temporal Perceiver | Merged to main |
+| v26 temporal gate | Warm-startable residual gate | Merged to main |
+| v27 UDP | Warm-start uncertainty depth proposals | Merged to main |
+| outlier adaptive | Adaptive learnable outlier-view thresholds | Merged to main |
 | v26+UDP full | v26 + v27 UDP + early stopping + weight decay | Stopped; best epoch 2 val 44.72mm, then overfit to 122.11mm |
 | v26+UDP-GMM full | v26 + v27 UDP-GMM + early stopping + weight decay | Stopped; best epoch 4 val 40.27mm, then overfit |
 | v26+UDP+v28 full | v26 + v27 UDP + v28 physical-space alignment | Stopped; epoch 1 val 83.38mm, epoch 2 val 114.70mm (v28 weights too high, reduced to 0.01) |
