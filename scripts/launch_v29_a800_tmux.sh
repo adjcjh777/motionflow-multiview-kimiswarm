@@ -5,8 +5,8 @@ set -euo pipefail
 
 SESSION="v29_gpu0"
 REPO="/mnt/nvme0n1p1/zhangzy/motionflow-multiview-kimiswarm-iter20"
-LOG="outputs/omniview_fusion_v29_self_evolving_hierarchical_full_a800.log"
-OUTPUT="outputs/omniview_fusion_v29_self_evolving_hierarchical_full_a800.pth"
+LOG="outputs/omniview_fusion_v29_full_seh_mv_a800.log"
+OUTPUT="outputs/omniview_fusion_v29_full_seh_mv_a800.pth"
 
 # Create tmux session if it does not already exist.
 if tmux has-session -t $SESSION 2>/dev/null; then
@@ -14,7 +14,7 @@ if tmux has-session -t $SESSION 2>/dev/null; then
     exit 0
 fi
 
-tmux new-session -d -s $SESSION -n v29 "cd $REPO && python -u experiments/train_omniview_fusion_v5_webbridge_multi.py \
+tmux new-session -d -s $SESSION -n v29 "cd $REPO && CUDA_VISIBLE_DEVICES=0 python -u experiments/train_omniview_fusion_v5_webbridge_multi.py \
     --use_mixed_loader \
     --mixed_manifest configs/splits/webbridge_h36m_mpi_mixed_train_val.yaml \
     --use_full_precision_dlt \
@@ -29,6 +29,7 @@ tmux new-session -d -s $SESSION -n v29 "cd $REPO && python -u experiments/train_
     --v25_use_learned_depth_triangulation \
     --v25_use_geometry_bundle_adjustment \
     --use_hierarchical_multiview_v29 \
+    --use_test_time_self_evolution_v29 --v27_tte_n_iters 3 \
     --use_physical_space_temporal_loss_v29 \
     --num_workers 4 \
     --d 128 --residual_hidden 256 --n_st_layers 3 \
