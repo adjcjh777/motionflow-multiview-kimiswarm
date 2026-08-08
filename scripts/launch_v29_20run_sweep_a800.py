@@ -108,6 +108,15 @@ def active_sessions(prefix: str) -> int:
         return 0
 
 
+def active_sessions_on_gpu(gpu: int) -> int:
+    try:
+        out = a800_ssh("tmux ls 2>/dev/null")
+        suffix = f"_gpu{gpu}:"
+        return sum(1 for line in out.splitlines() if suffix in line)
+    except subprocess.CalledProcessError:
+        return 0
+
+
 def launch_run(run: SweepRun, gpu: int, idx: int) -> None:
     session = f"v29_sweep_{idx:02d}_gpu{gpu}"
     cmd = (
@@ -132,13 +141,18 @@ def main() -> None:
             continue
 
         pairs = gpu_free_mibs()
-        # Sort GPUs by free memory descending.
-        pairs.sort(key=lambda x: x[1], reverse=True)
+        # Prefer GPUs with enough free memory and the fewest active sweep runs.
+        # Cap at two sweep runs per GPU to keep jobs distributed and avoid
+        # starving the base v25/v29 sessions already on those GPUs.
+        candidates = [
+            (gpu, free) for gpu, free in pairs
+            if free >= MIN_FREE_MIB and active_sessions_on_gpu(gpu) < 2
+        ]
+        candidates.sort(key=lambda x: (active_sessions_on_gpu(x[0]), -x[1]))
         selected_gpu: Optional[int] = None
-        for gpu, free in pairs:
-            if free >= MIN_FREE_MIB:
-                selected_gpu = gpu
-                break
+        for gpu, free in candidates:
+            selected_gpu = gpu
+            break
 
         if selected_gpu is None:
             print(f"No GPU with >= {MIN_FREE_MIB} MiB free; sleeping {POLL_INTERVAL}s")
