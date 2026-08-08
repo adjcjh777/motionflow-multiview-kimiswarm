@@ -167,10 +167,14 @@ class TestTimeSelfEvolutionV27(nn.Module):
             if mask is not None:
                 w = w * mask[:, :, :, None].float()
 
-            pred_next = triangulate_dlt_per_joint(points_2d, P, w)
-            # If any joint has all-zero weights, fall back to the current estimate
-            # to avoid NaNs from empty least-squares.
+            # Degenerate joints with all-zero weights produce a rank-deficient
+            # least-squares batch that can hang torch.linalg.lstsq on CUDA.
+            # Replace those rows with a uniform fallback so the solve is
+            # well-defined, then keep the original estimate for those joints.
             valid = w.sum(dim=2, keepdim=True).clamp(min=1e-6) > 0  # (B, T, 1, J)
+            w_safe = w.masked_fill(~valid.expand_as(w), 1.0)
+
+            pred_next = triangulate_dlt_per_joint(points_2d, P, w_safe)
             pred_next = torch.where(valid.transpose(-1, -2).expand_as(pred_next), pred_next, pred_current)
 
             change_mm = (pred_next - pred_current).norm(dim=-1).mean() * 1000.0

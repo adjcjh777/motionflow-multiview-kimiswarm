@@ -50,6 +50,11 @@ def triangulate_dlt_torch(
     w_sqrt = weights.unsqueeze(-1).repeat(1, 1, 2).view(B, 2 * V, 1)
     A3 = A[..., :3] * torch.sqrt(w_sqrt + 1e-6)
     b = -A[..., 3:] * torch.sqrt(w_sqrt + 1e-6)
+    # Ridge-regularise to keep the batch least-squares full-rank on CUDA.
+    ridge = 1e-4
+    eye3 = torch.eye(3, device=A3.device, dtype=A3.dtype).view(1, 3, 3).expand(A3.shape[0], -1, -1)
+    A3 = torch.cat([A3, torch.sqrt(torch.tensor(ridge, device=A3.device, dtype=A3.dtype)) * eye3], dim=1)
+    b = torch.cat([b, torch.zeros(A3.shape[0], 3, 1, device=b.device, dtype=b.dtype)], dim=1)
     X, *_ = torch.linalg.lstsq(A3, b)
     X = X.squeeze(-1)
     return X.squeeze(0) if single else X
