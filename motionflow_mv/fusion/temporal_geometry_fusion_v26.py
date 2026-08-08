@@ -52,6 +52,10 @@ class TemporalGeometryAttention(nn.Module):
         offsets ``[-1, 0, +1]``.
     dropout:
         Dropout probability on the output projection.
+    residual_gate_init:
+        Initial value of the learnable residual gate. ``0.0`` makes the temporal
+        attention a no-op at initialization; a small positive value lets it
+        contribute immediately.
     """
 
     def __init__(
@@ -61,6 +65,7 @@ class TemporalGeometryAttention(nn.Module):
         n_views: int,
         temporal_window: int = 3,
         dropout: float = 0.1,
+        residual_gate_init: float = 0.0,
     ):
         super().__init__()
         if d % n_heads != 0:
@@ -88,6 +93,11 @@ class TemporalGeometryAttention(nn.Module):
         nn.init.zeros_(self.out_proj.weight)
         if self.out_proj.bias is not None:
             nn.init.zeros_(self.out_proj.bias)
+
+        # Learnable residual gate. Starting at ``residual_gate_init`` lets the
+        # temporal path contribute gradually; ``0.0`` gives a strict warm-start
+        # from the per-frame v25 behaviour.
+        self.residual_gate = nn.Parameter(torch.tensor(residual_gate_init, dtype=torch.float32))
 
     def _build_temporal_mask(self, T: int, device: torch.device) -> torch.Tensor:
         """Return (T, temporal_window) bool mask for in-bound temporal offsets."""
@@ -185,7 +195,9 @@ class TemporalGeometryAttention(nn.Module):
         out = out.permute(0, 2, 3, 1, 4).reshape(N, T, V, d)
         out = self.out_proj(out)
         out = out.view(B, J, T, V, d).permute(0, 2, 3, 1, 4)
-        return self.dropout(out)
+        # Gated residual: the temporal path is scaled by a learnable scalar so it
+        # can be warmed up from zero (or any chosen initial value).
+        return self.residual_gate * self.dropout(out)
 
 
 class TemporalGeometryFusionV26(nn.Module):
@@ -218,6 +230,9 @@ class TemporalGeometryFusionV26(nn.Module):
         trajectory.
     temporal_loss_weight:
         Weight of the temporal velocity-smoothness loss.
+    temporal_attention_residual_gate_init:
+        Initial value of the residual gate on each temporal attention layer.
+        ``0.0`` warm-starts from the per-frame v25 path.
     dropout:
         Dropout rate.
     """
@@ -237,6 +252,7 @@ class TemporalGeometryFusionV26(nn.Module):
         use_temporal_depth_consistency: bool = False,
         temporal_loss_weight: float = 0.1,
         dropout: float = 0.1,
+        temporal_attention_residual_gate_init: float = 0.0,
         use_uncertainty_depth_proposals_v27: bool = False,
         v27_uncertainty_loss_weight: float = 0.01,
         v27_udp_n_mixtures: int = 1,
@@ -250,6 +266,7 @@ class TemporalGeometryFusionV26(nn.Module):
         self.use_learned_depth_triangulation = use_learned_depth_triangulation
         self.use_temporal_depth_consistency = use_temporal_depth_consistency
         self.temporal_loss_weight = temporal_loss_weight
+        self.temporal_attention_residual_gate_init = temporal_attention_residual_gate_init
         self.use_uncertainty_depth_proposals_v27 = use_uncertainty_depth_proposals_v27
         self.v27_uncertainty_loss_weight = v27_uncertainty_loss_weight
         self.v27_udp_n_mixtures = v27_udp_n_mixtures
@@ -266,7 +283,14 @@ class TemporalGeometryFusionV26(nn.Module):
         if use_temporal_geometry_attention:
             self.temporal_attn_layers = nn.ModuleList(
                 [
-                    TemporalGeometryAttention(d, n_heads, n_views, temporal_window, dropout)
+                    TemporalGeometryAttention(
+                        d,
+                        n_heads,
+                        n_views,
+                        temporal_window,
+                        dropout,
+                        residual_gate_init=temporal_attention_residual_gate_init,
+                    )
                     for _ in range(n_temporal_layers)
                 ]
             )
