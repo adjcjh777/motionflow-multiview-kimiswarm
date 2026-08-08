@@ -1280,6 +1280,7 @@ def parse_args() -> Namespace:
     parser.add_argument("--train", type=str, nargs="+", default=None, help="Train .npz files (legacy, overrides manifest train)")
     parser.add_argument("--val", type=str, default=None, help="Validation .npz file (legacy, overrides manifest val)")
     parser.add_argument("--smoke", action="store_true", help="1-epoch CPU/GPU smoke test on synthetic data")
+    parser.add_argument("--num_workers", type=int, default=0, help="Number of DataLoader worker processes (default 0)")
     parser.add_argument("--use_mixed_loader", action="store_true", help="Use the WebBridge mixed-dataset loader (H36M+MPI, 17 joints/14 views)")
     parser.add_argument("--mixed_manifest", type=str, default=None, help="YAML manifest for mixed loader (train_paths/train_names/val_paths/val_names)")
     # Model
@@ -1443,14 +1444,14 @@ def main():
         batch_size=args.batch_size,
         shuffle=True,
         collate_fn=selected_collate_fn,
-        num_workers=0,
+        num_workers=args.num_workers,
     )
     val_loader = torch.utils.data.DataLoader(
         val_dataset,
         batch_size=args.batch_size,
         shuffle=False,
         collate_fn=selected_collate_fn,
-        num_workers=0,
+        num_workers=args.num_workers,
     )
 
     args.j = n_joints
