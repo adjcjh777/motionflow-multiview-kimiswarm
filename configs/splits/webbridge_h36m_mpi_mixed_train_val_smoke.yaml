@@ -1,0 +1,22 @@
+# Fast smoke split: only 5 train files and 2 val files.
+# One epoch with train_samples=500 and batch_size=16 is ~150 steps,
+# so first val_MPJPE appears quickly on A800/4090.
+name: WebBridge H36M + MPI Smoke (17 joints, 14 views padded)
+train_paths:
+  - data/webbridge/h36m_meters/s_01_acts_02_multiview_m.npz
+  - data/webbridge/h36m_meters/s_01_acts_03_multiview_m.npz
+  - data/webbridge/h36m_meters/s_01_acts_04_multiview_m.npz
+  - data/webbridge/mpi_inf_3dhp/s_01_seq_01_v14_multiview_m.npz
+  - data/webbridge/mpi_inf_3dhp/s_01_seq_02_v14_multiview_m.npz
+train_names:
+  - h36m
+  - h36m
+  - h36m
+  - mpi
+  - mpi
+val_paths:
+  - data/webbridge/h36m_meters/s_09_acts_02_multiview_m.npz
+  - data/webbridge/mpi_inf_3dhp/s_02_seq_01_v14_multiview_m.npz
+val_names:
+  - h36m
+  - mpi
