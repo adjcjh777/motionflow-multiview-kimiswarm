@@ -134,6 +134,8 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
         v25_geom_loss_weight: float = 0.1,
         use_temporal_geometry_fusion_v26: bool = False,
         v26_temporal_window: int = 3,
+        use_uncertainty_depth_proposals_v27: bool = False,
+        v27_uncertainty_loss_weight: float = 0.01,
         use_test_time_self_evolution_v27: bool = False,
         v27_tte_n_iters: int = 3,
         v27_tte_sigma_reproj: float = 5.0,
@@ -351,6 +353,8 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
                 temporal_window=v26_temporal_window,
                 use_geometry_attention=v25_use_geometry_attention,
                 use_learned_depth_triangulation=v25_use_learned_depth_triangulation,
+                use_uncertainty_depth_proposals_v27=use_uncertainty_depth_proposals_v27,
+                v27_uncertainty_loss_weight=v27_uncertainty_loss_weight,
             )
         elif self.use_multiview_geometry_fusion_v25:
             self.multiview_geometry_fusion_v25 = MultiViewGeometryFusionV25(
@@ -364,6 +368,8 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
                 use_outlier_view_detector=v25_use_outlier_view_detector,
                 outlier_z_thresh=v25_outlier_z_thresh,
                 outlier_soft_beta=v25_outlier_soft_beta,
+                use_uncertainty_depth_proposals_v27=use_uncertainty_depth_proposals_v27,
+                v27_uncertainty_loss_weight=v27_uncertainty_loss_weight,
             )
         else:
             self.multiview_geometry_fusion_v25 = None

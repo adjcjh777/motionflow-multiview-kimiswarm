@@ -28,6 +28,7 @@ from .multiview_geometry_fusion_v25 import (
     ray_intersection_logit,
     triangulate_initial,
 )
+from .uncertainty_depth_proposal_v27 import UncertaintyDepthProposalTriangulation
 
 
 class TemporalGeometryAttention(nn.Module):
@@ -236,6 +237,8 @@ class TemporalGeometryFusionV26(nn.Module):
         use_temporal_depth_consistency: bool = False,
         temporal_loss_weight: float = 0.1,
         dropout: float = 0.1,
+        use_uncertainty_depth_proposals_v27: bool = False,
+        v27_uncertainty_loss_weight: float = 0.01,
     ):
         super().__init__()
         self.d = d
@@ -246,6 +249,8 @@ class TemporalGeometryFusionV26(nn.Module):
         self.use_learned_depth_triangulation = use_learned_depth_triangulation
         self.use_temporal_depth_consistency = use_temporal_depth_consistency
         self.temporal_loss_weight = temporal_loss_weight
+        self.use_uncertainty_depth_proposals_v27 = use_uncertainty_depth_proposals_v27
+        self.v27_uncertainty_loss_weight = v27_uncertainty_loss_weight
 
         self.ray_tokenizer = RayTokenizer(d=d, n_ray_samples=n_ray_samples)
 
@@ -267,7 +272,12 @@ class TemporalGeometryFusionV26(nn.Module):
             self.temporal_attn_layers = None
 
         if use_learned_depth_triangulation:
-            self.depth_tri_head = DepthProposalTriangulation(n_views=n_views, n_ray_samples=n_ray_samples)
+            if use_uncertainty_depth_proposals_v27:
+                self.depth_tri_head = UncertaintyDepthProposalTriangulation(
+                    n_views=n_views, n_ray_samples=n_ray_samples, uncertainty_loss_weight=v27_uncertainty_loss_weight
+                )
+            else:
+                self.depth_tri_head = DepthProposalTriangulation(n_views=n_views, n_ray_samples=n_ray_samples)
         else:
             self.depth_tri_head = None
 
@@ -356,12 +366,18 @@ class TemporalGeometryFusionV26(nn.Module):
                 tokens = tokens + layer(tokens, epipolar_dist, ray_logit, view_mask=view_mask)
 
         # Learned depth-proposal triangulation refines the initial 3D estimate.
+        uncertainty_loss = torch.tensor(0.0, device=pts.device, dtype=pts.dtype)
         if self.use_learned_depth_triangulation and self.depth_tri_head is not None:
-            pred_3d_ref = self.depth_tri_head(centre, direction, confidence, pred_3d_init, view_mask=view_mask)
+            if self.use_uncertainty_depth_proposals_v27:
+                pred_3d_ref, uncertainty_loss = self.depth_tri_head(
+                    centre, direction, confidence, pred_3d_init, view_mask=view_mask
+                )
+            else:
+                pred_3d_ref = self.depth_tri_head(centre, direction, confidence, pred_3d_init, view_mask=view_mask)
         else:
             pred_3d_ref = pred_3d_init
 
-        geom_loss = self._reprojection_loss(pred_3d_ref, pts, K, R, t, confidence, view_mask)
+        geom_loss = self._reprojection_loss(pred_3d_ref, pts, K, R, t, confidence, view_mask) + uncertainty_loss
 
         # Optional temporal smoothness loss on the refined 3D trajectory.
         if self.use_temporal_depth_consistency and T > 1:
