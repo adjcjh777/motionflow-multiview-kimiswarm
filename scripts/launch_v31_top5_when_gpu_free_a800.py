@@ -104,9 +104,12 @@ def main() -> None:
             print(f"No GPU with >= {MIN_FREE_MIB} MiB free; sleeping {POLL_INTERVAL}s")
             time.sleep(POLL_INTERVAL)
             continue
-        gpu, _ = candidates[0]
+        # Pick the GPU with the most free memory to reduce collisions, then
+        # sleep so nvidia-smi can reflect the allocation before the next poll.
+        gpu, _ = max(candidates, key=lambda x: x[1])
         name, extra_flags, output = queue.pop(0)
         launch_run(name, extra_flags, output, gpu)
+        time.sleep(60)
     print("All v31 top-5 runs launched.")
 
 
