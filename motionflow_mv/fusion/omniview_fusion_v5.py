@@ -41,6 +41,10 @@ from motionflow_mv.fusion.temporal_geometry_fusion_v26 import TemporalGeometryFu
 from motionflow_mv.fusion.uncertainty_aware_triangulation_v33 import (
     UncertaintyAwareTriangulationV33,
 )
+from motionflow_mv.fusion.outlier_view_detector_v33 import OutlierViewDetectorV33
+from motionflow_mv.fusion.ray_conditioned_attention_v33 import (
+    RayConditionedCrossViewAttentionV33,
+)
 from motionflow_mv.fusion.test_time_self_evolution_v27 import TestTimeSelfEvolutionV27
 from motionflow_mv.fusion.physical_space_alignment_v28 import (
     PhysicalSpaceAlignmentV28,
@@ -209,6 +213,22 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
         v33_uat_log_var_min: float = -10.0,
         v33_uat_log_var_max: float = 10.0,
         v33_uat_covariance_hidden: int = 64,
+        # v33 outlier-view rejection
+        use_outlier_view_rejection_v33: bool = False,
+        v33_outlier_z_thresh: float = 3.0,
+        v33_outlier_soft_beta: float = 1.0,
+        v33_outlier_use_feature_gate: bool = True,
+        v33_outlier_use_part_scale: bool = True,
+        v33_outlier_use_domain_scale: bool = True,
+        v33_outlier_supervised_weight: float = 0.1,
+        v33_outlier_feature_hidden: int = 64,
+        # v33 ray-conditioned cross-view attention
+        use_ray_conditioned_attention_v33: bool = False,
+        v33_n_heads: int = 4,
+        v33_n_layers: int = 2,
+        v33_dropout: float = 0.1,
+        v33_use_ray_bias: bool = True,
+        v33_residual_gate_init: float = -6.0,
         kap_loss_weight: float = 0.01,
         kap_use_angle_limit: bool = True,
         kap_max_flexion_deg: float = 160.0,
@@ -481,6 +501,39 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
         else:
             self.uncertainty_aware_triangulation_v33 = None
 
+        # Optional v33 outlier-view rejection.
+        self.use_outlier_view_rejection_v33 = use_outlier_view_rejection_v33
+        self.v33_outlier_loss_weight = v33_outlier_supervised_weight
+        if self.use_outlier_view_rejection_v33:
+            self.outlier_view_detector_v33 = OutlierViewDetectorV33(
+                z_thresh=v33_outlier_z_thresh,
+                soft_beta=v33_outlier_soft_beta,
+                num_joints=self.j,
+                num_domains=num_domains,
+                feature_dim=self.d,
+                feature_hidden=v33_outlier_feature_hidden,
+                use_feature_gate=v33_outlier_use_feature_gate,
+                use_part_scale=v33_outlier_use_part_scale,
+                use_domain_scale=v33_outlier_use_domain_scale,
+                supervised_weight=1.0,
+            )
+        else:
+            self.outlier_view_detector_v33 = None
+
+        # Optional v33 ray-conditioned cross-view attention.
+        self.use_ray_conditioned_attention_v33 = use_ray_conditioned_attention_v33
+        if self.use_ray_conditioned_attention_v33:
+            self.ray_conditioned_attention_v33 = RayConditionedCrossViewAttentionV33(
+                d=self.d,
+                n_heads=v33_n_heads,
+                n_layers=v33_n_layers,
+                dropout=v33_dropout,
+                use_ray_bias=v33_use_ray_bias,
+                residual_gate_init=v33_residual_gate_init,
+            )
+        else:
+            self.ray_conditioned_attention_v33 = None
+
         # Optional v27 test-time self-evolution (inference only).
         self.use_test_time_self_evolution_v27 = use_test_time_self_evolution_v27
         self.use_physical_space_alignment_v28 = use_physical_space_alignment_v28 or use_physical_space_alignment_v32
@@ -720,6 +773,7 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
         t: torch.Tensor = None,
         view_mask: Optional[torch.Tensor] = None,
         domain_id: Optional[torch.Tensor] = None,
+        outlier_labels: Optional[torch.Tensor] = None,
     ) -> Tuple[torch.Tensor, ...]:
         squeeze_output = False
         if x.dim() == 4:
@@ -865,6 +919,17 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
                 K=K_corrected.view(B, T, V, 3, 3),
                 R=R.view(B, T, V, 3, 3),
                 t=t.view(B, T, V, 3),
+            )
+
+        # Optional v33 ray-conditioned cross-view attention (identity at init).
+        if self.use_ray_conditioned_attention_v33 and self.ray_conditioned_attention_v33 is not None:
+            feat = feat + self.ray_conditioned_attention_v33(
+                feat,
+                points_2d=points_2d.view(B, T, V, J, 2),
+                K=K_corrected.view(B, T, V, 3, 3),
+                R=R.view(B, T, V, 3, 3),
+                t=t.view(B, T, V, 3),
+                view_mask=view_mask_flat.view(B, T, V),
             )
 
         # Optional domain embedding (useful when mixing H36M/MPI/WebBridge).
@@ -1020,6 +1085,31 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
             from motionflow_mv.fusion.triangulation import triangulate_dlt_batched_lstsq
             pred_3d_raw = triangulate_dlt_batched_lstsq(points_2d, P, weights)
 
+        # Optional v33 outlier-view rejection in the main DLT path.
+        v33_outlier_loss = torch.tensor(0.0, device=device, dtype=weights.dtype)
+        if self.use_outlier_view_rejection_v33 and self.outlier_view_detector_v33 is not None:
+            outlier_weights, v33_outlier_loss = self.outlier_view_detector_v33(
+                pred_3d=pred_3d_raw.view(B, T, J, 3).detach(),
+                points_2d=points_2d.view(B, T, V, J, 2),
+                K=K_corrected.view(B, T, V, 3, 3),
+                R=R.view(B, T, V, 3, 3),
+                t=t.view(B, T, V, 3),
+                features=feat.view(B, T, V, J, self.d),
+                domain_ids=domain_id,
+                view_mask=view_mask_flat.view(B, T, V),
+                outlier_label=outlier_labels,
+            )
+            outlier_weights = outlier_weights.view(B * T, V, J)
+            weights = weights * outlier_weights
+            # Re-triangulate using the down-weighted views.
+            if self.use_full_precision_dlt:
+                pred_3d_raw = triangulate_dlt_batched_lstsq(
+                    points_2d, P, weights, precision_matrix=precision_matrix.detach()
+                )
+            else:
+                weights = weights.clamp(min=1e-4, max=1e4)
+                pred_3d_raw = triangulate_dlt_batched_lstsq(points_2d, P, weights)
+
         # Adaptive Gauss-Newton refinement.
         feat_pooled = feat.mean(dim=1)
         damping = self.damping_head(feat_pooled).squeeze(-1)
@@ -1067,6 +1157,10 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
                 confidence=confidences.view(B, T, V, J),
             )
             pred_3d_gn = pred_3d_gn_v25.view(B * T, J, 3)
+
+        # Add v33 outlier-view supervised loss to the geometry loss.
+        if self.use_outlier_view_rejection_v33:
+            geom_loss_v25 = geom_loss_v25 + self.v33_outlier_loss_weight * v33_outlier_loss
 
         # Optional v33 uncertainty-aware triangulation head.
         if (

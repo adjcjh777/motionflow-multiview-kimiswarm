@@ -171,6 +171,22 @@ def build_model_from_args(
         "v33_uat_log_var_min": getattr(args, "v33_uat_log_var_min", -10.0),
         "v33_uat_log_var_max": getattr(args, "v33_uat_log_var_max", 10.0),
         "v33_uat_covariance_hidden": getattr(args, "v33_uat_covariance_hidden", 64),
+        # v33 outlier-view rejection
+        "use_outlier_view_rejection_v33": getattr(args, "use_outlier_view_rejection_v33", False),
+        "v33_outlier_z_thresh": getattr(args, "v33_outlier_z_thresh", 3.0),
+        "v33_outlier_soft_beta": getattr(args, "v33_outlier_soft_beta", 1.0),
+        "v33_outlier_use_feature_gate": getattr(args, "v33_outlier_use_feature_gate", True),
+        "v33_outlier_use_part_scale": getattr(args, "v33_outlier_use_part_scale", True),
+        "v33_outlier_use_domain_scale": getattr(args, "v33_outlier_use_domain_scale", True),
+        "v33_outlier_supervised_weight": getattr(args, "v33_outlier_supervised_weight", 0.1),
+        "v33_outlier_feature_hidden": getattr(args, "v33_outlier_feature_hidden", 64),
+        # v33 ray-conditioned cross-view attention
+        "use_ray_conditioned_attention_v33": getattr(args, "use_ray_conditioned_attention_v33", False),
+        "v33_n_heads": getattr(args, "v33_n_heads", 4),
+        "v33_n_layers": getattr(args, "v33_n_layers", 2),
+        "v33_dropout": getattr(args, "v33_dropout", 0.1),
+        "v33_use_ray_bias": getattr(args, "v33_use_ray_bias", True),
+        "v33_residual_gate_init": getattr(args, "v33_residual_gate_init", -6.0),
         "use_test_time_self_evolution_v29": getattr(args, "use_test_time_self_evolution_v29", False),
         "v29_tte_n_iters": getattr(args, "v29_tte_n_iters", 3),
         "v29_tte_sigma_reproj": getattr(args, "v29_tte_sigma_reproj", 5.0),
@@ -405,7 +421,7 @@ def inject_outlier_views(
     offset_std: float = 10.0,
     noise_std: float = 15.0,
     min_views: int = 2,
-) -> torch.Tensor:
+) -> tuple[torch.Tensor, Optional[torch.Tensor]]:
     """Corrupt a random subset of views with large per-view offsets and pixel noise.
 
     Args:
@@ -417,15 +433,18 @@ def inject_outlier_views(
         min_views: Ensure at least this many views remain uncorrupted.
 
     Returns:
-        A copy of the input tensor with selected views corrupted (confidence > 0).
+        A tuple of (corrupted x, outlier_labels). outlier_labels is None when no
+        corruption is applied or when prob <= 0, otherwise a (B, T, V, J) float
+        tensor with 1.0 for corrupted (view, joint) entries and 0.0 otherwise.
     """
     if prob <= 0.0 or max_views <= 0:
-        return x
+        return x, None
 
     # Work on a clone so in-place indexing does not interfere with gradients
     # on the tensor produced by ``augment_clip``.
     x = x.clone()
     B, T, V, J, _ = x.shape
+    outlier_labels = torch.zeros(B, T, V, J, device=x.device, dtype=x.dtype)
     for i in range(B):
         if torch.rand(1, device=x.device).item() >= prob:
             continue
@@ -442,7 +461,8 @@ def inject_outlier_views(
         noise = torch.randn(T, idx.numel(), J, 2, device=x.device, dtype=x.dtype) * noise_std
         x[i, :, idx, :, :2] = x[i, :, idx, :, :2] + offset + noise
         # Confidence remains > 0 so the robust DLT path must down-weight the view.
-    return x
+        outlier_labels[i, :, idx, :] = 1.0
+    return x, outlier_labels
 
 
 def augment_occlusion_noise(
@@ -881,9 +901,12 @@ def build_compute_loss(args: Namespace):
 
         # Optional outlier-view augmentation: corrupt a random subset of views with
         # large offsets and pixel noise.  Confidence remains > 0 so the robust DLT
-        # path must learn to down-weight the bad views.
+        # path must learn to down-weight the bad views.  When available, the
+        # augmentation mask is passed to the model for optional supervised training
+        # of the v33 outlier-view detector.
+        outlier_labels = None
         if args.outlier_view_prob > 0.0:
-            x = inject_outlier_views(
+            x, outlier_labels = inject_outlier_views(
                 x,
                 prob=args.outlier_view_prob,
                 max_views=args.outlier_view_max_views,
@@ -967,6 +990,8 @@ def build_compute_loss(args: Namespace):
                 R = R[:, perm, :, :]
                 t = t[:, perm, :]
                 view_mask = view_mask[:, :, perm]
+                if outlier_labels is not None:
+                    outlier_labels = outlier_labels[:, :, perm, :]
 
         # Optional calibration curriculum.
         K_aug, R_aug, t_aug = apply_calibration_perturbation(
@@ -978,6 +1003,8 @@ def build_compute_loss(args: Namespace):
             model_kwargs_forward["view_mask"] = view_mask
         if args.use_domain_embedding and dataset_id is not None:
             model_kwargs_forward["domain_id"] = dataset_id
+        if outlier_labels is not None:
+            model_kwargs_forward["outlier_labels"] = outlier_labels
         out = model(x, K=K_aug, R=R_aug, t=t_aug, **model_kwargs_forward)
         pred_3d = out[0]
         weights = out[1]
@@ -1447,6 +1474,26 @@ def parse_args() -> Namespace:
     parser.add_argument("--v33_uat_log_var_min", type=float, default=-10.0, help="Min log-variance clamp")
     parser.add_argument("--v33_uat_log_var_max", type=float, default=10.0, help="Max log-variance clamp")
     parser.add_argument("--v33_uat_covariance_hidden", type=int, default=64, help="Hidden dim of the uncertainty-prediction MLP")
+    # v33 outlier-view rejection
+    parser.add_argument("--use_outlier_view_rejection_v33", action="store_true", default=False, help="Use v33 learned outlier-view detector in the main DLT path")
+    parser.add_argument("--v33_outlier_z_thresh", type=float, default=3.0, help="Base z-score threshold for v33 outlier detector")
+    parser.add_argument("--v33_outlier_soft_beta", type=float, default=1.0, help="Softness of exponential down-weighting for v33 outlier detector")
+    parser.add_argument("--v33_outlier_use_feature_gate", action="store_true", default=True, help="Use feature-aware residual adjustment in v33 outlier detector")
+    parser.add_argument("--no_v33_outlier_use_feature_gate", dest="v33_outlier_use_feature_gate", action="store_false", help="Disable feature-aware residual adjustment in v33 outlier detector")
+    parser.add_argument("--v33_outlier_use_part_scale", action="store_true", default=True, help="Use per-body-part scales in v33 outlier detector")
+    parser.add_argument("--no_v33_outlier_use_part_scale", dest="v33_outlier_use_part_scale", action="store_false", help="Disable per-body-part scales in v33 outlier detector")
+    parser.add_argument("--v33_outlier_use_domain_scale", action="store_true", default=True, help="Use per-domain scales in v33 outlier detector")
+    parser.add_argument("--no_v33_outlier_use_domain_scale", dest="v33_outlier_use_domain_scale", action="store_false", help="Disable per-domain scales in v33 outlier detector")
+    parser.add_argument("--v33_outlier_supervised_weight", type=float, default=0.1, help="Weight for the optional supervised BCE loss in v33 outlier detector")
+    parser.add_argument("--v33_outlier_feature_hidden", type=int, default=64, help="Hidden dim of the feature-aware MLP in v33 outlier detector")
+    # v33 ray-conditioned cross-view attention
+    parser.add_argument("--use_ray_conditioned_attention_v33", action="store_true", default=False, help="Use v33 ray-conditioned cross-view attention after the v31 hierarchical encoder")
+    parser.add_argument("--v33_n_heads", type=int, default=4, help="Number of attention heads for v33 ray-conditioned attention")
+    parser.add_argument("--v33_n_layers", type=int, default=2, help="Number of layers for v33 ray-conditioned attention")
+    parser.add_argument("--v33_dropout", type=float, default=0.1, help="Dropout probability for v33 ray-conditioned attention")
+    parser.add_argument("--v33_use_ray_bias", action="store_true", default=True, help="Use ray-intersection bias in v33 ray-conditioned attention")
+    parser.add_argument("--no_v33_use_ray_bias", dest="v33_use_ray_bias", action="store_false", help="Disable ray-intersection bias in v33 ray-conditioned attention")
+    parser.add_argument("--v33_residual_gate_init", type=float, default=-6.0, help="Initial residual gate logit for v33 ray-conditioned attention")
     parser.add_argument("--v30_dropout", type=float, default=0.1, help="Dropout for v30 hierarchical encoder")
     parser.add_argument("--v30_stochastic_depth_prob", type=float, default=0.0, help="Stochastic depth probability for v30 hierarchical encoder")
     parser.add_argument("--use_test_time_self_evolution_v29", action="store_true", default=False, help="Use v29 test-time self-evolution with physical-space alignment at inference")
