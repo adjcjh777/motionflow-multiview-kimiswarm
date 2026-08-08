@@ -194,12 +194,12 @@ L = L_3D_MSE + λ_reproj·L_reproj + λ_epi·L_epi + λ_cheir·L_cheir + λ_dept
 | v23b | v18 + KAP 0.001, no neural BA | A800 GPU4 | **Failed** (58.72 mm) | §6.3 ablation |
 | v24b | v18 + fixed BA + KAP 0.001 | A800 GPU6 | **Failed** (131.73 mm) | §6.3 ablation |
 | v18 full | v18 cross-view residual + PP | A800 GPU5 | Running | §6.2 main results |
-| v25 small | v25 geometry fusion small (geom λ=0.1) | A800 GPU7 | Running (~1400 train steps, 1st epoch) | §6.2 main results |
-| v25 full | v25 geometry fusion full (geom λ=0.1) | A800 GPU4 | Running (~1400 train steps, 1st epoch) | §6.2 main results |
-| v25 ablation | v25 geometry fusion small (geom λ=1.0) | A800 GPU6 | Running (~150 train steps, 1st epoch) | §6.3 ablation |
-| v26 small | v26 temporal geometry fusion | — | **Blocked** (A800 repo lacks v26 code) | §6.3 ablation |
+| v25 small | v25 geometry fusion small (geom λ=0.1) | A800 GPU7 | Running (~1650 steps, ~44% of 1st epoch) | §6.2 main results |
+| v25 full | v25 geometry fusion full (geom λ=0.1) | A800 GPU4 | Running (~1900 steps, ~10% of 1st epoch) | §6.2 main results |
+| v25 ablation | v25 geometry fusion small (geom λ=1.0) | A800 GPU6 | Running (~700 steps, ~19% of 1st epoch) | §6.3 ablation |
+| v26 small | v26 temporal geometry fusion | — | **Blocked** (A800 repo lacks v26 code; all GPUs busy) | §6.3 ablation |
 
-**Next concrete step:** wait for v25 small/ablation first-epoch `val_MPJPE`. If v25 small beats the v18 baseline (20.24 mm), keep v25 full/ablation running, pull latest `main` on A800, and launch v26 small for comparison; otherwise, stop v25 full/ablation and debug the geometry-fusion design.
+**Next concrete step:** wait for v25 small/ablation first-epoch `val_MPJPE`. With 30 train files, one epoch for the small/ablation config is ~3750 steps, so first validation is expected in 1–2 hours. If v25 small beats the v18 baseline (20.24 mm), keep v25 full/ablation running, pull latest `main` on A800, and launch v26 small for comparison; otherwise, stop v25 full/ablation and debug the geometry-fusion design.
 
 ---
 
