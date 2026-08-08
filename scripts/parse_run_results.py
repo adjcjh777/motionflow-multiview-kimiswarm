@@ -55,7 +55,7 @@ def _parse_a800_outputs(ssh_host: str, a800_repo: str) -> list[dict]:
         f"find {a800_repo}/outputs -maxdepth 1 -name '*.log' -print0 | xargs -0 grep -H 'Best val MPJPE' 2>/dev/null || true",
     ]
     try:
-        out = subprocess.check_output(cmd, text=True, stderr=subprocess.STDOUT)
+        out = subprocess.check_output(cmd, text=True, stderr=subprocess.STDOUT, errors="ignore")
     except subprocess.CalledProcessError:
         return []
 
