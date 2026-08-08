@@ -53,6 +53,16 @@ class KinematicAnthropometricPrior(nn.Module):
         Maximum allowed interior joint angle in degrees.
     max_delta:
         Maximum magnitude of the learned per-joint residual correction in meters.
+    adaptive_prior:
+        If True, condition per-bone ``bone_mu`` and ``bone_logvar`` on pooled
+        per-joint features so the prior can adapt to sample-specific scale.
+    adaptive_context_dim:
+        Dimension of the latent context vector used for the adaptive prior.
+    adaptive_hidden:
+        Hidden dimension of the per-bone adjustment MLPs.
+    adaptive_regularization:
+        L2 weight penalizing per-sample adjustments away from zero, keeping the
+        module warm-startable.
     """
 
     def __init__(
@@ -64,6 +74,10 @@ class KinematicAnthropometricPrior(nn.Module):
         use_angle_limit: bool = True,
         max_flexion_deg: float = 160.0,
         max_delta: float = 0.10,
+        adaptive_prior: bool = False,
+        adaptive_context_dim: int = 16,
+        adaptive_hidden: int = 64,
+        adaptive_regularization: float = 0.01,
     ):
         super().__init__()
         self.j = j
@@ -71,6 +85,10 @@ class KinematicAnthropometricPrior(nn.Module):
         self.use_angle_limit = use_angle_limit
         self.max_flexion_deg = max_flexion_deg
         self.max_delta = max_delta
+        self.adaptive_prior = adaptive_prior
+        self.adaptive_context_dim = adaptive_context_dim
+        self.adaptive_hidden = adaptive_hidden
+        self.adaptive_regularization = adaptive_regularization
 
         parents = _get_parents(j)
         self.register_buffer("parents", torch.tensor(parents, dtype=torch.long))
@@ -85,6 +103,34 @@ class KinematicAnthropometricPrior(nn.Module):
         # Per-bone mean length and log variance.
         self.bone_mu = nn.Parameter(torch.full((self.n_bones,), 0.25))
         self.bone_logvar = nn.Parameter(torch.full((self.n_bones,), math.log(0.05 ** 2)))
+
+        # Optional per-sample adaptive prior.  The context encoder pools the
+        # per-joint features, then two tiny MLPs predict per-bone adjustments to
+        # the global bone_mu and bone_logvar.  Final layers are zero-initialized
+        # so the module starts as the non-adaptive global prior.
+        if self.adaptive_prior:
+            self.context_encoder = nn.Sequential(
+                nn.Linear(d * 2, adaptive_context_dim),
+                nn.ReLU(),
+            )
+            self.mu_adjust_mlp = nn.Sequential(
+                nn.Linear(adaptive_context_dim, adaptive_hidden),
+                nn.ReLU(),
+                nn.Linear(adaptive_hidden, self.n_bones),
+            )
+            self.logvar_adjust_mlp = nn.Sequential(
+                nn.Linear(adaptive_context_dim, adaptive_hidden),
+                nn.ReLU(),
+                nn.Linear(adaptive_hidden, self.n_bones),
+            )
+            nn.init.zeros_(self.mu_adjust_mlp[-1].weight)
+            nn.init.zeros_(self.mu_adjust_mlp[-1].bias)
+            nn.init.zeros_(self.logvar_adjust_mlp[-1].weight)
+            nn.init.zeros_(self.logvar_adjust_mlp[-1].bias)
+        else:
+            self.context_encoder = None
+            self.mu_adjust_mlp = None
+            self.logvar_adjust_mlp = None
 
         # Small MLP to convert per-bone NLL into per-joint kinematic features.
         self.kinematic_mlp = nn.Sequential(
@@ -118,6 +164,43 @@ class KinematicAnthropometricPrior(nn.Module):
         bone_vec = child_joints - parent_joints  # (N, n_bones, 3)
         lengths = bone_vec.norm(dim=-1)  # (N, n_bones)
         return lengths
+
+    def _sample_prior_params(
+        self,
+        feat_pooled: torch.Tensor,
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        """Compute possibly sample-specific bone_mu and bone_logvar.
+
+        Args:
+            feat_pooled: (N, J, d) per-joint pooled features.
+
+        Returns:
+            mu: (N, n_bones) per-sample bone length means.
+            logvar: (N, n_bones) per-sample bone length log-variances.
+            reg_loss: scalar regularization loss on the adjustments.
+        """
+        if not self.adaptive_prior:
+            N = feat_pooled.shape[0]
+            mu = self.bone_mu.view(1, self.n_bones).expand(N, -1)
+            logvar = self.bone_logvar.view(1, self.n_bones).expand(N, -1)
+            return mu, logvar, torch.tensor(0.0, device=feat_pooled.device)
+
+        # Pool per-joint features across joints (mean + max) -> (N, d*2).
+        mean_feat = feat_pooled.mean(dim=1)
+        max_feat, _ = feat_pooled.max(dim=1)
+        pooled = torch.cat([mean_feat, max_feat], dim=-1)
+        z = self.context_encoder(pooled)  # (N, adaptive_context_dim)
+
+        delta_mu = self.mu_adjust_mlp(z)  # (N, n_bones)
+        delta_logvar = self.logvar_adjust_mlp(z)  # (N, n_bones)
+
+        mu = self.bone_mu.view(1, self.n_bones) + delta_mu
+        logvar = self.bone_logvar.view(1, self.n_bones) + delta_logvar
+
+        reg_loss = self.adaptive_regularization * (
+            delta_mu.square().mean() + delta_logvar.square().mean()
+        )
+        return mu, logvar, reg_loss
 
     def _scatter_bone_to_joint(self, bone_vals: torch.Tensor) -> torch.Tensor:
         """Scatter per-bone values to per-joint features.
@@ -162,8 +245,7 @@ class KinematicAnthropometricPrior(nn.Module):
 
         # Bone-length negative log-likelihood.
         lengths = self._bone_lengths(pred_3d)  # (N, n_bones)
-        mu = self.bone_mu.view(1, self.n_bones)
-        logvar = self.bone_logvar.view(1, self.n_bones)
+        mu, logvar, adaptive_reg_loss = self._sample_prior_params(feat_pooled)
         inv_var = torch.exp(-logvar)
         nll = 0.5 * ((lengths - mu) ** 2 * inv_var + logvar)
         bone_nll = nll.mean()
@@ -192,7 +274,7 @@ class KinematicAnthropometricPrior(nn.Module):
                 max_flexion_deg=self.max_flexion_deg,
             )
 
-        kap_loss = bone_nll + angle_loss
+        kap_loss = bone_nll + angle_loss + adaptive_reg_loss
 
         return pred_3d_refined, kap_loss
 
@@ -209,3 +291,12 @@ if __name__ == "__main__":
     loss.backward()
     assert any(p.grad is not None for p in model.parameters())
     print("KinematicAnthropometricPrior CPU smoke test passed")
+
+    # CPU smoke test with adaptive prior.
+    model_adaptive = KinematicAnthropometricPrior(j=J, d=d, adaptive_prior=True)
+    pred_ref2, loss2 = model_adaptive(feat, pred)
+    assert pred_ref2.shape == (B * T, J, 3)
+    assert loss2.shape == ()
+    loss2.backward()
+    assert any(p.grad is not None for p in model_adaptive.parameters())
+    print("KinematicAnthropometricPrior adaptive CPU smoke test passed")
