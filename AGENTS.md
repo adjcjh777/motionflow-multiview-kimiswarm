@@ -46,7 +46,8 @@ This file captures the current A800-D workflow, tmux conventions, and issue labe
 | v33 uncertainty-aware triangulation | Per-view log-variance + precision-weighted DLT | merged | Smoke 82.02mm; full local run in progress |
 | v33 outlier-view rejection | Learned feature-aware outlier detector | merged | Smoke + wired into OmniMultiViewFusionV5 |
 | v33 ray-conditioned attention | Geometry-biased ray cross-view attention | merged | Smoke + wired into OmniMultiViewFusionV5 |
-| v33 combined | uncertainty + outlier + ray | local 4090 | Epoch 1 val_MPJPE=25.78 mm; epoch 2 in progress |
+| v33 combined | uncertainty + outlier + ray | local 4090 | Stopped: epoch 2 val_MPJPE=142.98mm (overfit); fixed run restarted with weight_decay and lower outlier supervised weight |
+| v33 combined fixed | same + weight_decay 1e-4 + outlier_supervised_weight 0.01 | local 4090 | Restarted; A800 queued |
 | v33 hierarchical multi-scale spatial pyramid | per-scale geometry-biased cross-view attention | merged | Quick smoke 55.59mm vs v31 55.28mm; combined+HMSP quick smoke 55.75mm; A800 queued |
 | v34 view-joint graph network | (view, joint) graph attention over bone/symmetry/cross-view edges | merged | Quick smoke 54.07mm vs v31 55.28mm; A800 queued |
 | v34 HMSP + VJGN stack | v33 HMSP + v34 VJGN together | A800-D | Queued in v33/v34 A800 queue; quick smoke 55.96mm |
