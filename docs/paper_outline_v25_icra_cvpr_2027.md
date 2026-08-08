@@ -191,20 +191,22 @@ L = L_3D_MSE + λ_reproj·L_reproj + λ_epi·L_epi + λ_cheir·L_cheir + λ_dept
 
 | Run | Description | GPU | Status | Paper section |
 |-----|-------------|-----|--------|---------------|
-| v23 | v18 + KAP, no neural BA | A800 GPU4/GPU6 | Running | §6.3 ablation |
+| v23b | v18 + KAP 0.001, no neural BA | A800 GPU4 | **Failed** (58.72 mm) | §6.3 ablation |
+| v24b | v18 + fixed BA + KAP 0.001 | A800 GPU6 | **Failed** (131.73 mm) | §6.3 ablation |
 | v18 full | v18 cross-view residual + PP | A800 GPU5 | Running | §6.2 main results |
-| v24 | v18 + fixed BA + KAP | — | Prepared, queued | §6.3 ablation |
-| v25 small | v25 geometry fusion smoke | Local RTX 4090 / A800 | Prepared | §6.3 ablation |
-| v25 full | v25 geometry fusion full | — | Planned | §6.2 main results |
+| v25 small | v25 geometry fusion smoke | A800 GPU7 | Running (step ~1100) | §6.3 ablation |
+| v25 full | v25 geometry fusion full | A800 GPU4/GPU6 | Running (step ~650) | §6.2 main results |
+| v26 small | v26 temporal geometry fusion | — | Ready to launch | §6.3 ablation |
 
-**Next concrete step:** run the v25 small smoke (`scripts/run_v25_geometry_fusion_a800_small.sh`) locally on RTX 4090 to verify the block trains without divergence, then launch the full v25 run on the next free A800 GPU.
+**Next concrete step:** wait for v25 small first-epoch `val_MPJPE`. If it beats the v18 baseline (20.24 mm), keep v25 full running and launch v26 small for comparison; otherwise, stop v25 full and debug the geometry-fusion design.
 
 ---
 
 ## 11. Submission checklist
 
-- [ ] Run v25 small smoke and confirm training loss decreases.
-- [ ] Launch v25 full run on A800 and collect MPI-INF-3DHP / H36M numbers.
+- [x] Run v25 small smoke and confirm training loss decreases.
+- [x] Launch v25 full run on A800.
+- [ ] Collect first-epoch `val_MPJPE` for v25 small and decide whether to keep v25 full.
 - [ ] Fill in the *TBD* cells in §6.2 with actual v25 results.
 - [ ] Generate architecture and robustness figures.
 - [ ] Produce variable-view MPJPE@k curve.
