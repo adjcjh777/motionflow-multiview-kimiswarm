@@ -1,15 +1,15 @@
-"""OmniMultiViewFusion v5 ¡ª camera-conditioned, set-transformer multi-view fusion.
+"""OmniMultiViewFusion v5  - camera-conditioned, set-transformer multi-view fusion.
 
 OmniMultiViewFusionV5 subclasses :class:`OmniMultiViewFusionV4` and addresses the
 fixed-view-index limitation of the learned ``view_pos_embed`` embedding.
 
 New toggles
 -----------
-* ``use_camera_view_embedding`` ¨C replace the learned view positional embedding
+* ``use_camera_view_embedding`` C replace the learned view positional embedding
   with an MLP conditioned on calibrated camera intrinsics and extrinsics.
-* ``use_set_view_aggregator`` ¨C add a permutation-invariant set-transformer
+* ``use_set_view_aggregator`` C add a permutation-invariant set-transformer
   (Induced Set Attention Blocks) over views before the time+view transformer.
-* ``use_diffusion_refiner_v20`` ¨C replace the deterministic residual MLP with a
+* ``use_diffusion_refiner_v20`` C replace the deterministic residual MLP with a
   lightweight diffusion-based pose refiner.
 
 The model also accepts an explicit ``view_mask`` so that missing views can be
