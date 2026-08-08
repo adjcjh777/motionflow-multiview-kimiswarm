@@ -33,6 +33,9 @@ from motionflow_mv.fusion.epipolar_transformer_bias import (
 from motionflow_mv.fusion.cross_view_transformer_v17 import CrossViewTransformerV17
 from motionflow_mv.fusion.deformable_cross_view_attention import DeformableCrossViewAttention
 from motionflow_mv.fusion.diffusion_pose_refiner_v20 import DiffusionPoseRefinerV20
+from motionflow_mv.fusion.kinematic_anthropometric_prior_v22 import (
+    KinematicAnthropometricPrior,
+)
 from motionflow_mv.fusion.neural_bundle_adjustment_v21 import NeuralBundleAdjustment
 from motionflow_mv.fusion.omniview_fusion_v4 import OmniMultiViewFusionV4
 from motionflow_mv.fusion.perceiver_view_aggregator import PerceiverViewAggregator
@@ -116,6 +119,11 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
         use_temporal_perceiver_v19: bool = False,
         use_diffusion_refiner_v20: bool = False,
         use_neural_bundle_adjustment_v21: bool = False,
+        use_kinematic_anthropometric_prior_v22: bool = False,
+        kap_loss_weight: float = 0.01,
+        kap_use_angle_limit: bool = True,
+        kap_max_flexion_deg: float = 160.0,
+        kap_max_delta: float = 0.10,
         num_diffusion_steps: int = 10,
         camera_view_embedding_hidden: int = 32,
         set_view_n_isab_layers: int = 2,
@@ -298,6 +306,20 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
             )
         else:
             self.neural_bundle_adjustment_v21 = None
+
+        # Optional v22 kinematic anthropometric prior.
+        self.use_kinematic_anthropometric_prior_v22 = use_kinematic_anthropometric_prior_v22
+        self.kap_loss_weight = kap_loss_weight
+        if self.use_kinematic_anthropometric_prior_v22:
+            self.kinematic_anthropometric_prior_v22 = KinematicAnthropometricPrior(
+                j=self.j,
+                d=self.d,
+                use_angle_limit=kap_use_angle_limit,
+                max_flexion_deg=kap_max_flexion_deg,
+                max_delta=kap_max_delta,
+            )
+        else:
+            self.kinematic_anthropometric_prior_v22 = None
 
         # Make sure the ST transformer can accept an additive attention mask even
         # when epipolar bias is disabled.
@@ -755,6 +777,19 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
             epi_loss = epi_loss + self.attention_entropy_loss(weights)
 
         pred_3d = pred_3d.view(B, T, J, 3)
+
+        # Optional v22 kinematic anthropometric prior.
+        if (
+            self.use_kinematic_anthropometric_prior_v22
+            and self.kinematic_anthropometric_prior_v22 is not None
+        ):
+            pred_3d_flat = pred_3d.view(B * T, J, 3)
+            feat_pooled_flat = feat_pooled.view(B * T, J, self.d)
+            pred_3d_refined, kap_loss = self.kinematic_anthropometric_prior_v22(
+                feat_pooled_flat, pred_3d_flat
+            )
+            pred_3d = pred_3d_refined.view(B, T, J, 3)
+            epi_loss = epi_loss + self.kap_loss_weight * kap_loss
 
         # Optional v19 temporal Perceiver refinement on the final per-frame 3D poses.
         if self.use_temporal_perceiver_v19 and self.temporal_perceiver_refiner_v19 is not None:
