@@ -40,7 +40,7 @@ This file captures the current A800-D workflow, tmux conventions, and issue labe
 | v31 geometry attention | geometry-biased hierarchical encoder wired into v5 model | RTX 4090 | Ready to smoke after top-5 queue finishes |
 | v31 camera embedding | geometry-aware pairwise camera view embedding wired into v5 model | RTX 4090 | Queued in second-wave smoke queue after top-5 finishes |
 | v31 second wave | geometry attention + camera embedding + physical collision + skeleton residual gate smokes | RTX 4090 | Waiting in scripts/run_v31_second_wave_local4090_queue.sh |
-| v31 top-5 A800 | domain_balanced, physical_floor, hierarchical_more_dropout, outlier, geometry_attention | A800-D | v31 code patched onto A800 repo (no network to GitHub); poller launched; sessions spreading across GPUs 4-7 |
+| v31 top-5 A800 | domain_balanced, physical_floor, hierarchical_more_dropout, outlier, geometry_attention | A800-D | 4 of 5 launched on GPUs 4-7; geometry_attention waiting for a free GPU |
 | v32 next | Domain-aware view curriculum, TCR, ray attention, outlier triangulation, bounded physical | design | Swarm proposals committed to docs/proposals/v32_next_iteration_synthesis.md |
 | GitHub issues/PRs | Cannot create/update issues automatically; no `GH_TOKEN` or `gh` auth available | blocked | Need user to provide a GitHub token or use the web UI to open issues/PRs |
 
@@ -54,7 +54,7 @@ This file captures the current A800-D workflow, tmux conventions, and issue labe
 | v29d | TTE + physical (no hierarchical) | GPU3 | Killed; epoch 1 val_MPJPE=90.28mm — same TTE failure |
 | v29 20-run sweep | Hierarchical-only + physical-loss ablations (TTE disabled) | GPU4/5/6/7 | 8 of 20 runs launched in tmux v29_sweep_00-07; no val_MPJPE yet (val_stride=10, first val near epoch 1 end) |
 | v30a | v30 hardened hierarchical + physical loss (d=128, full) | — | Poller waiting for >65 GiB free GPU on A800-D; previous attempt OOM’d on GPU0 due to VLLM worker |
-| v30 smoke | v30 hardened hierarchical + physical loss (d=64, local smoke) | RTX 4090 | Running; train loss down to ~6.94 at step 1000; first val pending |
+| v30 smoke | v30 hardened hierarchical + physical loss (d=64, local smoke) | RTX 4090 | Epoch 1 val_MPJPE=94.15mm (fast 50-sample smoke; not representative) |
 
 - **Remote host:** `a800-D` (SSH)
 - **Remote repo:** `/mnt/nvme0n1p1/zhangzy/motionflow-multiview-kimiswarm-iter20`
