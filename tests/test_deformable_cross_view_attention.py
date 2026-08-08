@@ -89,6 +89,25 @@ def test_deformable_attention_variable_view_mask_2d():
     assert out[:, :, 0, :, :].abs().max().item() < 1e-5
 
 
+def test_deformable_attention_topk_straight_through():
+    """Straight-through top-k mode should preserve shape and gradients."""
+    B, T, V, J, d = 2, 3, 4, 17, 64
+    x = torch.randn(B, T, V, J, d, requires_grad=True)
+    N = B * T
+    K, R, t = _make_dummy_cameras(N, V)
+    points_2d = torch.randn(N, V, J, 2) * 100.0
+
+    module = DeformableCrossViewAttention(
+        d=d, n_heads=4, n_views=V, n_samples=2, use_topk_straight_through=True
+    )
+    out = module(x, K, R, t, points_2d)
+    assert out.shape == (B, T, V, J, d)
+    loss = out.sum()
+    loss.backward()
+    assert x.grad is not None
+    assert any(p.grad is not None for p in module.parameters())
+
+
 def test_deformable_attention_invalid_head_dim():
     with pytest.raises(ValueError):
         DeformableCrossViewAttention(d=64, n_heads=3, n_views=4, n_samples=2)
