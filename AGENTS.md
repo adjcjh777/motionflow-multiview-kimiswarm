@@ -18,7 +18,7 @@ This file captures the current A800-D workflow, tmux conventions, and issue labe
 
 | Run | Description | Status |
 |-----|-------------|--------|
-| v25 small local | v18 + geometry fusion + v25_dropout=0.2 + train_samples=500 | Running (Python PID 30576); wait wrapper PID 17373 ready to auto-start variant queue |
+| v25 small local | v18 + geometry fusion + v25_dropout=0.2 + train_samples=500 | Epoch 1 val_MPJPE 63.13 mm; epoch 2 in progress (Python PID 30576); wait wrapper PID 17373 ready to auto-start variant queue |
 | v18 top-k ST | v18 deformable attention with straight-through top-k | Merged to main |
 | v19 temporal perceiver | Feature-aware temporal Perceiver | Merged to main |
 | v26 temporal gate | Warm-startable residual gate | Merged to main |
@@ -30,7 +30,7 @@ This file captures the current A800-D workflow, tmux conventions, and issue labe
 | v26+UDP+v28 full | v26 + v27 UDP + v28 physical-space alignment | Stopped; epoch 1 val 83.38mm, epoch 2 val 114.70mm (v28 weights too high, reduced to 0.01) |
 | v26+UDP-GMM+v28 full | v26 + v27 UDP-GMM + v28 physical-space alignment | Stopped; epoch 1 val 78.57mm, epoch 2 val 121.97mm |
 | v13 temporal | Legacy v13 temporal run | Stopped to free GPU for v26 full queue |
-| v29 proposal | Self-evolving hierarchical multi-view fusion (SEH-MV) | Design doc committed; issue #105 opened; implementation pending |
+| v29 proposal | Self-evolving hierarchical multi-view fusion (SEH-MV) | Merged to main (#106); smoke passed; local/A800 launchers ready; blocked until GPU frees |
 
 - **Remote host:** `a800-D` (SSH)
 - **Remote repo:** `/mnt/nvme0n1p1/zhangzy/motionflow-multiview-kimiswarm-iter20`
