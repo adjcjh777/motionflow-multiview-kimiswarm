@@ -32,7 +32,7 @@ This file captures the current A800-D workflow, tmux conventions, and issue labe
 | v26+UDP+v28 full | v26 + v27 UDP + v28 physical-space alignment | Stopped; epoch 1 val 83.38mm, epoch 2 val 114.70mm (v28 weights too high, reduced to 0.01) |
 | v26+UDP-GMM+v28 full | v26 + v27 UDP-GMM + v28 physical-space alignment | Stopped; epoch 1 val 78.57mm, epoch 2 val 121.97mm |
 | v13 temporal | Legacy v13 temporal run | Stopped to free GPU for v26 full queue |
-| v29 proposal | Self-evolving hierarchical multi-view fusion (SEH-MV) | Merged to main (#106); smoke passed; local/A800 launchers ready; blocked until GPU frees |
+| v29c fast SEH-MV local | v29 full SEH-MV with fast config (clip_len=9, train_samples=100) | Running on RTX 4090; first-epoch val_MPJPE pending |
 
 - **Remote host:** `a800-D` (SSH)
 - **Remote repo:** `/mnt/nvme0n1p1/zhangzy/motionflow-multiview-kimiswarm-iter20`
