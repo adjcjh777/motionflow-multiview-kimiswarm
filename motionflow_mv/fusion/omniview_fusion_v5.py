@@ -726,6 +726,9 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
             self.physical_collision_penalty_v31 = None
 
         self.epoch = 0
+        # Ensure ST transformer layers accept the additive attention mask used by v5
+        # even when epipolar bias is disabled and even before the trainer calls set_epoch.
+        self.set_epoch(0)
 
     def set_epoch(self, epoch: int) -> None:
         """Notify the model of the current epoch for loss warmups / curricula."""
