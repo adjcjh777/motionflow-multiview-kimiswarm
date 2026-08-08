@@ -8,6 +8,12 @@ neural camera-correction head driven by per-view reprojection statistics.
 The design keeps the analytic geometry differentiable (so the layer can be a
 drop-in refinement block) while making the camera updates learnable, avoiding
 the instability of full free-form bundle adjustment at initialization.
+
+Safety additions for the v21 diagnosis iteration:
+* Structure is refined *before* the camera head sees the points.
+* The point update is detached from the camera-head gradient path.
+* Camera updates are gated by a residual-improvement test.
+* The camera descriptor uses a compact 3-DOF rotation representation.
 """
 
 from __future__ import annotations
@@ -54,6 +60,39 @@ def _so3_exp(axis: torch.Tensor) -> torch.Tensor:
     return torch.where(norm.squeeze(-1)[..., None, None] < 1e-6, small_R, R)
 
 
+def _rotation_matrix_to_axis_angle(R: torch.Tensor) -> torch.Tensor:
+    """Convert rotation matrices to axis-angle vectors (stable SO(3) log map).
+
+    Args:
+        R: (..., 3, 3) rotation matrices.
+
+    Returns:
+        aa: (..., 3) axis-angle vectors.  For near-identity matrices the
+            magnitude is close to zero.
+    """
+    # Trace-based angle.
+    trace = R[..., 0, 0] + R[..., 1, 1] + R[..., 2, 2]
+    cos_angle = ((trace - 1.0) / 2.0).clamp(-1.0, 1.0)
+    angle = torch.acos(cos_angle)
+
+    # Axis from the skew-symmetric part of R.
+    axis = torch.stack(
+        [
+            R[..., 2, 1] - R[..., 1, 2],
+            R[..., 0, 2] - R[..., 2, 0],
+            R[..., 1, 0] - R[..., 0, 1],
+        ],
+        dim=-1,
+    )
+
+    # Normalise the axis using 2*sin(angle).  For small angles the axis is
+    # ill-defined, so the resulting axis-angle magnitude naturally goes to 0.
+    sin_angle = torch.sqrt(torch.clamp(1.0 - cos_angle * cos_angle, min=1e-8))
+    axis = axis / (2.0 * sin_angle.unsqueeze(-1)).clamp(min=1e-6)
+
+    return axis * angle.unsqueeze(-1)
+
+
 def _camera_descriptor(
     residual: torch.Tensor,
     K: torch.Tensor,
@@ -85,13 +124,14 @@ def _camera_descriptor(
     skew = K[..., 0, 1]
     intr = torch.stack([fx, fy, cx, cy, skew], dim=-1)
 
-    rot = R.reshape(*R.shape[:3], 9)
+    # Compact 3-DOF rotation descriptor instead of the full 9-DOF matrix.
+    rot_aa = _rotation_matrix_to_axis_angle(R)
     trans = t
 
     # Also include total per-view weight (proxy for visibility/confidence).
     weight_sum = weights.sum(dim=-1, keepdim=True)  # (B, T, V, 1)
 
-    return torch.cat([mean_res, std_res, intr, rot, trans, weight_sum], dim=-1)
+    return torch.cat([mean_res, std_res, intr, rot_aa, trans, weight_sum], dim=-1)
 
 
 class _CameraCorrectionHead(nn.Module):
@@ -184,6 +224,16 @@ class NeuralBundleAdjustment(nn.Module):
         Maximum translation correction per iteration (meters).
     camera_hidden:
         Hidden dimension of the per-camera correction MLP.
+    warm_start_structure:
+        If True, run one structure-only Gauss-Newton step before the first
+        camera update.
+    gate_camera_update:
+        If True, accept a neural camera update only when it does not increase
+        the mean reprojection error.  The gate decision is detached so the
+        MLP still receives gradients from accepted updates.
+    camera_update_tol:
+        Tolerance added to the before-error when deciding whether to accept a
+        camera update (pixels^2).
     """
 
     def __init__(
@@ -196,13 +246,19 @@ class NeuralBundleAdjustment(nn.Module):
         max_rotation_deg: float = 2.0,
         max_translation: float = 0.1,
         camera_hidden: int = 64,
+        warm_start_structure: bool = True,
+        gate_camera_update: bool = True,
+        camera_update_tol: float = 1.0,
     ):
         super().__init__()
         self.n_iters = n_iters
         self.damping = damping
         self.max_point_update = max_point_update
+        self.warm_start_structure = warm_start_structure
+        self.gate_camera_update = gate_camera_update
+        self.camera_update_tol = camera_update_tol
 
-        in_dim = 22  # see _camera_descriptor
+        in_dim = 16  # see _camera_descriptor
         self.camera_head = _CameraCorrectionHead(
             in_dim=in_dim,
             hidden=camera_hidden,
@@ -211,6 +267,21 @@ class NeuralBundleAdjustment(nn.Module):
             max_rotation_rad=math.radians(max_rotation_deg),
             max_translation=max_translation,
         )
+
+    def _mean_reproj_error(
+        self,
+        X: torch.Tensor,
+        points_2d: torch.Tensor,
+        K: torch.Tensor,
+        R: torch.Tensor,
+        t: torch.Tensor,
+        weights: torch.Tensor,
+    ) -> torch.Tensor:
+        """Scalar mean reprojection error (pixels^2)."""
+        residual, _, valid = _project_and_jacobian(X, points_2d, K, R, t)
+        err = (residual ** 2).sum(dim=-1)  # (B, T, V, J)
+        mask = weights * valid.float()
+        return (err * mask).sum() / mask.sum().clamp(min=1e-6)
 
     def _update_points(
         self,
@@ -301,9 +372,35 @@ class NeuralBundleAdjustment(nn.Module):
         if X.dim() == 3:
             X = X.unsqueeze(1)
 
-        for _ in range(self.n_iters):
-            K, R, t = self._update_cameras(X, points_2d, K, R, t, weights)
+        # Optional warm-start: refine structure once before any camera is touched.
+        if self.warm_start_structure:
             X = self._update_points(X, points_2d, K, R, t, weights)
+
+        for _ in range(self.n_iters):
+            # 1. Refine structure given current cameras.
+            X = self._update_points(X, points_2d, K, R, t, weights)
+
+            # 2. Propose neural camera correction.  Detach the point update so
+            # the camera head cannot drive gradients through the analytic solver.
+            err_before = self._mean_reproj_error(X.detach(), points_2d, K, R, t, weights)
+            K_new, R_new, t_new = self._update_cameras(
+                X.detach(), points_2d, K, R, t, weights
+            )
+
+            if self.gate_camera_update:
+                err_after = self._mean_reproj_error(
+                    X.detach(), points_2d, K_new, R_new, t_new, weights
+                )
+                # Accept only if the update does not increase reprojection error.
+                use_new = (err_after < err_before + self.camera_update_tol).float()
+                # Per-view decision: shape (B, T, V) -> broadcast for K/R/t.
+                use_new_k = use_new[..., None, None]
+                use_new_t = use_new[..., None]
+                K = use_new_k * K_new + (1.0 - use_new_k) * K
+                R = use_new_k * R_new + (1.0 - use_new_k) * R
+                t = use_new_t * t_new + (1.0 - use_new_t) * t
+            else:
+                K, R, t = K_new, R_new, t_new
 
         if squeeze:
             X = X.squeeze(1)
