@@ -23,6 +23,16 @@ for variant in v26_udp v26_udp_gmm v26_udp_v28 v26_udp_gmm_v28; do
         --out "$OUT" \
         --csv "$CSV" \
         || echo "[WARN] $variant benchmark failed"
+
+    echo "[$(date)] Benchmarking $variant with TTE ..."
+    python scripts/run_full_v5_benchmark.py \
+        --checkpoint "$CKPT" \
+        --h36m "$H36M" \
+        --mpi "$MPI" \
+        --out "${OUT%.json}_tte.json" \
+        --csv "${CSV%.csv}_tte.csv" \
+        --tte \
+        || echo "[WARN] $variant TTE benchmark failed"
 done
 
 echo "[$(date)] All benchmarks finished."

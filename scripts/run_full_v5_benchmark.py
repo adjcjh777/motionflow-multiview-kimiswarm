@@ -53,6 +53,7 @@ def main() -> None:
     parser.add_argument("--mpi", type=str, required=True, help="MPI-INF-3DHP .npz dataset")
     parser.add_argument("--out", type=str, default="outputs/benchmark_results.json", help="Output summary JSON")
     parser.add_argument("--csv", type=str, default="outputs/benchmark_results.csv", help="Output summary CSV")
+    parser.add_argument("--tte", action="store_true", help="Enable v27 test-time self-evolution during eval")
     args = parser.parse_args()
 
     h36m_json = "outputs/benchmark_h36m_tmp.json"
@@ -62,6 +63,10 @@ def main() -> None:
 
     results: Dict[str, Any] = {"checkpoint": args.checkpoint}
 
+    tte_args = []
+    if args.tte:
+        tte_args = ["--use_test_time_self_evolution_v27", "--v27_tte_n_iters", "3"]
+
     print("Running H36M evaluation...")
     results["h36m"] = run_eval(
         "experiments/eval_omniview_fusion_v5_h36m.py",
@@ -70,6 +75,7 @@ def main() -> None:
             "--dataset", args.h36m,
             "--run_robustness",
             "--run_variable_views",
+            *tte_args,
             "--out_json", h36m_json,
             "--out_csv", h36m_csv,
         ],
@@ -83,6 +89,7 @@ def main() -> None:
             "--dataset", args.mpi,
             "--run_robustness",
             "--run_variable_views",
+            *tte_args,
             "--out_json", mpi_json,
             "--out_csv", mpi_csv,
         ],
