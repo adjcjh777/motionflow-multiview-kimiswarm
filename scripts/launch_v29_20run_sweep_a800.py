@@ -20,7 +20,7 @@ from typing import List, Optional, Tuple
 A800_REPO = "/mnt/nvme0n1p1/zhangzy/motionflow-multiview-kimiswarm-iter20"
 SSH_HOST = "a800-D"
 MIN_FREE_MIB = 12000  # Require ~12 GiB free before launching another run.
-MAX_CONCURRENT = 6
+MAX_CONCURRENT = 12
 POLL_INTERVAL = 60  # seconds
 
 
