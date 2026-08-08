@@ -120,6 +120,10 @@ def build_model_from_args(
         "kap_loss_weight": getattr(args, "kap_loss_weight", 0.01),
         "kap_use_angle_limit": getattr(args, "kap_use_angle_limit", True),
         "kap_max_flexion_deg": getattr(args, "kap_max_flexion_deg", 160.0),
+        "kap_adaptive_prior": getattr(args, "kap_adaptive_prior", False),
+        "kap_adaptive_context_dim": getattr(args, "kap_adaptive_context_dim", 16),
+        "kap_adaptive_hidden": getattr(args, "kap_adaptive_hidden", 64),
+        "kap_adaptive_regularization": getattr(args, "kap_adaptive_regularization", 0.01),
         # v25 toggles
         "use_multiview_geometry_fusion_v25": getattr(args, "use_multiview_geometry_fusion_v25", False),
         "v25_geom_loss_weight": getattr(args, "v25_geom_loss_weight", 0.1),
@@ -1373,6 +1377,10 @@ def parse_args() -> Namespace:
     parser.add_argument("--v27_tte_residual_thresh_mm", type=float, default=0.5, help="Early-stop threshold (mm) for v27 self-evolution")
     parser.add_argument("--kap_use_angle_limit", action="store_true", default=True, help="Use soft joint-angle limit penalty in v22 KAP")
     parser.add_argument("--kap_max_flexion_deg", type=float, default=160.0, help="Maximum flexion for v22 joint-angle limit")
+    parser.add_argument("--kap_adaptive_prior", action="store_true", default=False, help="Use per-sample adaptive bone-length prior in v22 KAP")
+    parser.add_argument("--kap_adaptive_context_dim", type=int, default=16, help="Context dimension for v22 adaptive prior")
+    parser.add_argument("--kap_adaptive_hidden", type=int, default=64, help="Hidden dimension for v22 adaptive prior adjustment MLPs")
+    parser.add_argument("--kap_adaptive_regularization", type=float, default=0.01, help="L2 regularization weight on v22 adaptive prior adjustments")
     parser.add_argument("--use_full_precision_dlt", action="store_true", help="Use full 2x2 precision matrix in DLT triangulation")
     parser.add_argument("--use_robust_dlt_reweight", action="store_true", help="Robust reweighting pass inside full-precision DLT triangulation")
     parser.add_argument("--use_irls_reweight", action="store_true", help="IRLS Cauchy robust reweighting after one-step robust DLT")

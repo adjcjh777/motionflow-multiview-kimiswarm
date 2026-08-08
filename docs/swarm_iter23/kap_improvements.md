@@ -7,6 +7,9 @@
 
 ## 1. Make the bone-length prior adaptive per sample
 
+**Status:** Implemented in `swarm/v22_kap_integration` — adds `adaptive_prior`, `adaptive_context_dim`, `adaptive_hidden`, and `adaptive_regularization` to `KinematicAnthropometricPrior`. The context encoder pools `feat_pooled` via mean+max; two zero-initialized MLPs predict per-bone adjustments to `bone_mu` and `bone_logvar`. An L2 regularization term keeps the module warm-startable.
+
+
 **Observation:** `bone_mu` and `bone_logvar` are global population parameters (`kinematic_anthropometric_prior_v22.py:86-87`). A single prior cannot capture child/adult scale variation or camera-distance effects, so the residual branch has to do most of the scale correction.
 
 **Proposal:** Condition the prior on the pooled per-joint features.

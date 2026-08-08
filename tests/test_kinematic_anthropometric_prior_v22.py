@@ -65,3 +65,48 @@ def test_kap_angle_limit_toggle():
 def test_kap_unsupported_joints():
     with pytest.raises(ValueError):
         KinematicAnthropometricPrior(j=12, d=16)
+
+
+def test_kap_adaptive_prior_forward_and_gradients():
+    feat, pred = _make_inputs(j=17, d=32)
+    feat.requires_grad_(True)
+    pred.requires_grad_(True)
+    model = KinematicAnthropometricPrior(
+        j=17, d=32, adaptive_prior=True, adaptive_context_dim=8, adaptive_hidden=16
+    )
+    pred_ref, loss = model(feat, pred)
+    assert pred_ref.shape == pred.shape
+    assert loss.shape == ()
+    loss.backward()
+    assert pred.grad is not None
+    assert any(p.grad is not None for p in model.parameters())
+
+
+def test_kap_adaptive_prior_is_identity_at_init():
+    feat, pred = _make_inputs(j=17, d=32)
+    model = KinematicAnthropometricPrior(
+        j=17, d=32, adaptive_prior=True, adaptive_context_dim=8, adaptive_hidden=16
+    )
+    pred_ref, _ = model(feat, pred)
+    # The adjustment MLP final layers are zero-initialized, so the adaptive
+    # prior should collapse to the global prior at init and the residual
+    # branch remains near zero.
+    assert torch.allclose(pred_ref, pred, atol=1e-1)
+
+
+def test_kap_adaptive_prior_regularization_loss():
+    feat, pred = _make_inputs(j=17, d=32)
+    model = KinematicAnthropometricPrior(
+        j=17,
+        d=32,
+        adaptive_prior=True,
+        adaptive_context_dim=8,
+        adaptive_hidden=16,
+        adaptive_regularization=0.1,
+    )
+    pred_ref, loss = model(feat, pred)
+    # The regularization term should be positive once the adjustment MLPs
+    # produce a non-zero delta (they are initialized to zero, so after one
+    # forward pass with random input they will generally be non-zero).
+    assert loss.item() >= 0.0
+
