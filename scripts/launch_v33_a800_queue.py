@@ -125,6 +125,13 @@ RUNS = [
         "--use_view_joint_graph_network_v34 --v34_vjgn_n_layers 2 --v34_vjgn_n_heads 4",
         "omniview_fusion_v34_view_joint_graph_network_a800",
     ),
+    # v34 geometry-aware view-joint graph network.
+    (
+        "v34_geometry_view_joint_graph_network",
+        "--use_hierarchical_multiview_v31 --v31_geometry_bias "
+        "--use_geometry_view_joint_graph_network_v34 --v34_gvjgn_n_layers 2 --v34_gvjgn_n_heads 4",
+        "omniview_fusion_v34_geometry_view_joint_graph_network_a800",
+    ),
     # v33 HMSP + v34 VJGN stack.
     (
         "v34_hmsp_vjgn_stack",
