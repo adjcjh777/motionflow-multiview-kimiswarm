@@ -19,11 +19,29 @@ def local_log_status(log_path: Path) -> str:
     return f"training step {last_step} loss={last_loss}" if last_step else "initializing"
 
 
+def v25_local_status() -> str:
+    status_path = Path("outputs/v25_local_4090_status.json")
+    if status_path.exists():
+        try:
+            status = json.loads(status_path.read_text())
+            best = status.get("best")
+            last = status.get("last")
+            if best and last:
+                return f"status={status['status']} best epoch={best['epoch']} val={best['val_mpjpe_mm']}mm | last epoch={last['epoch']} val={last['val_mpjpe_mm']}mm"
+            if best:
+                return f"best epoch={best['epoch']} val={best['val_mpjpe_mm']}mm"
+        except Exception:
+            pass
+    log = Path("outputs/omniview_fusion_v25_geometry_fusion_small_local_4090.log")
+    return local_log_status(log)
+
+
 def main() -> None:
     print("Local 4090:")
     for variant in ["v26_udp", "v26_udp_gmm", "v26_udp_v28", "v26_udp_gmm_v28", "v29_udp_gmm_v28_graph_outlier"]:
         log = Path(f"outputs/omniview_fusion_{variant}_full_local_4090.log")
         print(f"  {variant}: {local_log_status(log)}")
+    print(f"  v25_baseline: {v25_local_status()}")
 
     print("\nA800 v25 state:")
     state_path = Path(".monitor_a800_v25_state.json")
