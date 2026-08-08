@@ -36,6 +36,7 @@ from motionflow_mv.fusion.diffusion_pose_refiner_v20 import DiffusionPoseRefiner
 from motionflow_mv.fusion.kinematic_anthropometric_prior_v22 import (
     KinematicAnthropometricPrior,
 )
+from motionflow_mv.fusion.multiview_geometry_fusion_v25 import MultiViewGeometryFusionV25
 from motionflow_mv.fusion.neural_bundle_adjustment_v21 import NeuralBundleAdjustment
 from motionflow_mv.fusion.omniview_fusion_v4 import OmniMultiViewFusionV4
 from motionflow_mv.fusion.perceiver_view_aggregator import PerceiverViewAggregator
@@ -120,6 +121,12 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
         use_diffusion_refiner_v20: bool = False,
         use_neural_bundle_adjustment_v21: bool = False,
         use_kinematic_anthropometric_prior_v22: bool = False,
+        use_multiview_geometry_fusion_v25: bool = False,
+        v25_use_geometry_attention: bool = True,
+        v25_use_learned_depth_triangulation: bool = True,
+        v25_use_geometry_bundle_adjustment: bool = True,
+        v25_use_camera_joint_graph: bool = False,
+        v25_geom_loss_weight: float = 0.1,
         kap_loss_weight: float = 0.01,
         kap_use_angle_limit: bool = True,
         kap_max_flexion_deg: float = 160.0,
@@ -320,6 +327,22 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
             )
         else:
             self.kinematic_anthropometric_prior_v22 = None
+
+        # Optional v25 multi-view geometry fusion.
+        self.use_multiview_geometry_fusion_v25 = use_multiview_geometry_fusion_v25
+        self.v25_geom_loss_weight = v25_geom_loss_weight
+        if self.use_multiview_geometry_fusion_v25:
+            self.multiview_geometry_fusion_v25 = MultiViewGeometryFusionV25(
+                d=self.d,
+                n_heads=self.n_heads,
+                n_views=n_views,
+                use_geometry_attention=v25_use_geometry_attention,
+                use_learned_depth_triangulation=v25_use_learned_depth_triangulation,
+                use_geometry_bundle_adjustment=v25_use_geometry_bundle_adjustment,
+                use_camera_joint_graph=v25_use_camera_joint_graph,
+            )
+        else:
+            self.multiview_geometry_fusion_v25 = None
 
         # Make sure the ST transformer can accept an additive attention mask even
         # when epipolar bias is disabled.
