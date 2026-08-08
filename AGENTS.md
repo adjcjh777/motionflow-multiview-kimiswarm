@@ -42,6 +42,7 @@ This file captures the current A800-D workflow, tmux conventions, and issue labe
 | v29a | hierarchical encoder only (no TTE, no physical) | GPU1 | Running; first-epoch val_MPJPE pending |
 | v29b | hierarchical + TTE (no physical) | GPU2 | Running; first-epoch val_MPJPE pending |
 | v29d | TTE + physical (no hierarchical) | GPU3 | Running; first-epoch val_MPJPE pending |
+| v29 20-run sweep | 20 hyper-parameter/variant configs queued and auto-launched as GPUs free | GPU4 (first 6) | Running; see issue #109 |
 
 - **Remote host:** `a800-D` (SSH)
 - **Remote repo:** `/mnt/nvme0n1p1/zhangzy/motionflow-multiview-kimiswarm-iter20`
