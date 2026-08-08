@@ -29,6 +29,7 @@ from motionflow_mv.fusion.epipolar_transformer_bias import (
     EpipolarBiasedTransformerEncoderLayer,
 )
 from motionflow_mv.fusion.cross_view_transformer_v17 import CrossViewTransformerV17
+from motionflow_mv.fusion.deformable_cross_view_attention import DeformableCrossViewAttention
 from motionflow_mv.fusion.omniview_fusion_v4 import OmniMultiViewFusionV4
 from motionflow_mv.fusion.perceiver_view_aggregator import PerceiverViewAggregator
 from motionflow_mv.fusion.variable_view_set_aggregator import (
@@ -102,6 +103,7 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
         use_set_view_aggregator: bool = False,
         use_perceiver_aggregator: bool = False,
         use_cross_view_transformer_v17: bool = False,
+        use_deformable_cross_view_attention_v18: bool = False,
         camera_view_embedding_hidden: int = 32,
         set_view_n_isab_layers: int = 2,
         set_view_num_inducing_points: int = 32,
@@ -232,6 +234,19 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
             )
         else:
             self.cross_view_transformer_v17 = None
+
+        self.use_deformable_cross_view_attention_v18 = use_deformable_cross_view_attention_v18
+        if self.use_deformable_cross_view_attention_v18:
+            self.deformable_cross_view_attention_v18 = DeformableCrossViewAttention(
+                d=d,
+                n_heads=n_heads,
+                n_views=n_views,
+                n_samples=max(2, n_views // 2),
+                epipolar_temperature=10.0,
+                dropout=0.1,
+            )
+        else:
+            self.deformable_cross_view_attention_v18 = None
 
         # Make sure the ST transformer can accept an additive attention mask even
         # when epipolar bias is disabled.
@@ -456,6 +471,17 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
                 R=R,
                 t=t,
                 points_2d=points_2d_5d,
+                view_mask=view_mask,
+            )
+
+        # Optional deformable cross-view attention (v18) guided by epipolar geometry.
+        if self.use_deformable_cross_view_attention_v18 and self.deformable_cross_view_attention_v18 is not None:
+            feat = self.deformable_cross_view_attention_v18(
+                feat,
+                K=K_corrected,
+                R=R,
+                t=t,
+                points_2d=points_2d,
                 view_mask=view_mask,
             )
 

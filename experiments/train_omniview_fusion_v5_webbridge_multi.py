@@ -105,8 +105,9 @@ def build_model_from_args(
         "perceiver_n_layers": args.perceiver_n_layers,
         "perceiver_n_heads": args.perceiver_n_heads,
         "perceiver_dropout": args.perceiver_dropout,
-        # v17 toggles
+        # v17/v18 toggles
         "use_cross_view_transformer_v17": getattr(args, "use_cross_view_transformer_v17", False),
+        "use_deformable_cross_view_attention_v18": getattr(args, "use_deformable_cross_view_attention_v18", False),
         # v7 toggles
         "use_full_precision_dlt": args.use_full_precision_dlt,
         "use_robust_dlt_reweight": args.use_robust_dlt_reweight,
@@ -1303,6 +1304,7 @@ def parse_args() -> Namespace:
     parser.add_argument("--perceiver_n_heads", type=int, default=4, help="Number of attention heads in Perceiver aggregator")
     parser.add_argument("--perceiver_dropout", type=float, default=0.0, help="Dropout in Perceiver aggregator")
     parser.add_argument("--use_cross_view_transformer_v17", action="store_true", help="Use v17 geometric cross-view transformer for view aggregation")
+    parser.add_argument("--use_deformable_cross_view_attention_v18", action="store_true", help="Use v18 sparse epipolar-aware cross-view attention")
     parser.add_argument("--use_full_precision_dlt", action="store_true", help="Use full 2x2 precision matrix in DLT triangulation")
     parser.add_argument("--use_robust_dlt_reweight", action="store_true", help="Robust reweighting pass inside full-precision DLT triangulation")
     parser.add_argument("--use_irls_reweight", action="store_true", help="IRLS Cauchy robust reweighting after one-step robust DLT")
