@@ -1,8 +1,19 @@
 # v25: Multi-View Geometry Fusion (GeoMV Fusion)
 
 **Task identifier:** `design_v25_multiview_geometry_fusion`  
-**Status:** Design / Prototype  
+**Status:** Prototype implemented (`motionflow_mv/fusion/multiview_geometry_fusion_v25.py`)  
 **Depends on:** v17 (`cross_view_transformer_v17`), v18 (`deformable_cross_view_attention`), v21 (`neural_bundle_adjustment_v21`), v22 (`kinematic_anthropometric_prior_v22`)
+
+> **Implementation status (2026-08-08)**
+> - ✅ Ray tokeniser + geometry-aware cross-view attention (`use_geometry_attention`)
+> - ✅ Learned depth-proposal triangulation head (`use_learned_depth_triangulation`)
+> - ✅ Toggle plumbing in `OmniMultiViewFusionV5` (`use_multiview_geometry_fusion_v25`, `v25_use_*` flags)
+> - ✅ View-mask support for variable-view training
+> - ⚠️ Geometry bundle adjustment (`use_geometry_bundle_adjustment`) is a placeholder; the class stores the flag but the block is not yet implemented.
+> - ⚠️ Camera-joint graph (`use_camera_joint_graph`) is a placeholder; the flag is accepted and stored but not yet wired to a GNN.
+> - ✅ Unit tests added in `tests/test_multiview_geometry_fusion_v25.py`
+> - ✅ Runner scripts prepared under `scripts/run_v25_*.sh` (full + ablations)
+> - ✅ New visualisation script: `scripts/visualize_multiview_2d_plus_triangulated_3d.py`
 
 > **Versioning note:** This proposal reclaims the `v25` label for a
 > camera/geometry-centric fusion model. The earlier temporal-only draft

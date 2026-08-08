@@ -119,6 +119,41 @@ def extended_camera_perturbation_schedule_with_anneal(
     return {k: v * anneal for k, v in base.items()}
 
 
+def loss_gated_camera_schedule(
+    epoch: int,
+    /,
+    *,
+    base_schedule_fn: Any,
+    reproj_ratio: float,
+    tau: float = 3.0,
+    rollback_factor: float = 0.5,
+) -> dict[str, float]:
+    """Wrap an existing camera schedule with a reprojection-loss gate.
+
+    When the ratio of reprojection loss to 3-D MSE exceeds ``tau`` the
+    perturbation standard deviations are scaled back by ``rollback_factor``
+    (default 0.5).  This prevents geometry-sensitive losses from exploding
+    when the cameras are heavily perturbed.
+
+    Args:
+        epoch: Current training epoch.
+        base_schedule_fn: Callable that takes an epoch and returns a dict of
+            perturbation standard deviations, e.g.
+            ``lambda e: extended_camera_perturbation_schedule(e, ...)``.
+        reproj_ratio: Observed ``reproj_loss / mse_loss`` for the current
+            epoch.  Non-positive values disable the gate.
+        tau: Threshold above which the gate triggers.
+        rollback_factor: Multiplier applied to all stds when the gate fires.
+
+    Returns:
+        Dict of (possibly rolled-back) perturbation standard deviations.
+    """
+    stds = base_schedule_fn(epoch)
+    if reproj_ratio > tau:
+        return {k: v * rollback_factor for k, v in stds.items()}
+    return stds
+
+
 def schedule_from_args(
     epoch: int,
     /,

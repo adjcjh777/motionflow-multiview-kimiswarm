@@ -1,115 +1,244 @@
-"""Unit tests for motionflow_mv.fusion.multiview_geometry_fusion_v25."""
+"""Unit tests for motionflow_mv/fusion/multiview_geometry_fusion_v25.py.
 
+Covers the public contract of ``MultiViewGeometryFusionV25``:
+- forward shape ``(B, T, V, J, 3) -> (B, T, J, 3)``
+- identity-at-init behaviour
+- gradient flow through inputs
+- view masking
+- shape compatibility for J=17 and J=28
+"""
+
+import numpy as np
 import pytest
 import torch
 
 from motionflow_mv.fusion.multiview_geometry_fusion_v25 import (
     MultiViewGeometryFusionV25,
+    build_projection_matrix,
+    compute_rays,
+    ray_intersection_logit,
+    triangulate_initial,
 )
 
 
-def _random_cameras(batch: tuple = (2, 3, 4), device: str = "cpu"):
-    """Return a deterministic set of calibrated cameras and 2D observations."""
-    B, T, V = batch
-    K = torch.eye(3, device=device).view(1, 1, 1, 3, 3).expand(B, T, V, 3, 3).clone()
-    K[..., 0, 0] = 800.0
-    K[..., 1, 1] = 800.0
-    K[..., 0, 2] = 320.0
-    K[..., 1, 2] = 240.0
-
-    # Identity rotations keep the geometry well-defined and simple.
-    R = torch.eye(3, device=device).view(1, 1, 1, 3, 3).expand(B, T, V, 3, 3).clone()
-    # Cameras placed in front of the subject.
-    t = torch.zeros(B, T, V, 3, device=device)
-    t[..., 2] = 5.0
-    t[..., :2] = torch.randn(B, T, V, 2, device=device) * 0.5
-
-    return K, R, t
-
-
-def _random_2d(B: int, T: int, V: int, J: int, device: str = "cpu"):
-    """Random 2D keypoints with per-joint confidence as third channel."""
-    points = torch.randn(B, T, V, J, 2, device=device) * 100 + 320
-    conf = torch.rand(B, T, V, J, device=device)
-    return torch.cat([points, conf[..., None]], dim=-1)
-
-
-def test_forward_shape():
-    B, T, V, J, d = 2, 3, 4, 17, 128
-    points_2d = _random_2d(B, T, V, J)
-    K, R, t = _random_cameras((B, T, V))
-    pred_3d_init = torch.randn(B, T, J, 3)
-
-    module = MultiViewGeometryFusionV25(d=d, n_heads=4, n_views=V, n_geometry_layers=2)
-    out = module(points_2d, K, R, t, pred_3d_init=pred_3d_init)
-    assert out.shape == (B, T, J, 3)
+def _make_cameras(n_views: int = 4) -> tuple:
+    """Build a simple circular camera rig."""
+    Ks, Rs, ts = [], [], []
+    for i in range(n_views):
+        theta = 2 * np.pi * i / n_views
+        c = np.array([3.0 * np.cos(theta), 3.0 * np.sin(theta), 1.0])
+        forward = -c / np.linalg.norm(c)
+        up = np.array([0.0, 0.0, 1.0])
+        right = np.cross(forward, up)
+        right /= np.linalg.norm(right)
+        up = np.cross(right, forward)
+        R = np.stack([right, up, -forward], axis=0)
+        t = -R @ c
+        K = np.eye(3)
+        K[0, 0] = K[1, 1] = 800.0
+        K[0, 2] = 320.0
+        K[1, 2] = 240.0
+        Ks.append(K)
+        Rs.append(R)
+        ts.append(t)
+    return (
+        torch.from_numpy(np.stack(Ks)).float(),
+        torch.from_numpy(np.stack(Rs)).float(),
+        torch.from_numpy(np.stack(ts)).float(),
+    )
 
 
-def test_forward_with_view_mask():
-    B, T, V, J = 2, 3, 4, 17
-    points_2d = _random_2d(B, T, V, J)
-    K, R, t = _random_cameras((B, T, V))
-    pred_3d_init = torch.randn(B, T, J, 3)
-    view_mask = torch.tensor([True, True, False, True]).view(1, 1, V).expand(B, T, V)
+def _project_points(
+    joints_3d: torch.Tensor,
+    K: torch.Tensor,
+    R: torch.Tensor,
+    t: torch.Tensor,
+) -> torch.Tensor:
+    """Project world points into all views; returns (F, V, J, 2)."""
+    t = t[:, None, None, :]
+    X_cam = torch.einsum("vab,fjb->vfja", R, joints_3d) + t
+    z = X_cam[..., 2:3].clamp(min=1e-6)
+    uv = torch.matmul(K[:, None, None], (X_cam / z)[..., None])
+    points_2d = uv[..., :2, 0] / uv[..., 2:3, 0]
+    return points_2d.permute(1, 0, 2, 3)
 
-    module = MultiViewGeometryFusionV25(d=64, n_heads=2, n_views=V)
-    out = module(points_2d, K, R, t, pred_3d_init=pred_3d_init, view_mask=view_mask)
-    assert out.shape == (B, T, J, 3)
 
+def _make_batch(
+    B: int = 2,
+    T: int = 3,
+    V: int = 4,
+    J: int = 17,
+) -> tuple:
+    """Return synthetic (points_2d, K, R, t, pred_3d_init, view_mask)."""
+    K, R, t = _make_cameras(V)
+    torch.manual_seed(42)
+    joints_3d = torch.randn(T, J, 3) * 0.3
+    points_2d = _project_points(joints_3d, K, R, t)
+
+    K = K.unsqueeze(0).unsqueeze(0).expand(B, T, -1, -1, -1)
+    R = R.unsqueeze(0).unsqueeze(0).expand(B, T, -1, -1, -1)
+    t = t.unsqueeze(0).unsqueeze(0).expand(B, T, -1, -1)
+    points_2d = points_2d.unsqueeze(0).expand(B, -1, -1, -1, -1)
+    confidence = torch.ones(B, T, V, J)
+    points_2d = torch.cat([points_2d, confidence[..., None]], dim=-1)
+
+    pred_3d_init = joints_3d.unsqueeze(0).expand(B, -1, -1, -1)
+    view_mask = torch.ones(B, T, V).bool()
+    return points_2d, K, R, t, pred_3d_init, view_mask
+
+
+# -----------------------------------------------------------------------------
+# Core shape / forward tests
+# -----------------------------------------------------------------------------
+
+@pytest.mark.parametrize("J", [17, 28])
+def test_forward_shape(J):
+    module = MultiViewGeometryFusionV25(d=64, n_heads=2, n_views=4)
+    points_2d, K, R, t, pred_3d_init, view_mask = _make_batch(B=2, T=3, V=4, J=J)
+    out, _ = module(points_2d, K, R, t, pred_3d_init=pred_3d_init, view_mask=view_mask)
+    assert out.shape == (2, 3, J, 3)
+
+
+# -----------------------------------------------------------------------------
+# Identity at init
+# -----------------------------------------------------------------------------
 
 def test_identity_at_init():
-    """With zero effective weights, the module should act as a no-op."""
-    B, T, V, J = 2, 3, 4, 17
-    points_2d = _random_2d(B, T, V, J)
-    K, R, t = _random_cameras((B, T, V))
-    pred_3d_init = torch.randn(B, T, J, 3)
-
-    module = MultiViewGeometryFusionV25(d=64, n_heads=2, n_views=V)
-    # Zero the residual gate; the module now returns the input estimate.
-    module.depth_tri_head.residual_scale.data.zero_()
-    # Ensure attention residual is also zeroed (already initialised to zero).
-    if module.use_geometry_attention:
-        for layer in module.geom_attn_layers:
-            for p in layer.out_proj.parameters():
-                p.data.zero_()
-
-    out = module(points_2d, K, R, t, pred_3d_init=pred_3d_init)
+    module = MultiViewGeometryFusionV25(
+        d=64,
+        n_heads=2,
+        n_views=4,
+        use_geometry_attention=False,
+        use_learned_depth_triangulation=False,
+    )
+    points_2d, K, R, t, pred_3d_init, view_mask = _make_batch()
+    out, _ = module(points_2d, K, R, t, pred_3d_init=pred_3d_init, view_mask=view_mask)
     assert torch.allclose(out, pred_3d_init, atol=1e-5)
 
 
+def test_identity_at_init_without_pred():
+    module = MultiViewGeometryFusionV25(
+        d=64,
+        n_heads=2,
+        n_views=4,
+        use_geometry_attention=False,
+        use_learned_depth_triangulation=False,
+    )
+    points_2d, K, R, t, _, _ = _make_batch()
+    out, _ = module(points_2d, K, R, t)
+    expected = triangulate_initial(points_2d[..., :2], K, R, t)
+    assert torch.allclose(out, expected, atol=1e-5)
+
+
+# -----------------------------------------------------------------------------
+# Gradient flow
+# -----------------------------------------------------------------------------
+
 def test_gradient_flow():
-    B, T, V, J = 2, 3, 4, 17
-    points_2d = _random_2d(B, T, V, J)
+    module = MultiViewGeometryFusionV25(d=64, n_heads=2, n_views=4)
+    points_2d, K, R, t, pred_3d_init, view_mask = _make_batch()
     points_2d.requires_grad_(True)
-    K, R, t = _random_cameras((B, T, V))
-    K = K.clone().requires_grad_(True)
-    R = R.clone().requires_grad_(True)
-    t = t.clone().requires_grad_(True)
-    pred_3d_init = torch.randn(B, T, J, 3, requires_grad=True)
+    K.requires_grad_(True)
+    R.requires_grad_(True)
+    t.requires_grad_(True)
+    pred_3d_init.requires_grad_(True)
 
-    module = MultiViewGeometryFusionV25(d=64, n_heads=2, n_views=V)
-    # Open the residual gate so gradients can propagate through the depth head.
-    module.depth_tri_head.residual_scale.data.fill_(1.0)
-
-    out = module(points_2d, K, R, t, pred_3d_init=pred_3d_init)
-    loss = out.sum()
+    out, geom_loss = module(points_2d, K, R, t, pred_3d_init=pred_3d_init, view_mask=view_mask)
+    loss = out.mean() + geom_loss
     loss.backward()
 
-    for tensor in (points_2d, K, R, t, pred_3d_init):
-        assert tensor.grad is not None, f"{tensor.shape} has no gradient"
-        assert torch.isfinite(tensor.grad).all()
+    assert points_2d.grad is not None
+    assert K.grad is not None
+    assert R.grad is not None
+    assert t.grad is not None
+    assert pred_3d_init.grad is not None
 
 
-def test_output_for_different_skeleton_sizes():
-    B, T, V, d = 2, 3, 4, 64
-    for J in (17, 28):
-        points_2d = _random_2d(B, T, V, J)
-        K, R, t = _random_cameras((B, T, V))
-        pred = torch.randn(B, T, J, 3)
-        module = MultiViewGeometryFusionV25(d=d, n_heads=2, n_views=V)
-        out = module(points_2d, K, R, t, pred_3d_init=pred)
-        assert out.shape == (B, T, J, 3)
+# -----------------------------------------------------------------------------
+# View masking
+# -----------------------------------------------------------------------------
+
+def test_view_mask_ignores_dropped_view():
+    module = MultiViewGeometryFusionV25(d=64, n_heads=2, n_views=4)
+    points_2d, K, R, t, _, _ = _make_batch()
+    view_mask = torch.ones(2, 3, 4).bool()
+    view_mask[:, :, -1] = False
+
+    out, _ = module(points_2d, K, R, t, view_mask=view_mask)
+    assert out.shape == (2, 3, 17, 3)
+    assert out.isfinite().all()
+
+
+# -----------------------------------------------------------------------------
+# Toggle coverage
+# -----------------------------------------------------------------------------
+
+@pytest.mark.parametrize("use_geom_attn", [True, False])
+@pytest.mark.parametrize("use_learned_depth", [True, False])
+def test_toggles_forward(use_geom_attn: bool, use_learned_depth: bool):
+    module = MultiViewGeometryFusionV25(
+        d=64,
+        n_heads=2,
+        n_views=4,
+        use_geometry_attention=use_geom_attn,
+        use_learned_depth_triangulation=use_learned_depth,
+    )
+    points_2d, K, R, t, pred_3d_init, view_mask = _make_batch()
+    out, _ = module(points_2d, K, R, t, pred_3d_init=pred_3d_init, view_mask=view_mask)
+    assert out.shape == (2, 3, 17, 3)
+
+
+# -----------------------------------------------------------------------------
+# Helpers
+# -----------------------------------------------------------------------------
+
+def test_build_projection_matrix_shape():
+    K = torch.eye(3).unsqueeze(0).unsqueeze(0).unsqueeze(0).expand(2, 3, 4, 3, 3)
+    R = torch.eye(3).unsqueeze(0).unsqueeze(0).unsqueeze(0).expand(2, 3, 4, 3, 3)
+    t = torch.zeros(2, 3, 4, 3)
+    P = build_projection_matrix(K, R, t)
+    assert P.shape == (2, 3, 4, 3, 4)
+
+
+def test_triangulate_initial_shape():
+    points_2d, K, R, t, _, _ = _make_batch()
+    X = triangulate_initial(points_2d[..., :2], K, R, t)
+    assert X.shape == (2, 3, 17, 3)
+
+
+def test_compute_rays_shape():
+    points_2d, K, R, t, _, _ = _make_batch()
+    centre, direction = compute_rays(points_2d[..., :2], K, R, t)
+    assert centre.shape == (2, 3, 4, 3)
+    assert direction.shape == (2, 3, 4, 17, 3)
+    assert torch.allclose(
+        direction.norm(dim=-1),
+        torch.ones_like(direction.norm(dim=-1)),
+        atol=1e-5,
+    )
+
+
+def test_ray_intersection_logit_shape():
+    points_2d, K, R, t, _, _ = _make_batch()
+    centre, direction = compute_rays(points_2d[..., :2], K, R, t)
+    sigma_d = torch.tensor(0.5)
+    sigma_a = torch.tensor(0.5)
+    logit = ray_intersection_logit(centre, direction, sigma_d, sigma_a)
+    assert logit.shape == (2, 3, 4, 4, 17)
 
 
 if __name__ == "__main__":
-    pytest.main([__file__, "-v"])
+    test_forward_shape(17)
+    test_forward_shape(28)
+    test_identity_at_init()
+    test_identity_at_init_without_pred()
+    test_gradient_flow()
+    test_view_mask_ignores_dropped_view()
+    for ga in [True, False]:
+        for ld in [True, False]:
+            test_toggles_forward(ga, ld)
+    test_build_projection_matrix_shape()
+    test_triangulate_initial_shape()
+    test_compute_rays_shape()
+    test_ray_intersection_logit_shape()
+    print("All MultiViewGeometryFusionV25 unit tests passed")

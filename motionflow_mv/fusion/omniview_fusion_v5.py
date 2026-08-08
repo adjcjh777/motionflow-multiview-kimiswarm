@@ -339,6 +339,7 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
                 use_geometry_attention=v25_use_geometry_attention,
                 use_learned_depth_triangulation=v25_use_learned_depth_triangulation,
                 use_geometry_bundle_adjustment=v25_use_geometry_bundle_adjustment,
+                use_camera_joint_graph=v25_use_camera_joint_graph,
             )
         else:
             self.multiview_geometry_fusion_v25 = None
@@ -765,11 +766,12 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
             )
 
         # Optional v25 multi-view geometry fusion refinement.
+        geom_loss_v25 = torch.tensor(0.0, device=device, dtype=pred_3d_gn.dtype)
         if (
             self.use_multiview_geometry_fusion_v25
             and self.multiview_geometry_fusion_v25 is not None
         ):
-            pred_3d_gn_v25 = self.multiview_geometry_fusion_v25(
+            pred_3d_gn_v25, geom_loss_v25 = self.multiview_geometry_fusion_v25(
                 points_2d=points_2d.view(B, T, V, J, 2),
                 K=K_corrected.view(B, T, V, 3, 3),
                 R=R.view(B, T, V, 3, 3),
@@ -805,7 +807,7 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
 
         # Epipolar consistency loss.
         epi_loss = self._epipolar_consistency_loss(points_2d, K_corrected, R, t, L)
-        epi_loss = self.epipolar_loss_weight * epi_loss
+        epi_loss = self.epipolar_loss_weight * epi_loss + self.v25_geom_loss_weight * geom_loss_v25
 
         # Optional entropy regularisation on triangulation weights.
         if (

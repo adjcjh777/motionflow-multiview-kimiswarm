@@ -338,9 +338,17 @@ class DepthProposalTriangulation(nn.Module):
         if view_mask is not None:
             scores = scores.masked_fill(~view_mask[:, :, :, None, None], float("-inf"))
 
-        probs = F.softmax(scores.view(B, T, V * self.n_ray_samples, J).transpose(2, 3), dim=2)
+        # Softmax over the (V, S) candidate dimension, not over joints.
+        scores_flat = scores.view(B, T, V * self.n_ray_samples, J).permute(0, 1, 3, 2)  # (B, T, J, V*S)
+        # Guard against rows that are all -inf (fully masked); leave them as uniform zero weight.
+        scores_flat = torch.where(
+            torch.isinf(scores_flat).all(dim=-1, keepdim=True),
+            torch.zeros_like(scores_flat),
+            scores_flat,
+        )
+        probs = F.softmax(scores_flat, dim=-1)
         # Weighted average over (V, S).
-        candidates_flat = candidates.view(B, T, V * self.n_ray_samples, J, 3).transpose(2, 3)
+        candidates_flat = candidates.view(B, T, V * self.n_ray_samples, J, 3).permute(0, 1, 3, 2, 4)
         fused = (probs[..., None] * candidates_flat).sum(dim=3)  # (B, T, J, 3)
 
         # Identity-at-init residual around the input estimate.
@@ -374,6 +382,7 @@ class MultiViewGeometryFusionV25(nn.Module):
         use_geometry_attention: bool = True,
         use_learned_depth_triangulation: bool = True,
         use_geometry_bundle_adjustment: bool = False,
+        use_camera_joint_graph: bool = False,
         dropout: float = 0.1,
     ):
         super().__init__()
@@ -383,6 +392,7 @@ class MultiViewGeometryFusionV25(nn.Module):
         self.use_geometry_attention = use_geometry_attention
         self.use_learned_depth_triangulation = use_learned_depth_triangulation
         self.use_geometry_bundle_adjustment = use_geometry_bundle_adjustment
+        self.use_camera_joint_graph = use_camera_joint_graph
 
         self.ray_tokenizer = RayTokenizer(d=d, n_ray_samples=n_ray_samples)
 
@@ -468,4 +478,39 @@ class MultiViewGeometryFusionV25(nn.Module):
         else:
             pred_3d_ref = pred_3d_init
 
-        return pred_3d_ref
+        geom_loss = self._reprojection_loss(pred_3d_ref, pts, K, R, t, confidence, view_mask)
+        return pred_3d_ref, geom_loss
+
+    def _reprojection_loss(
+        self,
+        X: torch.Tensor,
+        pts_2d: torch.Tensor,
+        K: torch.Tensor,
+        R: torch.Tensor,
+        t: torch.Tensor,
+        confidence: torch.Tensor,
+        view_mask: Optional[torch.Tensor],
+    ) -> torch.Tensor:
+        """Mean reprojection error of 3D joints weighted by confidence."""
+        B, T, V, J = pts_2d.shape[:4]
+        # X_cam = R @ X + t, then project with K after dividing by Z.
+        X_expanded = X.unsqueeze(2).expand(-1, -1, V, -1, -1)  # (B, T, V, J, 3)
+        X_expanded = X_expanded.permute(0, 1, 2, 4, 3)  # (B, T, V, 3, J)
+        X_cam = torch.matmul(R, X_expanded)  # (B, T, V, 3, J)
+        X_cam = X_cam.permute(0, 1, 2, 4, 3)  # (B, T, V, J, 3)
+        X_cam = X_cam + t[..., None, :]
+        Z = X_cam[..., 2:3]
+        Z_safe = Z.sign() * (Z.abs() + 1e-6)
+        X_norm = X_cam / Z_safe
+        proj = torch.matmul(K[..., None, :, :], X_norm[..., None]).squeeze(-1)  # (B, T, V, J, 3)
+        proj_2d = proj[..., :2] / proj[..., 2:3]
+        diff = (proj_2d - pts_2d).norm(dim=-1)  # (B, T, V, J)
+        if view_mask is not None:
+            mask = view_mask[:, :, :, None].float()
+        else:
+            mask = torch.ones(B, T, V, 1, device=X.device, dtype=X.dtype)
+        weights = confidence * mask  # (B, T, V, J)
+        loss = (diff * weights).sum() / weights.sum().clamp(min=1e-6)
+        # Normalise by a canonical image scale so the loss is O(1).
+        loss = loss / 1000.0
+        return loss

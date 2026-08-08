@@ -112,5 +112,43 @@ def test_extended_perturbation_changes_cameras():
     assert torch.any(K_aug != K) or torch.any(t_aug != t)
 
 
+def test_loss_gated_schedule_rolls_back_and_passthrough():
+    from motionflow_mv.calibration.camera_perturbation_curriculum import (
+        loss_gated_camera_schedule,
+    )
+
+    base = lambda epoch: extended_camera_perturbation_schedule(  # noqa: E731
+        epoch,
+        schedule="extended_curriculum",
+        rot=2.0,
+        trans=0.02,
+        focal=0.05,
+        pp=10.0,
+        ramp_epochs=5,
+        intrinsics_ramp_epochs=3,
+        warmup_epochs=2,
+    )
+
+    # Ratio below tau should pass through unchanged.
+    stds_passthrough = loss_gated_camera_schedule(
+        10, base_schedule_fn=base, reproj_ratio=2.0, tau=3.0
+    )
+    assert stds_passthrough == base(10)
+
+    # Ratio above tau should roll back all stds by the default factor.
+    stds_rollback = loss_gated_camera_schedule(
+        10, base_schedule_fn=base, reproj_ratio=5.0, tau=3.0
+    )
+    expected = {k: v * 0.5 for k, v in base(10).items()}
+    assert stds_rollback == expected
+
+    # Custom rollback factor.
+    stds_custom = loss_gated_camera_schedule(
+        10, base_schedule_fn=base, reproj_ratio=5.0, tau=3.0, rollback_factor=0.25
+    )
+    expected_custom = {k: v * 0.25 for k, v in base(10).items()}
+    assert stds_custom == expected_custom
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
