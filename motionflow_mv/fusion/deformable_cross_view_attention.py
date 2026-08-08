@@ -165,22 +165,11 @@ class DeformableCrossViewAttention(nn.Module):
             key_mask = view_mask_flat.view(N, 1, 1, V, 1)  # (N, 1, 1, V, 1)
             logits = logits.masked_fill(key_mask == 0, float("-inf"))
 
-        # Soft attention weights over all key views (differentiable backward).
+        # Soft attention weights over all key views (fully differentiable).
         weights = F.softmax(logits / F.softplus(self.tau).clamp_min(1e-3), dim=3)
 
-        # Sparse straight-through top-k mask.
-        # Forward uses hard top-k; backward flows through the soft weights above.
-        k = min(self.n_samples, V)
-        topk_vals, topk_idx = torch.topk(weights, k, dim=3)  # (N, H, V_q, k, J)
-        hard_mask = torch.zeros_like(weights).scatter_(3, topk_idx, 1.0)
-        straight_mask = hard_mask.detach() + (weights - weights.detach())
-        sparse_weights = weights * straight_mask
-        # Renormalise over selected key views for a proper distribution.
-        denom = sparse_weights.sum(dim=3, keepdim=True).clamp_min(1e-8)
-        sparse_weights = sparse_weights / denom
-
         # Aggregate values: output shape (N, V_q, J, H, Dh).
-        out = torch.einsum("nhvkj,nvjhd->nvjhd", sparse_weights, v)
+        out = torch.einsum("nhvkj,nvjhd->nvjhd", weights, v)
 
         # Restore view dimension ordering and apply output projection.
         out = out.reshape(N, V, J, d)
