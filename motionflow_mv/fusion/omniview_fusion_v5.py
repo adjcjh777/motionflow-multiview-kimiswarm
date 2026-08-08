@@ -339,7 +339,6 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
                 use_geometry_attention=v25_use_geometry_attention,
                 use_learned_depth_triangulation=v25_use_learned_depth_triangulation,
                 use_geometry_bundle_adjustment=v25_use_geometry_bundle_adjustment,
-                use_camera_joint_graph=v25_use_camera_joint_graph,
             )
         else:
             self.multiview_geometry_fusion_v25 = None
@@ -764,6 +763,22 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
             pred_3d_gn, K_corrected, R, t = self.neural_bundle_adjustment_v21(
                 pred_3d_gn, points_2d, K_corrected, R, t, weights
             )
+
+        # Optional v25 multi-view geometry fusion refinement.
+        if (
+            self.use_multiview_geometry_fusion_v25
+            and self.multiview_geometry_fusion_v25 is not None
+        ):
+            pred_3d_gn_v25 = self.multiview_geometry_fusion_v25(
+                points_2d=points_2d.view(B, T, V, J, 2),
+                K=K_corrected.view(B, T, V, 3, 3),
+                R=R.view(B, T, V, 3, 3),
+                t=t.view(B, T, V, 3),
+                pred_3d_init=pred_3d_gn.view(B, T, J, 3),
+                view_mask=view_mask_flat.view(B, T, V),
+                confidence=confidences.view(B, T, V, J),
+            )
+            pred_3d_gn = pred_3d_gn_v25.view(B * T, J, 3)
 
         # Residual refinement head (deterministic MLP or diffusion-based v20).
         if self.use_diffusion_refiner_v20 and self.diffusion_refiner_v20 is not None:
