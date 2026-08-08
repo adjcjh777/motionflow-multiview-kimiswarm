@@ -109,6 +109,15 @@ RUNS = [
         "--use_hierarchical_multiscale_spatial_pyramid_v33 --v33_hmsp_scales 1 2 4",
         "omniview_fusion_v33_hierarchical_multiscale_spatial_pyramid_a800",
     ),
+    # v33 combined fixed (lower outlier supervised weight + weight decay).
+    (
+        "v33_combined_all_three_fixed",
+        "--use_uncertainty_aware_triangulation_v33 --v33_uat_loss_weight 0.01 "
+        "--use_outlier_view_rejection_v33 --v33_outlier_z_thresh 3.0 --v33_outlier_soft_beta 1.0 --v33_outlier_supervised_weight 0.01 --outlier_view_prob 0.3 --outlier_view_max_views 1 "
+        "--use_hierarchical_multiview_v31 --v31_geometry_bias --use_ray_conditioned_attention_v33 --v33_n_heads 4 --v33_n_layers 2 --v33_use_ray_bias --v33_residual_gate_init -6.0 "
+        "--weight_decay 1e-4",
+        "omniview_fusion_v33_combined_all_three_fixed_a800",
+    ),
     # v34 view-joint graph network.
     (
         "v34_view_joint_graph_network",
