@@ -45,4 +45,7 @@ $PYTHON -u experiments/train_omniview_fusion_v5_webbridge_multi.py \
     --outlier_view_prob 0.3 --outlier_view_max_views 1 \
     --outlier_view_offset_std 10.0 --outlier_view_noise_std 15.0 \
     --output $OUTPUT \
-    > $LOG 2>&1
+    > $LOG 2>&1 &
+TRAIN_PID=$!
+echo $TRAIN_PID > outputs/v25_local_4090_train.pid
+wait $TRAIN_PID
