@@ -52,6 +52,7 @@ from motionflow_mv.fusion.self_evolving_hierarchical_multiview_v29 import (
 from motionflow_mv.fusion.hierarchical_multiview_v30 import HierarchicalViewEncoderV30
 from motionflow_mv.fusion.hierarchical_multiview_v31 import HierarchicalViewEncoderV31
 from motionflow_mv.fusion.camera_view_embedding_v31 import CameraConditionedViewEmbeddingV31
+from motionflow_mv.losses.physical_collision_penalty_v31 import PhysicalCollisionPenaltyV31
 from motionflow_mv.fusion.prototypes.cross_view_graph_attention import (
     H36M_17_PARENTS,
     MPI_INF_3DHP_28_PARENTS,
@@ -179,6 +180,11 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
         v29_bone_temporal_weight: float = 0.01,
         v29_com_jitter_weight: float = 0.001,
         v29_physical_loss_warmup_epochs: int = 0,
+        # v31 physical collision penalty
+        use_physical_collision_penalty_v31: bool = False,
+        v31_collision_loss_weight: float = 0.001,
+        v31_collision_margin: float = 0.05,
+        v31_collision_warmup_epochs: int = 0,
         # v30 toggles
         use_hierarchical_multiview_v30: bool = False,
         v30_n_heads: int = 4,
@@ -526,6 +532,24 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
         else:
             self.physical_space_temporal_loss_v29 = None
 
+        # Optional v31 physical collision penalty (training only).
+        self.use_physical_collision_penalty_v31 = use_physical_collision_penalty_v31
+        self.v31_collision_loss_weight = v31_collision_loss_weight
+        if self.use_physical_collision_penalty_v31:
+            parents = None
+            if self.j == 17:
+                parents = H36M_17_PARENTS
+            elif self.j == 28:
+                parents = MPI_INF_3DHP_28_PARENTS
+            self.physical_collision_penalty_v31 = PhysicalCollisionPenaltyV31(
+                parents=parents,
+                loss_weight=v31_collision_loss_weight,
+                margin=v31_collision_margin,
+                warmup_epochs=v31_collision_warmup_epochs,
+            )
+        else:
+            self.physical_collision_penalty_v31 = None
+
         self.epoch = 0
 
     def set_epoch(self, epoch: int) -> None:
@@ -537,6 +561,12 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
             and hasattr(self.physical_space_temporal_loss_v29, "set_epoch")
         ):
             self.physical_space_temporal_loss_v29.set_epoch(epoch)
+        if (
+            self.use_physical_collision_penalty_v31
+            and self.physical_collision_penalty_v31 is not None
+            and hasattr(self.physical_collision_penalty_v31, "set_epoch")
+        ):
+            self.physical_collision_penalty_v31.set_epoch(epoch)
 
         # Make sure the ST transformer can accept an additive attention mask even
         # when epipolar bias is disabled.
@@ -1121,6 +1151,15 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
         ):
             v29_physical_loss, v29_physical_terms = self.physical_space_temporal_loss_v29(pred_3d)
             epi_loss = epi_loss + v29_physical_loss
+
+        # Optional v31 physical collision penalty (training only).
+        if (
+            self.training
+            and self.use_physical_collision_penalty_v31
+            and self.physical_collision_penalty_v31 is not None
+        ):
+            collision_loss, _ = self.physical_collision_penalty_v31(pred_3d)
+            epi_loss = epi_loss + collision_loss
 
         weights = weights.view(B, T, V, J)
         L = L.view(B, T, V, J, 2, 2)

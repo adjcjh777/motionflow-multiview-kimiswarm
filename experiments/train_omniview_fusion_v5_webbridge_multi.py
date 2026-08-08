@@ -168,6 +168,11 @@ def build_model_from_args(
         "v29_bone_temporal_weight": getattr(args, "v29_bone_temporal_weight", 0.01),
         "v29_com_jitter_weight": getattr(args, "v29_com_jitter_weight", 0.001),
         "v29_physical_loss_warmup_epochs": getattr(args, "v29_physical_loss_warmup_epochs", 0),
+        # v31 physical collision penalty toggles
+        "use_physical_collision_penalty_v31": getattr(args, "use_physical_collision_penalty_v31", False),
+        "v31_collision_loss_weight": getattr(args, "v31_collision_loss_weight", 0.001),
+        "v31_collision_margin": getattr(args, "v31_collision_margin", 0.05),
+        "v31_collision_warmup_epochs": getattr(args, "v31_collision_warmup_epochs", 0),
         # v7 toggles
         "use_full_precision_dlt": args.use_full_precision_dlt,
         "use_robust_dlt_reweight": args.use_robust_dlt_reweight,
@@ -1423,6 +1428,10 @@ def parse_args() -> Namespace:
     parser.add_argument("--v29_bone_temporal_weight", type=float, default=0.01, help="Weight for v29 bone-length temporal loss")
     parser.add_argument("--v29_com_jitter_weight", type=float, default=0.001, help="Weight for v29 center-of-mass jitter loss")
     parser.add_argument("--v29_physical_loss_warmup_epochs", type=int, default=0, help="Linear warmup epochs for v29 physical loss weights (0=disabled)")
+    parser.add_argument("--use_physical_collision_penalty_v31", action="store_true", default=False, help="Use v31 self-collision penalty on predicted 3D poses")
+    parser.add_argument("--v31_collision_loss_weight", type=float, default=0.001, help="Weight for v31 collision penalty")
+    parser.add_argument("--v31_collision_margin", type=float, default=0.05, help="Safety margin for v31 collision penalty")
+    parser.add_argument("--v31_collision_warmup_epochs", type=int, default=0, help="Linear warmup epochs for v31 collision penalty")
     parser.add_argument("--kap_use_angle_limit", action="store_true", default=True, help="Use soft joint-angle limit penalty in v22 KAP")
     parser.add_argument("--kap_max_flexion_deg", type=float, default=160.0, help="Maximum flexion for v22 joint-angle limit")
     parser.add_argument("--use_full_precision_dlt", action="store_true", help="Use full 2x2 precision matrix in DLT triangulation")
