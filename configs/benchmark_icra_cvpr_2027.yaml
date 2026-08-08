@@ -1,0 +1,46 @@
+# CVPR / ICRA 2027 benchmark manifest for MotionFlow-MultiView.
+#
+# Usage:
+#   python scripts/run_full_benchmark.py \
+#       --manifest configs/benchmark_icra_cvpr_2027.yaml \
+#       --out outputs/benchmark_icra_cvpr_2027
+#
+# Dry-run (no inference):
+#   python scripts/run_full_benchmark.py \
+#       --manifest configs/benchmark_icra_cvpr_2027.yaml \
+#       --out outputs/benchmark_icra_cvpr_2027_dry \
+#       --dry-run
+
+model_config:
+  # These must match the training run used for the checkpoint.
+  model: "omniview_fusion_v5"
+  checkpoint: "outputs/omniview_fusion_v23_kap_no_ba_fullscale.pth"
+  clip_len: 13
+  d: 128
+  residual_hidden: 256
+  n_st_layers: 3
+  graph_num_layers: 1
+  n_joint_layers: 1
+  n_heads: 4
+  batch_size: 16
+  val_stride: 10
+  gt_scale: 1.0
+  camera_scale: 1.0
+
+# Datasets are listed in the order they appear in the paper.
+datasets:
+  # H36M canonical test split.
+  - name: "h36m"
+    path: "configs/splits/webbridge_h36m_train_val.yaml"
+    split: "test"
+
+  # MPI-INF-3DHP official test sequences (local dry-run only; final numbers
+  # require the official evaluation server).
+  - name: "mpiinf3dhp"
+    path: "configs/splits/webbridge_mpiinf3dhp_train_val_test.yaml"
+    split: "test"
+
+  # WebBridge 3DPW-style / in-the-wild validation, if available.
+  - name: "webbridge_3dpw"
+    path: "configs/splits/webbridge_3dpw_train_val.yaml"
+    split: "test"
