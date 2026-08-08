@@ -49,13 +49,13 @@ This file captures the current A800-D workflow, tmux conventions, and issue labe
 | v33 combined | uncertainty + outlier + ray | local 4090 | Stopped: epoch 2 val_MPJPE=142.98mm (overfit); fixed run restarted with weight_decay and lower outlier supervised weight |
 | v33 combined fixed | same + weight_decay 1e-4 + outlier_supervised_weight 0.01 | local 4090 | Full run stopped to free GPU after epoch 1 val 29.67mm; A800 queued |
 | v33 hierarchical multi-scale spatial pyramid | per-scale geometry-biased cross-view attention | merged | Quick smoke 55.59mm; full local RTX 4090 run started; A800 queued |
-| v34 view-joint graph network | (view, joint) graph attention over bone/symmetry/cross-view edges | merged | Quick smoke 54.07mm vs v31 55.28mm; full local run restarted; A800 queued |
+| v34 view-joint graph network | (view, joint) graph attention over bone/symmetry/cross-view edges | merged | Quick smoke 54.07mm vs v31 55.28mm; full local run restarted from scratch; prior run reached epoch 1 val_MPJPE=27.60mm; A800 queued |
 | v34 geometry-aware view-joint graph network | v34 VJGN with epipolar + ray-intersection bias on cross-view edges | merged | Full local RTX 4090 run started; A800 queued (2-layer, 1-layer, dropout, HMSP stack, combined-max); smoke 82.05mm |
 | v34 local ablations queue | HMSP+geometry VJGN and v33 combined-fixed+geometry VJGN | RTX 4090 | v33 HMSP, v34 VJGN, and v34 geometry-aware VJGN full runs stopped to free GPU for quick ablation; can restart later |
 | v34 quick ablations | VJGN vs geometry-aware VJGN (20 samples/seq, 5 epochs) | RTX 4090 | Done: v34 VJGN best 71.32mm; geometry-aware VJGN best 97.28mm; plain VJGN selected for v35 base |
 | v34 HMSP + VJGN stack | v33 HMSP + v34 VJGN together | A800-D | Queued in v33/v34 A800 queue; quick smoke 55.96mm |
 | v34 HMSP + geometry-aware VJGN stack | v33 HMSP + v34 geometry-aware VJGN together | A800-D | Queued in v33/v34 A800 queue |
-| v35 temporal view-joint graph network | v34 VJGN + temporal edges across frames | RTX 4090 | Smoke passed (clip_len=3, d=32); full local run launched |
+| v35 temporal view-joint graph network | v34 VJGN + temporal edges across frames | RTX 4090 | Smoke passed (clip_len=3, d=32); full local run launched; training at step ~600, loss ~11.7, no val yet |
 | v35 A800 queue | v35 TVJGN on top of v34 VJGN / geometry-aware VJGN | A800-D | Added to launch_v33_a800_queue.py; poller restarted; base v34 VJGN selected after quick ablation |
 | v33 HMSP A800 | full scale after v31 top-5 | A800-D | Queued in v33 A800 queue |
 | v32/v33/v34 A800 queue | v31_physical_floor_only, v32 x5, v33 x4, v34 x2, HMSP stacks | A800-D | Poller restarted; waiting for v31 top-5 to free GPUs 4-7 |
