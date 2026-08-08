@@ -38,7 +38,8 @@ This file captures the current A800-D workflow, tmux conventions, and issue labe
 | v30 smoke val1 | v30 hierarchical + physical loss, val_stride=1 | RTX 4090 | Queued as first job in v31 top-5 smoke queue |
 | v31 top-5 smokes | domain_balanced, physical_floor_only, hierarchical_more_dropout, outlier_adaptive, epipolar_guided | RTX 4090 | Running sequentially via scripts/run_v31_top5_local4090_queue.sh |
 | v31 geometry attention | geometry-biased hierarchical encoder wired into v5 model | RTX 4090 | Ready to smoke after top-5 queue finishes |
-| v31 camera embedding | geometry-aware pairwise camera view embedding wired into v5 model | RTX 4090 | Ready to smoke after top-5 queue finishes |
+| v31 camera embedding | geometry-aware pairwise camera view embedding wired into v5 model | RTX 4090 | Queued in second-wave smoke queue after top-5 finishes |
+| v31 second wave | geometry attention + camera embedding smokes | RTX 4090 | Waiting in scripts/run_v31_second_wave_local4090_queue.sh |
 
 ### v29 SEH-MV A800-D runs
 
