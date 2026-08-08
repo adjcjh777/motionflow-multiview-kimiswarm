@@ -45,5 +45,6 @@ $PYTHON -u experiments/train_omniview_fusion_v5_webbridge_multi.py \
     --aleatoric_reproj_loss_weight 0.1 \
     --outlier_view_prob 0.3 --outlier_view_max_views 1 \
     --outlier_view_offset_std 10.0 --outlier_view_noise_std 15.0 \
+    --early_stopping_patience 3 --early_stopping_min_delta 0.001 \
     --output $OUTPUT \
     > $LOG 2>&1
