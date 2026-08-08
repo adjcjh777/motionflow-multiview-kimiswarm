@@ -161,6 +161,15 @@ def build_model_from_args(
         "use_hierarchical_multiview_v31": getattr(args, "use_hierarchical_multiview_v31", False),
         "v31_geometry_bias": getattr(args, "v31_geometry_bias", True),
         "v31_use_ray_attention": getattr(args, "v31_use_ray_attention", False),
+        # v33 hierarchical multi-scale spatial pyramid
+        "use_hierarchical_multiscale_spatial_pyramid_v33": getattr(args, "use_hierarchical_multiscale_spatial_pyramid_v33", False),
+        "v33_hmsp_scales": tuple(getattr(args, "v33_hmsp_scales", [1, 2, 4])),
+        "v33_hmsp_n_heads": getattr(args, "v33_hmsp_n_heads", 4),
+        "v33_hmsp_n_part_layers": getattr(args, "v33_hmsp_n_part_layers", 1),
+        "v33_hmsp_dropout": getattr(args, "v33_hmsp_dropout", 0.1),
+        "v33_hmsp_stochastic_depth_prob": getattr(args, "v33_hmsp_stochastic_depth_prob", 0.0),
+        "v33_hmsp_use_geometry_bias": getattr(args, "v33_hmsp_use_geometry_bias", True),
+        "v33_hmsp_use_adaptive_scale_fusion": getattr(args, "v33_hmsp_use_adaptive_scale_fusion", True),
         # v32 temporal trajectory consistency
         "use_trajectory_consistency_v32": getattr(args, "use_traertainty_consistency_v32", False),
         "v32_smooth_weight": getattr(args, "v32_smooth_weight", 1e-3),
@@ -1494,6 +1503,17 @@ def parse_args() -> Namespace:
     parser.add_argument("--v33_use_ray_bias", action="store_true", default=True, help="Use ray-intersection bias in v33 ray-conditioned attention")
     parser.add_argument("--no_v33_use_ray_bias", dest="v33_use_ray_bias", action="store_false", help="Disable ray-intersection bias in v33 ray-conditioned attention")
     parser.add_argument("--v33_residual_gate_init", type=float, default=-6.0, help="Initial residual gate logit for v33 ray-conditioned attention")
+    # v33 hierarchical multi-scale spatial pyramid
+    parser.add_argument("--use_hierarchical_multiscale_spatial_pyramid_v33", action="store_true", default=False, help="Use v33 hierarchical multi-scale cross-view spatial pyramid")
+    parser.add_argument("--v33_hmsp_scales", type=int, nargs="+", default=[1, 2, 4], help="Joint downsampling factors for v33 spatial pyramid")
+    parser.add_argument("--v33_hmsp_n_heads", type=int, default=4, help="Number of attention heads per v33 pyramid scale")
+    parser.add_argument("--v33_hmsp_n_part_layers", type=int, default=1, help="Number of layers per v33 pyramid scale")
+    parser.add_argument("--v33_hmsp_dropout", type=float, default=0.1, help="Dropout probability for v33 pyramid")
+    parser.add_argument("--v33_hmsp_stochastic_depth_prob", type=float, default=0.0, help="Stochastic depth probability for v33 pyramid")
+    parser.add_argument("--v33_hmsp_use_geometry_bias", action="store_true", default=True, help="Use geometry bias in v33 pyramid")
+    parser.add_argument("--no_v33_hmsp_use_geometry_bias", dest="v33_hmsp_use_geometry_bias", action="store_false", help="Disable geometry bias in v33 pyramid")
+    parser.add_argument("--v33_hmsp_use_adaptive_scale_fusion", action="store_true", default=True, help="Use adaptive per-token scale fusion in v33 pyramid")
+    parser.add_argument("--no_v33_hmsp_use_adaptive_scale_fusion", dest="v33_hmsp_use_adaptive_scale_fusion", action="store_false", help="Disable adaptive scale fusion in v33 pyramid")
     parser.add_argument("--v30_dropout", type=float, default=0.1, help="Dropout for v30 hierarchical encoder")
     parser.add_argument("--v30_stochastic_depth_prob", type=float, default=0.0, help="Stochastic depth probability for v30 hierarchical encoder")
     parser.add_argument("--use_test_time_self_evolution_v29", action="store_true", default=False, help="Use v29 test-time self-evolution with physical-space alignment at inference")
