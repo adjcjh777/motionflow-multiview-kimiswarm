@@ -34,6 +34,15 @@ This file captures the current A800-D workflow, tmux conventions, and issue labe
 | v13 temporal | Legacy v13 temporal run | Stopped to free GPU for v26 full queue |
 | v29c fast SEH-MV local | v29 full SEH-MV with fast config (clip_len=9, train_samples=100) | Running on RTX 4090; first-epoch val_MPJPE pending |
 
+### v29 SEH-MV A800-D runs
+
+| Run | Description | GPU | Status |
+|-----|-------------|-----|--------|
+| v29 full SEH-MV | v25 + v29 hierarchical + TTE + physical loss (batch 24, d=128) | GPU5 | Running; first-epoch val_MPJPE pending |
+| v29a | hierarchical encoder only (no TTE, no physical) | GPU1 | Running; first-epoch val_MPJPE pending |
+| v29b | hierarchical + TTE (no physical) | GPU2 | Running; first-epoch val_MPJPE pending |
+| v29d | TTE + physical (no hierarchical) | GPU3 | Running; first-epoch val_MPJPE pending |
+
 - **Remote host:** `a800-D` (SSH)
 - **Remote repo:** `/mnt/nvme0n1p1/zhangzy/motionflow-multiview-kimiswarm-iter20`
 - **Access rule:** A800-D is read-only for status checks and log inspection. Do not create, modify, or delete files there.
