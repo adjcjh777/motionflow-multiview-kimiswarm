@@ -120,6 +120,13 @@ def build_model_from_args(
         "kap_loss_weight": getattr(args, "kap_loss_weight", 0.01),
         "kap_use_angle_limit": getattr(args, "kap_use_angle_limit", True),
         "kap_max_flexion_deg": getattr(args, "kap_max_flexion_deg", 160.0),
+        # v25 toggles
+        "use_multiview_geometry_fusion_v25": getattr(args, "use_multiview_geometry_fusion_v25", False),
+        "v25_geom_loss_weight": getattr(args, "v25_geom_loss_weight", 0.1),
+        "v25_use_geometry_attention": getattr(args, "v25_use_geometry_attention", True),
+        "v25_use_learned_depth_triangulation": getattr(args, "v25_use_learned_depth_triangulation", True),
+        "v25_use_geometry_bundle_adjustment": getattr(args, "v25_use_geometry_bundle_adjustment", True),
+        "v25_use_camera_joint_graph": getattr(args, "v25_use_camera_joint_graph", False),
         # v7 toggles
         "use_full_precision_dlt": args.use_full_precision_dlt,
         "use_robust_dlt_reweight": args.use_robust_dlt_reweight,
@@ -1324,6 +1331,13 @@ def parse_args() -> Namespace:
     parser.add_argument("--use_neural_bundle_adjustment_v21", action="store_true", help="Use v21 neural bundle-adjustment pose/camera refiner")
     parser.add_argument("--use_kinematic_anthropometric_prior_v22", action="store_true", help="Use v22 kinematic anthropometric prior (SMPL-free bone-length prior)")
     parser.add_argument("--kap_loss_weight", type=float, default=0.01, help="Weight for v22 KAP loss")
+    # v25 toggles
+    parser.add_argument("--use_multiview_geometry_fusion_v25", action="store_true", help="Use v25 multi-view geometry fusion (ray-token + epipolar cross-view attention + learned depth triangulation)")
+    parser.add_argument("--v25_geom_loss_weight", type=float, default=0.1, help="Weight for v25 geometry consistency loss")
+    parser.add_argument("--v25_use_geometry_attention", action="store_true", default=True, help="Use geometry-aware cross-view attention in v25")
+    parser.add_argument("--v25_use_learned_depth_triangulation", action="store_true", default=True, help="Use learned depth triangulation in v25")
+    parser.add_argument("--v25_use_geometry_bundle_adjustment", action="store_true", default=True, help="Use geometry bundle adjustment in v25")
+    parser.add_argument("--v25_use_camera_joint_graph", action="store_true", default=False, help="Use camera-joint graph in v25")
     parser.add_argument("--kap_use_angle_limit", action="store_true", default=True, help="Use soft joint-angle limit penalty in v22 KAP")
     parser.add_argument("--kap_max_flexion_deg", type=float, default=160.0, help="Maximum flexion for v22 joint-angle limit")
     parser.add_argument("--use_full_precision_dlt", action="store_true", help="Use full 2x2 precision matrix in DLT triangulation")
