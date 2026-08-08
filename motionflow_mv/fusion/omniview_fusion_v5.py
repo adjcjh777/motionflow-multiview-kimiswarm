@@ -64,6 +64,9 @@ from motionflow_mv.fusion.hierarchical_multiscale_spatial_pyramid_v33 import (
 from motionflow_mv.fusion.view_joint_graph_network_v34 import (
     ViewJointGraphNetworkV34,
 )
+from motionflow_mv.fusion.geometry_view_joint_graph_network_v34 import (
+    GeometryViewJointGraphNetworkV34,
+)
 from motionflow_mv.fusion.camera_view_embedding_v31 import CameraConditionedViewEmbeddingV31
 from motionflow_mv.losses.physical_collision_penalty_v31 import PhysicalCollisionPenaltyV31
 from motionflow_mv.fusion.prototypes.cross_view_graph_attention import (
@@ -223,6 +226,11 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
         v34_vjgn_n_layers: int = 2,
         v34_vjgn_n_heads: int = 4,
         v34_vjgn_dropout: float = 0.0,
+        # v34 geometry-aware view-joint graph network
+        use_geometry_view_joint_graph_network_v34: bool = False,
+        v34_gvjgn_n_layers: int = 2,
+        v34_gvjgn_n_heads: int = 4,
+        v34_gvjgn_dropout: float = 0.0,
         # v32 temporal trajectory consistency
         use_trajectory_consistency_v32: bool = False,
         v32_smooth_weight: float = 1e-3,
@@ -649,6 +657,19 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
         else:
             self.view_joint_graph_network_v34 = None
 
+        # Optional v34 geometry-aware view-joint graph network.
+        self.use_geometry_view_joint_graph_network_v34 = use_geometry_view_joint_graph_network_v34
+        if self.use_geometry_view_joint_graph_network_v34:
+            self.geometry_view_joint_graph_network_v34 = GeometryViewJointGraphNetworkV34(
+                d=self.d,
+                n_views=n_views,
+                n_layers=v34_gvjgn_n_layers,
+                n_heads=v34_gvjgn_n_heads,
+                dropout=v34_gvjgn_dropout,
+            )
+        else:
+            self.geometry_view_joint_graph_network_v34 = None
+
         # Optional v29 test-time self-evolution (with physical-space alignment).
         self.use_test_time_self_evolution_v29 = use_test_time_self_evolution_v29
         if self.use_test_time_self_evolution_v29:
@@ -994,6 +1015,20 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
             feat = feat + self.view_joint_graph_network_v34(
                 feat,
                 view_mask=view_mask_flat.view(B, T, V),
+            )
+
+        # Optional v34 geometry-aware view-joint graph network (identity at init).
+        if (
+            self.use_geometry_view_joint_graph_network_v34
+            and self.geometry_view_joint_graph_network_v34 is not None
+        ):
+            feat = feat + self.geometry_view_joint_graph_network_v34(
+                feat,
+                view_mask=view_mask_flat.view(B, T, V),
+                points_2d=points_2d.view(B, T, V, J, 2),
+                K=K_corrected.view(B, T, V, 3, 3),
+                R=R.view(B, T, V, 3, 3),
+                t=t.view(B, T, V, 3),
             )
 
         # Optional v33 ray-conditioned cross-view attention (identity at init).
