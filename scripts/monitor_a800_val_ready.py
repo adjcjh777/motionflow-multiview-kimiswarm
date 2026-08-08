@@ -37,6 +37,7 @@ DEFAULT_A800_REPO = "/mnt/nvme0n1p1/zhangzy/motionflow-multiview-kimiswarm-iter2
 DEFAULT_SSH_HOST = "a800-D"
 DEFAULT_ISSUE = 88
 DEFAULT_POLL_INTERVAL = 120  # seconds
+MAX_LOG_AGE_MINUTES = 120  # only monitor logs modified in the last 2 hours
 STATE_PATH = Path(".monitor_a800_state.json")
 
 
@@ -107,7 +108,7 @@ def parse_val_lines(text: str) -> List[Tuple[int, float]]:
     return out
 
 
-def discover_logs(repo_dir: str, ssh_host: str, max_age_minutes: int = 360) -> List[str]:
+def discover_logs(repo_dir: str, ssh_host: str, max_age_minutes: int = MAX_LOG_AGE_MINUTES) -> List[str]:
     """Return list of recently modified log file names on A800-D."""
     out = a800_ssh(
         f"find {repo_dir}/outputs -maxdepth 1 -name 'omniview_fusion_v*.log' -mmin -{max_age_minutes} 2>/dev/null",
