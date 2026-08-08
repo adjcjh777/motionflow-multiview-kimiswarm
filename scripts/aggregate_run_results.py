@@ -57,7 +57,7 @@ def main() -> None:
         print(f"Log directory not found: {log_dir}")
         return
 
-    logs = sorted(log_dir.glob("omniview_fusion_*.log"))
+    logs = sorted(set(log_dir.glob("omniview_fusion_*.log")) | set(log_dir.glob("v*_local_4090*.log")))
     if not logs:
         print(f"No omniview_fusion_*.log files found in {log_dir}")
         return
