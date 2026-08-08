@@ -1,0 +1,54 @@
+# Paper-story ablation smoke test for the v25 architecture.
+#
+# This config deliberately uses a tiny model (d=32, n_st_layers=1) so that
+# the smoke test completes in seconds on the local RTX 4090 or CPU.  The
+# ablations toggle only the headline v25 geometry-fusion modules; all other
+# flags are held constant.
+#
+# Run with:
+#   python experiments/architecture_paper_story_v25_ablation.py
+
+base:
+  j: 17
+  d: 32
+  n_views: 4
+  n_heads: 2
+  n_joint_layers: 0
+  n_st_layers: 1
+  max_temporal_len: 64
+  residual_hidden: 64
+  graph_num_layers: 1
+
+  # Camera / multi-scale / attention stack (kept constant across variants).
+  use_multiscale_fusion: true
+  use_camera_conditioning: true
+  use_epipolar_bias: true
+  use_context_visibility: true
+  use_skeleton_residual: true
+  use_rotation_correction: true
+  use_entropy_regularization: true
+  use_camera_view_embedding: true
+  use_set_view_aggregator: true
+  use_deformable_cross_view_attention_v18: true
+
+  # v25 geometry fusion (enabled in the full variant).
+  use_multiview_geometry_fusion_v25: true
+  v25_use_geometry_attention: true
+  v25_use_learned_depth_triangulation: true
+  v25_use_geometry_bundle_adjustment: true
+  v25_geom_loss_weight: 0.1
+
+variants:
+  - name: v25_full
+
+  - name: v25_no_geom_attn
+    v25_use_geometry_attention: false
+
+  - name: v25_no_depth
+    v25_use_learned_depth_triangulation: false
+
+  - name: v25_no_geoba
+    v25_use_geometry_bundle_adjustment: false
+
+  - name: v25_no_geometry_fusion
+    use_multiview_geometry_fusion_v25: false
