@@ -9,7 +9,7 @@ PYTHON=${PYTHON:-python}
 OUTPUT=${OUTPUT:-outputs/omniview_fusion_v25_geometry_fusion_small_local_4090.pth}
 LOG=${LOG:-outputs/omniview_fusion_v25_geometry_fusion_small_local_4090.log}
 EPOCHS=${EPOCHS:-20}
-TRAIN_SAMPLES=${TRAIN_SAMPLES:-2000}
+TRAIN_SAMPLES=${TRAIN_SAMPLES:-500}
 BATCH_SIZE=${BATCH_SIZE:-16}
 
 $PYTHON -u experiments/train_omniview_fusion_v5_webbridge_multi.py \
