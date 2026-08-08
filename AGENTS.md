@@ -17,10 +17,11 @@ This file captures the current A800-D workflow, tmux conventions, and issue labe
 
 | Run | Description | Status |
 |-----|-------------|--------|
+| v25 small local | v18 + geometry fusion (small subset) | Running; epoch 2 val_MPJPE 35.19mm, target ~18.31mm to match A800 |
 | v26+UDP full | v26 + v27 UDP + early stopping + weight decay | Stopped; best epoch 2 val 44.72mm, then overfit to 122.11mm |
 | v26+UDP-GMM full | v26 + v27 UDP-GMM + early stopping + weight decay | Stopped; best epoch 4 val 40.27mm, then overfit |
 | v26+UDP+v28 full | v26 + v27 UDP + v28 physical-space alignment | Stopped; epoch 1 val 83.38mm, epoch 2 val 114.70mm (v28 weights too high, reduced to 0.01) |
-| v26+UDP-GMM+v28 full | v26 + v27 UDP-GMM + v28 physical-space alignment | Running (lr 3e-4, wd 5e-5, patience 3, v28 weights 0.01) |
+| v26+UDP-GMM+v28 full | v26 + v27 UDP-GMM + v28 physical-space alignment | Stopped; epoch 1 val 78.57mm, epoch 2 val 121.97mm |
 | v13 temporal | Legacy v13 temporal run | Stopped to free GPU for v26 full queue |
 
 - **Remote host:** `a800-D` (SSH)
