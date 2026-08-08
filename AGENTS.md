@@ -18,7 +18,7 @@ This file captures the current A800-D workflow, tmux conventions, and issue labe
 
 | Run | Description | Status |
 |-----|-------------|--------|
-| v25 small local | v18 + geometry fusion (small subset) | Running (train_samples=2000, early_stopping_patience=3); epoch 2 val_MPJPE 29.79mm (best so far; data subset differs from A800) |
+| v25 small local | v18 + geometry fusion (small subset) | Running (train_samples=2000, early_stopping_patience=3); best epoch 2 val_MPJPE 29.79mm; epoch 3 53.10mm (early-stopping counter=1) |
 | v18 top-k ST | v18 deformable attention with straight-through top-k | Merged to main |
 | v19 temporal perceiver | Feature-aware temporal Perceiver | Merged to main |
 | v26 temporal gate | Warm-startable residual gate | Merged to main |
