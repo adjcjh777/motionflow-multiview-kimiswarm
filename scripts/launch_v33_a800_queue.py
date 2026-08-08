@@ -182,6 +182,22 @@ RUNS = [
         "--outlier_view_prob 0.3 --outlier_view_max_views 1 --weight_decay 1e-4",
         "omniview_fusion_v34_geometry_vjgn_combined_fixed_max_a800",
     ),
+    # v35 temporal view-joint graph network on top of v34 VJGN.
+    (
+        "v35_temporal_vjgn_on_v34_vjgn",
+        "--use_hierarchical_multiview_v31 --v31_geometry_bias "
+        "--use_view_joint_graph_network_v34 --v34_vjgn_n_layers 2 --v34_vjgn_n_heads 4 "
+        "--use_temporal_view_joint_graph_network_v35 --v35_tvjgn_n_layers 2 --v35_tvjgn_n_heads 4",
+        "omniview_fusion_v35_temporal_vjgn_on_v34_vjgn_a800",
+    ),
+    # v35 temporal view-joint graph network on top of v34 geometry-aware VJGN.
+    (
+        "v35_temporal_vjgn_on_v34_geometry_vjgn",
+        "--use_hierarchical_multiview_v31 --v31_geometry_bias "
+        "--use_geometry_view_joint_graph_network_v34 --v34_gvjgn_n_layers 2 --v34_gvjgn_n_heads 4 "
+        "--use_temporal_view_joint_graph_network_v35 --v35_tvjgn_n_layers 2 --v35_tvjgn_n_heads 4",
+        "omniview_fusion_v35_temporal_vjgn_on_v34_geometry_vjgn_a800",
+    ),
 ]
 
 
@@ -212,7 +228,7 @@ def used_gpus_from_tmux() -> set[int]:
         return gpus
     for line in out.splitlines():
         # v31_top5_<name>_gpuN, v32_<name>_gpuN, or v33_<name>_gpuN
-        match = re.search(r"(?:v31_top5|v32|v33)_(.+)_gpu(\d+):", line)
+        match = re.search(r"(?:v31_top5|v32|v33|v34|v35)_(.+)_gpu(\d+):", line)
         if match:
             gpus.add(int(match.group(2)))
     return gpus
@@ -226,14 +242,14 @@ def running_run_names() -> set[str]:
     except subprocess.CalledProcessError:
         return names
     for line in out.splitlines():
-        match = re.search(r"(?:v31_top5|v32|v33)_(.+)_gpu\d+:", line)
+        match = re.search(r"(?:v31_top5|v32|v33|v34|v35)_(.+)_gpu\d+:", line)
         if match:
             names.add(match.group(1))
     return names
 
 
 def launch_run(name: str, extra_flags: str, output: str, gpu: int) -> None:
-    session = f"v33_{name}_gpu{gpu}"
+    session = f"{name}_gpu{gpu}"
     cmd = (
         f"cd {A800_REPO} && "
         f"CUDA_VISIBLE_DEVICES={gpu} python3 -u experiments/train_omniview_fusion_v5_webbridge_multi.py "
