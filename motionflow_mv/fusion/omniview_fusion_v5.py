@@ -39,6 +39,11 @@ from motionflow_mv.fusion.kinematic_anthropometric_prior_v22 import (
 from motionflow_mv.fusion.multiview_geometry_fusion_v25 import MultiViewGeometryFusionV25
 from motionflow_mv.fusion.temporal_geometry_fusion_v26 import TemporalGeometryFusionV26
 from motionflow_mv.fusion.test_time_self_evolution_v27 import TestTimeSelfEvolutionV27
+from motionflow_mv.fusion.physical_space_alignment_v28 import (
+    PhysicalSpaceAlignmentV28,
+    floor_loss,
+    bone_temporal_loss,
+)
 from motionflow_mv.fusion.neural_bundle_adjustment_v21 import NeuralBundleAdjustment
 from motionflow_mv.fusion.omniview_fusion_v4 import OmniMultiViewFusionV4
 from motionflow_mv.fusion.perceiver_view_aggregator import PerceiverViewAggregator
@@ -139,6 +144,9 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
         v27_udp_n_mixtures: int = 1,
         use_test_time_self_evolution_v27: bool = False,
         v27_tte_n_iters: int = 3,
+        use_physical_space_alignment_v28: bool = False,
+        v28_floor_loss_weight: float = 0.0,
+        v28_bone_temporal_weight: float = 0.0,
         v27_tte_sigma_reproj: float = 5.0,
         v27_tte_residual_thresh_mm: float = 0.5,
         kap_loss_weight: float = 0.01,
@@ -379,6 +387,13 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
 
         # Optional v27 test-time self-evolution (inference only).
         self.use_test_time_self_evolution_v27 = use_test_time_self_evolution_v27
+        self.use_physical_space_alignment_v28 = use_physical_space_alignment_v28
+        self.v28_floor_loss_weight = v28_floor_loss_weight
+        self.v28_bone_temporal_weight = v28_bone_temporal_weight
+        if self.use_physical_space_alignment_v28:
+            self.physical_space_alignment_v28 = PhysicalSpaceAlignmentV28(j=self.j)
+        else:
+            self.physical_space_alignment_v28 = None
         if self.use_test_time_self_evolution_v27:
             self.test_time_self_evolution_v27 = TestTimeSelfEvolutionV27(
                 n_iters=v27_tte_n_iters,
@@ -898,6 +913,24 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
         if self.use_temporal_perceiver_v19 and self.temporal_perceiver_refiner_v19 is not None:
             residual_v19 = self.temporal_perceiver_refiner_v19(pred_3d)
             pred_3d = pred_3d + residual_v19
+
+        # Optional v28 physical-space alignment.
+        if self.use_physical_space_alignment_v28 and self.physical_space_alignment_v28 is not None:
+            pred_3d = self.physical_space_alignment_v28(pred_3d)
+            if self.v28_floor_loss_weight > 0.0:
+                # Use ankles/feet indices for H36M 17-joint skeleton as a default.
+                foot_indices = [3, 6, 11, 14]  # rough: left/right hip/knee/ankle/foot vary per skeleton
+                # More robust: detect foot joints as those with smallest mean Y.
+                mean_y = pred_3d.mean(dim=(0, 1))[:, 1]  # (J,)
+                _, sorted_y = torch.sort(mean_y)
+                foot_indices = sorted_y[:4].tolist()
+                floor_h = pred_3d[..., 1].min().detach()
+                v28_floor = floor_loss(pred_3d, floor_h, foot_indices)
+                epi_loss = epi_loss + self.v28_floor_loss_weight * v28_floor
+            if self.v28_bone_temporal_weight > 0.0 and pred_3d.shape[1] > 1:
+                parents = getattr(self, "h36m_parents", list(range(-1, self.j - 1)))
+                v28_bone = bone_temporal_loss(pred_3d, parents)
+                epi_loss = epi_loss + self.v28_bone_temporal_weight * v28_bone
 
         weights = weights.view(B, T, V, J)
         L = L.view(B, T, V, J, 2, 2)
