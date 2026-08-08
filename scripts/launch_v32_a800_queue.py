@@ -68,6 +68,11 @@ RUNS = [
         "--domain_aware_view_curriculum --use_trajectory_consistency_v32 --v32_smooth_weight 1e-3 --v32_drift_weight 1e-2",
         "omniview_fusion_v32_combined_a800",
     ),
+    (
+        "v32_ray_attention",
+        "--use_hierarchical_multiview_v31 --v31_geometry_bias --v31_use_ray_attention",
+        "omniview_fusion_v32_ray_attention_a800",
+    ),
 ]
 
 
