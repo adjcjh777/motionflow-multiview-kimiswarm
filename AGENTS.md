@@ -7,9 +7,10 @@ This file captures the current A800-D workflow, tmux conventions, and issue labe
 | Run | Description | GPU | Status |
 |-----|-------------|-----|--------|
 | v25 full | v18 + geometry fusion (full WebBridge/H36M/MPI) | GPU4 | Running |
-| v25 small | v18 + geometry fusion (small subset) | GPU7 | val_MPJPE 18.31 mm (best so far) |
+| v25 small | v18 + geometry fusion (small subset) | GPU7 | val_MPJPE 18.31 mm (best so far); shared GPU7 with v11 fullscale |
 | v25 ablation | v18 + geometry fusion with `geom_loss_weight=1.0` | GPU6 | Running |
 | v18 | v18 deformable attention baseline | GPU5 | Running (legacy baseline) |
+| v11 fullscale | IRLS full-scale baseline | GPU7 | Running; shared GPU7 with v25 small |
 | v26 small | v18 + temporal geometry fusion | — | Prepared; blocked until a GPU frees |
 | v21 | neural BA | — | Stopped; regressed to 128.27 mm |
 
