@@ -7,7 +7,7 @@ This file captures the current A800-D workflow, tmux conventions, and issue labe
 | Run | Description | GPU | Status |
 |-----|-------------|-----|--------|
 | v25 full | v18 + geometry fusion (full WebBridge/H36M/MPI) | GPU4 | Running |
-| v25 small | v18 + geometry fusion (small subset) | GPU7 | val_MPJPE 18.31 mm (best so far); shared GPU7 with v11 fullscale |
+| v25 small | v18 + geometry fusion (small subset) | GPU7 | Epoch 1 18.31 mm (best), epoch 3 66.56 mm; early stopping likely triggered; shared GPU7 with v11 fullscale |
 | v25 ablation | v18 + geometry fusion with `geom_loss_weight=1.0` | GPU6 | Running |
 | v18 | v18 deformable attention baseline | GPU5 | Running (legacy baseline) |
 | v11 fullscale | IRLS full-scale baseline | GPU7 | Running; shared GPU7 with v25 small |
@@ -18,7 +18,7 @@ This file captures the current A800-D workflow, tmux conventions, and issue labe
 
 | Run | Description | Status |
 |-----|-------------|--------|
-| v25 small local | v18 + geometry fusion (small subset) | Running (train_samples=2000, early_stopping_patience=3); best epoch 2 val_MPJPE 29.79mm; epoch 3 53.10mm (early-stopping counter=1) |
+| v25 small local | v18 + geometry fusion (small subset) | Restarted PID 16874 after GPU was blocked by duplicate processes; running |
 | v18 top-k ST | v18 deformable attention with straight-through top-k | Merged to main |
 | v19 temporal perceiver | Feature-aware temporal Perceiver | Merged to main |
 | v26 temporal gate | Warm-startable residual gate | Merged to main |
@@ -30,6 +30,7 @@ This file captures the current A800-D workflow, tmux conventions, and issue labe
 | v26+UDP+v28 full | v26 + v27 UDP + v28 physical-space alignment | Stopped; epoch 1 val 83.38mm, epoch 2 val 114.70mm (v28 weights too high, reduced to 0.01) |
 | v26+UDP-GMM+v28 full | v26 + v27 UDP-GMM + v28 physical-space alignment | Stopped; epoch 1 val 78.57mm, epoch 2 val 121.97mm |
 | v13 temporal | Legacy v13 temporal run | Stopped to free GPU for v26 full queue |
+| v29 proposal | Self-evolving hierarchical multi-view fusion (SEH-MV) | Design doc committed; issue #105 opened; implementation pending |
 
 - **Remote host:** `a800-D` (SSH)
 - **Remote repo:** `/mnt/nvme0n1p1/zhangzy/motionflow-multiview-kimiswarm-iter20`
