@@ -227,6 +227,8 @@ def build_model(args: argparse.Namespace, n_views: int, j: int) -> OmniMultiView
         v25_geom_loss_weight=args.v25_geom_loss_weight,
         use_temporal_geometry_fusion_v26=args.use_temporal_geometry_fusion_v26,
         v26_temporal_window=args.v26_temporal_window,
+        use_uncertainty_depth_proposals_v27=args.use_uncertainty_depth_proposals_v27,
+        v27_uncertainty_loss_weight=args.v27_uncertainty_loss_weight,
         use_test_time_self_evolution_v27=args.use_test_time_self_evolution_v27,
         v27_tte_n_iters=args.v27_tte_n_iters,
         v27_tte_sigma_reproj=args.v27_tte_sigma_reproj,
@@ -272,8 +274,8 @@ def load_training_config(checkpoint_path: str, config_json: str | None = None) -
         return None
 
 
-# v25 architecture flags whose defaults should be inferred from the training
-# config when the user does not explicitly set them on the CLI.
+# v25/v27 architecture flags whose defaults should be inferred from the
+# training config when the user does not explicitly set them on the CLI.
 _V25_FLAG_NAMES = (
     "use_multiview_geometry_fusion_v25",
     "v25_use_geometry_attention",
@@ -282,6 +284,7 @@ _V25_FLAG_NAMES = (
     "v25_use_camera_joint_graph",
     "v25_use_outlier_view_detector",
     "use_temporal_geometry_fusion_v26",
+    "use_uncertainty_depth_proposals_v27",
 )
 
 
@@ -642,6 +645,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--v25_outlier_soft_beta", type=float, default=1.0, help="Softness of exponential down-weighting for v25 outlier-view detector")
     parser.add_argument("--use_temporal_geometry_fusion_v26", action="store_true", default=None, help="Enable v26 temporal geometry fusion")
     parser.add_argument("--v26_temporal_window", type=int, default=3, help="Temporal window size for v26")
+    parser.add_argument("--use_uncertainty_depth_proposals_v27", action="store_true", default=None, help="Enable v27 uncertainty-aware depth-proposal triangulation")
+    parser.add_argument("--v27_uncertainty_loss_weight", type=float, default=0.01, help="Weight for v27 uncertainty regularisation loss")
     # v27 toggles
     parser.add_argument("--use_test_time_self_evolution_v27", action="store_true", default=False, help="Enable v27 test-time self-evolution at inference")
     parser.add_argument("--v27_tte_n_iters", type=int, default=3, help="Number of iterations for v27 self-evolution")
