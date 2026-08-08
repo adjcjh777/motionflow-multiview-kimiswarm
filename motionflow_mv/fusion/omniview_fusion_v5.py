@@ -958,6 +958,9 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
                 if self.v28_residual_reg_weight > 0.0:
                     epi_loss = epi_loss + self.v28_residual_reg_weight * v28_reg_loss
 
+                if self.v28_residual_reg_weight > 0.0:
+                    epi_loss = epi_loss + self.v28_residual_reg_weight * v28_reg_loss
+
         weights = weights.view(B, T, V, J)
         L = L.view(B, T, V, J, 2, 2)
         visibility = visibility.view(B, T, V, J)
