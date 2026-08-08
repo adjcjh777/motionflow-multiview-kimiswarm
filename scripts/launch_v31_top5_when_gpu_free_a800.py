@@ -92,7 +92,9 @@ def main() -> None:
     # repo must contain the v31 modules or the per-run flags will fail.
     print("Pulling latest main on A800-D...")
     try:
-        a800_ssh(f"cd {A800_REPO} && git pull origin main")
+        # Use a short timeout so a missing GitHub connection does not block
+        # the poller; the repo is expected to be updated via patch/SCP.
+        a800_ssh(f"cd {A800_REPO} && timeout 15 git pull origin main || true")
     except subprocess.CalledProcessError as e:
         print(f"Warning: git pull on A800 failed: {e}")
     while queue:
