@@ -149,7 +149,7 @@ class RayTokenizer(nn.Module):
     hypotheses that are projected along the ray and collapsed by a 1x1 conv.
     """
 
-    def __init__(self, d: int = 128, n_ray_samples: int = 4):
+    def __init__(self, d: int = 128, n_ray_samples: int = 4, dropout: float = 0.1):
         super().__init__()
         self.n_ray_samples = n_ray_samples
         # Per-sample depth codes; a tiny 1D conv merges them.
@@ -157,12 +157,16 @@ class RayTokenizer(nn.Module):
         self.depth_mlp = nn.Sequential(
             nn.Linear(max(1, d // 4), d),
             nn.ReLU(),
+            nn.Dropout(dropout),
             nn.Linear(d, d),
+            nn.ReLU(),
+            nn.Dropout(dropout),
         )
         # Final ray token combines direction, camera centre, confidence and depth.
         self.token_mlp = nn.Sequential(
             nn.Linear(3 + 3 + 1 + d, d),
             nn.ReLU(),
+            nn.Dropout(dropout),
             nn.Linear(d, d),
         )
 
@@ -281,7 +285,7 @@ class DepthProposalTriangulation(nn.Module):
     zero so the head starts as an identity/no-op w.r.t. the input 3D estimate.
     """
 
-    def __init__(self, n_views: int, n_ray_samples: int = 4):
+    def __init__(self, n_views: int, n_ray_samples: int = 4, dropout: float = 0.1):
         super().__init__()
         self.n_views = n_views
         self.n_ray_samples = n_ray_samples
@@ -293,8 +297,10 @@ class DepthProposalTriangulation(nn.Module):
         self.score_mlp = nn.Sequential(
             nn.Linear(in_dim, 64),
             nn.ReLU(),
+            nn.Dropout(dropout),
             nn.Linear(64, 64),
             nn.ReLU(),
+            nn.Dropout(dropout),
             nn.Linear(64, 1),
         )
         # Zero final layer -> scores all equal at init.
@@ -303,6 +309,7 @@ class DepthProposalTriangulation(nn.Module):
         self.fusion_mlp = nn.Sequential(
             nn.Linear(3, 64),
             nn.ReLU(),
+            nn.Dropout(dropout),
             nn.Linear(64, 3),
         )
         # Scalar gate initialised to 0.0 gives identity at init; training opens it.
@@ -415,7 +422,7 @@ class MultiViewGeometryFusionV25(nn.Module):
         self.v27_uncertainty_loss_weight = v27_uncertainty_loss_weight
         self.v27_udp_n_mixtures = v27_udp_n_mixtures
 
-        self.ray_tokenizer = RayTokenizer(d=d, n_ray_samples=n_ray_samples)
+        self.ray_tokenizer = RayTokenizer(d=d, n_ray_samples=n_ray_samples, dropout=dropout)
 
         if use_geometry_attention:
             self.geom_attn_layers = nn.ModuleList(
@@ -433,7 +440,7 @@ class MultiViewGeometryFusionV25(nn.Module):
                     uncertainty_loss_weight=v27_uncertainty_loss_weight,
                 )
             else:
-                self.depth_tri_head = DepthProposalTriangulation(n_views=n_views, n_ray_samples=n_ray_samples)
+                self.depth_tri_head = DepthProposalTriangulation(n_views=n_views, n_ray_samples=n_ray_samples, dropout=dropout)
         else:
             self.depth_tri_head = None
 

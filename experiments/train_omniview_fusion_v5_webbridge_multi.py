@@ -131,6 +131,7 @@ def build_model_from_args(
         "v25_use_outlier_view_detector": getattr(args, "v25_use_outlier_view_detector", False),
         "v25_outlier_z_thresh": getattr(args, "v25_outlier_z_thresh", 3.0),
         "v25_outlier_soft_beta": getattr(args, "v25_outlier_soft_beta", 1.0),
+        "v25_dropout": getattr(args, "v25_dropout", 0.1),
         "use_temporal_geometry_fusion_v26": getattr(args, "use_temporal_geometry_fusion_v26", False),
         "v26_temporal_window": getattr(args, "v26_temporal_window", 3),
         "v26_temporal_attention_residual_gate_init": getattr(args, "v26_temporal_attention_residual_gate_init", 0.0),
@@ -1352,6 +1353,7 @@ def parse_args() -> Namespace:
     # v25 toggles
     parser.add_argument("--use_multiview_geometry_fusion_v25", action="store_true", help="Use v25 multi-view geometry fusion (ray-token + epipolar cross-view attention + learned depth triangulation)")
     parser.add_argument("--v25_geom_loss_weight", type=float, default=0.1, help="Weight for v25 geometry consistency loss")
+    parser.add_argument("--v25_dropout", type=float, default=0.1, help="Dropout rate for v25 ray tokenizer and depth-proposal MLPs")
     parser.add_argument("--v25_use_geometry_attention", action="store_true", default=True, help="Use geometry-aware cross-view attention in v25")
     parser.add_argument("--no_v25_use_geometry_attention", dest="v25_use_geometry_attention", action="store_false", help="Disable geometry-aware cross-view attention in v25")
     parser.add_argument("--v25_use_learned_depth_triangulation", action="store_true", default=True, help="Use learned depth triangulation in v25")
