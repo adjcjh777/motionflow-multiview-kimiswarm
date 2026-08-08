@@ -2,6 +2,8 @@
 # v25 small local 4090 baseline for comparison with v26/v27/v28 variants.
 set -euo pipefail
 
+export PYTHONUNBUFFERED=1
+
 CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-0}
 PYTHON=${PYTHON:-python}
 OUTPUT=${OUTPUT:-outputs/omniview_fusion_v25_geometry_fusion_small_local_4090.pth}

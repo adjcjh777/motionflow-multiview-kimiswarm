@@ -2,6 +2,8 @@
 # v25 + adaptive outlier view detector small local 4090 run.
 set -euo pipefail
 
+export PYTHONUNBUFFERED=1
+
 CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-0}
 PYTHON=${PYTHON:-python}
 OUTPUT=${OUTPUT:-outputs/omniview_fusion_v25_outlier_adaptive_small_local_4090.pth}
