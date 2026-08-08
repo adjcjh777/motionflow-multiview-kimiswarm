@@ -10,6 +10,7 @@ venv/
 *.pkl
 *.npz
 .DS_Store
+.monitor_a800_state.json
 tmp/
 outputs/
 .worktrees/
