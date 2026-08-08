@@ -35,6 +35,8 @@ This file captures the current A800-D workflow, tmux conventions, and issue labe
 | v29c fast SEH-MV local | v29 full SEH-MV with fast config (clip_len=9, train_samples=100) | Killed; hung during first eval (TTE too expensive) |
 | v29e fast SEH-MV local | v29 hierarchical + physical loss, no TTE (clip_len=9, train_samples=100) | Killed; first-epoch val_MPJPE=91.38mm (small config unstable) |
 | v25 baseline fast local | v25 geometry fusion only, d=64, n_st_layers=2 (clip_len=9, train_samples=100) | Killed; first-epoch val_MPJPE=91.62mm (tiny fast config unreliable); GPU free |
+| v30 smoke val1 | v30 hierarchical + physical loss, val_stride=1 | RTX 4090 | Queued as first job in v31 top-5 smoke queue |
+| v31 top-5 smokes | domain_balanced, physical_floor_only, hierarchical_more_dropout, outlier_adaptive, epipolar_guided | RTX 4090 | Running sequentially via scripts/run_v31_top5_local4090_queue.sh |
 
 ### v29 SEH-MV A800-D runs
 

@@ -1,0 +1,72 @@
+# v31 skeleton-residual gate smoke config (local RTX 4090)
+# This YAML is a human-readable record of the hyper-parameters used by
+# scripts/launch_v31_skeleton_residual_gate_local4090.sh.
+# NOTE: the per-joint gate requires a code patch to
+#       motionflow_mv/fusion/skeleton_graph_residual_refiner.py and the
+#       training script flag --use_skeleton_residual_gate_v31.
+
+name: v31_skeleton_residual_gate_smoke
+model:
+  use_skeleton_residual: true
+  use_skeleton_residual_gate_v31: true
+  d: 64
+  residual_hidden: 128
+  n_st_layers: 2
+  graph_num_layers: 1
+  n_joint_layers: 1
+  n_heads: 4
+  use_hierarchical_multiview_v30: true
+  v30_n_part_layers: 2
+  v30_stochastic_depth_prob: 0.1
+  use_multiview_geometry_fusion_v25: true
+  v25_geom_loss_weight: 0.1
+  v25_dropout: 0.2
+  use_deformable_cross_view_attention_v18: true
+  use_full_precision_dlt: true
+  use_robust_dlt_reweight: true
+  use_irls_reweight: true
+  use_domain_embedding: true
+training:
+  epochs: 3
+  batch_size: 4
+  clip_len: 9
+  train_samples: 200
+  val_stride: 10
+  lr: 1.0e-3
+  lr_cosine: true
+  lr_warmup_epochs: 1
+  lr_min: 1.0e-6
+  max_grad_norm: 1.0
+  ema_decay: 0.999
+  early_stopping_patience: 2
+  early_stopping_min_delta: 0.001
+data:
+  use_mixed_loader: true
+  mixed_manifest: configs/splits/webbridge_h36m_mpi_mixed_train_val.yaml
+  variable_view_training: true
+  variable_view_min_views: 2
+  variable_view_max_views: 8
+  variable_view_max_views_start: 4
+  variable_view_curriculum_alpha: 2.0
+  variable_view_permute: true
+loss:
+  pa_loss_weight: 0.5
+  monotonic_loss_weight: 0.1
+  monotonic_margin: 5.0
+  reproj_loss_weight: 0.1
+  reproj_warmup_epochs: 1
+  aleatoric_reproj_loss_weight: 0.1
+  attention_entropy_weight: 0.01
+  use_physical_space_temporal_loss_v29: true
+  v29_floor_loss_weight: 0.01
+  v29_bone_temporal_weight: 0.01
+  v29_com_jitter_weight: 0.001
+  v29_physical_loss_warmup_epochs: 2
+augmentation:
+  outlier_view_prob: 0.3
+  outlier_view_max_views: 1
+  outlier_view_offset_std: 10.0
+  outlier_view_noise_std: 15.0
+output:
+  checkpoint: outputs/omniview_fusion_v31_skeleton_residual_gate_smoke_local_4090.pth
+  log: outputs/omniview_fusion_v31_skeleton_residual_gate_smoke_local_4090.log

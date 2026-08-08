@@ -1,0 +1,25 @@
+# v31 mixed-dataset curriculum: stage 3 (smoke).
+# 1:1 H36M:MPI mix, warm-started from stage 2 checkpoint.
+name: v31 Stage 3 Smoke - H36M:MPI 1:1
+
+train_paths:
+  - data/webbridge/h36m_meters/s_01_acts_02_multiview_m.npz
+  - data/webbridge/h36m_meters/s_01_acts_03_multiview_m.npz
+  - data/webbridge/h36m_meters/s_01_acts_04_multiview_m.npz
+  - data/webbridge/mpi_inf_3dhp/s_01_seq_01_v14_multiview_m.npz
+  - data/webbridge/mpi_inf_3dhp/s_01_seq_02_v14_multiview_m.npz
+  - data/webbridge/mpi_inf_3dhp/s_01_seq_01_v14_multiview_m.npz
+train_names:
+  - h36m
+  - h36m
+  - h36m
+  - mpi
+  - mpi
+  - mpi
+
+val_paths:
+  - data/webbridge/h36m_meters/s_09_acts_02_multiview_m.npz
+  - data/webbridge/mpi_inf_3dhp/s_02_seq_01_v14_multiview_m.npz
+val_names:
+  - h36m
+  - mpi

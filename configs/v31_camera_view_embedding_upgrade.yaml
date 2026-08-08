@@ -1,0 +1,73 @@
+# v31 camera-view-embedding upgrade configuration.
+#
+# This is a record of the flags used by:
+#   scripts/launch_v31_camera_view_embedding_upgrade_local4090.sh
+#
+# Core idea: replace the flat K/R/t MLP with a structured, geometry-aware
+# camera view embedding that also aggregates pairwise view geometry (baseline,
+# relative rotation, optical-axis alignment) before the spatio-temporal
+# transformer.
+#
+# Constraints from v29/v30: TTE is disabled; physical loss is warmed up;
+# v30 hierarchical encoder is used for stable multi-scale view fusion.
+
+experiment: v31_camera_view_embedding_upgrade
+entry_script: experiments/train_omniview_fusion_v5_webbridge_v31_camera_view_embedding_upgrade.py
+smoke: true
+
+base:
+  j: 17
+  d: 64
+  n_views: 4
+  n_heads: 4
+  n_joint_layers: 1
+  n_st_layers: 2
+  residual_hidden: 128
+  graph_num_layers: 1
+
+  # Camera / multi-scale / attention stack.
+  use_multiscale_fusion: true
+  use_camera_conditioning: true
+  use_epipolar_bias: true
+  use_context_visibility: true
+  use_skeleton_residual: true
+  use_rotation_correction: true
+  use_entropy_regularization: true
+  attention_entropy_weight: 0.01
+
+  # v31 upgrade: richer camera-conditioned view embedding.
+  use_camera_view_embedding: true
+  camera_view_embedding_hidden: 64
+
+  # Set-transformer view aggregator for permutation-invariant view handling.
+  use_set_view_aggregator: true
+  set_view_n_isab_layers: 2
+  set_view_num_inducing_points: 32
+  set_view_dropout: 0.0
+
+  # v18 sparse epipolar-aware cross-view attention.
+  use_deformable_cross_view_attention_v18: true
+
+  # v25 geometry fusion.
+  use_multiview_geometry_fusion_v25: true
+  v25_use_geometry_attention: true
+  v25_use_learned_depth_triangulation: true
+  v25_use_geometry_bundle_adjustment: true
+  v25_geom_loss_weight: 0.1
+  v25_dropout: 0.2
+
+  # v30 hardened hierarchical multi-view encoder.
+  use_hierarchical_multiview_v30: true
+  v30_n_part_layers: 2
+  v30_stochastic_depth_prob: 0.1
+
+  # v29 physical-space temporal loss (training only, with warmup).
+  use_physical_space_temporal_loss_v29: true
+  v29_floor_loss_weight: 0.01
+  v29_bone_temporal_weight: 0.01
+  v29_com_jitter_weight: 0.001
+  v29_physical_loss_warmup_epochs: 1
+
+  # TTE is explicitly disabled (broken).
+  use_test_time_self_evolution_v27: false
+  use_test_time_self_evolution_v29: false

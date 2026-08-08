@@ -1,0 +1,74 @@
+name: v31_rotation_correction_quaternion
+variant: v31
+description: >
+  Drop-in quaternion-parameterized rotation correction head for multi-view
+  extrinsics. Replaces the axis-angle + matrix-exponential head with a bounded
+  small-angle quaternion head, keeping the same API and default 2° bound.
+
+# Model / architecture toggles
+use_quaternion_rotation_correction: true
+use_rotation_correction: true
+use_hierarchical_multiview_v30: true
+v30_n_part_layers: 2
+v30_stochastic_depth_prob: 0.1
+use_physical_space_temporal_loss_v29: true
+v29_floor_loss_weight: 0.01
+v29_bone_temporal_weight: 0.01
+v29_com_jitter_weight: 0.001
+v29_physical_loss_warmup_epochs: 2
+
+# Safety constraints learned from v29/v30
+disable_test_time_self_evolution: true
+
+training:
+  script: experiments/train_omniview_fusion_v5_webbridge_multi.py
+  manifest: configs/splits/webbridge_h36m_mpi_mixed_train_val.yaml
+  # Local smoke-only settings; scale up for A800 full runs.
+  d: 64
+  residual_hidden: 128
+  n_st_layers: 2
+  n_joint_layers: 1
+  n_heads: 4
+  graph_num_layers: 1
+  clip_len: 9
+  epochs: 3
+  batch_size: 4
+  train_samples: 200
+  val_stride: 10
+  lr: 1e-3
+  lr_min: 1e-6
+  lr_warmup_epochs: 1
+  max_grad_norm: 1.0
+  ema_decay: 0.999
+  early_stopping_patience: 2
+  early_stopping_min_delta: 0.001
+
+  # v25 geometry fusion base
+  v25_geom_loss_weight: 0.1
+  v25_dropout: 0.2
+
+  # Auxiliary losses
+  pa_loss_weight: 0.5
+  monotonic_loss_weight: 0.1
+  monotonic_margin: 5.0
+  reproj_loss_weight: 0.1
+  reproj_warmup_epochs: 1
+  aleatoric_reproj_loss_weight: 0.1
+  attention_entropy_weight: 0.01
+
+  # Augmentations
+  outlier_view_prob: 0.3
+  outlier_view_max_views: 1
+  outlier_view_offset_std: 10.0
+  outlier_view_noise_std: 15.0
+
+  variable_view_training:
+    min_views: 2
+    max_views: 8
+    max_views_start: 4
+    curriculum_alpha: 2.0
+    permute: true
+
+# Launch commands
+smoke_local_4090: scripts/launch_v31_rotation_correction_quaternion_local4090.sh
+# a800_full: scripts/launch_v31_rotation_correction_quaternion_a800.sh  # TODO after smoke passes

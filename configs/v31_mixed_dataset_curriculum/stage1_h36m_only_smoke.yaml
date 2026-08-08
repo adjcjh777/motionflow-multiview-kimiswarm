@@ -1,0 +1,19 @@
+# v31 mixed-dataset curriculum: stage 1 (smoke).
+# H36M-only warm-up before MPI is introduced.
+name: v31 Stage 1 Smoke - H36M Only
+
+train_paths:
+  - data/webbridge/h36m_meters/s_01_acts_02_multiview_m.npz
+  - data/webbridge/h36m_meters/s_01_acts_03_multiview_m.npz
+  - data/webbridge/h36m_meters/s_01_acts_04_multiview_m.npz
+train_names:
+  - h36m
+  - h36m
+  - h36m
+
+val_paths:
+  - data/webbridge/h36m_meters/s_09_acts_02_multiview_m.npz
+  - data/webbridge/mpi_inf_3dhp/s_02_seq_01_v14_multiview_m.npz
+val_names:
+  - h36m
+  - mpi
