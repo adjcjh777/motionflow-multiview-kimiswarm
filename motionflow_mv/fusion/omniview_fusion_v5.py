@@ -44,6 +44,11 @@ from motionflow_mv.fusion.physical_space_alignment_v28 import (
     floor_loss,
     bone_temporal_loss,
 )
+from motionflow_mv.fusion.self_evolving_hierarchical_multiview_v29 import (
+    HierarchicalViewEncoderV29,
+    PhysicalSpaceTemporalLossV29,
+    TestTimeSelfEvolutionV29,
+)
 from motionflow_mv.fusion.prototypes.cross_view_graph_attention import (
     H36M_17_PARENTS,
     MPI_INF_3DHP_28_PARENTS,
@@ -156,6 +161,19 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
         v28_bone_temporal_weight: float = 0.0,
         v27_tte_sigma_reproj: float = 5.0,
         v27_tte_residual_thresh_mm: float = 0.5,
+        # v29 toggles
+        use_hierarchical_multiview_v29: bool = False,
+        v29_n_heads: int = 4,
+        v29_n_part_layers: int = 1,
+        use_test_time_self_evolution_v29: bool = False,
+        v29_tte_n_iters: int = 3,
+        v29_tte_sigma_reproj: float = 5.0,
+        v29_tte_residual_thresh_mm: float = 0.5,
+        v29_tte_use_physical_space_alignment: bool = True,
+        use_physical_space_temporal_loss_v29: bool = False,
+        v29_floor_loss_weight: float = 0.01,
+        v29_bone_temporal_weight: float = 0.01,
+        v29_com_jitter_weight: float = 0.001,
         kap_loss_weight: float = 0.01,
         kap_use_angle_limit: bool = True,
         kap_max_flexion_deg: float = 160.0,
@@ -414,6 +432,54 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
         else:
             self.test_time_self_evolution_v27 = None
 
+        # Optional v29 hierarchical multi-view encoder.
+        self.use_hierarchical_multiview_v29 = use_hierarchical_multiview_v29
+        if self.use_hierarchical_multiview_v29:
+            self.hierarchical_multiview_v29 = HierarchicalViewEncoderV29(
+                d=self.d,
+                n_heads=v29_n_heads,
+                n_views=n_views,
+                n_part_layers=v29_n_part_layers,
+                dropout=0.1,
+            )
+        else:
+            self.hierarchical_multiview_v29 = None
+
+        # Optional v29 test-time self-evolution (with physical-space alignment).
+        self.use_test_time_self_evolution_v29 = use_test_time_self_evolution_v29
+        if self.use_test_time_self_evolution_v29:
+            self.test_time_self_evolution_v29 = TestTimeSelfEvolutionV29(
+                n_iters=v29_tte_n_iters,
+                sigma_reproj=v29_tte_sigma_reproj,
+                residual_thresh_mm=v29_tte_residual_thresh_mm,
+                use_physical_space_alignment=v29_tte_use_physical_space_alignment,
+                max_residual=0.05,
+                j=self.j,
+            )
+        else:
+            self.test_time_self_evolution_v29 = None
+
+        # Optional v29 physical-space temporal loss (training only).
+        self.use_physical_space_temporal_loss_v29 = use_physical_space_temporal_loss_v29
+        self.v29_floor_loss_weight = v29_floor_loss_weight
+        self.v29_bone_temporal_weight = v29_bone_temporal_weight
+        self.v29_com_jitter_weight = v29_com_jitter_weight
+        if self.use_physical_space_temporal_loss_v29:
+            parents = None
+            if self.j == 17:
+                parents = H36M_17_PARENTS
+            elif self.j == 28:
+                parents = MPI_INF_3DHP_28_PARENTS
+            self.physical_space_temporal_loss_v29 = PhysicalSpaceTemporalLossV29(
+                floor_loss_weight=v29_floor_loss_weight,
+                bone_temporal_weight=v29_bone_temporal_weight,
+                com_jitter_weight=v29_com_jitter_weight,
+                foot_joint_indices=None,
+                parents=parents,
+            )
+        else:
+            self.physical_space_temporal_loss_v29 = None
+
         # Make sure the ST transformer can accept an additive attention mask even
         # when epipolar bias is disabled.
         if not self.use_epipolar_bias:
@@ -651,6 +717,10 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
                 view_mask=view_mask,
             )
 
+        # Optional v29 hierarchical multi-scale view encoder.
+        if self.use_hierarchical_multiview_v29 and self.hierarchical_multiview_v29 is not None:
+            feat = feat + self.hierarchical_multiview_v29(feat, view_mask=view_mask_flat.view(B, T, V))
+
         # Optional domain embedding (useful when mixing H36M/MPI/WebBridge).
         if self.use_domain_embedding and domain_id is not None:
             domain_emb = self.domain_embedding(domain_id)  # (B, d)
@@ -871,6 +941,24 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
                 )
                 pred_3d_gn = pred_3d_gn_tte.view(B * T, J, 3)
 
+        # Optional v29 test-time self-evolution (physical-space aware).
+        if (
+            not self.training
+            and self.use_test_time_self_evolution_v29
+            and self.test_time_self_evolution_v29 is not None
+        ):
+            with torch.no_grad():
+                pred_3d_gn_tte29 = self.test_time_self_evolution_v29(
+                    pred_3d_gn.view(B, T, J, 3),
+                    points_2d.view(B, T, V, J, 2),
+                    K_corrected.view(B, T, V, 3, 3),
+                    R.view(B, T, V, 3, 3),
+                    t.view(B, T, V, 3),
+                    view_mask=view_mask_flat.view(B, T, V),
+                    confidence=confidences.view(B, T, V, J),
+                )
+                pred_3d_gn = pred_3d_gn_tte29.view(B * T, J, 3)
+
         # Residual refinement head (deterministic MLP or diffusion-based v20).
         if self.use_diffusion_refiner_v20 and self.diffusion_refiner_v20 is not None:
             if self.training:
@@ -955,6 +1043,15 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
                 if self.v28_bone_temporal_weight > 0.0 and pred_3d.shape[1] > 1:
                     v28_bone = bone_temporal_loss(pred_3d, parents)
                     epi_loss = epi_loss + self.v28_bone_temporal_weight * v28_bone
+
+        # Optional v29 physical-space temporal loss (training only).
+        if (
+            self.training
+            and self.use_physical_space_temporal_loss_v29
+            and self.physical_space_temporal_loss_v29 is not None
+        ):
+            v29_physical_loss, v29_physical_terms = self.physical_space_temporal_loss_v29(pred_3d)
+            epi_loss = epi_loss + v29_physical_loss
 
         weights = weights.view(B, T, V, J)
         L = L.view(B, T, V, J, 2, 2)

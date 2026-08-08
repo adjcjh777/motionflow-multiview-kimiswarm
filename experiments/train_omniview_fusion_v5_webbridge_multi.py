@@ -145,6 +145,19 @@ def build_model_from_args(
         "v27_tte_n_iters": getattr(args, "v27_tte_n_iters", 3),
         "v27_tte_sigma_reproj": getattr(args, "v27_tte_sigma_reproj", 5.0),
         "v27_tte_residual_thresh_mm": getattr(args, "v27_tte_residual_thresh_mm", 0.5),
+        # v29 toggles
+        "use_hierarchical_multiview_v29": getattr(args, "use_hierarchical_multiview_v29", False),
+        "v29_n_heads": getattr(args, "v29_n_heads", 4),
+        "v29_n_part_layers": getattr(args, "v29_n_part_layers", 1),
+        "use_test_time_self_evolution_v29": getattr(args, "use_test_time_self_evolution_v29", False),
+        "v29_tte_n_iters": getattr(args, "v29_tte_n_iters", 3),
+        "v29_tte_sigma_reproj": getattr(args, "v29_tte_sigma_reproj", 5.0),
+        "v29_tte_residual_thresh_mm": getattr(args, "v29_tte_residual_thresh_mm", 0.5),
+        "v29_tte_use_physical_space_alignment": getattr(args, "v29_tte_use_physical_space_alignment", True),
+        "use_physical_space_temporal_loss_v29": getattr(args, "use_physical_space_temporal_loss_v29", False),
+        "v29_floor_loss_weight": getattr(args, "v29_floor_loss_weight", 0.01),
+        "v29_bone_temporal_weight": getattr(args, "v29_bone_temporal_weight", 0.01),
+        "v29_com_jitter_weight": getattr(args, "v29_com_jitter_weight", 0.001),
         # v7 toggles
         "use_full_precision_dlt": args.use_full_precision_dlt,
         "use_robust_dlt_reweight": args.use_robust_dlt_reweight,
@@ -1377,6 +1390,20 @@ def parse_args() -> Namespace:
     parser.add_argument("--v27_tte_n_iters", type=int, default=3, help="Number of iterations for v27 test-time self-evolution")
     parser.add_argument("--v27_tte_sigma_reproj", type=float, default=5.0, help="Cauchy kernel scale (pixels) for v27 self-evolution")
     parser.add_argument("--v27_tte_residual_thresh_mm", type=float, default=0.5, help="Early-stop threshold (mm) for v27 self-evolution")
+    # v29 arguments
+    parser.add_argument("--use_hierarchical_multiview_v29", action="store_true", default=False, help="Use v29 hierarchical multi-scale view encoder")
+    parser.add_argument("--v29_n_heads", type=int, default=4, help="Number of attention heads for v29 hierarchical encoder")
+    parser.add_argument("--v29_n_part_layers", type=int, default=1, help="Number of part-scale attention layers for v29")
+    parser.add_argument("--use_test_time_self_evolution_v29", action="store_true", default=False, help="Use v29 test-time self-evolution with physical-space alignment at inference")
+    parser.add_argument("--v29_tte_n_iters", type=int, default=3, help="Number of iterations for v29 test-time self-evolution")
+    parser.add_argument("--v29_tte_sigma_reproj", type=float, default=5.0, help="Cauchy kernel scale (pixels) for v29 self-evolution")
+    parser.add_argument("--v29_tte_residual_thresh_mm", type=float, default=0.5, help="Early-stop threshold (mm) for v29 self-evolution")
+    parser.add_argument("--v29_tte_use_physical_space_alignment", action="store_true", default=True, help="Apply v28 physical-space alignment inside v29 self-evolution")
+    parser.add_argument("--no_v29_tte_use_physical_space_alignment", dest="v29_tte_use_physical_space_alignment", action="store_false", help="Disable physical-space alignment inside v29 self-evolution")
+    parser.add_argument("--use_physical_space_temporal_loss_v29", action="store_true", default=False, help="Use v29 physical-space temporal loss during training")
+    parser.add_argument("--v29_floor_loss_weight", type=float, default=0.01, help="Weight for v29 foot-floor loss")
+    parser.add_argument("--v29_bone_temporal_weight", type=float, default=0.01, help="Weight for v29 bone-length temporal loss")
+    parser.add_argument("--v29_com_jitter_weight", type=float, default=0.001, help="Weight for v29 center-of-mass jitter loss")
     parser.add_argument("--kap_use_angle_limit", action="store_true", default=True, help="Use soft joint-angle limit penalty in v22 KAP")
     parser.add_argument("--kap_max_flexion_deg", type=float, default=160.0, help="Maximum flexion for v22 joint-angle limit")
     parser.add_argument("--use_full_precision_dlt", action="store_true", help="Use full 2x2 precision matrix in DLT triangulation")
