@@ -107,6 +107,14 @@ Make this gating optional via `gate_camera_update: bool = True` so training can 
 
 ---
 
+## Validation plan
+
+Apply the fixes incrementally and measure:
+
+1. **Smoke test:** Run `tests/test_neural_bundle_adjustment_v21.py`; all shape/orthogonality/backward tests should still pass.
+2. **Synthetic sanity:** Generate a calibrated multi-view sequence with known ground-truth 3D joints and small camera perturbations. After one NBA forward pass, reprojection error should decrease and camera corrections should stay within their bounds.
+3. **End-to-end guard:** Plug the updated block back into `omniview_fusion_v5.py` on a 1-epoch local smoke run. Compare `val_MPJPE` and `val_Reproj` against the v18 baseline. If the updated block still raises error or MPJPE by > 5 mm, keep it disabled for v23.
+
 ## Quick-win prioritization
 
 1. **Highest impact / lowest risk:** Item 1 (structure-first ordering) — a one-line reorder that removes the biggest source of camera-head confusion.
