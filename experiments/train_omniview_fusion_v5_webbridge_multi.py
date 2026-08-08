@@ -88,6 +88,7 @@ def build_model_from_args(
         "use_epipolar_bias": args.use_epipolar_bias,
         "use_context_visibility": args.use_context_visibility,
         "use_skeleton_residual": args.use_skeleton_residual,
+        "use_skeleton_residual_v31": args.use_skeleton_residual_v31,
         "use_kinematic_refiner": args.use_kinematic_refiner,
         "use_adaptive_view_selection": args.use_adaptive_view_selection,
         "use_rotation_correction": args.use_rotation_correction,
@@ -1351,6 +1352,7 @@ def parse_args() -> Namespace:
     parser.add_argument("--use_epipolar_bias", type=lambda x: x.lower() == "true", default=True, help="Enable epipolar-biased ST transformer")
     parser.add_argument("--use_context_visibility", type=lambda x: x.lower() == "true", default=True, help="Use context-aware visibility head")
     parser.add_argument("--use_skeleton_residual", type=lambda x: x.lower() == "true", default=True, help="Use skeleton-graph residual refiner")
+    parser.add_argument("--use_skeleton_residual_v31", type=lambda x: x.lower() == "true", default=False, help="Use v31 per-joint gated skeleton-graph residual refiner")
     parser.add_argument("--use_kinematic_refiner", type=lambda x: x.lower() == "true", default=False, help="Use kinematic-chain final refiner")
     parser.add_argument("--use_adaptive_view_selection", type=lambda x: x.lower() == "true", default=False, help="Use adaptive view selection")
     parser.add_argument("--use_rotation_correction", type=lambda x: x.lower() == "true", default=False, help="Use rotation correction head")

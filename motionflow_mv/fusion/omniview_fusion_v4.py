@@ -44,6 +44,9 @@ from motionflow_mv.fusion.rotation_correction import RotationCorrectionHead
 from motionflow_mv.fusion.skeleton_graph_residual_refiner import (
     SkeletonGraphResidualRefiner,
 )
+from motionflow_mv.fusion.skeleton_graph_residual_refiner_v31 import (
+    SkeletonGraphResidualRefinerV31,
+)
 from motionflow_mv.fusion.visibility_gated_fusion_v2 import (
     VisibilityGatedFusionV2,
 )
@@ -107,6 +110,7 @@ class OmniMultiViewFusionV4(OmniMultiViewFusionV3):
         epipolar_temperature: float = 10.0,
         use_context_visibility: bool = False,
         use_skeleton_residual: bool = False,
+        use_skeleton_residual_v31: bool = False,
         use_kinematic_refiner: bool = False,
         use_adaptive_view_selection: bool = False,
         use_rotation_correction: bool = False,
@@ -149,6 +153,7 @@ class OmniMultiViewFusionV4(OmniMultiViewFusionV3):
 
         self.use_context_visibility = use_context_visibility
         self.use_skeleton_residual = use_skeleton_residual
+        self.use_skeleton_residual_v31 = use_skeleton_residual_v31
         self.use_kinematic_refiner = use_kinematic_refiner
         self.use_adaptive_view_selection = use_adaptive_view_selection
         self.use_rotation_correction = use_rotation_correction
@@ -169,7 +174,14 @@ class OmniMultiViewFusionV4(OmniMultiViewFusionV3):
             self.context_visibility_gate = None
 
         # Optional skeleton-graph residual refiner (drop-in for residual_mlp).
-        if self.use_skeleton_residual:
+        if self.use_skeleton_residual_v31:
+            self.residual_mlp = SkeletonGraphResidualRefinerV31(
+                j=self.j,
+                in_dim=self.d + 3,
+                hidden_dim=residual_hidden,
+                num_layers=2,
+            )
+        elif self.use_skeleton_residual:
             self.residual_mlp = SkeletonGraphResidualRefiner(
                 j=self.j,
                 in_dim=self.d + 3,
