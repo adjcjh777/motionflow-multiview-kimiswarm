@@ -10,6 +10,7 @@ this launcher.
 
 from __future__ import annotations
 
+import re
 import subprocess
 import time
 
@@ -73,6 +74,21 @@ def gpu_free_mibs() -> list[tuple[int, int]]:
     return pairs
 
 
+def used_gpus_from_tmux() -> set[int]:
+    """Parse v31_top5 tmux sessions and return GPU indices already in use."""
+    gpus: set[int] = set()
+    try:
+        out = a800_ssh("tmux ls 2>/dev/null || true")
+    except subprocess.CalledProcessError:
+        return gpus
+    for line in out.splitlines():
+        # Session names look like v31_top5_<name>_gpu4
+        match = re.search(r"v31_top5_[^_]+_gpu(\d+)", line)
+        if match:
+            gpus.add(int(match.group(1)))
+    return gpus
+
+
 def launch_run(name: str, extra_flags: str, output: str, gpu: int) -> None:
     session = f"v31_top5_{name}_gpu{gpu}"
     cmd = (
@@ -97,7 +113,8 @@ def main() -> None:
         a800_ssh(f"cd {A800_REPO} && timeout 15 git pull origin main || true")
     except subprocess.CalledProcessError as e:
         print(f"Warning: git pull on A800 failed: {e}")
-    used_gpus: set[int] = set()
+    used_gpus = used_gpus_from_tmux()
+    print(f"Already-used GPUs from tmux: {used_gpus}")
     while queue:
         pairs = gpu_free_mibs()
         candidates = [
