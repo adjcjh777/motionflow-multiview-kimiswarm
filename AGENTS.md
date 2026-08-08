@@ -6,11 +6,12 @@ This file captures the current A800-D workflow, tmux conventions, and issue labe
 
 | Run | Description | GPU | Status |
 |-----|-------------|-----|--------|
-| v23 | v18 + KAP, no neural BA | GPU4 / GPU6 | Running, waiting for first-epoch `val_MPJPE` |
-| v18 | v18 full | GPU5 | Running |
-| v11 | v11 full | GPU7 | Running |
+| v25 full | v18 + geometry fusion (full WebBridge/H36M/MPI) | GPU4 | Running, ~3,450/18,750 steps, first epoch in progress |
+| v25 small | v18 + geometry fusion (small subset) | GPU7 | Running, ~2,400/3,750 steps, first epoch in progress |
+| v25 ablation | v18 + geometry fusion with `geom_loss_weight=1.0` | GPU6 | Running, ~2,300/3,750 steps, first epoch in progress |
+| v18 | v18 deformable attention baseline | GPU5 | Running (legacy baseline) |
+| v26 small | v18 + temporal geometry fusion | — | Prepared; blocked until a GPU frees |
 | v21 | neural BA | — | Stopped; regressed to 128.27 mm |
-| v24 | v18 + fixed BA + KAP | — | Prepared, not launched (all A800 GPUs busy) |
 
 - **Remote host:** `a800-D` (SSH)
 - **Remote repo:** `/mnt/nvme0n1p1/zhangzy/motionflow-multiview-kimiswarm-iter20`
