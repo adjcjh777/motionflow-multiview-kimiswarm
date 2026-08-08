@@ -19,6 +19,7 @@ import torch.nn.functional as F
 from .epipolar_attention_bias import compute_epipolar_distance
 from .outlier_view_detector import OutlierViewDetector
 from .triangulation import triangulate_dlt_batched_lstsq
+from .uncertainty_depth_proposal_v27 import UncertaintyDepthProposalTriangulation
 
 
 def _safe_inverse(x: torch.Tensor) -> torch.Tensor:
@@ -397,6 +398,8 @@ class MultiViewGeometryFusionV25(nn.Module):
         outlier_z_thresh: float = 3.0,
         outlier_soft_beta: float = 1.0,
         dropout: float = 0.1,
+        use_uncertainty_depth_proposals_v27: bool = False,
+        v27_uncertainty_loss_weight: float = 0.01,
     ):
         super().__init__()
         self.d = d
@@ -407,6 +410,8 @@ class MultiViewGeometryFusionV25(nn.Module):
         self.use_geometry_bundle_adjustment = use_geometry_bundle_adjustment
         self.use_camera_joint_graph = use_camera_joint_graph
         self.use_outlier_view_detector = use_outlier_view_detector
+        self.use_uncertainty_depth_proposals_v27 = use_uncertainty_depth_proposals_v27
+        self.v27_uncertainty_loss_weight = v27_uncertainty_loss_weight
 
         self.ray_tokenizer = RayTokenizer(d=d, n_ray_samples=n_ray_samples)
 
@@ -418,7 +423,12 @@ class MultiViewGeometryFusionV25(nn.Module):
             self.geom_attn_layers = None
 
         if use_learned_depth_triangulation:
-            self.depth_tri_head = DepthProposalTriangulation(n_views=n_views, n_ray_samples=n_ray_samples)
+            if use_uncertainty_depth_proposals_v27:
+                self.depth_tri_head = UncertaintyDepthProposalTriangulation(
+                    n_views=n_views, n_ray_samples=n_ray_samples, uncertainty_loss_weight=v27_uncertainty_loss_weight
+                )
+            else:
+                self.depth_tri_head = DepthProposalTriangulation(n_views=n_views, n_ray_samples=n_ray_samples)
         else:
             self.depth_tri_head = None
 
@@ -500,13 +510,19 @@ class MultiViewGeometryFusionV25(nn.Module):
                 tokens = tokens + layer(tokens, epipolar_dist, ray_logit, view_mask=view_mask)
 
         # Learned depth-proposal triangulation refines the initial 3D estimate.
+        uncertainty_loss = torch.tensor(0.0, device=pts.device, dtype=pts.dtype)
         if self.use_learned_depth_triangulation and self.depth_tri_head is not None:
-            pred_3d_ref = self.depth_tri_head(centre, direction, confidence, pred_3d_init, view_mask=view_mask)
+            if self.use_uncertainty_depth_proposals_v27:
+                pred_3d_ref, uncertainty_loss = self.depth_tri_head(
+                    centre, direction, confidence, pred_3d_init, view_mask=view_mask
+                )
+            else:
+                pred_3d_ref = self.depth_tri_head(centre, direction, confidence, pred_3d_init, view_mask=view_mask)
         else:
             pred_3d_ref = pred_3d_init
 
         geom_loss = self._reprojection_loss(pred_3d_ref, pts, K, R, t, confidence, view_mask)
-        return pred_3d_ref, geom_loss
+        return pred_3d_ref, geom_loss + uncertainty_loss
 
     def _reprojection_loss(
         self,
