@@ -44,7 +44,9 @@ This file captures the current A800-D workflow, tmux conventions, and issue labe
 | v29a | hierarchical encoder only (no TTE, no physical) | GPU1 | Epoch 1 val_MPJPE=28.12mm; epoch 2=47.85mm; epoch 3=81.08mm (severe overfitting) |
 | v29b | hierarchical + TTE (no physical) | GPU2 | Killed; epoch 1 val_MPJPE=90.35mm — TTE implementation is broken |
 | v29d | TTE + physical (no hierarchical) | GPU3 | Killed; epoch 1 val_MPJPE=90.28mm — same TTE failure |
-| v29 20-run sweep | Hierarchical-only + physical-loss ablations (TTE disabled) | GPU4/5/6/7 | Relaunched after killing all TTE variants; see issue #109 |
+| v29 20-run sweep | Hierarchical-only + physical-loss ablations (TTE disabled) | GPU4/5/6/7 | 8 of 20 runs launched in tmux v29_sweep_00-07; no val_MPJPE yet (val_stride=10, first val near epoch 1 end) |
+| v30a | v30 hardened hierarchical + physical loss (d=128, full) | — | Poller waiting for >65 GiB free GPU on A800-D; previous attempt OOM’d on GPU0 due to VLLM worker |
+| v30 smoke | v30 hardened hierarchical + physical loss (d=64, local smoke) | RTX 4090 | Running; train loss down to ~6.94 at step 1000; first val pending |
 
 - **Remote host:** `a800-D` (SSH)
 - **Remote repo:** `/mnt/nvme0n1p1/zhangzy/motionflow-multiview-kimiswarm-iter20`
