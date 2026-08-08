@@ -41,9 +41,14 @@ This file captures the current A800-D workflow, tmux conventions, and issue labe
 | v31 camera embedding | geometry-aware pairwise camera view embedding wired into v5 model | RTX 4090 | Queued in second-wave smoke queue after top-5 finishes |
 | v31 second wave | geometry attention + camera embedding + physical collision + skeleton residual gate smokes | RTX 4090 | Waiting in scripts/run_v31_second_wave_local4090_queue.sh |
 | v32 first wave | domain-aware + TCR + ray attention smokes | RTX 4090 | Queued after v31 top-5 via scripts/run_v32_first_wave_local4090_queue.sh |
-| v31 top-5 A800 | domain_balanced, physical_floor, hierarchical_more_dropout, outlier, geometry_attention | A800-D | All 5 running on GPUs 4-7; v29 sweep stopped to free GPU/memory |
-| v32 next | Domain-aware view curriculum, TCR, ray attention, outlier triangulation, bounded physical | design | Domain-aware + TCR + ray attention + bounded physical alignment implemented; local and A800 queues ready |
-| GitHub issues/PRs | Cannot create/update issues automatically; no `GH_TOKEN` or `gh` auth available | blocked | Need user to provide a GitHub token or use the web UI to open issues/PRs |
+| v31 top-5 A800 | domain_balanced, physical_floor, hierarchical_more_dropout, outlier, geometry_attention | A800-D | Running on GPUs 4-7; blocking v32/v33 A800 queue until they finish |
+| v32 next | Domain-aware view curriculum, TCR, ray attention, outlier triangulation, bounded physical | merged | Domain-aware + TCR + ray attention + bounded physical alignment merged |
+| v33 uncertainty-aware triangulation | Per-view log-variance + precision-weighted DLT | merged | Smoke 82.02mm; full local run in progress |
+| v33 outlier-view rejection | Learned feature-aware outlier detector | merged | Smoke + wired into OmniMultiViewFusionV5 |
+| v33 ray-conditioned attention | Geometry-biased ray cross-view attention | merged | Smoke + wired into OmniMultiViewFusionV5 |
+| v33 combined | uncertainty + outlier + ray | local 4090 | Training; step 2650, loss 6.79 |
+| v32/v33 A800 queue | v31_physical_floor_only, v32 x5, v33 x4 | A800-D | Poller waiting for v31 top-5 to free GPUs 4-7 |
+| GitHub issues/PRs | Use API token from git remote URL | active | Issues/PRs created and merged via curl/GitHub API |
 
 ### v29 SEH-MV A800-D runs
 
