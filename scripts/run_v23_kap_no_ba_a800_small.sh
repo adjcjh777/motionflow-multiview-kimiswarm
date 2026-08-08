@@ -15,7 +15,7 @@ $PYTHON -u experiments/train_omniview_fusion_v5_webbridge_multi.py \
     --use_deformable_cross_view_attention_v18 \
     --use_kinematic_anthropometric_prior_v22 \
     --kap_loss_weight 0.01 \
-    --num_workers 4 \
+    --num_workers 0 \
     --d 128 --residual_hidden 256 --n_st_layers 3 \
     --graph_num_layers 1 --n_joint_layers 1 --n_heads 4 \
     --epochs 20 --batch_size 16 --train_samples 2000 --val_stride 10 \
