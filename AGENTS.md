@@ -50,7 +50,7 @@ This file captures the current A800-D workflow, tmux conventions, and issue labe
 | v33 combined fixed | same + weight_decay 1e-4 + outlier_supervised_weight 0.01 | local 4090 | Restarted; A800 queued |
 | v33 hierarchical multi-scale spatial pyramid | per-scale geometry-biased cross-view attention | merged | Quick smoke 55.59mm; full local RTX 4090 run started; A800 queued |
 | v34 view-joint graph network | (view, joint) graph attention over bone/symmetry/cross-view edges | merged | Quick smoke 54.07mm vs v31 55.28mm; full local RTX 4090 run started; A800 queued |
-| v34 geometry-aware view-joint graph network | v34 VJGN with epipolar + ray-intersection bias on cross-view edges | merged | Full local RTX 4090 run started; A800 queued; smoke 82.05mm |
+| v34 geometry-aware view-joint graph network | v34 VJGN with epipolar + ray-intersection bias on cross-view edges | merged | Full local RTX 4090 run started; A800 queued (2-layer, 1-layer, dropout, HMSP stack, combined-max); smoke 82.05mm |
 | v34 HMSP + VJGN stack | v33 HMSP + v34 VJGN together | A800-D | Queued in v33/v34 A800 queue; quick smoke 55.96mm |
 | v34 HMSP + geometry-aware VJGN stack | v33 HMSP + v34 geometry-aware VJGN together | A800-D | Queued in v33/v34 A800 queue |
 | v33 HMSP A800 | full scale after v31 top-5 | A800-D | Queued in v33 A800 queue |
