@@ -272,7 +272,8 @@ class DiffusionPoseRefinerV20(nn.Module):
 
         if train_targets_flat is not None:
             # Training with targets: predict noise and return diffusion loss + a
-            # deterministic refinement from a randomly sampled timestep.
+            # single-step differentiable refinement so gradients can flow back to
+            # the backbone through the refined pose.
             residual_target = train_targets_flat - pose_init_flat
             residual_target = torch.clamp(residual_target, -self.max_residual, self.max_residual)
             B_local = pose_init_flat.shape[0]
@@ -284,8 +285,13 @@ class DiffusionPoseRefinerV20(nn.Module):
             predicted_noise = self._denoise_step(noisy_residual, t_train, cond)
             loss = F.mse_loss(predicted_noise, noise)
 
-            # Also return a deterministic refinement using the mean predictor.
-            refined = self._sample(pose_init_flat, feat_flat)
+            # Single-step residual estimate from the same noisy sample.  This keeps
+            # the output differentiable and avoids the torch.no_grad() DDPM sampler.
+            sqrt_alpha_t = self.sqrt_alphas_cumprod[t_train].view(-1, 1, 1)
+            sqrt_one_minus_alpha_t = self.sqrt_one_minus_alphas_cumprod[t_train].view(-1, 1, 1)
+            predicted_residual = (noisy_residual - sqrt_one_minus_alpha_t * predicted_noise) / sqrt_alpha_t
+            predicted_residual = torch.clamp(predicted_residual, -self.max_residual, self.max_residual)
+            refined = pose_init_flat + predicted_residual
             if pose_init.dim() == 4:
                 refined = refined.reshape(orig_shape)
             return refined, loss
