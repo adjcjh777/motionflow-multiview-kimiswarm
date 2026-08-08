@@ -41,7 +41,7 @@ This file captures the current A800-D workflow, tmux conventions, and issue labe
 | v31 camera embedding | geometry-aware pairwise camera view embedding wired into v5 model | RTX 4090 | Queued in second-wave smoke queue after top-5 finishes |
 | v31 second wave | geometry attention + camera embedding + physical collision + skeleton residual gate smokes | RTX 4090 | Waiting in scripts/run_v31_second_wave_local4090_queue.sh |
 | v31 top-5 A800 | domain_balanced, physical_floor, hierarchical_more_dropout, outlier, geometry_attention | A800-D | All 5 running on GPUs 4-7; v29 sweep stopped to free GPU/memory |
-| v32 next | Domain-aware view curriculum, TCR, ray attention, outlier triangulation, bounded physical | design | Domain-aware view curriculum and TCR modules implemented; smoke scripts ready; waiting for GPU |
+| v32 next | Domain-aware view curriculum, TCR, ray attention, outlier triangulation, bounded physical | design | Domain-aware + TCR implemented; v32 A800 queue launched via scripts/launch_v32_a800_queue.py; waiting for v31 GPUs to free |
 | GitHub issues/PRs | Cannot create/update issues automatically; no `GH_TOKEN` or `gh` auth available | blocked | Need user to provide a GitHub token or use the web UI to open issues/PRs |
 
 ### v29 SEH-MV A800-D runs
