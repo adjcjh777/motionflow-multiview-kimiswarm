@@ -35,6 +35,8 @@ DEFAULT_LOG_DIR = ROOT / "outputs"
 DEFAULT_LOG_GLOB = "omniview_fusion_v*.log"
 DEFAULT_GPU = 0
 DEFAULT_POLL_INTERVAL = 60
+DEFAULT_OVERFIT_PATIENCE = 3
+DEFAULT_OVERFIT_MIN_EPOCHS = 5
 LOCK_FILE = Path("/tmp/motionflow_auto_eval_py.lock")
 
 
@@ -90,6 +92,66 @@ def last_val_mpjpe(log_path: Path) -> Optional[float]:
         return None
     matches = re.findall(r"val_MPJPE=([\d.]+)mm", text)
     return float(matches[-1]) if matches else None
+
+
+def extract_val_mpjpe_series(log_path: Path) -> List[float]:
+    """Return all validation MPJPE values in chronological order."""
+    try:
+        text = log_path.read_text(errors="ignore")
+    except FileNotFoundError:
+        return []
+    return [float(m) for m in re.findall(r"val_MPJPE=([\d.]+)mm", text)]
+
+
+def best_epoch_info(log_path: Path) -> Tuple[Optional[int], Optional[float]]:
+    """Return (epoch_index, best_val_mpjpe) from the log, 0-based.
+
+    Returns (None, None) when no val_MPJPE lines are present.
+    """
+    series = extract_val_mpjpe_series(log_path)
+    if not series:
+        return None, None
+    best_idx = min(range(len(series)), key=series.__getitem__)
+    return best_idx, series[best_idx]
+
+
+def detect_overfitting(
+    log_path: Path,
+    patience: int = DEFAULT_OVERFIT_PATIENCE,
+    min_epochs: int = DEFAULT_OVERFIT_MIN_EPOCHS,
+) -> Tuple[bool, int]:
+    """Detect whether validation MPJPE is rising monotonically.
+
+    Args:
+        log_path: training log to analyse.
+        patience: number of consecutive increasing val_MPJPE epochs required
+                  to flag overfitting.
+        min_epochs: require at least this many validation epochs before
+                    overfit detection activates (avoids early noise).
+
+    Returns:
+        (is_overfitting, epochs_since_best)
+    """
+    series = extract_val_mpjpe_series(log_path)
+    if len(series) < max(patience + 1, min_epochs):
+        return False, 0
+
+    best_idx, _ = best_epoch_info(log_path)
+    if best_idx is None:
+        return False, 0
+
+    epochs_since_best = len(series) - 1 - best_idx
+
+    # Count consecutive increases at the tail of the series.
+    consecutive_increases = 0
+    for i in range(len(series) - 1, 0, -1):
+        if series[i] > series[i - 1]:
+            consecutive_increases += 1
+        else:
+            break
+
+    is_overfitting = consecutive_increases >= patience
+    return is_overfitting, epochs_since_best
 
 
 def map_to_fullscale_script(experiment_name: str) -> Optional[Path]:
@@ -213,15 +275,32 @@ def process_experiment(experiment: Experiment, args: argparse.Namespace) -> bool
 
     best = best_val_mpjpe(experiment.log_path)
     last = last_val_mpjpe(experiment.log_path)
-    _log(f"[{experiment.name}] Detected completed baseline (best={best}mm, last={last}mm).")
+    is_overfitting, epochs_since_best = detect_overfitting(
+        experiment.log_path,
+        patience=args.overfit_patience,
+        min_epochs=args.overfit_min_epochs,
+    )
+    status_msg = (
+        f"Detected completed baseline (best={best}mm, last={last}mm, "
+        f"epochs_since_best={epochs_since_best})"
+    )
+    if is_overfitting:
+        status_msg += " — OVERFITTING DETECTED"
+    _log(f"[{experiment.name}] {status_msg}")
 
     if not args.skip_eval:
         if not run_eval(experiment, args.eval_command, args.dry_run):
             return False
 
     if not args.skip_fullscale:
-        if not run_fullscale(experiment, args.gpu, args.dry_run):
-            return False
+        if is_overfitting and not args.force_fullscale:
+            _log(
+                f"[{experiment.name}] Skipping full-scale launch due to overfitting. "
+                f"Use --force-fullscale to override."
+            )
+        else:
+            if not run_fullscale(experiment, args.gpu, args.dry_run):
+                return False
 
     if not args.dry_run:
         mark_done(experiment.log_path)
@@ -278,6 +357,12 @@ def build_parser() -> argparse.ArgumentParser:
                         help="If given, write a JSON summary of the polling results to this path.")
     parser.add_argument("--lock-file", type=Path, default=LOCK_FILE,
                         help=f"Path to the singleton lock file (default: {LOCK_FILE})")
+    parser.add_argument("--overfit-patience", type=int, default=DEFAULT_OVERFIT_PATIENCE,
+                        help="Number of consecutive increasing val_MPJPE epochs required to flag overfitting.")
+    parser.add_argument("--overfit-min-epochs", type=int, default=DEFAULT_OVERFIT_MIN_EPOCHS,
+                        help="Minimum validation epochs before overfit detection activates.")
+    parser.add_argument("--force-fullscale", action="store_true",
+                        help="Launch full-scale run even if overfitting is detected.")
     return parser
 
 
@@ -294,7 +379,15 @@ def poll(args: argparse.Namespace) -> Dict[str, object]:
 
     for experiment in experiments:
         if is_ready(experiment.log_path):
-            summary["processed"].append(experiment.name)
+            overfitting, _ = detect_overfitting(
+                experiment.log_path,
+                patience=args.overfit_patience,
+                min_epochs=args.overfit_min_epochs,
+            )
+            summary["processed"].append({
+                "name": experiment.name,
+                "overfitting": overfitting,
+            })
             process_experiment(experiment, args)
         else:
             summary["skipped"].append(experiment.name)
