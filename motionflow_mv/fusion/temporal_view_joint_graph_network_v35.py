@@ -176,7 +176,7 @@ class TemporalViewJointGraphNetworkV35(nn.Module):
 
         # Zero out padded views so they do not propagate.
         if view_mask is not None:
-            tokens = tokens * view_mask[..., None].float()
+            tokens = tokens * view_mask[..., None, None].float()
 
         # The graph attention layer expects 4-D input (B, V', J', d).  We treat
         # the flattened spatio-temporal token list as a single pseudo-view with
@@ -193,7 +193,7 @@ class TemporalViewJointGraphNetworkV35(nn.Module):
 
         # Re-apply mask after graph update.
         if view_mask is not None:
-            out = out * view_mask[..., None].float()
+            out = out * view_mask[..., None, None].float()
 
         gate = torch.sigmoid(self.residual_gate)
         return tokens + gate * out
