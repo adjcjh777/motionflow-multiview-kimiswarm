@@ -67,6 +67,9 @@ from motionflow_mv.fusion.view_joint_graph_network_v34 import (
 from motionflow_mv.fusion.geometry_view_joint_graph_network_v34 import (
     GeometryViewJointGraphNetworkV34,
 )
+from motionflow_mv.fusion.temporal_view_joint_graph_network_v35 import (
+    TemporalViewJointGraphNetworkV35,
+)
 from motionflow_mv.fusion.camera_view_embedding_v31 import CameraConditionedViewEmbeddingV31
 from motionflow_mv.losses.physical_collision_penalty_v31 import PhysicalCollisionPenaltyV31
 from motionflow_mv.fusion.prototypes.cross_view_graph_attention import (
@@ -231,6 +234,11 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
         v34_gvjgn_n_layers: int = 2,
         v34_gvjgn_n_heads: int = 4,
         v34_gvjgn_dropout: float = 0.0,
+        # v35 temporal view-joint graph network
+        use_temporal_view_joint_graph_network_v35: bool = False,
+        v35_tvjgn_n_layers: int = 2,
+        v35_tvjgn_n_heads: int = 4,
+        v35_tvjgn_dropout: float = 0.0,
         # v32 temporal trajectory consistency
         use_trajectory_consistency_v32: bool = False,
         v32_smooth_weight: float = 1e-3,
@@ -670,6 +678,19 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
         else:
             self.geometry_view_joint_graph_network_v34 = None
 
+        # Optional v35 temporal view-joint graph network.
+        self.use_temporal_view_joint_graph_network_v35 = use_temporal_view_joint_graph_network_v35
+        if self.use_temporal_view_joint_graph_network_v35:
+            self.temporal_view_joint_graph_network_v35 = TemporalViewJointGraphNetworkV35(
+                d=self.d,
+                n_views=n_views,
+                n_layers=v35_tvjgn_n_layers,
+                n_heads=v35_tvjgn_n_heads,
+                dropout=v35_tvjgn_dropout,
+            )
+        else:
+            self.temporal_view_joint_graph_network_v35 = None
+
         # Optional v29 test-time self-evolution (with physical-space alignment).
         self.use_test_time_self_evolution_v29 = use_test_time_self_evolution_v29
         if self.use_test_time_self_evolution_v29:
@@ -1032,6 +1053,16 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
                 K=K_corrected.view(B, T, V, 3, 3),
                 R=R.view(B, T, V, 3, 3),
                 t=t.view(B, T, V, 3),
+            )
+
+        # Optional v35 temporal view-joint graph network (identity at init).
+        if (
+            self.use_temporal_view_joint_graph_network_v35
+            and self.temporal_view_joint_graph_network_v35 is not None
+        ):
+            feat = feat + self.temporal_view_joint_graph_network_v35(
+                feat,
+                view_mask=view_mask_flat.view(B, T, V),
             )
 
         # Optional v33 ray-conditioned cross-view attention (identity at init).
