@@ -51,6 +51,7 @@ from motionflow_mv.fusion.self_evolving_hierarchical_multiview_v29 import (
 )
 from motionflow_mv.fusion.hierarchical_multiview_v30 import HierarchicalViewEncoderV30
 from motionflow_mv.fusion.hierarchical_multiview_v31 import HierarchicalViewEncoderV31
+from motionflow_mv.fusion.camera_view_embedding_v31 import CameraConditionedViewEmbeddingV31
 from motionflow_mv.fusion.prototypes.cross_view_graph_attention import (
     H36M_17_PARENTS,
     MPI_INF_3DHP_28_PARENTS,
@@ -131,6 +132,7 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
         rotation_max_rot_deg: float = 2.0,
         entropy_weight: float = 0.01,
         use_camera_view_embedding: bool = False,
+        use_camera_view_embedding_v31: bool = False,
         use_set_view_aggregator: bool = False,
         use_perceiver_aggregator: bool = False,
         use_cross_view_transformer_v17: bool = False,
@@ -263,6 +265,7 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
             )
 
         self.use_camera_view_embedding = use_camera_view_embedding
+        self.use_camera_view_embedding_v31 = use_camera_view_embedding_v31
         self.use_set_view_aggregator = use_set_view_aggregator
         self.use_perceiver_aggregator = use_perceiver_aggregator
         self.camera_view_embedding_hidden = camera_view_embedding_hidden
@@ -282,7 +285,12 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
         if self.use_domain_embedding:
             self.domain_embedding = nn.Embedding(num_domains, d)
 
-        if self.use_camera_view_embedding:
+        if self.use_camera_view_embedding_v31:
+            self.camera_view_embedding = CameraConditionedViewEmbeddingV31(
+                d=d,
+                camera_hidden=camera_view_embedding_hidden,
+            )
+        elif self.use_camera_view_embedding:
             self.camera_view_embedding = CameraConditionedViewEmbedding(
                 d=d,
                 camera_hidden=camera_view_embedding_hidden,

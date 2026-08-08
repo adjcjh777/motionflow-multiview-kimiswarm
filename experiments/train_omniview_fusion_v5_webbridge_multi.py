@@ -94,6 +94,7 @@ def build_model_from_args(
         "use_entropy_regularization": args.use_entropy_regularization,
         # v5 toggles
         "use_camera_view_embedding": args.use_camera_view_embedding,
+        "use_camera_view_embedding_v31": args.use_camera_view_embedding_v31,
         "use_set_view_aggregator": args.use_set_view_aggregator,
         "camera_view_embedding_hidden": args.camera_view_embedding_hidden,
         "set_view_n_isab_layers": args.set_view_n_isab_layers,
@@ -1352,6 +1353,7 @@ def parse_args() -> Namespace:
     parser.add_argument("--adaptive_view_k", type=int, default=None, help="Target k for adaptive view selection")
     # v5 toggles
     parser.add_argument("--use_camera_view_embedding", action="store_true", help="Use camera-conditioned view embedding instead of learned view_pos_embed")
+    parser.add_argument("--use_camera_view_embedding_v31", action="store_true", help="Use v31 geometry-aware pairwise camera view embedding")
     parser.add_argument("--use_set_view_aggregator", action="store_true", help="Use set-transformer (ISAB) view aggregator before the time+view transformer")
     parser.add_argument("--camera_view_embedding_hidden", type=int, default=32, help="Hidden dimension of camera-conditioned view embedding MLP")
     parser.add_argument("--set_view_n_isab_layers", type=int, default=2, help="Number of ISAB layers in set aggregator")
