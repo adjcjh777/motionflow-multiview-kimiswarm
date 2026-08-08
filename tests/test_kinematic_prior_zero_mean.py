@@ -5,6 +5,7 @@ regime the bone-length NLL is minimized for zero-length bones and grows
 monotonically as bones get longer.
 """
 
+import pytest
 import torch
 
 from motionflow_mv.fusion.kinematic_anthropometric_prior_v22 import (
@@ -12,10 +13,11 @@ from motionflow_mv.fusion.kinematic_anthropometric_prior_v22 import (
 )
 
 
-def test_zero_mean_prior_penalizes_nonzero_bone_lengths():
+@pytest.mark.parametrize("j", [17, 28])
+def test_zero_mean_prior_penalizes_nonzero_bone_lengths(j: int) -> None:
     """When bone_mu=0, zero-length bones yield the minimum possible NLL."""
     model = KinematicAnthropometricPrior(
-        j=17,
+        j=j,
         d=32,
         use_angle_limit=False,
     )
@@ -23,7 +25,7 @@ def test_zero_mean_prior_penalizes_nonzero_bone_lengths():
     model.bone_mu.data.zero_()
     model.bone_logvar.data.zero_()
 
-    n, j, d = 2, 17, 32
+    n, d = 2, 32
     feat = torch.zeros(n, j, d)
 
     # All joints at the origin -> every bone length is zero.
