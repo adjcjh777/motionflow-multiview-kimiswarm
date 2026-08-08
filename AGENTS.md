@@ -18,7 +18,7 @@ This file captures the current A800-D workflow, tmux conventions, and issue labe
 
 | Run | Description | Status |
 |-----|-------------|--------|
-| v25 small local | v18 + geometry fusion + v25_dropout=0.2 | Running (PID 29432); wait wrapper PID 17202 ready to auto-start variant queue |
+| v25 small local | v18 + geometry fusion + v25_dropout=0.2 + train_samples=500 | Running (Python PID 30576); wait wrapper PID 17373 ready to auto-start variant queue |
 | v18 top-k ST | v18 deformable attention with straight-through top-k | Merged to main |
 | v19 temporal perceiver | Feature-aware temporal Perceiver | Merged to main |
 | v26 temporal gate | Warm-startable residual gate | Merged to main |
