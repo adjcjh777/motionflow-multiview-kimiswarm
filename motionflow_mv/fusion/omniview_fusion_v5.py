@@ -38,6 +38,7 @@ from motionflow_mv.fusion.kinematic_anthropometric_prior_v22 import (
 )
 from motionflow_mv.fusion.multiview_geometry_fusion_v25 import MultiViewGeometryFusionV25
 from motionflow_mv.fusion.temporal_geometry_fusion_v26 import TemporalGeometryFusionV26
+from motionflow_mv.fusion.test_time_self_evolution_v27 import TestTimeSelfEvolutionV27
 from motionflow_mv.fusion.neural_bundle_adjustment_v21 import NeuralBundleAdjustment
 from motionflow_mv.fusion.omniview_fusion_v4 import OmniMultiViewFusionV4
 from motionflow_mv.fusion.perceiver_view_aggregator import PerceiverViewAggregator
@@ -133,6 +134,10 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
         v25_geom_loss_weight: float = 0.1,
         use_temporal_geometry_fusion_v26: bool = False,
         v26_temporal_window: int = 3,
+        use_test_time_self_evolution_v27: bool = False,
+        v27_tte_n_iters: int = 3,
+        v27_tte_sigma_reproj: float = 5.0,
+        v27_tte_residual_thresh_mm: float = 0.5,
         kap_loss_weight: float = 0.01,
         kap_use_angle_limit: bool = True,
         kap_max_flexion_deg: float = 160.0,
@@ -362,6 +367,17 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
             )
         else:
             self.multiview_geometry_fusion_v25 = None
+
+        # Optional v27 test-time self-evolution (inference only).
+        self.use_test_time_self_evolution_v27 = use_test_time_self_evolution_v27
+        if self.use_test_time_self_evolution_v27:
+            self.test_time_self_evolution_v27 = TestTimeSelfEvolutionV27(
+                n_iters=v27_tte_n_iters,
+                sigma_reproj=v27_tte_sigma_reproj,
+                residual_thresh_mm=v27_tte_residual_thresh_mm,
+            )
+        else:
+            self.test_time_self_evolution_v27 = None
 
         # Make sure the ST transformer can accept an additive attention mask even
         # when epipolar bias is disabled.
@@ -800,6 +816,25 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
                 confidence=confidences.view(B, T, V, J),
             )
             pred_3d_gn = pred_3d_gn_v25.view(B * T, J, 3)
+
+        # Optional v27 test-time self-evolution.  Only active at eval to keep the
+        # training graph simple and avoid extra forward passes.
+        if (
+            not self.training
+            and self.use_test_time_self_evolution_v27
+            and self.test_time_self_evolution_v27 is not None
+        ):
+            with torch.no_grad():
+                pred_3d_gn_tte = self.test_time_self_evolution_v27(
+                    pred_3d_gn.view(B, T, J, 3),
+                    points_2d.view(B, T, V, J, 2),
+                    K_corrected.view(B, T, V, 3, 3),
+                    R.view(B, T, V, 3, 3),
+                    t.view(B, T, V, 3),
+                    view_mask=view_mask_flat.view(B, T, V),
+                    confidence=confidences.view(B, T, V, J),
+                )
+                pred_3d_gn = pred_3d_gn_tte.view(B * T, J, 3)
 
         # Residual refinement head (deterministic MLP or diffusion-based v20).
         if self.use_diffusion_refiner_v20 and self.diffusion_refiner_v20 is not None:
