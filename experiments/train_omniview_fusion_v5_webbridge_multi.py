@@ -155,6 +155,8 @@ def build_model_from_args(
         "v30_n_part_layers": getattr(args, "v30_n_part_layers", 1),
         "v30_dropout": getattr(args, "v30_dropout", 0.1),
         "v30_stochastic_depth_prob": getattr(args, "v30_stochastic_depth_prob", 0.0),
+        "use_hierarchical_multiview_v31": getattr(args, "use_hierarchical_multiview_v31", False),
+        "v31_geometry_bias": getattr(args, "v31_geometry_bias", True),
         "use_test_time_self_evolution_v29": getattr(args, "use_test_time_self_evolution_v29", False),
         "v29_tte_n_iters": getattr(args, "v29_tte_n_iters", 3),
         "v29_tte_sigma_reproj": getattr(args, "v29_tte_sigma_reproj", 5.0),
@@ -1404,6 +1406,8 @@ def parse_args() -> Namespace:
     parser.add_argument("--use_hierarchical_multiview_v30", action="store_true", default=False, help="Use v30 hardened hierarchical multi-scale view encoder")
     parser.add_argument("--v30_n_heads", type=int, default=4, help="Number of attention heads for v30 hierarchical encoder")
     parser.add_argument("--v30_n_part_layers", type=int, default=1, help="Number of part-scale attention layers for v30")
+    parser.add_argument("--use_hierarchical_multiview_v31", action="store_true", default=False, help="Use v31 geometry-biased hierarchical multi-scale view encoder")
+    parser.add_argument("--v31_geometry_bias", action="store_true", default=True, help="Enable geometry bias in v31 encoder")
     parser.add_argument("--v30_dropout", type=float, default=0.1, help="Dropout for v30 hierarchical encoder")
     parser.add_argument("--v30_stochastic_depth_prob", type=float, default=0.0, help="Stochastic depth probability for v30 hierarchical encoder")
     parser.add_argument("--use_test_time_self_evolution_v29", action="store_true", default=False, help="Use v29 test-time self-evolution with physical-space alignment at inference")

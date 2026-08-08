@@ -50,6 +50,7 @@ from motionflow_mv.fusion.self_evolving_hierarchical_multiview_v29 import (
     TestTimeSelfEvolutionV29,
 )
 from motionflow_mv.fusion.hierarchical_multiview_v30 import HierarchicalViewEncoderV30
+from motionflow_mv.fusion.hierarchical_multiview_v31 import HierarchicalViewEncoderV31
 from motionflow_mv.fusion.prototypes.cross_view_graph_attention import (
     H36M_17_PARENTS,
     MPI_INF_3DHP_28_PARENTS,
@@ -182,6 +183,8 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
         v30_n_part_layers: int = 1,
         v30_dropout: float = 0.1,
         v30_stochastic_depth_prob: float = 0.0,
+        use_hierarchical_multiview_v31: bool = False,
+        v31_geometry_bias: bool = True,
         kap_loss_weight: float = 0.01,
         kap_use_angle_limit: bool = True,
         kap_max_flexion_deg: float = 160.0,
@@ -440,10 +443,22 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
         else:
             self.test_time_self_evolution_v27 = None
 
-        # Optional v29/v30 hierarchical multi-view encoder.
+        # Optional v29/v30/v31 hierarchical multi-view encoder.
         self.use_hierarchical_multiview_v29 = use_hierarchical_multiview_v29
         self.use_hierarchical_multiview_v30 = use_hierarchical_multiview_v30
-        if self.use_hierarchical_multiview_v30:
+        self.use_hierarchical_multiview_v31 = use_hierarchical_multiview_v31
+        self.v31_geometry_bias = v31_geometry_bias
+        if self.use_hierarchical_multiview_v31:
+            self.hierarchical_multiview_v31 = HierarchicalViewEncoderV31(
+                d=self.d,
+                n_heads=v30_n_heads,
+                n_part_layers=v30_n_part_layers,
+                dropout=v30_dropout,
+                stochastic_depth_prob=v30_stochastic_depth_prob,
+            )
+            self.hierarchical_multiview_v29 = None
+            self.hierarchical_multiview_v30 = None
+        elif self.use_hierarchical_multiview_v30:
             self.hierarchical_multiview_v30 = HierarchicalViewEncoderV30(
                 d=self.d,
                 n_heads=v30_n_heads,
@@ -757,6 +772,15 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
             feat = feat + self.hierarchical_multiview_v29(feat, view_mask=view_mask_flat.view(B, T, V))
         if self.use_hierarchical_multiview_v30 and self.hierarchical_multiview_v30 is not None:
             feat = feat + self.hierarchical_multiview_v30(feat, view_mask=view_mask_flat.view(B, T, V))
+        if self.use_hierarchical_multiview_v31 and self.hierarchical_multiview_v31 is not None:
+            feat = feat + self.hierarchical_multiview_v31(
+                feat,
+                view_mask=view_mask_flat.view(B, T, V),
+                points_2d=points_2d.view(B, T, V, J, 2),
+                K=K_corrected.view(B, T, V, 3, 3),
+                R=R.view(B, T, V, 3, 3),
+                t=t.view(B, T, V, 3),
+            )
 
         # Optional domain embedding (useful when mixing H36M/MPI/WebBridge).
         if self.use_domain_embedding and domain_id is not None:
