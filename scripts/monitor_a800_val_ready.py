@@ -107,9 +107,12 @@ def parse_val_lines(text: str) -> List[Tuple[int, float]]:
     return out
 
 
-def discover_logs(repo_dir: str, ssh_host: str) -> List[str]:
-    """Return list of log file names on A800-D."""
-    out = a800_ssh(f"ls {repo_dir}/outputs/omniview_fusion_v*.log 2>/dev/null", ssh_host)
+def discover_logs(repo_dir: str, ssh_host: str, max_age_minutes: int = 360) -> List[str]:
+    """Return list of recently modified log file names on A800-D."""
+    out = a800_ssh(
+        f"find {repo_dir}/outputs -maxdepth 1 -name 'omniview_fusion_v*.log' -mmin -{max_age_minutes} 2>/dev/null",
+        ssh_host,
+    )
     return [Path(p).name for p in out.strip().split("\n") if p.strip()]
 
 
