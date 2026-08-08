@@ -282,6 +282,7 @@ class PhysicalSpaceTemporalLossV29(nn.Module):
         com_jitter_weight: float = 0.001,
         foot_joint_indices: Optional[List[int]] = None,
         parents: Optional[List[int]] = None,
+        warmup_epochs: int = 0,
     ):
         super().__init__()
         self.floor_loss_weight = floor_loss_weight
@@ -289,6 +290,11 @@ class PhysicalSpaceTemporalLossV29(nn.Module):
         self.com_jitter_weight = com_jitter_weight
         self.foot_joint_indices = foot_joint_indices
         self.parents = parents
+        self.warmup_epochs = max(0, warmup_epochs)
+        self.current_epoch = 0
+
+    def set_epoch(self, epoch: int) -> None:
+        self.current_epoch = epoch
 
     def forward(
         self,
@@ -329,11 +335,16 @@ class PhysicalSpaceTemporalLossV29(nn.Module):
             com_jitter = (com[:, 1:] - com[:, :-1]).pow(2).mean()
         terms["com_jitter"] = com_jitter
 
-        total = (
+        scale = 1.0
+        if self.warmup_epochs > 0:
+            scale = min(1.0, self.current_epoch / self.warmup_epochs)
+
+        total = scale * (
             self.floor_loss_weight * floor
             + self.bone_temporal_weight * bone_temp
             + self.com_jitter_weight * com_jitter
         )
+        terms["scale"] = torch.tensor(scale, device=X.device, dtype=X.dtype)
         return total, terms
 
     @staticmethod

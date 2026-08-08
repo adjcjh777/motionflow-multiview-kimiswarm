@@ -175,6 +175,7 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
         v29_floor_loss_weight: float = 0.01,
         v29_bone_temporal_weight: float = 0.01,
         v29_com_jitter_weight: float = 0.001,
+        v29_physical_loss_warmup_epochs: int = 0,
         # v30 toggles
         use_hierarchical_multiview_v30: bool = False,
         v30_n_heads: int = 4,
@@ -484,6 +485,7 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
         self.v29_floor_loss_weight = v29_floor_loss_weight
         self.v29_bone_temporal_weight = v29_bone_temporal_weight
         self.v29_com_jitter_weight = v29_com_jitter_weight
+        self.v29_physical_loss_warmup_epochs = v29_physical_loss_warmup_epochs
         if self.use_physical_space_temporal_loss_v29:
             parents = None
             if self.j == 17:
@@ -496,9 +498,22 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
                 com_jitter_weight=v29_com_jitter_weight,
                 foot_joint_indices=None,
                 parents=parents,
+                warmup_epochs=self.v29_physical_loss_warmup_epochs,
             )
         else:
             self.physical_space_temporal_loss_v29 = None
+
+        self.epoch = 0
+
+    def set_epoch(self, epoch: int) -> None:
+        """Notify the model of the current epoch for loss warmups / curricula."""
+        self.epoch = epoch
+        if (
+            self.use_physical_space_temporal_loss_v29
+            and self.physical_space_temporal_loss_v29 is not None
+            and hasattr(self.physical_space_temporal_loss_v29, "set_epoch")
+        ):
+            self.physical_space_temporal_loss_v29.set_epoch(epoch)
 
         # Make sure the ST transformer can accept an additive attention mask even
         # when epipolar bias is disabled.

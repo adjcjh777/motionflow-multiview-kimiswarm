@@ -445,6 +445,8 @@ class TrainerV2:
             self.epoch += 1
             if hasattr(self, "model"):
                 self.model.epoch = self.epoch
+                if hasattr(self.model, "set_epoch"):
+                    self.model.set_epoch(self.epoch)
             train_metrics = self.train_epoch(train_loader, log_interval=log_interval)
             entry = {"epoch": self.epoch, "train": train_metrics}
             if val_loader is not None:
