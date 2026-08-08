@@ -21,10 +21,11 @@ def parse_log(path: Path) -> List[Tuple[int, float]]:
 
 def main() -> None:
     outputs = Path("outputs")
-    # v30 baseline with val_stride=1.
+    # v30 baseline with val_stride=1; v31/v32 smokes.
     patterns = [
         "omniview_fusion_v30_smoke_local_4090_val1.log",
         "omniview_fusion_v31_*_smoke_local_4090.log",
+        "omniview_fusion_v32_*_smoke_local_4090.log",
     ]
     logs: Dict[str, Path] = {}
     for pat in patterns:
