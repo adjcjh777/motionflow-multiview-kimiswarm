@@ -116,6 +116,14 @@ RUNS = [
         "--use_view_joint_graph_network_v34 --v34_vjgn_n_layers 2 --v34_vjgn_n_heads 4",
         "omniview_fusion_v34_view_joint_graph_network_a800",
     ),
+    # v33 HMSP + v34 VJGN stack.
+    (
+        "v34_hmsp_vjgn_stack",
+        "--use_hierarchical_multiview_v31 --v31_geometry_bias "
+        "--use_hierarchical_multiscale_spatial_pyramid_v33 --v33_hmsp_scales 1 2 4 "
+        "--use_view_joint_graph_network_v34 --v34_vjgn_n_layers 2 --v34_vjgn_n_heads 4",
+        "omniview_fusion_v34_hmsp_vjgn_stack_a800",
+    ),
     # v33 combined + HMSP (maximal v33 stack).
     (
         "v33_combined_all_three_plus_hmsp",
