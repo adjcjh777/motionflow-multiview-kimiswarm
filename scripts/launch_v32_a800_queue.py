@@ -73,6 +73,11 @@ RUNS = [
         "--use_hierarchical_multiview_v31 --v31_geometry_bias --v31_use_ray_attention",
         "omniview_fusion_v32_ray_attention_a800",
     ),
+    (
+        "v32_physical_alignment",
+        "--use_physical_space_alignment_v32 --v28_floor_loss_weight 0.01 --v28_bone_temporal_weight 0.01",
+        "omniview_fusion_v32_physical_alignment_a800",
+    ),
 ]
 
 

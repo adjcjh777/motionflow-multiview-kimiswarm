@@ -7,6 +7,7 @@ RUNS=(
     scripts/run_v32_domain_aware_view_curriculum_smoke_local4090.sh
     scripts/run_v32_trajectory_consistency_smoke_local4090.sh
     scripts/run_v32_ray_attention_smoke_local4090.sh
+    scripts/run_v32_physical_alignment_smoke_local4090.sh
 )
 
 for run in "${RUNS[@]}"; do
