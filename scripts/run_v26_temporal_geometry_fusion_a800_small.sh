@@ -13,12 +13,8 @@ $PYTHON -u experiments/train_omniview_fusion_v5_webbridge_multi.py \
     --use_domain_embedding \
     --use_deformable_cross_view_attention_v18 \
     --use_temporal_geometry_fusion_v26 \
-    --v26_geom_loss_weight 0.1 \
-    --v26_use_geometry_attention \
-    --v26_use_temporal_geometry_attention \
-    --v26_use_learned_depth_triangulation \
     --v26_temporal_window 3 \
-    --v26_temporal_loss_weight 0.1 \
+    --v25_geom_loss_weight 0.1 \
     --num_workers 0 \
     --d 128 --residual_hidden 256 --n_st_layers 3 \
     --graph_num_layers 1 --n_joint_layers 1 --n_heads 4 \
