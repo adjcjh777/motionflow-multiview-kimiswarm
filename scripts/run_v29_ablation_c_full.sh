@@ -12,9 +12,9 @@ $PYTHON -u experiments/train_omniview_fusion_v5_webbridge_multi.py \
     --v25_use_geometry_attention --v25_use_learned_depth_triangulation --v25_use_geometry_bundle_adjustment \
     --use_hierarchical_multiview_v29 --use_test_time_self_evolution_v29 --use_physical_space_temporal_loss_v29 \
     --v29_floor_loss_weight 0.01 --v29_bone_temporal_weight 0.01 --v29_com_jitter_weight 0.001 \
-    --num_workers 0 --d 128 --residual_hidden 256 --n_st_layers 3 \
+    --num_workers 0 --d 64 --residual_hidden 128 --n_st_layers 2 \
     --graph_num_layers 1 --n_joint_layers 1 --n_heads 4 \
-    --epochs 20 --batch_size 16 --train_samples 500 --val_stride 10 \
+    --epochs 20 --batch_size 8 --train_samples 500 --val_stride 10 \
     --lr 1e-3 --lr_cosine --lr_warmup_epochs 3 --lr_min 1e-6 --max_grad_norm 1.0 --ema_decay 0.999 \
     --early_stopping_patience 3 --early_stopping_min_delta 0.001 \
     --use_multiscale_fusion true --use_camera_conditioning true --use_epipolar_bias true \
