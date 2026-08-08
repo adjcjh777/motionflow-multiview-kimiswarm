@@ -194,11 +194,12 @@ L = L_3D_MSE + λ_reproj·L_reproj + λ_epi·L_epi + λ_cheir·L_cheir + λ_dept
 | v23b | v18 + KAP 0.001, no neural BA | A800 GPU4 | **Failed** (58.72 mm) | §6.3 ablation |
 | v24b | v18 + fixed BA + KAP 0.001 | A800 GPU6 | **Failed** (131.73 mm) | §6.3 ablation |
 | v18 full | v18 cross-view residual + PP | A800 GPU5 | Running | §6.2 main results |
-| v25 small | v25 geometry fusion smoke | A800 GPU7 | Running (step ~1100) | §6.3 ablation |
-| v25 full | v25 geometry fusion full | A800 GPU4/GPU6 | Running (step ~650) | §6.2 main results |
-| v26 small | v26 temporal geometry fusion | — | Ready to launch | §6.3 ablation |
+| v25 small | v25 geometry fusion small (geom λ=0.1) | A800 GPU7 | Running (~1400 train steps, 1st epoch) | §6.2 main results |
+| v25 full | v25 geometry fusion full (geom λ=0.1) | A800 GPU4 | Running (~1400 train steps, 1st epoch) | §6.2 main results |
+| v25 ablation | v25 geometry fusion small (geom λ=1.0) | A800 GPU6 | Running (~150 train steps, 1st epoch) | §6.3 ablation |
+| v26 small | v26 temporal geometry fusion | — | **Blocked** (A800 repo lacks v26 code) | §6.3 ablation |
 
-**Next concrete step:** wait for v25 small first-epoch `val_MPJPE`. If it beats the v18 baseline (20.24 mm), keep v25 full running and launch v26 small for comparison; otherwise, stop v25 full and debug the geometry-fusion design.
+**Next concrete step:** wait for v25 small/ablation first-epoch `val_MPJPE`. If v25 small beats the v18 baseline (20.24 mm), keep v25 full/ablation running, pull latest `main` on A800, and launch v26 small for comparison; otherwise, stop v25 full/ablation and debug the geometry-fusion design.
 
 ---
 
