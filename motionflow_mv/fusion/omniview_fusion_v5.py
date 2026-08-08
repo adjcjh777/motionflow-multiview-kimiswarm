@@ -18,7 +18,7 @@ masked out in confidences, weights, and triangulation.
 
 from __future__ import annotations
 
-from typing import List, Optional, Tuple
+from typing import List, Optional, Sequence, Tuple
 
 import numpy as np
 import torch
@@ -58,6 +58,9 @@ from motionflow_mv.fusion.self_evolving_hierarchical_multiview_v29 import (
 )
 from motionflow_mv.fusion.hierarchical_multiview_v30 import HierarchicalViewEncoderV30
 from motionflow_mv.fusion.hierarchical_multiview_v31 import HierarchicalViewEncoderV31
+from motionflow_mv.fusion.hierarchical_multiscale_spatial_pyramid_v33 import (
+    HierarchicalMultiscaleCrossViewSpatialPyramidV33,
+)
 from motionflow_mv.fusion.camera_view_embedding_v31 import CameraConditionedViewEmbeddingV31
 from motionflow_mv.losses.physical_collision_penalty_v31 import PhysicalCollisionPenaltyV31
 from motionflow_mv.fusion.prototypes.cross_view_graph_attention import (
@@ -203,6 +206,15 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
         use_hierarchical_multiview_v31: bool = False,
         v31_geometry_bias: bool = True,
         v31_use_ray_attention: bool = False,
+        # v33 hierarchical multi-scale spatial pyramid
+        use_hierarchical_multiscale_spatial_pyramid_v33: bool = False,
+        v33_hmsp_scales: Sequence[int] = (1, 2, 4),
+        v33_hmsp_n_heads: int = 4,
+        v33_hmsp_n_part_layers: int = 1,
+        v33_hmsp_dropout: float = 0.1,
+        v33_hmsp_stochastic_depth_prob: float = 0.0,
+        v33_hmsp_use_geometry_bias: bool = True,
+        v33_hmsp_use_adaptive_scale_fusion: bool = True,
         # v32 temporal trajectory consistency
         use_trajectory_consistency_v32: bool = False,
         v32_smooth_weight: float = 1e-3,
@@ -595,6 +607,27 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
             self.hierarchical_multiview_v29 = None
             self.hierarchical_multiview_v30 = None
 
+        # Optional v33 hierarchical multi-scale spatial pyramid.
+        self.use_hierarchical_multiscale_spatial_pyramid_v33 = (
+            use_hierarchical_multiscale_spatial_pyramid_v33
+        )
+        if self.use_hierarchical_multiscale_spatial_pyramid_v33:
+            self.hierarchical_multiscale_spatial_pyramid_v33 = (
+                HierarchicalMultiscaleCrossViewSpatialPyramidV33(
+                    d=self.d,
+                    n_heads=v33_hmsp_n_heads,
+                    n_views=n_views,
+                    scales=v33_hmsp_scales,
+                    n_part_layers=v33_hmsp_n_part_layers,
+                    dropout=v33_hmsp_dropout,
+                    stochastic_depth_prob=v33_hmsp_stochastic_depth_prob,
+                    use_geometry_bias=v33_hmsp_use_geometry_bias,
+                    use_adaptive_scale_fusion=v33_hmsp_use_adaptive_scale_fusion,
+                )
+            )
+        else:
+            self.hierarchical_multiscale_spatial_pyramid_v33 = None
+
         # Optional v29 test-time self-evolution (with physical-space alignment).
         self.use_test_time_self_evolution_v29 = use_test_time_self_evolution_v29
         if self.use_test_time_self_evolution_v29:
@@ -913,6 +946,20 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
             feat = feat + self.hierarchical_multiview_v30(feat, view_mask=view_mask_flat.view(B, T, V))
         if self.use_hierarchical_multiview_v31 and self.hierarchical_multiview_v31 is not None:
             feat = feat + self.hierarchical_multiview_v31(
+                feat,
+                view_mask=view_mask_flat.view(B, T, V),
+                points_2d=points_2d.view(B, T, V, J, 2),
+                K=K_corrected.view(B, T, V, 3, 3),
+                R=R.view(B, T, V, 3, 3),
+                t=t.view(B, T, V, 3),
+            )
+
+        # Optional v33 hierarchical multi-scale spatial pyramid (identity at init).
+        if (
+            self.use_hierarchical_multiscale_spatial_pyramid_v33
+            and self.hierarchical_multiscale_spatial_pyramid_v33 is not None
+        ):
+            feat = feat + self.hierarchical_multiscale_spatial_pyramid_v33(
                 feat,
                 view_mask=view_mask_flat.view(B, T, V),
                 points_2d=points_2d.view(B, T, V, J, 2),
