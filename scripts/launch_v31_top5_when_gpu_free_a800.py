@@ -97,9 +97,13 @@ def main() -> None:
         a800_ssh(f"cd {A800_REPO} && timeout 15 git pull origin main || true")
     except subprocess.CalledProcessError as e:
         print(f"Warning: git pull on A800 failed: {e}")
+    used_gpus: set[int] = set()
     while queue:
         pairs = gpu_free_mibs()
-        candidates = [(g, f) for g, f in pairs if f >= MIN_FREE_MIB]
+        candidates = [
+            (g, f) for g, f in pairs
+            if f >= MIN_FREE_MIB and g not in used_gpus
+        ]
         if not candidates:
             print(f"No GPU with >= {MIN_FREE_MIB} MiB free; sleeping {POLL_INTERVAL}s")
             time.sleep(POLL_INTERVAL)
@@ -107,6 +111,7 @@ def main() -> None:
         # Pick the GPU with the most free memory to reduce collisions, then
         # sleep so nvidia-smi can reflect the allocation before the next poll.
         gpu, _ = max(candidates, key=lambda x: x[1])
+        used_gpus.add(gpu)
         name, extra_flags, output = queue.pop(0)
         launch_run(name, extra_flags, output, gpu)
         time.sleep(60)
