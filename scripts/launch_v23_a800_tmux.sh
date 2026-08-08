@@ -3,7 +3,7 @@
 set -euo pipefail
 
 cd /mnt/nvme0n1/zhangzy/motionflow-multiview-kimiswarm-iter20
-VENV=/mnt/nvme0n1p1/zhangzy/motionflow-multiview-kimiswarm/.venv/bin/python
+VENV="/mnt/nvme0n1p1/zhangzy/motionflow-multiview-kimiswarm/.venv/bin/python -u"
 
 run() {
     gpu=$1
