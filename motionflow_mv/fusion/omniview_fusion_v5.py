@@ -163,6 +163,7 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
         use_test_time_self_evolution_v27: bool = False,
         v27_tte_n_iters: int = 3,
         use_physical_space_alignment_v28: bool = False,
+        use_physical_space_alignment_v32: bool = False,
         v28_floor_loss_weight: float = 0.0,
         v28_bone_temporal_weight: float = 0.0,
         v27_tte_sigma_reproj: float = 5.0,
@@ -460,11 +461,14 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
 
         # Optional v27 test-time self-evolution (inference only).
         self.use_test_time_self_evolution_v27 = use_test_time_self_evolution_v27
-        self.use_physical_space_alignment_v28 = use_physical_space_alignment_v28
+        self.use_physical_space_alignment_v28 = use_physical_space_alignment_v28 or use_physical_space_alignment_v32
+        self.use_physical_space_alignment_v32 = use_physical_space_alignment_v32
         self.v28_floor_loss_weight = v28_floor_loss_weight
         self.v28_bone_temporal_weight = v28_bone_temporal_weight
         if self.use_physical_space_alignment_v28:
-            self.physical_space_alignment_v28 = PhysicalSpaceAlignmentV28(j=self.j)
+            self.physical_space_alignment_v28 = PhysicalSpaceAlignmentV28(
+                j=self.j, use_v32=use_physical_space_alignment_v32
+            )
         else:
             self.physical_space_alignment_v28 = None
         if self.use_test_time_self_evolution_v27:

@@ -141,6 +141,7 @@ def build_model_from_args(
         "v27_uncertainty_loss_weight": getattr(args, "v27_uncertainty_loss_weight", 0.01),
         "v27_udp_n_mixtures": getattr(args, "v27_udp_n_mixtures", 1),
         "use_physical_space_alignment_v28": getattr(args, "use_physical_space_alignment_v28", False),
+        "use_physical_space_alignment_v32": getattr(args, "use_physical_space_alignment_v32", False),
         "v28_floor_loss_weight": getattr(args, "v28_floor_loss_weight", 0.0),
         "v28_bone_temporal_weight": getattr(args, "v28_bone_temporal_weight", 0.0),
         "use_test_time_self_evolution_v27": getattr(args, "use_test_time_self_evolution_v27", False),
@@ -1414,6 +1415,7 @@ def parse_args() -> Namespace:
     parser.add_argument("--v27_udp_n_mixtures", type=int, default=1, help="Number of Gaussian mixture components for v27 depth proposals (default 1=single Gaussian)")
     parser.add_argument("--use_test_time_self_evolution_v27", action="store_true", default=False, help="Use v27 test-time self-evolution at inference")
     parser.add_argument("--use_physical_space_alignment_v28", action="store_true", default=False, help="Use v28 physical-space alignment refiner")
+    parser.add_argument("--use_physical_space_alignment_v32", action="store_true", default=False, help="Use v32 root-centered per-joint bounded physical-space alignment")
     parser.add_argument("--v28_floor_loss_weight", type=float, default=0.0, help="Weight for v28 floor consistency loss")
     parser.add_argument("--v28_bone_temporal_weight", type=float, default=0.0, help="Weight for v28 bone-length temporal consistency loss")
     parser.add_argument("--v27_tte_n_iters", type=int, default=3, help="Number of iterations for v27 test-time self-evolution")

@@ -1,14 +1,16 @@
-"""v28: Physical-space alignment for multi-view 3D human pose."""
+"""v28/v32: Physical-space alignment for multi-view 3D human pose."""
 from __future__ import annotations
 from typing import Optional
 import torch
 import torch.nn as nn
 
 class PhysicalSpaceAlignmentV28(nn.Module):
-    def __init__(self, j, hidden=64, max_residual=0.05, dropout=0.1):
+    def __init__(self, j, hidden=64, max_residual=0.05, dropout=0.1, use_v32=False,
+                 v32_per_joint_bound_init=0.02, v32_confidence_gate_init=-6.0):
         super().__init__()
         self.j = j
         self.max_residual = max_residual
+        self.use_v32 = use_v32
         self.gravity_dir = nn.Parameter(torch.tensor([0.0, 1.0, 0.0]), requires_grad=False)
         self.refiner = nn.Sequential(
             nn.Linear(6, hidden), nn.LayerNorm(hidden), nn.ReLU(), nn.Dropout(dropout),
@@ -19,6 +21,11 @@ class PhysicalSpaceAlignmentV28(nn.Module):
             nn.init.zeros_(p)
         self.residual_logit = nn.Parameter(torch.tensor(-6.0))
 
+        if self.use_v32:
+            # v32: per-joint soft bound, root-centered, confidence-gated residual.
+            self.per_joint_bounds = nn.Parameter(torch.full((j,), v32_per_joint_bound_init))
+            self.confidence_gate_logit = nn.Parameter(torch.full((j, 1), v32_confidence_gate_init))
+
     @property
     def residual_scale(self):
         return torch.sigmoid(self.residual_logit)
@@ -28,6 +35,23 @@ class PhysicalSpaceAlignmentV28(nn.Module):
             gravity_dir = self.gravity_dir
         B, T, J, _ = X.shape
         g = gravity_dir.to(X.device, X.dtype).view(1, 1, 1, 3).expand(B, T, J, -1)
+
+        if self.use_v32:
+            # Root-center to prevent global translation drift.
+            root = X[:, :, 0:1, :]
+            Xc = X - root
+            feat = torch.cat([Xc, g], dim=-1)
+            raw = self.refiner(feat)
+            bounds = self.per_joint_bounds.view(1, 1, J, 1).clamp(min=1e-6)
+            residual = bounds * torch.tanh(raw)
+            gate = torch.sigmoid(self.confidence_gate_logit).view(1, 1, J, 1)
+            out = X + gate * residual
+            applied = gate * residual
+            reg = applied.pow(2).mean()
+            if not return_reg_loss:
+                return out
+            return out, reg
+
         feat = torch.cat([X, g], dim=-1)
         raw = self.refiner(feat)
         residual = self.max_residual * raw
