@@ -119,6 +119,11 @@ class _CameraCorrectionHead(nn.Module):
             nn.ReLU(),
             nn.Linear(hidden, 9),
         )
+        # Initialise the final layer to zero so the layer starts as identity/no-op.
+        # This prevents the neural camera-correction head from perturbing cameras
+        # before it has learned to improve them.
+        for param in self.mlp[-1].parameters():
+            nn.init.zeros_(param)
 
     def forward(
         self,
