@@ -882,6 +882,9 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
                 )
                 pred_3d_gn = pred_3d_gn_tte.view(B * T, J, 3)
 
+        # Accumulate v20 diffusion loss separately; epi_loss is defined below.
+        diff_loss_v20 = torch.tensor(0.0, device=device, dtype=pred_3d_gn.dtype)
+
         # Residual refinement head (deterministic MLP or diffusion-based v20).
         if self.use_diffusion_refiner_v20 and self.diffusion_refiner_v20 is not None:
             if self.training and target_3d is not None:
@@ -891,7 +894,7 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
                 pred_3d, diff_loss = self.diffusion_refiner_v20(
                     pred_3d_gn, feat=feat_pooled, train_targets=target_3d_flat
                 )
-                epi_loss = epi_loss + diff_loss
+                diff_loss_v20 = diff_loss
             else:
                 pred_3d = self.diffusion_refiner_v20(pred_3d_gn, feat=feat_pooled)
         else:
@@ -905,7 +908,7 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
 
         # Epipolar consistency loss.
         epi_loss = self._epipolar_consistency_loss(points_2d, K_corrected, R, t, L)
-        epi_loss = self.epipolar_loss_weight * epi_loss + self.v25_geom_loss_weight * geom_loss_v25
+        epi_loss = self.epipolar_loss_weight * epi_loss + self.v25_geom_loss_weight * geom_loss_v25 + diff_loss_v20
 
         # Optional entropy regularisation on triangulation weights.
         if (
