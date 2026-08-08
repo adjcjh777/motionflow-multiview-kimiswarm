@@ -12,6 +12,7 @@ venv/
 .DS_Store
 .monitor_a800_state.json
 .monitor_a800_v25_state.json
+.monitor_a800_v26_state.json
 tmp/
 outputs/
 .worktrees/
