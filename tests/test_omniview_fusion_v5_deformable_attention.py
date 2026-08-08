@@ -57,6 +57,34 @@ def test_deformable_attention_v18_runs():
     assert not pred_3d.isnan().any()
 
 
+def test_deformable_attention_v18_topk_straight_through():
+    """v18 with straight-through top-k sampling should produce valid 3D pose."""
+    K, R, t = _make_cameras(4)
+    model = OmniMultiViewFusionV5(
+        j=17,
+        d=32,
+        n_views=4,
+        n_heads=4,
+        n_st_layers=1,
+        graph_num_layers=1,
+        use_full_precision_dlt=True,
+        use_camera_view_embedding=True,
+        use_deformable_cross_view_attention_v18=True,
+        deformable_attention_use_topk_st=True,
+    )
+    model.eval()
+
+    B, T, V, J = 2, 3, 4, 17
+    x = torch.rand(B, T, V, J, 3)
+    x[..., 2] = 1.0
+
+    with torch.no_grad():
+        out = model(x, K=K, R=R, t=t)
+    pred_3d = out[0]
+    assert pred_3d.shape == (B, T, J, 3)
+    assert not pred_3d.isnan().any()
+
+
 def test_deformable_attention_v18_variable_views():
     """v18 should respect variable-view masks."""
     K, R, t = _make_cameras(4)

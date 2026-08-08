@@ -37,6 +37,11 @@ class DeformableCrossViewAttention(nn.Module):
         Temperature for converting epipolar distances to additive logits.
     dropout:
         Dropout probability on the output projection.
+    use_topk_straight_through:
+        If ``True``, use a hard top-k mask in the forward pass and back-propagate
+        through the re-normalised soft weights (straight-through estimator).  If
+        ``False`` (default), keep the fully differentiable soft attention used by
+        v25/v26 production runs.
     """
 
     def __init__(
@@ -47,6 +52,7 @@ class DeformableCrossViewAttention(nn.Module):
         n_samples: int = 2,
         epipolar_temperature: float = 10.0,
         dropout: float = 0.0,
+        use_topk_straight_through: bool = False,
     ):
         super().__init__()
         if d % n_heads != 0:
@@ -57,6 +63,7 @@ class DeformableCrossViewAttention(nn.Module):
         self.n_views = n_views
         self.n_samples = n_samples
         self.epipolar_temperature = epipolar_temperature
+        self.use_topk_straight_through = use_topk_straight_through
         self.head_dim = d // n_heads
 
         self.qkv = nn.Linear(d, 3 * d)
@@ -172,8 +179,29 @@ class DeformableCrossViewAttention(nn.Module):
         # Soft attention weights over all key views (fully differentiable).
         weights = F.softmax(logits / F.softplus(self.tau).clamp_min(1e-3), dim=3)
 
+        # Optional sparse top-k sampling with a straight-through estimator.
+        # Forward uses a hard, re-normalised top-k mask; backward flows through
+        # the re-normalised soft weights inside the selected subset.
+        if self.use_topk_straight_through and V > 1:
+            k = min(self.n_samples, V)
+            if k < V:
+                topk_idx = torch.topk(weights, k, dim=3).indices  # (N, H, V_q, k, J)
+                hard_mask = torch.zeros_like(weights).scatter_(3, topk_idx, 1.0)
+                # Forward: uniform average over selected key views.
+                hard_weights = hard_mask / hard_mask.sum(dim=3, keepdim=True).clamp_min(1e-8)
+                # Backward path: re-normalised soft weights inside the top-k set.
+                masked_soft = weights * hard_mask
+                denom = masked_soft.sum(dim=3, keepdim=True).clamp_min(1e-8)
+                masked_soft = masked_soft / denom
+                # Straight-through: forward uses hard_weights, backward uses masked_soft.
+                sparse_weights = hard_weights + (masked_soft - masked_soft.detach())
+            else:
+                sparse_weights = weights
+        else:
+            sparse_weights = weights
+
         # Aggregate values: output shape (N, V_q, J, H, Dh).
-        out = torch.einsum("nhvkj,nvjhd->nvjhd", weights, v)
+        out = torch.einsum("nhvkj,nvjhd->nvjhd", sparse_weights, v)
 
         # Restore view dimension ordering and apply output projection.
         out = out.reshape(N, V, J, d)
@@ -204,10 +232,13 @@ if __name__ == "__main__":
     t = torch.zeros(N, V, 3)
     points_2d = torch.randn(N, V, J, 2) * 100.0
 
-    module = DeformableCrossViewAttention(d=d, n_heads=4, n_views=V, n_samples=2)
-    out = module(x, K, R, t, points_2d)
-    assert out.shape == x.shape
-    loss = out.sum()
-    loss.backward()
-    assert any(p.grad is not None for p in module.parameters())
+    for use_topk in (False, True):
+        module = DeformableCrossViewAttention(
+            d=d, n_heads=4, n_views=V, n_samples=2, use_topk_straight_through=use_topk
+        )
+        out = module(x, K, R, t, points_2d)
+        assert out.shape == x.shape
+        loss = out.sum()
+        loss.backward()
+        assert any(p.grad is not None for p in module.parameters())
     print("DeformableCrossViewAttention CPU smoke test passed")

@@ -128,6 +128,7 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
         use_perceiver_aggregator: bool = False,
         use_cross_view_transformer_v17: bool = False,
         use_deformable_cross_view_attention_v18: bool = False,
+        deformable_attention_use_topk_st: bool = False,
         use_temporal_perceiver_v19: bool = False,
         use_diffusion_refiner_v20: bool = False,
         use_neural_bundle_adjustment_v21: bool = False,
@@ -292,6 +293,7 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
             self.cross_view_transformer_v17 = None
 
         self.use_deformable_cross_view_attention_v18 = use_deformable_cross_view_attention_v18
+        self.deformable_attention_use_topk_st = deformable_attention_use_topk_st
         if self.use_deformable_cross_view_attention_v18:
             self.deformable_cross_view_attention_v18 = DeformableCrossViewAttention(
                 d=d,
@@ -300,6 +302,7 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
                 n_samples=max(2, n_views // 2),
                 epipolar_temperature=10.0,
                 dropout=0.1,
+                use_topk_straight_through=deformable_attention_use_topk_st,
             )
         else:
             self.deformable_cross_view_attention_v18 = None

@@ -108,6 +108,7 @@ def build_model_from_args(
         # v17/v18 toggles
         "use_cross_view_transformer_v17": getattr(args, "use_cross_view_transformer_v17", False),
         "use_deformable_cross_view_attention_v18": getattr(args, "use_deformable_cross_view_attention_v18", False),
+        "deformable_attention_use_topk_st": getattr(args, "deformable_attention_use_topk_st", False),
         # v19 toggles
         "use_temporal_perceiver_v19": getattr(args, "use_temporal_perceiver_v19", False),
         # v20 toggles
@@ -1340,6 +1341,7 @@ def parse_args() -> Namespace:
     parser.add_argument("--perceiver_dropout", type=float, default=0.0, help="Dropout in Perceiver aggregator")
     parser.add_argument("--use_cross_view_transformer_v17", action="store_true", help="Use v17 geometric cross-view transformer for view aggregation")
     parser.add_argument("--use_deformable_cross_view_attention_v18", action="store_true", help="Use v18 sparse epipolar-aware cross-view attention")
+    parser.add_argument("--deformable_attention_use_topk_st", action="store_true", help="Use straight-through top-k sampling in v18 deformable attention (default: soft attention)")
     parser.add_argument("--use_temporal_perceiver_v19", action="store_true", help="Use v19 temporal Perceiver refiner on final 3D poses sequence")
     parser.add_argument("--use_diffusion_refiner_v20", action="store_true", help="Use v20 diffusion-based residual refiner instead of deterministic MLP")
     parser.add_argument("--num_diffusion_steps", type=int, default=10, help="Number of diffusion timesteps for v20 refiner")
