@@ -1450,6 +1450,7 @@ def parse_args() -> Namespace:
     # Early stopping
     parser.add_argument("--early_stopping_patience", type=int, default=0, help="Stop training if val_loss does not improve for N epochs (0 disables)")
     parser.add_argument("--early_stopping_min_delta", type=float, default=0.0, help="Minimum val_loss improvement to reset early stopping counter")
+    parser.add_argument("--weight_decay", type=float, default=0.0, help="L2 weight decay for Adam optimizer (0 disables)")
     # I/O
     parser.add_argument("--output", type=str, default="outputs/omniview_fusion_v5_webbridge_multi.pth", help="Checkpoint path")
     args = parser.parse_args()
@@ -1523,7 +1524,7 @@ def main():
     # ------------------------------------------------------------------
     # Optimizer / scheduler / trainer
     # ------------------------------------------------------------------
-    optimizer = optim.Adam(model.parameters(), lr=args.lr)
+    optimizer = optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
 
     total_epochs = args.epochs
     warmup_epochs = args.lr_warmup_epochs if args.lr_cosine else 0
