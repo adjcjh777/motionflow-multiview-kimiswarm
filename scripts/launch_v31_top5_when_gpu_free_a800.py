@@ -82,10 +82,10 @@ def used_gpus_from_tmux() -> set[int]:
     except subprocess.CalledProcessError:
         return gpus
     for line in out.splitlines():
-        # Session names look like v31_top5_<name>_gpu4
-        match = re.search(r"v31_top5_[^_]+_gpu(\d+)", line)
+        # Session names look like v31_top5_<name>_gpu4 where <name> may contain underscores.
+        match = re.search(r"v31_top5_(.+)_gpu(\d+):", line)
         if match:
-            gpus.add(int(match.group(1)))
+            gpus.add(int(match.group(2)))
     return gpus
 
 
@@ -97,7 +97,8 @@ def running_run_names() -> set[str]:
     except subprocess.CalledProcessError:
         return names
     for line in out.splitlines():
-        match = re.search(r"v31_top5_([^\s]+):", line)
+        # Session names look like v31_top5_<name>_gpu4; capture the run key before _gpu.
+        match = re.search(r"v31_top5_(.+)_gpu\d+:", line)
         if match:
             names.add(match.group(1))
     return names
