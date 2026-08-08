@@ -13,16 +13,33 @@ import sys
 import time
 from pathlib import Path
 
+import psutil
+
 
 LOG_DIR = Path("outputs")
 MIN_FREE_MIB = 10000  # Require at least 10 GiB free before launching a run
 POLL_INTERVAL = 300  # seconds
 
 
+def _nvidia_smi_path() -> str:
+    path = shutil.which("nvidia-smi")
+    if path:
+        return path
+    # Common Windows location.
+    candidates = [
+        r"C:\Windows\System32\nvidia-smi.exe",
+        r"C:\Windows\SysWOW64\nvidia-smi.exe",
+    ]
+    for c in candidates:
+        if Path(c).exists():
+            return c
+    return "nvidia-smi"
+
+
 def gpu_free_mib() -> int:
     try:
         out = subprocess.check_output(
-            ["nvidia-smi", "--query-gpu=memory.free", "--format=csv,noheader,nounits"],
+            [_nvidia_smi_path(), "--query-gpu=memory.free", "--format=csv,noheader,nounits"],
             text=True,
             stderr=subprocess.STDOUT,
         )
@@ -32,16 +49,16 @@ def gpu_free_mib() -> int:
 
 
 def is_running(name: str) -> bool:
-    """Check if a run with the same output log already has a live python process."""
-    try:
-        out = subprocess.check_output(
-            ["pgrep", "-f", f"output outputs/{name}.pth"],
-            text=True,
-            stderr=subprocess.STDOUT,
-        )
-        return bool(out.strip())
-    except subprocess.CalledProcessError:
-        return False
+    """Check if a run with the same output path already has a live python process."""
+    marker = f"--output outputs/{name}.pth"
+    for proc in psutil.process_iter(["cmdline"]):
+        try:
+            cmdline = proc.info.get("cmdline") or []
+            if any(marker in arg for arg in cmdline):
+                return True
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            continue
+    return False
 
 
 def launch(name: str, flags: str) -> None:
