@@ -160,6 +160,13 @@ class TestTimeSelfEvolutionV27(nn.Module):
             # Ensure confidence is zero for masked-out views.
             confidence = confidence * mask[:, :, :, None].float()
 
+        # Track the best estimate by reprojection error.  The iterative
+        # re-weighting can diverge if the camera convention or input frame is
+        # inconsistent with the initial prediction, so fall back to the input
+        # whenever the refined estimate is worse.
+        best_pred = pred_3d
+        best_residual_mean = compute_reprojection_residual(pred_3d, points_2d, K, R, t).mean()
+
         for _ in range(self.n_iters):
             residual = compute_reprojection_residual(pred_current, points_2d, K, R, t)
             # Cauchy re-weighting: down-weight views with large residuals.
@@ -171,15 +178,26 @@ class TestTimeSelfEvolutionV27(nn.Module):
             # least-squares batch that can hang torch.linalg.lstsq on CUDA.
             # Replace those rows with a uniform fallback so the solve is
             # well-defined, then keep the original estimate for those joints.
-            valid = w.sum(dim=2, keepdim=True).clamp(min=1e-6) > 0  # (B, T, 1, J)
-            w_safe = w.masked_fill(~valid.expand_as(w), 1.0)
+            weight_sum = w.sum(dim=2, keepdim=True)  # (B, T, 1, J)
+            valid = weight_sum > 0  # (B, T, 1, J)
+            # Avoid division-by-zero / rank-deficient systems: give a tiny uniform
+            # weight to masked-out joints so the least-squares solve is stable.
+            w_safe = w + (1.0 / V) * (~valid).float()
 
             pred_next = triangulate_dlt_per_joint(points_2d, P, w_safe)
             pred_next = torch.where(valid.transpose(-1, -2).expand_as(pred_next), pred_next, pred_current)
 
             change_mm = (pred_next - pred_current).norm(dim=-1).mean() * 1000.0
             pred_current = pred_next
+
+            # Safety check: keep the estimate with the lowest mean reprojection
+            # residual so far.  This bounds the damage from a mismatched frame.
+            current_residual_mean = compute_reprojection_residual(pred_current, points_2d, K, R, t).mean()
+            if current_residual_mean < best_residual_mean:
+                best_residual_mean = current_residual_mean
+                best_pred = pred_current
+
             if change_mm < self.residual_thresh_mm:
                 break
 
-        return pred_current
+        return best_pred
