@@ -74,7 +74,18 @@ def gpu_free_mibs() -> list[tuple[int, int]]:
     return pairs
 
 
-def used_gpus_from_tmux() -> set[int]:
+def running_run_names() -> set[str]:
+    """Return the set of v31 run keys already running on A800."""
+    names: set[str] = set()
+    try:
+        out = a800_ssh("tmux ls 2>/dev/null || true")
+    except subprocess.CalledProcessError:
+        return names
+    for line in out.splitlines():
+        match = re.search(r"v31_top5_([^\s]+):", line)
+        if match:
+            names.add(match.group(1))
+    return names
     """Parse v31_top5 tmux sessions and return GPU indices already in use."""
     gpus: set[int] = set()
     try:
@@ -114,7 +125,11 @@ def main() -> None:
     except subprocess.CalledProcessError as e:
         print(f"Warning: git pull on A800 failed: {e}")
     used_gpus = used_gpus_from_tmux()
+    already_running = running_run_names()
+    queue = [(n, f, o) for n, f, o in queue if n not in already_running]
     print(f"Already-used GPUs from tmux: {used_gpus}")
+    print(f"Already-running runs names: {already_running}")
+    print(f"Remaining queue: {[n for n, _, _ in queue]}")
     while queue:
         pairs = gpu_free_mibs()
         candidates = [
