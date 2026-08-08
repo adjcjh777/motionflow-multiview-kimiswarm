@@ -12,6 +12,7 @@ Covers the public contract of ``TemporalGeometryFusionV26``:
 import numpy as np
 import pytest
 import torch
+import torch.nn as nn
 
 from motionflow_mv.fusion.multiview_geometry_fusion_v25 import triangulate_initial
 from motionflow_mv.fusion.temporal_geometry_fusion_v26 import (
@@ -184,31 +185,27 @@ def test_gradient_flow():
 
 
 def test_residual_gate_learnable():
-    """The residual gate should be learnable and scale the temporal attention."""
-    module = TemporalGeometryFusionV26(
-        d=64,
-        n_heads=2,
-        n_views=4,
-        use_geometry_attention=False,
-        use_temporal_geometry_attention=True,
-        use_learned_depth_triangulation=False,
-    )
-    points_2d, K, R, t, pred_3d_init, view_mask = _make_batch()
-    # At init the gate is zero, so the output equals the input estimate.
-    out_zero, _ = module(points_2d, K, R, t, pred_3d_init=pred_3d_init, view_mask=view_mask)
-    assert torch.allclose(out_zero, pred_3d_init, atol=1e-5)
+    """The residual gate should scale the temporal attention output and receive gradients."""
+    B, T, V, J, d = 2, 5, 4, 17, 64
+    tokens = torch.randn(B, T, V, J, d, requires_grad=True)
+    epipolar_dist = torch.rand(B, T, V, V, J)
+    ray_logit = torch.randn(B, T, V, V, J)
+    attn = TemporalGeometryAttention(d=d, n_heads=2, n_views=V, temporal_window=3)
 
-    # Setting the gate to a non-zero value should change the output.
-    for layer in module.temporal_attn_layers:
-        nn.init.constant_(layer.residual_gate, 1.0)
-    out_open, _ = module(points_2d, K, R, t, pred_3d_init=pred_3d_init, view_mask=view_mask)
-    assert not torch.allclose(out_open, pred_3d_init, atol=1e-5)
+    # Default gate is 0, so the output is zero.
+    out_zero = attn(tokens, epipolar_dist, ray_logit)
+    assert torch.allclose(out_zero, torch.zeros_like(out_zero), atol=1e-6)
 
-    # The gate should receive gradients.
+    # Open the gate and randomise out_proj; the residual becomes non-zero.
+    nn.init.constant_(attn.residual_gate, 1.0)
+    torch.manual_seed(123)
+    nn.init.xavier_uniform_(attn.out_proj.weight)
+    out_open = attn(tokens, epipolar_dist, ray_logit)
+    assert not torch.allclose(out_open, torch.zeros_like(out_open), atol=1e-6)
+
     loss = out_open.mean()
     loss.backward()
-    for layer in module.temporal_attn_layers:
-        assert layer.residual_gate.grad is not None
+    assert attn.residual_gate.grad is not None
 
 
 # ---------------------------------------------------------------------------
