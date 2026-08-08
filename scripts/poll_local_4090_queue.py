@@ -15,7 +15,7 @@ from pathlib import Path
 
 
 LOG_DIR = Path("outputs")
-MIN_FREE_MIB = 4000  # Require at least 4 GiB free before launching a run
+MIN_FREE_MIB = 10000  # Require at least 10 GiB free before launching a run
 POLL_INTERVAL = 300  # seconds
 
 
