@@ -138,6 +138,7 @@ def build_model_from_args(
         "use_physical_space_alignment_v28": getattr(args, "use_physical_space_alignment_v28", False),
         "v28_floor_loss_weight": getattr(args, "v28_floor_loss_weight", 0.0),
         "v28_bone_temporal_weight": getattr(args, "v28_bone_temporal_weight", 0.0),
+        "v28_residual_reg_weight": getattr(args, "v28_residual_reg_weight", 0.001),
         "use_test_time_self_evolution_v27": getattr(args, "use_test_time_self_evolution_v27", False),
         "v27_tte_n_iters": getattr(args, "v27_tte_n_iters", 3),
         "v27_tte_sigma_reproj": getattr(args, "v27_tte_sigma_reproj", 5.0),
@@ -1368,6 +1369,7 @@ def parse_args() -> Namespace:
     parser.add_argument("--use_physical_space_alignment_v28", action="store_true", default=False, help="Use v28 physical-space alignment refiner")
     parser.add_argument("--v28_floor_loss_weight", type=float, default=0.0, help="Weight for v28 floor consistency loss")
     parser.add_argument("--v28_bone_temporal_weight", type=float, default=0.0, help="Weight for v28 bone-length temporal consistency loss")
+    parser.add_argument("--v28_residual_reg_weight", type=float, default=0.001, help="Weight for v28 refiner residual L2 regularisation")
     parser.add_argument("--v27_tte_n_iters", type=int, default=3, help="Number of iterations for v27 test-time self-evolution")
     parser.add_argument("--v27_tte_sigma_reproj", type=float, default=5.0, help="Cauchy kernel scale (pixels) for v27 self-evolution")
     parser.add_argument("--v27_tte_residual_thresh_mm", type=float, default=0.5, help="Early-stop threshold (mm) for v27 self-evolution")

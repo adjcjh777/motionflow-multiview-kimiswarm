@@ -70,3 +70,18 @@ Added as a flag in `OmniMultiViewFusionV5`:
 - More physically plausible 3D trajectories over time.
 - Improved robustness to calibration errors that affect the world-frame
   interpretation of the skeleton.
+
+
+## Redesign (v28.1)
+
+The conservative redesign addresses the catastrophic over-fitting observed
+in local 4090 runs (v28 full: val_MPJPE 83.38 mm ¡ú 114.70 mm).  The refiner
+is now constrained so it cannot override the upstream pose estimate:
+
+* The MLP output is bounded by ``tanh`` and ``max_residual`` (default 5 cm).
+* The global residual scale is bounded by a sigmoid and initialised near zero.
+* LayerNorm and dropout are added inside the MLP.
+* ``floor_loss`` estimates the floor per-frame as the lower quantile of foot
+  joints, instead of the batch-global minimum.
+* A small L2 regulariser on the applied residual is returned and can be added
+  to the total loss via ``v28_residual_reg_weight``.

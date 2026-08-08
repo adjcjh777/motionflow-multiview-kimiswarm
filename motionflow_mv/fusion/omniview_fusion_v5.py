@@ -1,15 +1,15 @@
-"""OmniMultiViewFusion v5 â€” camera-conditioned, set-transformer multi-view fusion.
+"""OmniMultiViewFusion v5 ¡ª camera-conditioned, set-transformer multi-view fusion.
 
 OmniMultiViewFusionV5 subclasses :class:`OmniMultiViewFusionV4` and addresses the
 fixed-view-index limitation of the learned ``view_pos_embed`` embedding.
 
 New toggles
 -----------
-* ``use_camera_view_embedding`` â€“ replace the learned view positional embedding
+* ``use_camera_view_embedding`` ¨C replace the learned view positional embedding
   with an MLP conditioned on calibrated camera intrinsics and extrinsics.
-* ``use_set_view_aggregator`` â€“ add a permutation-invariant set-transformer
+* ``use_set_view_aggregator`` ¨C add a permutation-invariant set-transformer
   (Induced Set Attention Blocks) over views before the time+view transformer.
-* ``use_diffusion_refiner_v20`` â€“ replace the deterministic residual MLP with a
+* ``use_diffusion_refiner_v20`` ¨C replace the deterministic residual MLP with a
   lightweight diffusion-based pose refiner.
 
 The model also accepts an explicit ``view_mask`` so that missing views can be
@@ -151,6 +151,7 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
         use_physical_space_alignment_v28: bool = False,
         v28_floor_loss_weight: float = 0.0,
         v28_bone_temporal_weight: float = 0.0,
+        v28_residual_reg_weight: float = 0.0,
         v27_tte_sigma_reproj: float = 5.0,
         v27_tte_residual_thresh_mm: float = 0.5,
         kap_loss_weight: float = 0.01,
@@ -394,6 +395,7 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
         self.use_physical_space_alignment_v28 = use_physical_space_alignment_v28
         self.v28_floor_loss_weight = v28_floor_loss_weight
         self.v28_bone_temporal_weight = v28_bone_temporal_weight
+        self.v28_residual_reg_weight = v28_residual_reg_weight
         if self.use_physical_space_alignment_v28:
             self.physical_space_alignment_v28 = PhysicalSpaceAlignmentV28(j=self.j)
         else:
@@ -920,8 +922,14 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
 
         # Optional v28 physical-space alignment.
         if self.use_physical_space_alignment_v28 and self.physical_space_alignment_v28 is not None:
-            pred_3d = self.physical_space_alignment_v28(pred_3d)
-            if self.v28_floor_loss_weight > 0.0 or self.v28_bone_temporal_weight > 0.0:
+            pred_3d, v28_reg_loss = self.physical_space_alignment_v28(
+                pred_3d, return_reg_loss=True
+            )
+            if (
+                self.v28_floor_loss_weight > 0.0
+                or self.v28_bone_temporal_weight > 0.0
+                or self.v28_residual_reg_weight > 0.0
+            ):
                 # Select the parent list and foot indices based on the skeleton.
                 if self.j == 17:
                     parents = H36M_17_PARENTS
@@ -939,13 +947,16 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
                     foot_indices = [j for j, c in enumerate(children) if len(c) == 0]
                     if len(foot_indices) == 0:
                         foot_indices = list(range(self.j))
-                    floor_h = pred_3d[..., 1].min().detach()
-                    v28_floor = floor_loss(pred_3d, floor_h, foot_indices)
+                    # floor_loss now estimates the floor robustly per frame.
+                    v28_floor = floor_loss(pred_3d, 0.0, foot_indices)
                     epi_loss = epi_loss + self.v28_floor_loss_weight * v28_floor
 
                 if self.v28_bone_temporal_weight > 0.0 and pred_3d.shape[1] > 1:
                     v28_bone = bone_temporal_loss(pred_3d, parents)
                     epi_loss = epi_loss + self.v28_bone_temporal_weight * v28_bone
+
+                if self.v28_residual_reg_weight > 0.0:
+                    epi_loss = epi_loss + self.v28_residual_reg_weight * v28_reg_loss
 
         weights = weights.view(B, T, V, J)
         L = L.view(B, T, V, J, 2, 2)
