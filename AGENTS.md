@@ -41,7 +41,7 @@ This file captures the current A800-D workflow, tmux conventions, and issue labe
 | Run | Description | GPU | Status |
 |-----|-------------|-----|--------|
 | v29 full SEH-MV | v25 + v29 hierarchical + TTE + physical loss (batch 24, d=128) | — | Killed; TTE at inference produces ~90mm val regardless of scale |
-| v29a | hierarchical encoder only (no TTE, no physical) | GPU1 | Epoch 1 val_MPJPE=28.12mm; epoch 2 val_MPJPE=47.85mm (overfitting) |
+| v29a | hierarchical encoder only (no TTE, no physical) | GPU1 | Epoch 1 val_MPJPE=28.12mm; epoch 2=47.85mm; epoch 3=81.08mm (severe overfitting) |
 | v29b | hierarchical + TTE (no physical) | GPU2 | Killed; epoch 1 val_MPJPE=90.35mm — TTE implementation is broken |
 | v29d | TTE + physical (no hierarchical) | GPU3 | Killed; epoch 1 val_MPJPE=90.28mm — same TTE failure |
 | v29 20-run sweep | Hierarchical-only + physical-loss ablations (TTE disabled) | GPU4/5/6/7 | Relaunched after killing all TTE variants; see issue #109 |
