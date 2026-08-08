@@ -122,7 +122,8 @@ def test_json_summary_written(script_path: Path, project_tmp: Path) -> None:
     assert result.returncode == 0, result.stderr
     summary = json.loads(summary_path.read_text())
     assert summary["scanned"] >= 1
-    assert "omniview_fusion_v97_fake" in summary["processed"]
+    processed_names = [p["name"] if isinstance(p, dict) else p for p in summary["processed"]]
+    assert "omniview_fusion_v97_fake" in processed_names
 
 
 def test_second_instance_exits_due_to_lock(script_path: Path, project_tmp: Path) -> None:
@@ -145,3 +146,111 @@ def test_second_instance_exits_due_to_lock(script_path: Path, project_tmp: Path)
     # Should exit gracefully because another instance is "running".
     assert result.returncode == 0, result.stderr
     assert "already running" in (result.stdout + result.stderr).lower()
+
+def test_detect_overfitting_flags_monotonic_rise() -> None:
+    import sys
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    sys.path.insert(0, str(root / "scripts"))
+    from auto_eval_when_ready import detect_overfitting
+    log = Path("tmp_pytest_overfit.log")
+    log.write_text(
+        "Epoch 1: val_MPJPE=50.00mm\n"
+        "Epoch 2: val_MPJPE=45.00mm\n"
+        "Epoch 3: val_MPJPE=48.00mm\n"
+        "Epoch 4: val_MPJPE=52.00mm\n"
+        "Epoch 5: val_MPJPE=55.00mm\n"
+    )
+    try:
+        is_overfitting, epochs_since_best = detect_overfitting(log, patience=3, min_epochs=5)
+        assert is_overfitting is True
+        assert epochs_since_best == 2
+    finally:
+        log.unlink(missing_ok=True)
+
+
+def test_detect_overfitting_ignores_short_logs() -> None:
+    import sys
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    sys.path.insert(0, str(root / "scripts"))
+    from auto_eval_when_ready import detect_overfitting
+    log = Path("tmp_pytest_short.log")
+    log.write_text(
+        "Epoch 1: val_MPJPE=50.00mm\n"
+        "Epoch 2: val_MPJPE=55.00mm\n"
+        "Epoch 3: val_MPJPE=60.00mm\n"
+    )
+    try:
+        is_overfitting, _ = detect_overfitting(log, patience=3, min_epochs=5)
+        assert is_overfitting is False
+    finally:
+        log.unlink(missing_ok=True)
+
+
+def test_overfitting_skips_fullscale_launch(script_path: Path, project_tmp: Path) -> None:
+    log = project_tmp / "omniview_fusion_v91_overfit.log"
+    fullscale = script_path.parent / "run_omniview_fusion_v91_overfit_fullscale.sh"
+    fullscale.write_text("#!/bin/bash\necho fullscale\n")
+    fullscale.chmod(0o755)
+
+    log.write_text(
+        "Epoch 1: val_MPJPE=100.00mm\n"
+        "Epoch 2: val_MPJPE=90.00mm\n"
+        "Epoch 3: val_MPJPE=95.00mm\n"
+        "Epoch 4: val_MPJPE=100.00mm\n"
+        "Epoch 5: val_MPJPE=105.00mm\n"
+        "Epoch 6: val_MPJPE=110.00mm\n"
+        "Epoch 7: val_MPJPE=115.00mm\n"
+    )
+
+    try:
+        result = _run(
+            script_path,
+            "--log-dir", str(project_tmp),
+            "--log-glob", "*.log",
+            "--once",
+            "--dry-run",
+        )
+        assert result.returncode == 0, result.stderr
+        text = result.stdout + result.stderr
+        assert "OVERFITTING DETECTED" in text
+        assert "Skipping full-scale launch" in text
+        assert "DRY-RUN: would launch" not in text
+    finally:
+        fullscale.unlink(missing_ok=True)
+
+
+def test_force_fullscale_overrides_overfit_skip(script_path: Path, project_tmp: Path) -> None:
+    log = project_tmp / "omniview_fusion_v92_overfit_force.log"
+    fullscale = script_path.parent / "run_omniview_fusion_v92_overfit_force_fullscale.sh"
+    fullscale.write_text("#!/bin/bash\necho fullscale\n")
+    fullscale.chmod(0o755)
+
+    log.write_text(
+        "Epoch 1: val_MPJPE=100.00mm\n"
+        "Epoch 2: val_MPJPE=90.00mm\n"
+        "Epoch 3: val_MPJPE=95.00mm\n"
+        "Epoch 4: val_MPJPE=100.00mm\n"
+        "Epoch 5: val_MPJPE=105.00mm\n"
+        "Epoch 6: val_MPJPE=110.00mm\n"
+        "Epoch 7: val_MPJPE=115.00mm\n"
+    )
+
+    try:
+        result = _run(
+            script_path,
+            "--log-dir", str(project_tmp),
+            "--log-glob", "*.log",
+            "--once",
+            "--dry-run",
+            "--force-fullscale",
+        )
+        assert result.returncode == 0, result.stderr
+        text = result.stdout + result.stderr
+        assert "OVERFITTING DETECTED" in text
+        assert "DRY-RUN: would launch" in text
+    finally:
+        fullscale.unlink(missing_ok=True)
