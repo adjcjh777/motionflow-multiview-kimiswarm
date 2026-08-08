@@ -239,6 +239,7 @@ class TemporalGeometryFusionV26(nn.Module):
         dropout: float = 0.1,
         use_uncertainty_depth_proposals_v27: bool = False,
         v27_uncertainty_loss_weight: float = 0.01,
+        v27_udp_n_mixtures: int = 1,
     ):
         super().__init__()
         self.d = d
@@ -251,6 +252,7 @@ class TemporalGeometryFusionV26(nn.Module):
         self.temporal_loss_weight = temporal_loss_weight
         self.use_uncertainty_depth_proposals_v27 = use_uncertainty_depth_proposals_v27
         self.v27_uncertainty_loss_weight = v27_uncertainty_loss_weight
+        self.v27_udp_n_mixtures = v27_udp_n_mixtures
 
         self.ray_tokenizer = RayTokenizer(d=d, n_ray_samples=n_ray_samples)
 
@@ -274,7 +276,10 @@ class TemporalGeometryFusionV26(nn.Module):
         if use_learned_depth_triangulation:
             if use_uncertainty_depth_proposals_v27:
                 self.depth_tri_head = UncertaintyDepthProposalTriangulation(
-                    n_views=n_views, n_ray_samples=n_ray_samples, uncertainty_loss_weight=v27_uncertainty_loss_weight
+                    n_views=n_views,
+                    n_ray_samples=n_ray_samples,
+                    n_mixtures=v27_udp_n_mixtures,
+                    uncertainty_loss_weight=v27_uncertainty_loss_weight,
                 )
             else:
                 self.depth_tri_head = DepthProposalTriangulation(n_views=n_views, n_ray_samples=n_ray_samples)

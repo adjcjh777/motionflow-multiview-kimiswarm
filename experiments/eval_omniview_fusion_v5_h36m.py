@@ -229,6 +229,7 @@ def build_model(args: argparse.Namespace, n_views: int, j: int) -> OmniMultiView
         v26_temporal_window=args.v26_temporal_window,
         use_uncertainty_depth_proposals_v27=args.use_uncertainty_depth_proposals_v27,
         v27_uncertainty_loss_weight=args.v27_uncertainty_loss_weight,
+        v27_udp_n_mixtures=args.v27_udp_n_mixtures,
         use_test_time_self_evolution_v27=args.use_test_time_self_evolution_v27,
         v27_tte_n_iters=args.v27_tte_n_iters,
         v27_tte_sigma_reproj=args.v27_tte_sigma_reproj,
@@ -647,6 +648,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--v26_temporal_window", type=int, default=3, help="Temporal window size for v26")
     parser.add_argument("--use_uncertainty_depth_proposals_v27", action="store_true", default=None, help="Enable v27 uncertainty-aware depth-proposal triangulation")
     parser.add_argument("--v27_uncertainty_loss_weight", type=float, default=0.01, help="Weight for v27 uncertainty regularisation loss")
+    parser.add_argument("--v27_udp_n_mixtures", type=int, default=1, help="Number of Gaussian mixture components for v27 depth proposals")
     # v27 toggles
     parser.add_argument("--use_test_time_self_evolution_v27", action="store_true", default=False, help="Enable v27 test-time self-evolution at inference")
     parser.add_argument("--v27_tte_n_iters", type=int, default=3, help="Number of iterations for v27 self-evolution")

@@ -65,6 +65,53 @@ def test_uncertainty_depth_proposal_inference_deterministic():
     assert torch.allclose(out1, out2, atol=1e-6)
 
 
+def test_uncertainty_depth_proposal_gmm_shape():
+    n_views, n_ray_samples, n_mixtures = 4, 8, 3
+    head = UncertaintyDepthProposalTriangulation(
+        n_views=n_views, n_ray_samples=n_ray_samples, n_mixtures=n_mixtures
+    )
+    B, T, V, J = 2, 3, n_views, 17
+    centre = torch.randn(B, T, V, 3)
+    direction = torch.randn(B, T, V, J, 3)
+    direction = direction / direction.norm(dim=-1, keepdim=True)
+    confidence = torch.rand(B, T, V, J)
+    pred_3d = torch.randn(B, T, J, 3)
+
+    refined, loss = head(centre, direction, confidence, pred_3d)
+    assert refined.shape == (B, T, J, 3)
+    assert loss.numel() == 1
+    assert torch.isfinite(loss)
+
+
+def test_uncertainty_depth_proposal_gmm_identity_at_init():
+    head = UncertaintyDepthProposalTriangulation(n_views=4, n_ray_samples=4, n_mixtures=2)
+    B, T, V, J = 1, 1, 4, 17
+    centre = torch.randn(B, T, V, 3)
+    direction = torch.randn(B, T, V, J, 3)
+    direction = direction / direction.norm(dim=-1, keepdim=True)
+    confidence = torch.ones(B, T, V, J)
+    pred_3d = torch.randn(B, T, J, 3)
+
+    refined, _ = head(centre, direction, confidence, pred_3d)
+    assert torch.allclose(refined, pred_3d, atol=1e-5)
+
+
+def test_uncertainty_depth_proposal_gmm_inference_deterministic():
+    head = UncertaintyDepthProposalTriangulation(n_views=4, n_ray_samples=4, n_mixtures=2)
+    head.eval()
+    B, T, V, J = 1, 1, 4, 17
+    centre = torch.randn(B, T, V, 3)
+    direction = torch.randn(B, T, V, J, 3)
+    direction = direction / direction.norm(dim=-1, keepdim=True)
+    confidence = torch.ones(B, T, V, J)
+    pred_3d = torch.randn(B, T, J, 3)
+
+    with torch.no_grad():
+        out1, _ = head(centre, direction, confidence, pred_3d)
+        out2, _ = head(centre, direction, confidence, pred_3d)
+    assert torch.allclose(out1, out2, atol=1e-6)
+
+
 def test_uncertainty_depth_proposal_training_stochastic():
     """During training, stochastic sampling should produce different outputs."""
     head = UncertaintyDepthProposalTriangulation(n_views=4, n_ray_samples=8, uncertainty_loss_weight=0.0)
