@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# v17 full-scale run (10000 samples / 60 epochs): cross-view transformer view aggregation.
+# v17 full-scale run (10000 samples / 60 epochs) experiment: cross-view transformer on top of v11.
 set -euo pipefail
 
 CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-0}

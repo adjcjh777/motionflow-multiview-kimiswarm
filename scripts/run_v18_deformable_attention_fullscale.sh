@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# v18 full-scale run (10000 samples / 60 epochs): deformable epipolar-aware cross-view attention.
+# v18 full-scale run (10000 samples / 60 epochs) experiment: deformable cross-view attention on top of v11.
 set -euo pipefail
 
 CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-0}
