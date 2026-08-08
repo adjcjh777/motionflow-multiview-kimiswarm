@@ -44,6 +44,10 @@ from motionflow_mv.fusion.physical_space_alignment_v28 import (
     floor_loss,
     bone_temporal_loss,
 )
+from motionflow_mv.fusion.prototypes.cross_view_graph_attention import (
+    H36M_17_PARENTS,
+    MPI_INF_3DHP_28_PARENTS,
+)
 from motionflow_mv.fusion.neural_bundle_adjustment_v21 import NeuralBundleAdjustment
 from motionflow_mv.fusion.omniview_fusion_v4 import OmniMultiViewFusionV4
 from motionflow_mv.fusion.perceiver_view_aggregator import PerceiverViewAggregator
@@ -917,20 +921,31 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
         # Optional v28 physical-space alignment.
         if self.use_physical_space_alignment_v28 and self.physical_space_alignment_v28 is not None:
             pred_3d = self.physical_space_alignment_v28(pred_3d)
-            if self.v28_floor_loss_weight > 0.0:
-                # Use ankles/feet indices for H36M 17-joint skeleton as a default.
-                foot_indices = [3, 6, 11, 14]  # rough: left/right hip/knee/ankle/foot vary per skeleton
-                # More robust: detect foot joints as those with smallest mean Y.
-                mean_y = pred_3d.mean(dim=(0, 1))[:, 1]  # (J,)
-                _, sorted_y = torch.sort(mean_y)
-                foot_indices = sorted_y[:4].tolist()
-                floor_h = pred_3d[..., 1].min().detach()
-                v28_floor = floor_loss(pred_3d, floor_h, foot_indices)
-                epi_loss = epi_loss + self.v28_floor_loss_weight * v28_floor
-            if self.v28_bone_temporal_weight > 0.0 and pred_3d.shape[1] > 1:
-                parents = getattr(self, "h36m_parents", list(range(-1, self.j - 1)))
-                v28_bone = bone_temporal_loss(pred_3d, parents)
-                epi_loss = epi_loss + self.v28_bone_temporal_weight * v28_bone
+            if self.v28_floor_loss_weight > 0.0 or self.v28_bone_temporal_weight > 0.0:
+                # Select the parent list and foot indices based on the skeleton.
+                if self.j == 17:
+                    parents = H36M_17_PARENTS
+                elif self.j == 28:
+                    parents = MPI_INF_3DHP_28_PARENTS
+                else:
+                    parents = list(range(-1, self.j - 1)) + [-1]
+
+                if self.v28_floor_loss_weight > 0.0:
+                    # Leaf joints are treated as feet/ankles for the floor loss.
+                    children = [[] for _ in range(self.j)]
+                    for child, parent in enumerate(parents):
+                        if parent >= 0:
+                            children[parent].append(child)
+                    foot_indices = [j for j, c in enumerate(children) if len(c) == 0]
+                    if len(foot_indices) == 0:
+                        foot_indices = list(range(self.j))
+                    floor_h = pred_3d[..., 1].min().detach()
+                    v28_floor = floor_loss(pred_3d, floor_h, foot_indices)
+                    epi_loss = epi_loss + self.v28_floor_loss_weight * v28_floor
+
+                if self.v28_bone_temporal_weight > 0.0 and pred_3d.shape[1] > 1:
+                    v28_bone = bone_temporal_loss(pred_3d, parents)
+                    epi_loss = epi_loss + self.v28_bone_temporal_weight * v28_bone
 
         weights = weights.view(B, T, V, J)
         L = L.view(B, T, V, J, 2, 2)
