@@ -170,6 +170,11 @@ def build_model_from_args(
         "v33_hmsp_stochastic_depth_prob": getattr(args, "v33_hmsp_stochastic_depth_prob", 0.0),
         "v33_hmsp_use_geometry_bias": getattr(args, "v33_hmsp_use_geometry_bias", True),
         "v33_hmsp_use_adaptive_scale_fusion": getattr(args, "v33_hmsp_use_adaptive_scale_fusion", True),
+        # v34 view-joint graph network
+        "use_view_joint_graph_network_v34": getattr(args, "use_view_joint_graph_network_v34", False),
+        "v34_vjgn_n_layers": getattr(args, "v34_vjgn_n_layers", 2),
+        "v34_vjgn_n_heads": getattr(args, "v34_vjgn_n_heads", 4),
+        "v34_vjgn_dropout": getattr(args, "v34_vjgn_dropout", 0.0),
         # v32 temporal trajectory consistency
         "use_trajectory_consistency_v32": getattr(args, "use_traertainty_consistency_v32", False),
         "v32_smooth_weight": getattr(args, "v32_smooth_weight", 1e-3),
@@ -1514,6 +1519,11 @@ def parse_args() -> Namespace:
     parser.add_argument("--no_v33_hmsp_use_geometry_bias", dest="v33_hmsp_use_geometry_bias", action="store_false", help="Disable geometry bias in v33 pyramid")
     parser.add_argument("--v33_hmsp_use_adaptive_scale_fusion", action="store_true", default=True, help="Use adaptive per-token scale fusion in v33 pyramid")
     parser.add_argument("--no_v33_hmsp_use_adaptive_scale_fusion", dest="v33_hmsp_use_adaptive_scale_fusion", action="store_false", help="Disable adaptive scale fusion in v33 pyramid")
+    # v34 view-joint graph network
+    parser.add_argument("--use_view_joint_graph_network_v34", action="store_true", default=False, help="Use v34 view-joint graph network")
+    parser.add_argument("--v34_vjgn_n_layers", type=int, default=2, help="Number of graph attention layers in v34 VJGN")
+    parser.add_argument("--v34_vjgn_n_heads", type=int, default=4, help="Number of attention heads in v34 VJGN")
+    parser.add_argument("--v34_vjgn_dropout", type=float, default=0.0, help="Dropout probability for v34 VJGN")
     parser.add_argument("--v30_dropout", type=float, default=0.1, help="Dropout for v30 hierarchical encoder")
     parser.add_argument("--v30_stochastic_depth_prob", type=float, default=0.0, help="Stochastic depth probability for v30 hierarchical encoder")
     parser.add_argument("--use_test_time_self_evolution_v29", action="store_true", default=False, help="Use v29 test-time self-evolution with physical-space alignment at inference")
