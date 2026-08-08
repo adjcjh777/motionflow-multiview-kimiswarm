@@ -102,6 +102,13 @@ RUNS = [
         "--outlier_view_prob 0.3 --outlier_view_max_views 1",
         "omniview_fusion_v33_combined_all_three_a800",
     ),
+    # v33 hierarchical multi-scale spatial pyramid.
+    (
+        "v33_hierarchical_multiscale_spatial_pyramid",
+        "--use_hierarchical_multiview_v31 --v31_geometry_bias "
+        "--use_hierarchical_multiscale_spatial_pyramid_v33 --v33_hmsp_scales 1 2 4",
+        "omniview_fusion_v33_hierarchical_multiscale_spatial_pyramid_a800",
+    ),
 ]
 
 
