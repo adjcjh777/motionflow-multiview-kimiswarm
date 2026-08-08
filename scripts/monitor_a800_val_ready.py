@@ -39,6 +39,7 @@ DEFAULT_ISSUE = 88
 DEFAULT_POLL_INTERVAL = 120  # seconds
 MAX_LOG_AGE_MINUTES = 120  # only monitor logs modified in the last 2 hours
 DEFAULT_STATE_PATH = ".monitor_a800_state.json"
+DEFAULT_INCLUDE_PATTERN = ".*"
 
 
 @dataclass
@@ -108,13 +109,14 @@ def parse_val_lines(text: str) -> List[Tuple[int, float]]:
     return out
 
 
-def discover_logs(repo_dir: str, ssh_host: str, max_age_minutes: int = MAX_LOG_AGE_MINUTES) -> List[str]:
+def discover_logs(repo_dir: str, ssh_host: str, max_age_minutes: int = MAX_LOG_AGE_MINUTES, include_pattern: str = DEFAULT_INCLUDE_PATTERN) -> List[str]:
     """Return list of recently modified log file names on A800-D."""
     out = a800_ssh(
         f"find {repo_dir}/outputs -maxdepth 1 -name 'omniview_fusion_v*.log' -mmin -{max_age_minutes} 2>/dev/null",
         ssh_host,
     )
-    return [Path(p).name for p in out.strip().split("\n") if p.strip()]
+    compiled = re.compile(include_pattern)
+    return [Path(p).name for p in out.strip().split("\n") if p.strip() and compiled.match(Path(p).name)]
 
 
 def fetch_log(repo_dir: str, log_name: str, ssh_host: str) -> str:
@@ -158,9 +160,10 @@ def poll_once(
     token: str,
     state: Dict[str, RunState],
     dry_run: bool,
+    include_pattern: str = DEFAULT_INCLUDE_PATTERN,
 ) -> Dict[str, RunState]:
     """Run one polling cycle and return updated state."""
-    log_names = discover_logs(repo_dir, ssh_host)
+    log_names = discover_logs(repo_dir, ssh_host, include_pattern=include_pattern)
     new_state: Dict[str, RunState] = {}
     notifications: List[str] = []
 
@@ -201,6 +204,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     parser.add_argument("--issue", type=int, default=DEFAULT_ISSUE, help="GitHub issue number to post to")
     parser.add_argument("--poll-interval", type=int, default=DEFAULT_POLL_INTERVAL, help="Seconds between polls")
     parser.add_argument("--state", default=DEFAULT_STATE_PATH, help="Path to the per-run monitoring state file")
+    parser.add_argument("--include-pattern", default=DEFAULT_INCLUDE_PATTERN, help="Regex pattern to filter log file names")
     parser.add_argument("--once", action="store_true", help="Run a single polling cycle and exit")
     parser.add_argument("--dry-run", action="store_true", help="Log actions but do not post to GitHub")
     args = parser.parse_args(argv)
@@ -216,7 +220,7 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     try:
         while True:
-            state = poll_once(args.a800_repo, args.ssh_host, args.issue, token, state, args.dry_run)
+            state = poll_once(args.a800_repo, args.ssh_host, args.issue, token, state, args.dry_run, include_pattern=args.include_pattern)
             save_state(state, state_path)
             if args.once:
                 _log("Single-shot complete.")
