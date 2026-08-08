@@ -159,6 +159,7 @@ def build_model_from_args(
         "v30_stochastic_depth_prob": getattr(args, "v30_stochastic_depth_prob", 0.0),
         "use_hierarchical_multiview_v31": getattr(args, "use_hierarchical_multiview_v31", False),
         "v31_geometry_bias": getattr(args, "v31_geometry_bias", True),
+        "v31_use_ray_attention": getattr(args, "v31_use_ray_attention", False),
         # v32 temporal trajectory consistency
         "use_trajectory_consistency_v32": getattr(args, "use_trajectory_consistency_v32", False),
         "v32_smooth_weight": getattr(args, "v32_smooth_weight", 1e-3),
@@ -1427,6 +1428,7 @@ def parse_args() -> Namespace:
     parser.add_argument("--v30_n_part_layers", type=int, default=1, help="Number of part-scale attention layers for v30")
     parser.add_argument("--use_hierarchical_multiview_v31", action="store_true", default=False, help="Use v31 geometry-biased hierarchical multi-scale view encoder")
     parser.add_argument("--v31_geometry_bias", action="store_true", default=True, help="Enable geometry bias in v31 encoder")
+    parser.add_argument("--v31_use_ray_attention", action="store_true", default=False, help="Add ray-conditioned camera embedding to v31 encoder tokens")
     # v32 temporal trajectory consistency
     parser.add_argument("--use_trajectory_consistency_v32", action="store_true", default=False, help="Use v32 1-D temporal CNN trajectory-consistency refiner")
     parser.add_argument("--v32_smooth_weight", type=float, default=1e-3, help="Weight for v32 trajectory smoothness loss")

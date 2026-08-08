@@ -232,11 +232,24 @@ class HierarchicalViewEncoderV31(nn.Module):
         n_part_layers: int = 1,
         stochastic_depth_prob: float = 0.0,
         n_geometry_layers: int = 1,
+        use_ray_attention: bool = False,
     ):
         super().__init__()
         self.d = d
         self.n_views = n_views
         self.n_geometry_layers = n_geometry_layers
+        self.use_ray_attention = use_ray_attention
+
+        # Optional ray/camera embedding branch.  Zero-initialised so it is a no-op.
+        if self.use_ray_attention:
+            self.ray_proj = nn.Sequential(
+                nn.Linear(6, d),
+                nn.ReLU(),
+                nn.Linear(d, d),
+            )
+            nn.init.zeros_(self.ray_proj[-1].weight)
+            nn.init.zeros_(self.ray_proj[-1].bias)
+            self.ray_gate = nn.Parameter(torch.zeros(1))
 
         # Per-scale attention blocks.
         self.joint_block = _GeometryBiasedCrossViewAttentionBlock(
@@ -340,6 +353,13 @@ class HierarchicalViewEncoderV31(nn.Module):
             if t.dim() == 3:
                 t = t.unsqueeze(1).expand(-1, T, -1, -1)
             geometry_bias = self._compute_geometry_bias(points_2d, K, R, t)
+
+        # Optional ray-conditioned token bias.
+        if self.use_ray_attention and points_2d is not None and K is not None and R is not None and t is not None:
+            centre, direction = compute_rays(points_2d, K, R, t)
+            ray_input = torch.cat([centre, direction], dim=-1)  # (B, T, V, J, 6)
+            ray_emb = self.ray_proj(ray_input) * self.ray_gate  # (B, T, V, J, d)
+            tokens = tokens + ray_emb
 
         # Joint scale: per-joint cross-view attention with geometry bias.
         joint_in = tokens.permute(0, 1, 3, 2, 4).reshape(B * T * J, V, d)

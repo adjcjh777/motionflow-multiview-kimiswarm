@@ -194,6 +194,7 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
         v30_stochastic_depth_prob: float = 0.0,
         use_hierarchical_multiview_v31: bool = False,
         v31_geometry_bias: bool = True,
+        v31_use_ray_attention: bool = False,
         # v32 temporal trajectory consistency
         use_trajectory_consistency_v32: bool = False,
         v32_smooth_weight: float = 1e-3,
@@ -480,6 +481,7 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
         self.use_hierarchical_multiview_v30 = use_hierarchical_multiview_v30
         self.use_hierarchical_multiview_v31 = use_hierarchical_multiview_v31
         self.v31_geometry_bias = v31_geometry_bias
+        self.v31_use_ray_attention = v31_use_ray_attention
         if self.use_hierarchical_multiview_v31:
             self.hierarchical_multiview_v31 = HierarchicalViewEncoderV31(
                 d=self.d,
@@ -487,6 +489,7 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
                 n_part_layers=v30_n_part_layers,
                 dropout=v30_dropout,
                 stochastic_depth_prob=v30_stochastic_depth_prob,
+                use_ray_attention=v31_use_ray_attention,
             )
             self.hierarchical_multiview_v29 = None
             self.hierarchical_multiview_v30 = None
