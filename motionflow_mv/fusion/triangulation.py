@@ -108,6 +108,22 @@ def triangulate_confidence_weighted(points_2d: np.ndarray, proj_matrices: np.nda
     return triangulate_dlt(points_2d, proj_matrices, weights=confidences)
 
 
+def _symmetric_matrix_sqrt(matrix: torch.Tensor, eps: float = 1e-6) -> torch.Tensor:
+    """Robust symmetric square root of a 2x2 matrix via eigendecomposition.
+
+    Negative or tiny eigenvalues are clamped to ``eps`` before taking the
+    square root, which keeps the result well-defined even when the input is
+    only approximately positive-definite.
+    """
+    # matrix: (..., 2, 2)
+    # Enforce symmetry to avoid numerical drift from downstream clamping.
+    matrix = 0.5 * (matrix + matrix.transpose(-2, -1))
+    eigvals, eigvecs = torch.linalg.eigh(matrix)  # (..., 2), (..., 2, 2)
+    eigvals = eigvals.clamp(min=eps)
+    sqrt_diag = torch.diag_embed(torch.sqrt(eigvals))  # (..., 2, 2)
+    return eigvecs @ sqrt_diag @ eigvecs.transpose(-2, -1)
+
+
 def triangulate_dlt_batched_lstsq(
     points_2d: torch.Tensor,
     proj_matrices: torch.Tensor,
@@ -132,15 +148,56 @@ def triangulate_dlt_batched_lstsq(
         X: (N, J, 3) triangulated 3D points.
     """
     if precision_matrix is not None:
-        from motionflow_mv.fusion.uncertainty_weighted_triangulation import (
-            triangulate_uncertainty_weighted_batched,
+        # Use a robust eigendecomposition-based square root instead of Cholesky,
+        # because upstream code may clamp the precision matrix element-wise and
+        # produce an indefinite matrix.
+        if points_2d.dim() != 4:
+            raise ValueError(
+                f"points_2d must be 4-D (N, V, J, 2), got shape {tuple(points_2d.shape)}"
+            )
+        N, V, J, _ = points_2d.shape
+        if proj_matrices.dim() == 3:
+            proj_matrices = proj_matrices.unsqueeze(0).expand(N, -1, -1, -1)
+
+        if weights is None:
+            weights = torch.ones(N, V, J, device=points_2d.device, dtype=points_2d.dtype)
+        else:
+            weights = weights.reshape(N, V, J)
+
+        # Replace any NaN/Inf with identity precision (i.e. unit weight).
+        eye = torch.eye(2, device=precision_matrix.device, dtype=precision_matrix.dtype)
+        eye = eye.view(1, 1, 1, 2, 2)
+        precision_matrix = torch.where(
+            torch.isnan(precision_matrix) | torch.isinf(precision_matrix),
+            eye.expand_as(precision_matrix),
+            precision_matrix,
         )
-        return triangulate_uncertainty_weighted_batched(
-            points_2d,
-            proj_matrices,
-            precisions=precision_matrix,
-            confidences=weights,
-        )
+
+        W = _symmetric_matrix_sqrt(precision_matrix)  # (N, V, J, 2, 2)
+
+        A_rows = []
+        for v in range(V):
+            P = proj_matrices[:, v, :, :]  # (N, 3, 4)
+            x = points_2d[:, v, :, 0]  # (N, J)
+            y = points_2d[:, v, :, 1]  # (N, J)
+            row_x = x[..., None] * P[:, 2:3, :] - P[:, 0:1, :]  # (N, J, 4)
+            row_y = y[..., None] * P[:, 2:3, :] - P[:, 1:2, :]
+
+            w_sqrt = torch.sqrt(weights[:, v, :].unsqueeze(-1) + 1e-8)  # (N, J, 1)
+            # Apply the square root of the precision matrix to each DLT row.
+            Wv = W[:, v, :, :, :]  # (N, J, 2, 2)
+            weighted_x = Wv[..., 0:1, 0:1] * row_x.unsqueeze(-2) + Wv[..., 0:1, 1:2] * row_y.unsqueeze(-2)
+            weighted_y = Wv[..., 1:2, 0:1] * row_x.unsqueeze(-2) + Wv[..., 1:2, 1:2] * row_y.unsqueeze(-2)
+            weighted_x = weighted_x.squeeze(-2) * w_sqrt
+            weighted_y = weighted_y.squeeze(-2) * w_sqrt
+            A_rows.append(weighted_x)
+            A_rows.append(weighted_y)
+
+        A = torch.cat(A_rows, dim=2)  # (N, J, 2V, 4)
+        A3 = A[..., :3]
+        b = -A[..., 3:]
+        X, *_ = torch.linalg.lstsq(A3, b)
+        return X.squeeze(-1)
 
     if points_2d.dim() != 4:
         raise ValueError(f"points_2d must be 4-D (N, V, J, 2), got shape {points_2d.shape}")
