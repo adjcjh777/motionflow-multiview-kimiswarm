@@ -133,6 +133,7 @@ def build_model_from_args(
         "v25_outlier_soft_beta": getattr(args, "v25_outlier_soft_beta", 1.0),
         "use_temporal_geometry_fusion_v26": getattr(args, "use_temporal_geometry_fusion_v26", False),
         "v26_temporal_window": getattr(args, "v26_temporal_window", 3),
+        "v26_temporal_attention_residual_gate_init": getattr(args, "v26_temporal_attention_residual_gate_init", 0.0),
         "use_uncertainty_depth_proposals_v27": getattr(args, "use_uncertainty_depth_proposals_v27", False),
         "v27_uncertainty_loss_weight": getattr(args, "v27_uncertainty_loss_weight", 0.01),
         "v27_udp_n_mixtures": getattr(args, "v27_udp_n_mixtures", 1),
@@ -1363,6 +1364,7 @@ def parse_args() -> Namespace:
     parser.add_argument("--v25_outlier_soft_beta", type=float, default=1.0, help="Softness of exponential down-weighting for v25 outlier-view detector")
     parser.add_argument("--use_temporal_geometry_fusion_v26", action="store_true", default=False, help="Use v26 temporal geometry fusion instead of v25")
     parser.add_argument("--v26_temporal_window", type=int, default=3, help="Temporal window size for v26 (must be odd)")
+    parser.add_argument("--v26_temporal_attention_residual_gate_init", type=float, default=0.0, help="Initial value of the residual gate in v26 temporal attention (0.0 = identity at init)")
     parser.add_argument("--use_uncertainty_depth_proposals_v27", action="store_true", default=False, help="Use v27 uncertainty-aware depth-proposal triangulation head in v25/v26")
     parser.add_argument("--v27_uncertainty_loss_weight", type=float, default=0.01, help="Weight for v27 uncertainty regularisation loss")
     parser.add_argument("--v27_udp_n_mixtures", type=int, default=1, help="Number of Gaussian mixture components for v27 depth proposals (default 1=single Gaussian)")
