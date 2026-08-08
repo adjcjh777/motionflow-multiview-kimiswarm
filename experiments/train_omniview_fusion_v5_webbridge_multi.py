@@ -132,6 +132,10 @@ def build_model_from_args(
         "v25_outlier_soft_beta": getattr(args, "v25_outlier_soft_beta", 1.0),
         "use_temporal_geometry_fusion_v26": getattr(args, "use_temporal_geometry_fusion_v26", False),
         "v26_temporal_window": getattr(args, "v26_temporal_window", 3),
+        "use_test_time_self_evolution_v27": getattr(args, "use_test_time_self_evolution_v27", False),
+        "v27_tte_n_iters": getattr(args, "v27_tte_n_iters", 3),
+        "v27_tte_sigma_reproj": getattr(args, "v27_tte_sigma_reproj", 5.0),
+        "v27_tte_residual_thresh_mm": getattr(args, "v27_tte_residual_thresh_mm", 0.5),
         # v7 toggles
         "use_full_precision_dlt": args.use_full_precision_dlt,
         "use_robust_dlt_reweight": args.use_robust_dlt_reweight,
@@ -1351,6 +1355,10 @@ def parse_args() -> Namespace:
     parser.add_argument("--v25_outlier_soft_beta", type=float, default=1.0, help="Softness of exponential down-weighting for v25 outlier-view detector")
     parser.add_argument("--use_temporal_geometry_fusion_v26", action="store_true", default=False, help="Use v26 temporal geometry fusion instead of v25")
     parser.add_argument("--v26_temporal_window", type=int, default=3, help="Temporal window size for v26 (must be odd)")
+    parser.add_argument("--use_test_time_self_evolution_v27", action="store_true", default=False, help="Use v27 test-time self-evolution at inference")
+    parser.add_argument("--v27_tte_n_iters", type=int, default=3, help="Number of iterations for v27 test-time self-evolution")
+    parser.add_argument("--v27_tte_sigma_reproj", type=float, default=5.0, help="Cauchy kernel scale (pixels) for v27 self-evolution")
+    parser.add_argument("--v27_tte_residual_thresh_mm", type=float, default=0.5, help="Early-stop threshold (mm) for v27 self-evolution")
     parser.add_argument("--kap_use_angle_limit", action="store_true", default=True, help="Use soft joint-angle limit penalty in v22 KAP")
     parser.add_argument("--kap_max_flexion_deg", type=float, default=160.0, help="Maximum flexion for v22 joint-angle limit")
     parser.add_argument("--use_full_precision_dlt", action="store_true", help="Use full 2x2 precision matrix in DLT triangulation")
