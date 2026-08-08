@@ -175,5 +175,24 @@ def test_batched_dlt_matches_naive_numpy_dlt():
     np.testing.assert_allclose(pred_batched[0, 0].detach().numpy(), pred_np, atol=1e-8)
 
 
+def test_batched_dlt_precision_matrix_robust_to_indefinite_matrix():
+    """Precision-matrix path should survive element-wise clamped/indefinite input."""
+    N, V, J = 2, 4, 7
+    points_2d = torch.rand(N, V, J, 2, dtype=torch.float64)
+    proj_matrices = torch.randn(V, 3, 4, dtype=torch.float64)
+
+    # Start with a valid precision matrix (diagonal, positive).
+    precision = torch.eye(2, dtype=torch.float64).view(1, 1, 1, 2, 2)
+    precision = precision.expand(N, V, J, -1, -1).clone()
+    # Element-wise clamping can make the matrix indefinite, mimicking upstream code.
+    precision = precision.clamp(min=-1e3, max=1e3)
+
+    pred = triangulate_dlt_batched_lstsq(
+        points_2d, proj_matrices, precision_matrix=precision
+    )
+    assert pred.shape == (N, J, 3)
+    assert torch.isfinite(pred).all()
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
