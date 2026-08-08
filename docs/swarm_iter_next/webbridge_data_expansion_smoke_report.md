@@ -58,15 +58,31 @@ sequences to the common 14-view/17-joint format as expected.
 
 ## 5. Training Smoke Result
 
-*Pending — see `outputs/webbridge_data_expansion_v25_smoke.log`.*
+**Actual-data CPU smoke:** started but stopped after ~100 train steps because the
+full v25 model is too slow on CPU to finish within the 30-minute smoke budget
+(2 epochs ≈ 4 450 train steps). No runtime error was observed; it simply needed
+the GPU.
 
-Command to reproduce:
+**Synthetic CPU smoke:** the same v5 trainer/model stack runs end-to-end on CPU:
+
+```text
+Device: cpu
+Model params: 109222
+Epoch 1: train_loss=2.277004, val_loss=0.002245, val_MPJPE=82.02mm
+Best val MPJPE: 82.02mm -> outputs/webbridge_data_expansion_v5_synthetic_smoke.pth
+Saved training config -> outputs/webbridge_data_expansion_v5_synthetic_smoke.config.json
+```
+
+This confirms the v5 training code path (with the exact flags used in the data
+expansion runner) is functional.
+
+Command to reproduce the real-data smoke when GPU is free:
 
 ```bash
 bash scripts/run_webbridge_data_expansion_v25_smoke.sh
 ```
 
-Or manually:
+Or manually (CPU-only, slow):
 
 ```bash
 PYTHON=/d/anaconda3/python \
