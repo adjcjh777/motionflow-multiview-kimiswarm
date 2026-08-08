@@ -251,7 +251,7 @@ class OutlierViewDetectorV33(nn.Module):
         aux_loss = torch.tensor(0.0, device=device, dtype=residual.dtype)
         if outlier_label is not None and self.supervised_weight > 0:
             # Target: 1 - weight should be close to outlier_label.
-            pred_outlier_prob = 1.0 - weights
+            pred_outlier_prob = (1.0 - weights).clamp(0.0, 1.0)
             bce = F.binary_cross_entropy(
                 pred_outlier_prob,
                 outlier_label.float(),
