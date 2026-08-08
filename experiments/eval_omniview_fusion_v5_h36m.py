@@ -225,6 +225,8 @@ def build_model(args: argparse.Namespace, n_views: int, j: int) -> OmniMultiView
         v25_outlier_z_thresh=args.v25_outlier_z_thresh,
         v25_outlier_soft_beta=args.v25_outlier_soft_beta,
         v25_geom_loss_weight=args.v25_geom_loss_weight,
+        use_temporal_geometry_fusion_v26=args.use_temporal_geometry_fusion_v26,
+        v26_temporal_window=args.v26_temporal_window,
     )
     return model
 
@@ -275,6 +277,7 @@ _V25_FLAG_NAMES = (
     "v25_use_geometry_bundle_adjustment",
     "v25_use_camera_joint_graph",
     "v25_use_outlier_view_detector",
+    "use_temporal_geometry_fusion_v26",
 )
 
 
@@ -633,6 +636,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--v25_use_outlier_view_detector", action="store_true", default=None, help="Enable v25 outlier-view detector")
     parser.add_argument("--v25_outlier_z_thresh", type=float, default=3.0, help="Robust z-score threshold for v25 outlier-view detector")
     parser.add_argument("--v25_outlier_soft_beta", type=float, default=1.0, help="Softness of exponential down-weighting for v25 outlier-view detector")
+    parser.add_argument("--use_temporal_geometry_fusion_v26", action="store_true", default=None, help="Enable v26 temporal geometry fusion")
+    parser.add_argument("--v26_temporal_window", type=int, default=3, help="Temporal window size for v26")
     parser.add_argument("--v25_geom_loss_weight", type=float, default=0.1, help="Weight for v25 geometry loss during training")
     # Evaluation
     parser.add_argument("--clip_len", type=int, default=13, help="Temporal clip length")

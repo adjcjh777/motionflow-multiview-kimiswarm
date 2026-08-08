@@ -37,6 +37,7 @@ from motionflow_mv.fusion.kinematic_anthropometric_prior_v22 import (
     KinematicAnthropometricPrior,
 )
 from motionflow_mv.fusion.multiview_geometry_fusion_v25 import MultiViewGeometryFusionV25
+from motionflow_mv.fusion.temporal_geometry_fusion_v26 import TemporalGeometryFusionV26
 from motionflow_mv.fusion.neural_bundle_adjustment_v21 import NeuralBundleAdjustment
 from motionflow_mv.fusion.omniview_fusion_v4 import OmniMultiViewFusionV4
 from motionflow_mv.fusion.perceiver_view_aggregator import PerceiverViewAggregator
@@ -130,6 +131,8 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
         v25_outlier_z_thresh: float = 3.0,
         v25_outlier_soft_beta: float = 1.0,
         v25_geom_loss_weight: float = 0.1,
+        use_temporal_geometry_fusion_v26: bool = False,
+        v26_temporal_window: int = 3,
         kap_loss_weight: float = 0.01,
         kap_use_angle_limit: bool = True,
         kap_max_flexion_deg: float = 160.0,
@@ -333,8 +336,18 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
 
         # Optional v25 multi-view geometry fusion.
         self.use_multiview_geometry_fusion_v25 = use_multiview_geometry_fusion_v25
+        self.use_temporal_geometry_fusion_v26 = use_temporal_geometry_fusion_v26
         self.v25_geom_loss_weight = v25_geom_loss_weight
-        if self.use_multiview_geometry_fusion_v25:
+        if self.use_temporal_geometry_fusion_v26:
+            self.multiview_geometry_fusion_v25 = TemporalGeometryFusionV26(
+                d=self.d,
+                n_heads=self.n_heads,
+                n_views=n_views,
+                temporal_window=v26_temporal_window,
+                use_geometry_attention=v25_use_geometry_attention,
+                use_learned_depth_triangulation=v25_use_learned_depth_triangulation,
+            )
+        elif self.use_multiview_geometry_fusion_v25:
             self.multiview_geometry_fusion_v25 = MultiViewGeometryFusionV25(
                 d=self.d,
                 n_heads=self.n_heads,

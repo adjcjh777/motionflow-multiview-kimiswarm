@@ -130,6 +130,8 @@ def build_model_from_args(
         "v25_use_outlier_view_detector": getattr(args, "v25_use_outlier_view_detector", False),
         "v25_outlier_z_thresh": getattr(args, "v25_outlier_z_thresh", 3.0),
         "v25_outlier_soft_beta": getattr(args, "v25_outlier_soft_beta", 1.0),
+        "use_temporal_geometry_fusion_v26": getattr(args, "use_temporal_geometry_fusion_v26", False),
+        "v26_temporal_window": getattr(args, "v26_temporal_window", 3),
         # v7 toggles
         "use_full_precision_dlt": args.use_full_precision_dlt,
         "use_robust_dlt_reweight": args.use_robust_dlt_reweight,
@@ -1347,6 +1349,8 @@ def parse_args() -> Namespace:
     parser.add_argument("--v25_use_outlier_view_detector", action="store_true", default=False, help="Use robust outlier-view detection and down-weighting in v25")
     parser.add_argument("--v25_outlier_z_thresh", type=float, default=3.0, help="Robust z-score threshold for v25 outlier-view detector")
     parser.add_argument("--v25_outlier_soft_beta", type=float, default=1.0, help="Softness of exponential down-weighting for v25 outlier-view detector")
+    parser.add_argument("--use_temporal_geometry_fusion_v26", action="store_true", default=False, help="Use v26 temporal geometry fusion instead of v25")
+    parser.add_argument("--v26_temporal_window", type=int, default=3, help="Temporal window size for v26 (must be odd)")
     parser.add_argument("--kap_use_angle_limit", action="store_true", default=True, help="Use soft joint-angle limit penalty in v22 KAP")
     parser.add_argument("--kap_max_flexion_deg", type=float, default=160.0, help="Maximum flexion for v22 joint-angle limit")
     parser.add_argument("--use_full_precision_dlt", action="store_true", help="Use full 2x2 precision matrix in DLT triangulation")
