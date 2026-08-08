@@ -22,6 +22,7 @@ $PYTHON -u experiments/train_omniview_fusion_v5_webbridge_multi.py \
     --v25_use_outlier_view_detector \
     --v25_outlier_z_thresh 3.0 --v25_outlier_soft_beta 1.0 \
     --v25_geom_loss_weight 0.1 \
+    --v25_dropout 0.2 \
     --v25_use_geometry_attention \
     --v25_use_learned_depth_triangulation \
     --v25_use_geometry_bundle_adjustment \
