@@ -162,9 +162,15 @@ def build_model_from_args(
         "v31_geometry_bias": getattr(args, "v31_geometry_bias", True),
         "v31_use_ray_attention": getattr(args, "v31_use_ray_attention", False),
         # v32 temporal trajectory consistency
-        "use_trajectory_consistency_v32": getattr(args, "use_trajectory_consistency_v32", False),
+        "use_trajectory_consistency_v32": getattr(args, "use_traertainty_consistency_v32", False),
         "v32_smooth_weight": getattr(args, "v32_smooth_weight", 1e-3),
         "v32_drift_weight": getattr(args, "v32_drift_weight", 1e-2),
+        # v33 uncertainty-aware triangulation
+        "use_uncertainty_aware_triangulation_v33": getattr(args, "use_uncertainty_aware_triangulation_v33", False),
+        "v33_uat_loss_weight": getattr(args, "v33_uat_loss_weight", 0.01),
+        "v33_uat_log_var_min": getattr(args, "v33_uat_log_var_min", -10.0),
+        "v33_uat_log_var_max": getattr(args, "v33_uat_log_var_max", 10.0),
+        "v33_uat_covariance_hidden": getattr(args, "v33_uat_covariance_hidden", 64),
         "use_test_time_self_evolution_v29": getattr(args, "use_test_time_self_evolution_v29", False),
         "v29_tte_n_iters": getattr(args, "v29_tte_n_iters", 3),
         "v29_tte_sigma_reproj": getattr(args, "v29_tte_sigma_reproj", 5.0),
@@ -1435,6 +1441,12 @@ def parse_args() -> Namespace:
     parser.add_argument("--use_trajectory_consistency_v32", action="store_true", default=False, help="Use v32 1-D temporal CNN trajectory-consistency refiner")
     parser.add_argument("--v32_smooth_weight", type=float, default=1e-3, help="Weight for v32 trajectory smoothness loss")
     parser.add_argument("--v32_drift_weight", type=float, default=1e-2, help="Weight for v32 drift guard loss")
+    # v33 uncertainty-aware triangulation
+    parser.add_argument("--use_uncertainty_aware_triangulation_v33", action="store_true", help="Use v33 uncertainty-aware triangulation head")
+    parser.add_argument("--v33_uat_loss_weight", type=float, default=0.01, help="Weight for v33 uncertainty NLL loss")
+    parser.add_argument("--v33_uat_log_var_min", type=float, default=-10.0, help="Min log-variance clamp")
+    parser.add_argument("--v33_uat_log_var_max", type=float, default=10.0, help="Max log-variance clamp")
+    parser.add_argument("--v33_uat_covariance_hidden", type=int, default=64, help="Hidden dim of the uncertainty-prediction MLP")
     parser.add_argument("--v30_dropout", type=float, default=0.1, help="Dropout for v30 hierarchical encoder")
     parser.add_argument("--v30_stochastic_depth_prob", type=float, default=0.0, help="Stochastic depth probability for v30 hierarchical encoder")
     parser.add_argument("--use_test_time_self_evolution_v29", action="store_true", default=False, help="Use v29 test-time self-evolution with physical-space alignment at inference")
