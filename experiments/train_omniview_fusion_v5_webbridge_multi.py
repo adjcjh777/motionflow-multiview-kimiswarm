@@ -159,6 +159,10 @@ def build_model_from_args(
         "v30_stochastic_depth_prob": getattr(args, "v30_stochastic_depth_prob", 0.0),
         "use_hierarchical_multiview_v31": getattr(args, "use_hierarchical_multiview_v31", False),
         "v31_geometry_bias": getattr(args, "v31_geometry_bias", True),
+        # v32 temporal trajectory consistency
+        "use_trajectory_consistency_v32": getattr(args, "use_trajectory_consistency_v32", False),
+        "v32_smooth_weight": getattr(args, "v32_smooth_weight", 1e-3),
+        "v32_drift_weight": getattr(args, "v32_drift_weight", 1e-2),
         "use_test_time_self_evolution_v29": getattr(args, "use_test_time_self_evolution_v29", False),
         "v29_tte_n_iters": getattr(args, "v29_tte_n_iters", 3),
         "v29_tte_sigma_reproj": getattr(args, "v29_tte_sigma_reproj", 5.0),
@@ -1423,6 +1427,10 @@ def parse_args() -> Namespace:
     parser.add_argument("--v30_n_part_layers", type=int, default=1, help="Number of part-scale attention layers for v30")
     parser.add_argument("--use_hierarchical_multiview_v31", action="store_true", default=False, help="Use v31 geometry-biased hierarchical multi-scale view encoder")
     parser.add_argument("--v31_geometry_bias", action="store_true", default=True, help="Enable geometry bias in v31 encoder")
+    # v32 temporal trajectory consistency
+    parser.add_argument("--use_trajectory_consistency_v32", action="store_true", default=False, help="Use v32 1-D temporal CNN trajectory-consistency refiner")
+    parser.add_argument("--v32_smooth_weight", type=float, default=1e-3, help="Weight for v32 trajectory smoothness loss")
+    parser.add_argument("--v32_drift_weight", type=float, default=1e-2, help="Weight for v32 drift guard loss")
     parser.add_argument("--v30_dropout", type=float, default=0.1, help="Dropout for v30 hierarchical encoder")
     parser.add_argument("--v30_stochastic_depth_prob", type=float, default=0.0, help="Stochastic depth probability for v30 hierarchical encoder")
     parser.add_argument("--use_test_time_self_evolution_v29", action="store_true", default=False, help="Use v29 test-time self-evolution with physical-space alignment at inference")

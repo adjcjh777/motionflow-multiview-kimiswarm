@@ -194,6 +194,10 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
         v30_stochastic_depth_prob: float = 0.0,
         use_hierarchical_multiview_v31: bool = False,
         v31_geometry_bias: bool = True,
+        # v32 temporal trajectory consistency
+        use_trajectory_consistency_v32: bool = False,
+        v32_smooth_weight: float = 1e-3,
+        v32_drift_weight: float = 1e-2,
         kap_loss_weight: float = 0.01,
         kap_use_angle_limit: bool = True,
         kap_max_flexion_deg: float = 160.0,
@@ -257,6 +261,18 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
         )
 
         self.max_temporal_len = max_temporal_len
+
+        # Optional v32 temporal trajectory consistency.
+        self.use_trajectory_consistency_v32 = use_trajectory_consistency_v32
+        self.v32_smooth_weight = v32_smooth_weight
+        self.v32_drift_weight = v32_drift_weight
+        if self.use_trajectory_consistency_v32:
+            from motionflow_mv.fusion.trajectory_consistency_v32 import (
+                TrajectoryConsistencyRefinerV32,
+            )
+            self.trajectory_consistency_refiner = TrajectoryConsistencyRefinerV32(j)
+        else:
+            self.trajectory_consistency_refiner = None
 
         # Optional adaptive scale-selective multi-scale fusion (v12).
         self.use_adaptive_multiscale_fusion = use_adaptive_multiscale_fusion
@@ -1079,6 +1095,28 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
             delta = self.residual_mlp(residual_input)
             pred_3d = pred_3d_gn + delta
 
+        # Optional v32 temporal trajectory-consistency refiner.
+        self._v32_loss = None
+        if (
+            self.use_trajectory_consistency_v32
+            and self.trajectory_consistency_refiner is not None
+            and T > 2
+        ):
+            pred_3d_raw_seq = pred_3d.view(B, T, self.j, 3)
+            pred_3d_ref_seq = self.trajectory_consistency_refiner(pred_3d_raw_seq)
+            pred_3d = pred_3d_ref_seq.view(B * T, self.j, 3)
+            from motionflow_mv.fusion.trajectory_consistency_v32 import (
+                trajectory_consistency_loss,
+            )
+
+            v32_smooth, v32_drift = trajectory_consistency_loss(
+                pred_3d_ref_seq, pred_3d_raw_seq
+            )
+            self._v32_loss = (
+                self.v32_smooth_weight * v32_smooth
+                + self.v32_drift_weight * v32_drift
+            )
+
         # Optional final kinematic-chain refiner.
         if self.use_kinematic_refiner and self.kinematic_refiner is not None:
             pred_3d = pred_3d + self.kinematic_refiner(pred_3d)
@@ -1086,6 +1124,8 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
         # Epipolar consistency loss.
         epi_loss = self._epipolar_consistency_loss(points_2d, K_corrected, R, t, L)
         epi_loss = self.epipolar_loss_weight * epi_loss + self.v25_geom_loss_weight * geom_loss_v25
+        if self._v32_loss is not None:
+            epi_loss = epi_loss + self._v32_loss
 
         # Optional entropy regularisation on triangulation weights.
         if (
