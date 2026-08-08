@@ -6,12 +6,22 @@ This file captures the current A800-D workflow, tmux conventions, and issue labe
 
 | Run | Description | GPU | Status |
 |-----|-------------|-----|--------|
-| v25 full | v18 + geometry fusion (full WebBridge/H36M/MPI) | GPU4 | Running, ~3,450/18,750 steps, first epoch in progress |
-| v25 small | v18 + geometry fusion (small subset) | GPU7 | Running, ~2,400/3,750 steps, first epoch in progress |
-| v25 ablation | v18 + geometry fusion with `geom_loss_weight=1.0` | GPU6 | Running, ~2,300/3,750 steps, first epoch in progress |
+| v25 full | v18 + geometry fusion (full WebBridge/H36M/MPI) | GPU4 | Running |
+| v25 small | v18 + geometry fusion (small subset) | GPU7 | val_MPJPE 18.31 mm (best so far) |
+| v25 ablation | v18 + geometry fusion with `geom_loss_weight=1.0` | GPU6 | Running |
 | v18 | v18 deformable attention baseline | GPU5 | Running (legacy baseline) |
 | v26 small | v18 + temporal geometry fusion | — | Prepared; blocked until a GPU frees |
 | v21 | neural BA | — | Stopped; regressed to 128.27 mm |
+
+## Local RTX 4090 status snapshot
+
+| Run | Description | Status |
+|-----|-------------|--------|
+| v26+UDP full | v26 + v27 UDP + early stopping + weight decay | Running (PID 13028 killed, restarted with weight decay) |
+| v26+UDP-GMM full | v26 + v27 UDP-GMM + early stopping + weight decay | Queued |
+| v26+UDP+v28 full | v26 + v27 UDP + v28 physical-space alignment | Queued |
+| v26+UDP-GMM+v28 full | v26 + v27 UDP-GMM + v28 physical-space alignment | Queued |
+| v13 temporal | Legacy v13 temporal run | Stopped to free GPU for v26 full queue |
 
 - **Remote host:** `a800-D` (SSH)
 - **Remote repo:** `/mnt/nvme0n1p1/zhangzy/motionflow-multiview-kimiswarm-iter20`
@@ -26,6 +36,20 @@ This file captures the current A800-D workflow, tmux conventions, and issue labe
 3. Use `scripts/auto_eval_when_ready.sh` (or its host-side cron) for periodic evaluation; do not run it manually on A800-D.
 4. Check A800-D status read-only via SSH, then update the status table in this file or the relevant `docs/swarm_iter*/status.md`.
 5. When a GPU frees, launch the prepared next run (e.g., `v24`) after double-checking its checkpoint path and YAML config.
+
+## Long-running local runs (tmux is not available in the WSL env)
+
+Use the nohup-based launcher to keep the training queue alive after the shell disconnects:
+
+```bash
+bash scripts/nohup_run_v26_full_queue_local_4090.sh
+```
+
+Monitor the background process with:
+
+```bash
+tail -f outputs/v26_full_queue_local_4090_nohup.log
+```
 
 ## tmux usage
 
