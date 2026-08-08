@@ -17,8 +17,8 @@ fi
 PID=$(cat "$PID_FILE")
 echo "[$(date)] Waiting for v25 baseline PID=$PID to finish..." | tee -a "$LOG_DIR/queue.log"
 
-# Wait until the process is gone.
-while kill -0 "$PID" 2>/dev/null; do
+# Wait until the process is gone (Windows PID, so use wmic).
+while wmic process where "ProcessId=$PID" get ProcessId /format:csv 2>/dev/null | grep -q "$PID"; do
     sleep 60
 done
 
