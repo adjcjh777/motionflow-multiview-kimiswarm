@@ -193,7 +193,7 @@ L = L_3D_MSE + λ_reproj·L_reproj + λ_epi·L_epi + λ_cheir·L_cheir + λ_dept
 |-----|-------------|-----|--------|---------------|
 | v23b | v18 + KAP 0.001, no neural BA | A800 GPU4 | **Failed** (58.72 mm) | §6.3 ablation |
 | v24b | v18 + fixed BA + KAP 0.001 | A800 GPU6 | **Failed** (131.73 mm) | §6.3 ablation |
-| v18 full | v18 cross-view residual + PP | A800 GPU5 | Running | §6.2 main results |
+| v18 full | v18 cross-view residual + PP | A800 GPU5 | Running (long 60-epoch full run, ~18k steps) | §6.2 main results |
 | v25 small | v25 geometry fusion small (geom λ=0.1) | A800 GPU7 | Running (~1650 steps, ~44% of 1st epoch) | §6.2 main results |
 | v25 full | v25 geometry fusion full (geom λ=0.1) | A800 GPU4 | Running (~1900 steps, ~10% of 1st epoch) | §6.2 main results |
 | v25 ablation | v25 geometry fusion small (geom λ=1.0) | A800 GPU6 | Running (~700 steps, ~19% of 1st epoch) | §6.3 ablation |
