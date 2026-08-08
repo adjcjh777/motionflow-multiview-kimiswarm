@@ -221,6 +221,9 @@ def build_model(args: argparse.Namespace, n_views: int, j: int) -> OmniMultiView
         v25_use_learned_depth_triangulation=args.v25_use_learned_depth_triangulation,
         v25_use_geometry_bundle_adjustment=args.v25_use_geometry_bundle_adjustment,
         v25_use_camera_joint_graph=args.v25_use_camera_joint_graph,
+        v25_use_outlier_view_detector=args.v25_use_outlier_view_detector,
+        v25_outlier_z_thresh=args.v25_outlier_z_thresh,
+        v25_outlier_soft_beta=args.v25_outlier_soft_beta,
         v25_geom_loss_weight=args.v25_geom_loss_weight,
     )
     return model
@@ -271,6 +274,7 @@ _V25_FLAG_NAMES = (
     "v25_use_learned_depth_triangulation",
     "v25_use_geometry_bundle_adjustment",
     "v25_use_camera_joint_graph",
+    "v25_use_outlier_view_detector",
 )
 
 
@@ -626,6 +630,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--v25_use_learned_depth_triangulation", action="store_true", default=None, help="Enable v25 learned depth-proposal triangulation")
     parser.add_argument("--v25_use_geometry_bundle_adjustment", action="store_true", default=None, help="Enable v25 geometry bundle adjustment")
     parser.add_argument("--v25_use_camera_joint_graph", action="store_true", default=None, help="Enable v25 camera-joint graph")
+    parser.add_argument("--v25_use_outlier_view_detector", action="store_true", default=None, help="Enable v25 outlier-view detector")
+    parser.add_argument("--v25_outlier_z_thresh", type=float, default=3.0, help="Robust z-score threshold for v25 outlier-view detector")
+    parser.add_argument("--v25_outlier_soft_beta", type=float, default=1.0, help="Softness of exponential down-weighting for v25 outlier-view detector")
     parser.add_argument("--v25_geom_loss_weight", type=float, default=0.1, help="Weight for v25 geometry loss during training")
     # Evaluation
     parser.add_argument("--clip_len", type=int, default=13, help="Temporal clip length")

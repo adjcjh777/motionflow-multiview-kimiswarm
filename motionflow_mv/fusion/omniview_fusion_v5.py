@@ -126,6 +126,9 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
         v25_use_learned_depth_triangulation: bool = True,
         v25_use_geometry_bundle_adjustment: bool = True,
         v25_use_camera_joint_graph: bool = False,
+        v25_use_outlier_view_detector: bool = False,
+        v25_outlier_z_thresh: float = 3.0,
+        v25_outlier_soft_beta: float = 1.0,
         v25_geom_loss_weight: float = 0.1,
         kap_loss_weight: float = 0.01,
         kap_use_angle_limit: bool = True,
@@ -340,6 +343,9 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
                 use_learned_depth_triangulation=v25_use_learned_depth_triangulation,
                 use_geometry_bundle_adjustment=v25_use_geometry_bundle_adjustment,
                 use_camera_joint_graph=v25_use_camera_joint_graph,
+                use_outlier_view_detector=v25_use_outlier_view_detector,
+                outlier_z_thresh=v25_outlier_z_thresh,
+                outlier_soft_beta=v25_outlier_soft_beta,
             )
         else:
             self.multiview_geometry_fusion_v25 = None
