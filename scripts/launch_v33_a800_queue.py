@@ -198,6 +198,23 @@ RUNS = [
         "--use_temporal_view_joint_graph_network_v35 --v35_tvjgn_n_layers 2 --v35_tvjgn_n_heads 4",
         "omniview_fusion_v35_temporal_vjgn_on_v34_geometry_vjgn_a800",
     ),
+    # v36 uncertainty-gated iterative graph refinement on top of v34 VJGN.
+    (
+        "v36_ugigr_on_v34_vjgn",
+        "--use_hierarchical_multiview_v31 --v31_geometry_bias "
+        "--use_view_joint_graph_network_v34 --v34_vjgn_n_layers 2 --v34_vjgn_n_heads 4 "
+        "--use_uncertainty_gated_iterative_graph_refinement_v36 --v36_ugigr_n_layers 1 --v36_ugigr_n_iters 2 --v36_ugigr_n_heads 4 --v36_ugigr_uncertainty_hidden 64",
+        "omniview_fusion_v36_ugigr_on_v34_vjgn_a800",
+    ),
+    # v36 uncertainty-gated iterative graph refinement on top of v35 TVJGN.
+    (
+        "v36_ugigr_on_v35_tvjgn",
+        "--use_hierarchical_multiview_v31 --v31_geometry_bias "
+        "--use_view_joint_graph_network_v34 --v34_vjgn_n_layers 2 --v34_vjgn_n_heads 4 "
+        "--use_temporal_view_joint_graph_network_v35 --v35_tvjgn_n_layers 2 --v35_tvjgn_n_heads 4 "
+        "--use_uncertainty_gated_iterative_graph_refinement_v36 --v36_ugigr_n_layers 1 --v36_ugigr_n_iters 2 --v36_ugigr_n_heads 4 --v36_ugigr_uncertainty_hidden 64",
+        "omniview_fusion_v36_ugigr_on_v35_tvjgn_a800",
+    ),
 ]
 
 
@@ -228,7 +245,7 @@ def used_gpus_from_tmux() -> set[int]:
         return gpus
     for line in out.splitlines():
         # v31_top5_<name>_gpuN, v32_<name>_gpuN, or v33_<name>_gpuN
-        match = re.search(r"(?:v31_top5|v32|v33|v34|v35)_(.+)_gpu(\d+):", line)
+        match = re.search(r"(?:v31_top5|v32|v33|v34|v35|v36)_(.+)_gpu(\d+):", line)
         if match:
             gpus.add(int(match.group(2)))
     return gpus
@@ -242,7 +259,7 @@ def running_run_names() -> set[str]:
     except subprocess.CalledProcessError:
         return names
     for line in out.splitlines():
-        match = re.search(r"(?:v31_top5|v32|v33|v34|v35)_(.+)_gpu\d+:", line)
+        match = re.search(r"(?:v31_top5|v32|v33|v34|v35|v36)_(.+)_gpu\d+:", line)
         if match:
             names.add(match.group(1))
     return names
