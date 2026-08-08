@@ -52,9 +52,11 @@ This file captures the current A800-D workflow, tmux conventions, and issue labe
 | v34 view-joint graph network | (view, joint) graph attention over bone/symmetry/cross-view edges | merged | Quick smoke 54.07mm vs v31 55.28mm; full local RTX 4090 run started; A800 queued |
 | v34 geometry-aware view-joint graph network | v34 VJGN with epipolar + ray-intersection bias on cross-view edges | merged | Full local RTX 4090 run started; A800 queued (2-layer, 1-layer, dropout, HMSP stack, combined-max); smoke 82.05mm |
 | v34 local ablations queue | HMSP+geometry VJGN and v33 combined-fixed+geometry VJGN | RTX 4090 | HMSP+geometry VJGN stack launched; combined-fixed+geometry VJGN queued; poller waits for >10 GiB free GPU |
-| v34 quick ablations | VJGN vs geometry-aware VJGN (200 samples, 5 epochs) | RTX 4090 | Running via scripts/run_v34_quick_ablations_local_4090.sh |
+| v34 quick ablations | VJGN vs geometry-aware VJGN (20 samples/seq, 5 epochs) | RTX 4090 | Running via scripts/run_v34_quick_ablations_local_4090.sh; v34 VJGN epoch 3 val_MPJPE 71.32mm |
 | v34 HMSP + VJGN stack | v33 HMSP + v34 VJGN together | A800-D | Queued in v33/v34 A800 queue; quick smoke 55.96mm |
 | v34 HMSP + geometry-aware VJGN stack | v33 HMSP + v34 geometry-aware VJGN together | A800-D | Queued in v33/v34 A800 queue |
+| v35 temporal view-joint graph network | v34 VJGN + temporal edges across frames | RTX 4090 | Module and smoke script ready; waiting for v34 quick ablation |
+| v35 A800 queue | v35 TVJGN on top of v34 VJGN / geometry-aware VJGN | A800-D | Added to launch_v33_a800_queue.py; poller restarted |
 | v33 HMSP A800 | full scale after v31 top-5 | A800-D | Queued in v33 A800 queue |
 | v32/v33/v34 A800 queue | v31_physical_floor_only, v32 x5, v33 x4, v34 x2, HMSP stacks | A800-D | Poller restarted; waiting for v31 top-5 to free GPUs 4-7 |
 | GitHub issues/PRs | Use API token from git remote URL | active | Issues/PRs created and merged via curl/GitHub API |
