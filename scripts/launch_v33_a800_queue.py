@@ -267,7 +267,7 @@ def sync_repo_to_a800() -> None:
         ["scp", "-o", "ConnectTimeout=10", "-o", "BatchMode=yes", str(archive), f"{SSH_HOST}:{A800_REPO}/.sync.tar.gz"],
         stderr=subprocess.STDOUT,
     )
-    a800_ssh(f"cd {A800_REPO} && tar -xzf .sync.tar.gz && rm .sync.tar.gz")
+    a800_ssh(f"cd {A800_REPO} && tar -xzf .sync.tar.gz && rm .sync.tar.gz && find . -name __pycache__ -type d -exec rm -rf {{}} + 2>/dev/null || true")
     print("Archive sync complete.")
 
 
