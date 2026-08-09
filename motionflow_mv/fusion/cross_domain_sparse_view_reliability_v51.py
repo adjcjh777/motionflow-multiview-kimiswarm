@@ -181,7 +181,7 @@ class CrossDomainSparseViewReliabilityV51(nn.Module):
 
         # Predict uncertainty rescale per joint (positive, identity-at-init ≈ 1).
         uncertainty_scale = self.uncertainty_scale_head(joint_tokens2).squeeze(-1)  # (B, J)
-        uncertainty_scale = torch.exp(uncertainty_scale).clamp(min=1e-3)
+        uncertainty_scale = torch.exp(uncertainty_scale).clamp(min=1e-3, max=10.0)
 
         return reliability_offset, uncertainty_scale
 
