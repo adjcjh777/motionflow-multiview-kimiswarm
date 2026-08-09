@@ -217,7 +217,12 @@ class OmniMultiViewFusionV2(RayAttentionFusionModelBayesianTriV2):
         """
         if self.graph_joint_attention is None:
             return feat
-        if j != self._current_j:
+        # Also rebuild when the cached edge index is incompatible with the
+        # current (V, J) shape. This happens when a checkpoint saved after an
+        # MPI batch is loaded and then evaluated on H36M data.
+        edge_max = int(self.graph_joint_attention.edge_index.max())
+        n_nodes = feat.shape[1] * feat.shape[2]
+        if j != self._current_j or edge_max >= n_nodes:
             # Auto-rebuild graph if the input joint count changes. This is a
             # convenience for variable-view / cross-dataset inference.
             self.rebuild_graph(j, dataset="h36m" if j == 17 else "mpiinf3dhp")
