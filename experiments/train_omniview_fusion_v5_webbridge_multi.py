@@ -313,6 +313,21 @@ def build_model_from_args(
             }
         )
 
+    # v51 domain-agnostic ensemble kwargs.
+    if getattr(args, "use_v51_domain_agnostic_ensemble", False):
+        model_kwargs.update(
+            {
+                "use_v51_domain_agnostic_ensemble": True,
+                "v51_dae_hidden": getattr(args, "v51_dae_hidden", 64),
+                "v51_dae_num_layers": getattr(args, "v51_dae_num_layers", 2),
+                "v51_dae_dropout": getattr(args, "v51_dae_dropout", 0.1),
+                "v51_dae_n_experts": getattr(args, "v51_dae_n_experts", 2),
+                "v51_dae_identity_bypass": getattr(args, "v51_dae_identity_bypass", True),
+                "v51_dae_min_weight": getattr(args, "v51_dae_min_weight", 0.05),
+                "v51_dae_loss_weight": getattr(args, "v51_dae_loss_weight", 0.005),
+            }
+        )
+
     # v48 domain generalization kwargs are only passed when the flag is enabled
     # so the trainer can be imported/run on checkouts where the model has not
     # yet been wired for v48.
@@ -1867,6 +1882,16 @@ def parse_args() -> Namespace:
     parser.add_argument("--v50_sefh_residual_clip", type=float, default=50.0, help="Clip residuals before feeding into the v50 loss")
     parser.add_argument("--v50_sefh_identity_init_gate", action="store_true", default=True, help="Initialize the v50 reliability gate near identity")
     parser.add_argument("--v50_sefh_aleatoric_weight", type=float, default=0.0, help="Weight for aleatoric uncertainty loss on the per-joint error (0 disables)")
+    # v51 domain-agnostic ensemble of pose experts
+    parser.add_argument("--use_v51_domain_agnostic_ensemble", action="store_true", default=False, help="Use v51 domain-agnostic ensemble of pose experts")
+    parser.add_argument("--v51_dae_hidden", type=int, default=64, help="Hidden dimension of the v51 ensemble evidence MLP")
+    parser.add_argument("--v51_dae_num_layers", type=int, default=2, help="Number of layers in the v51 ensemble evidence MLP")
+    parser.add_argument("--v51_dae_dropout", type=float, default=0.1, help="Dropout probability in the v51 ensemble evidence MLP")
+    parser.add_argument("--v51_dae_n_experts", type=int, default=2, help="Number of experts in the v51 ensemble (default 2: geometry + residual)")
+    parser.add_argument("--v51_dae_identity_bypass", action="store_true", default=True, help="Add uniform bypass to the v51 ensemble weights at init")
+    parser.add_argument("--no_v51_dae_identity_bypass", dest="v51_dae_identity_bypass", action="store_false", help="Disable v51 ensemble identity bypass")
+    parser.add_argument("--v51_dae_min_weight", type=float, default=0.05, help="Minimum per-expert weight in the v51 ensemble")
+    parser.add_argument("--v51_dae_loss_weight", type=float, default=0.005, help="Weight for the v51 ensemble diversity auxiliary loss")
     # v48 domain generalization
     parser.add_argument("--use_v48_domain_generalization", action="store_true", default=False, help="Use v48 domain generalization (DDWL + optional domain FiLM / adversarial loss)")
     parser.add_argument("--v48_dg_hidden", type=int, default=64, help="Hidden dimension of the v48 domain adapter")

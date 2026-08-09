@@ -91,6 +91,7 @@ from motionflow_mv.fusion.prototypes.cross_view_graph_attention import (
     H36M_17_PARENTS,
     MPI_INF_3DHP_28_PARENTS,
 )
+from motionflow_mv.fusion.domain_agnostic_ensemble_v51 import DomainAgnosticEnsembleV51
 from motionflow_mv.fusion.neural_bundle_adjustment_v21 import NeuralBundleAdjustment
 from motionflow_mv.fusion.omniview_fusion_v4 import OmniMultiViewFusionV4
 from motionflow_mv.fusion.perceiver_view_aggregator import PerceiverViewAggregator
@@ -293,6 +294,15 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
         v49_lite_temporal_dropout: float = 0.1,
         v49_lite_temporal_residual_gate_init: float = 0.0,
         v49_lite_temporal_use_view_count_conditioning: bool = True,
+        # v51 domain-agnostic ensemble of per-branch pose experts
+        use_v51_domain_agnostic_ensemble: bool = False,
+        v51_dae_hidden: int = 64,
+        v51_dae_num_layers: int = 2,
+        v51_dae_dropout: float = 0.1,
+        v51_dae_n_experts: int = 2,
+        v51_dae_identity_bypass: bool = True,
+        v51_dae_min_weight: float = 0.05,
+        v51_dae_loss_weight: float = 0.005,
         # v48 domain generalization (FiLM / conditional BN / GRL discriminator)
         use_v48_domain_generalization: bool = False,
         v48_dg_hidden: int = 64,
@@ -861,6 +871,22 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
             )
         else:
             self.domain_adapter_v48 = None
+
+        # Optional v51 domain-agnostic ensemble of pose experts.
+        self.use_v51_domain_agnostic_ensemble = use_v51_domain_agnostic_ensemble
+        self.v51_dae_loss_weight = v51_dae_loss_weight
+        if self.use_v51_domain_agnostic_ensemble:
+            self.domain_agnostic_ensemble_v51 = DomainAgnosticEnsembleV51(
+                j=self.j,
+                n_experts=v51_dae_n_experts,
+                hidden=v51_dae_hidden,
+                num_layers=v51_dae_num_layers,
+                dropout=v51_dae_dropout,
+                identity_bypass=v51_dae_identity_bypass,
+                min_weight=v51_dae_min_weight,
+            )
+        else:
+            self.domain_agnostic_ensemble_v51 = None
 
         # Optional v37 self-critique view reliability estimator (identity at init).
         self.use_self_critique_view_reliability_v37 = use_self_critique_view_reliability_v37
@@ -1699,6 +1725,26 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
             and self.attention_entropy_loss is not None
         ):
             epi_loss = epi_loss + self.attention_entropy_loss(weights)
+
+        # Optional v51 domain-agnostic ensemble of geometry and residual experts.
+        if (
+            self.use_v51_domain_agnostic_ensemble
+            and self.domain_agnostic_ensemble_v51 is not None
+        ):
+            pred_3d_geo = pred_3d_gn.view(B, T, J, 3)
+            pred_3d_res = pred_3d.view(B, T, J, 3)
+            # Flatten batch and time so DAE receives canonical (N, V, ...) shapes.
+            pred_3d_ensemble, dae_loss = self.domain_agnostic_ensemble_v51(
+                expert_poses=[pred_3d_geo.view(B * T, 1, J, 3),
+                              pred_3d_res.view(B * T, 1, J, 3)],
+                points_2d=points_2d.view(B * T, 1, V, J, 2),
+                K=K_corrected.view(B * T, V, 3, 3),
+                R=R.view(B * T, V, 3, 3),
+                t=t.view(B * T, V, 3),
+                view_mask=view_mask_flat.view(B * T, V),
+            )
+            pred_3d = pred_3d_ensemble.view(B * T, J, 3)
+            epi_loss = epi_loss + self.v51_dae_loss_weight * dae_loss
 
         # Optional v37 self-critique view reliability auxiliary loss.
         if (
