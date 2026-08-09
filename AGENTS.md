@@ -54,8 +54,8 @@ This file captures the current A800-D workflow, tmux conventions, and issue labe
 | v50 SEFH smoke | v46-SVG + Self-Evolution Feedback Head | Ready; smoke script added; run after v46/v47/v48 chain |
 | v51 DAE smoke | v46-SVG + Domain-Agnostic Ensemble of pose experts | **Done**; best val_MPJPE 35.29 mm (vs v46 32.97 mm); needs tuning; see issue #178 |
 | v52 UWT smoke | v45/v46/v50/v51 + learnable uncertainty-weighted DLT triangulation | **Done**; tiny smoke 102.70 mm; medium smoke in progress (epoch 2/5); see issue #182 |
-| v53 PSC smoke | v45/v46/v50/v51/v52 + physical-space calibration (floor + bone + gated residual) | **Done**; tiny smoke 78.76 mm; medium smoke queued behind v52; see issue #183 |
-| v54 PSC-v2 smoke | v45/v46/v50/v51/v52/v53 + skeleton-graph joint-level physical refiner | **Ready**; implementation pushed, unit tests pass, integration smoke 82.02 mm; ablation matrix script added; run after v52/v53; see issue #184 |
+| v53 PSC smoke | v45/v46/v50/v51/v52 + physical-space calibration (floor + bone + gated residual) | **Fixed NaN root cause** (`sqrt(weights).clamp` -> `clamp().sqrt()`); medium run restarted on RTX 4090; see issue #183 |
+| v54 PSC-v2 smoke | v45/v46/v50/v51/v52/v53 + skeleton-graph joint-level physical refiner | **Ready**; blocked on v53 medium; ablation matrix script added; see issue #184 |
 
 ### Historical / detailed local run log
 
