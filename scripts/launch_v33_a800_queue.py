@@ -545,7 +545,7 @@ def launch_run(name: str, extra_flags: str, output: str, gpu: int) -> None:
     session = f"{name}_gpu{gpu}"
     cmd = (
         f"cd {A800_REPO} && "
-        f"CUDA_VISIBLE_DEVICES={gpu} python3 -u experiments/train_omniview_fusion_v5_webbridge_multi.py "
+        f"PYTHONUNBUFFERED=1 CUDA_VISIBLE_DEVICES={gpu} python3 -u experiments/train_omniview_fusion_v5_webbridge_multi.py "
         f"{COMMON_FLAGS} {extra_flags} "
         f"--output outputs/{output}.pth "
         f"> outputs/{output}.log 2>&1"
