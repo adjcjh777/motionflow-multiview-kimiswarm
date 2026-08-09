@@ -918,6 +918,8 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
                 entropy_weight=v51_tta_entropy_weight,
                 min_view_rel=v51_tta_min_view_rel,
                 max_view_rel=v51_tta_max_view_rel,
+                refine_pose=True,
+                pose_lr=v51_tta_lr * 0.1,
             )
         else:
             self.test_time_self_evolution_v51 = None

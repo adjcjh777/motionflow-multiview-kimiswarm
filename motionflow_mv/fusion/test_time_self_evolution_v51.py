@@ -57,6 +57,8 @@ class TestTimeSelfEvolutionRefinerV51(nn.Module):
         entropy_weight: float = 0.01,
         min_view_rel: float = 0.05,
         max_view_rel: float = 1.0,
+        refine_pose: bool = False,
+        pose_lr: float = 1e-4,
     ):
         super().__init__()
         self.n_views = n_views
@@ -69,6 +71,8 @@ class TestTimeSelfEvolutionRefinerV51(nn.Module):
         self.entropy_weight = entropy_weight
         self.min_view_rel = min_view_rel
         self.max_view_rel = max_view_rel
+        self.refine_pose = refine_pose
+        self.pose_lr = pose_lr
 
         # Update MLP: takes a small feature vector built from residuals and
         # predicts additive updates for reliability offset and log-uncertainty.
@@ -279,25 +283,32 @@ class TestTimeSelfEvolutionRefinerV51(nn.Module):
         rho = nn.Parameter(rho.clone())
         log_sigma = nn.Parameter(log_sigma.clone())
 
+        # Optionally also refine the pose itself at test time.  This is disabled
+        # by default to preserve the previous behaviour; the model wires it on.
+        if self.refine_pose:
+            refined_pose = nn.Parameter(pose_3d.clone().detach())
+        else:
+            refined_pose = pose_3d
+
         # Short-circuit if no test-time steps.
         if self.num_steps <= 0:
-            return pose_3d, torch.sigmoid(rho).detach(), torch.exp(log_sigma).detach()
+            return refined_pose.detach(), torch.sigmoid(rho).detach(), torch.exp(log_sigma).detach()
 
         # Optional: an MLP-predicted update direction.  For simplicity in the
         # minimal implementation, we run gradient descent directly on the
         # geometric loss w.r.t. the buffer; the MLP is retained for future use.
-        optimizer = torch.optim.Adam([rho, log_sigma], lr=self.lr)
+        params = [rho, log_sigma]
+        if self.refine_pose:
+            params.append(refined_pose)
+        optimizer = torch.optim.Adam(params, lr=self.lr if not self.refine_pose else self.pose_lr)
 
         for _ in range(self.num_steps):
             optimizer.zero_grad()
-            loss = self._loss(pose_3d, rho, log_sigma, x_2d, K, R, t)
+            loss = self._loss(refined_pose, rho, log_sigma, x_2d, K, R, t)
             loss.backward()
             optimizer.step()
 
         refined_reliability = torch.sigmoid(rho).detach().clamp(self.min_view_rel, self.max_view_rel)
         refined_uncertainty = torch.exp(log_sigma).detach()
 
-        # The refined pose is kept identical to the input in this minimal
-        # implementation; future versions can re-triangulate using the refined
-        # reliability/uncertainty weights.
-        return pose_3d, refined_reliability, refined_uncertainty
+        return refined_pose.detach(), refined_reliability, refined_uncertainty
