@@ -305,6 +305,47 @@ Tracking issue: #183. Depends on: #160, #162, #175, #176, #178, #181, #182.
   4. Update the status tables above with epoch-1 val and `MPJPE@k` numbers.
 - **Labels:** `experiment`, `P1-next`
 
+## v57 domain-conditional physical-space calibration conventions
+
+Tracking issue: #185. Depends on: #160, #162, #175, #176, #178, #181, #182, #183.
+
+- **Branch:** `v57-dcpsc`
+- **Module:** `motionflow_mv/fusion/domain_conditional_physical_calibration_v57.py`
+- **Class:** `DomainConditionalPhysicalCalibrationV57`
+- **Base:** reuses v45 Adaptive Geometry Fusion, v46 Sparse-View Generalization, v50 Self-Evolution Feedback Head, v51 Cross-Domain Sparse-View Reliability, and v52 Uncertainty-Weighted Triangulation
+- **Model wiring:** `motionflow_mv/fusion/omniview_fusion_v5.py`, placed after the v52 UWT block and before the final residual MLP / v47/v49 temporal / v50 SEFH heads
+- **Trainer:** `experiments/train_omniview_fusion_v5_webbridge_multi.py`
+- **Smoke config:** `configs/benchmark_v57_domain_conditional_psc_smoke.yaml`
+- **Smoke script:** `scripts/run_v57_domain_conditional_psc_smoke_local_4090.sh`
+- **Evaluation:** `experiments/eval_variable_views.py` reports `MPJPE@k` for v57 vs v53 baselines.
+- **A800 queue:** `scripts/launch_v33_a800_queue.py` (entry `v57_domain_conditional_psc_on_v52`)
+- **Flags:**
+  - `use_v57_domain_conditional_psc`
+  - `v57_dcpsc_hidden` (default `64`)
+  - `v57_dcpsc_n_layers` (default `2`)
+  - `v57_dcpsc_num_domains` (default `8`)
+  - `v57_dcpsc_use_floor` (default `True`)
+  - `v57_dcpsc_use_bone_scale` (default `True`)
+  - `v57_dcpsc_use_uwt_weights` (default `True`)
+  - `v57_dcpsc_identity_init` (default `True`)
+  - `v57_dcpsc_residual_gate_init` (default `-6.0`)
+  - `v57_dcpsc_loss_weight` (default `1.0`)
+  - `v57_dcpsc_floor_weight` (default `0.01`)
+  - `v57_dcpsc_bone_weight` (default `0.1`)
+  - `v57_dcpsc_reproj_weight` (default `0.1`)
+  - `v57_dcpsc_warmup_epochs` (default `0`)
+  - `v57_dcpsc_min_visible_views` (default `2`)
+- **Workflow:**
+  1. Run `bash scripts/run_v57_domain_conditional_psc_smoke_local_4090.sh` on the local RTX 4090.
+  2. Verify identity-at-init: loading a v53 checkpoint with v57 enabled and `v57_dcpsc_loss_weight=0` should not change `val_MPJPE` by more than 0.1 mm.
+  3. If smoke is stable (no NaN/Inf/OOM) and `val_MPJPE@full` is within 1 mm of the v53 baseline, start the A800 full run.
+  4. Update the status tables above with epoch-1 val and `MPJPE@k` numbers.
+- **Notes:**
+  - v53 and v57 are mutually exclusive (raising `ValueError` if both are enabled) to avoid double PSC.
+  - The domain-conditional heads use a shared `nn.Embedding(num_domains, hidden)` and FiLM (scale/shift) conditioning from the domain embedding.
+  - Per-domain residual gate logits are sigmoided and broadcast per sample.
+- **Labels:** `experiment`, `P1-next`
+
 ## v54 physical-space calibration v2 conventions
 
 Tracking issue: #184. Depends on: #160, #162, #175, #176, #178, #181, #182, #183.

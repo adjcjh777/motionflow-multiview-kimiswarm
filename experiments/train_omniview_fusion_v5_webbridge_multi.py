@@ -415,6 +415,28 @@ def build_model_from_args(
             }
         )
 
+    # v57 domain-conditional physical-space calibration kwargs.
+    if getattr(args, "use_v57_domain_conditional_psc", False):
+        model_kwargs.update(
+            {
+                "use_v57_domain_conditional_psc": True,
+                "v57_dcpsc_hidden": getattr(args, "v57_dcpsc_hidden", 64),
+                "v57_dcpsc_n_layers": getattr(args, "v57_dcpsc_n_layers", 2),
+                "v57_dcpsc_num_domains": getattr(args, "v57_dcpsc_num_domains", 8),
+                "v57_dcpsc_use_floor": getattr(args, "v57_dcpsc_use_floor", True),
+                "v57_dcpsc_use_bone_scale": getattr(args, "v57_dcpsc_use_bone_scale", True),
+                "v57_dcpsc_use_uwt_weights": getattr(args, "v57_dcpsc_use_uwt_weights", True),
+                "v57_dcpsc_identity_init": getattr(args, "v57_dcpsc_identity_init", True),
+                "v57_dcpsc_residual_gate_init": getattr(args, "v57_dcpsc_residual_gate_init", -6.0),
+                "v57_dcpsc_loss_weight": getattr(args, "v57_dcpsc_loss_weight", 1.0),
+                "v57_dcpsc_floor_weight": getattr(args, "v57_dcpsc_floor_weight", 0.01),
+                "v57_dcpsc_bone_weight": getattr(args, "v57_dcpsc_bone_weight", 0.1),
+                "v57_dcpsc_reproj_weight": getattr(args, "v57_dcpsc_reproj_weight", 0.1),
+                "v57_dcpsc_warmup_epochs": getattr(args, "v57_dcpsc_warmup_epochs", 0),
+                "v57_dcpsc_min_visible_views": getattr(args, "v57_dcpsc_min_visible_views", 2),
+            }
+        )
+
     # v54 physical-space calibration v2 kwargs.
     if getattr(args, "use_v54_physical_space_calibration_v2", False):
         model_kwargs.update(
@@ -1402,7 +1424,7 @@ def build_compute_loss(args: Namespace):
         if view_mask is not None:
             model_kwargs_forward["view_mask"] = view_mask
         if (
-            (args.use_domain_embedding or use_v48_dg or args.use_v52_uncertainty_weighted_triangulation or args.use_v53_physical_space_calibration or args.use_v54_physical_space_calibration_v2)
+            (args.use_domain_embedding or use_v48_dg or args.use_v52_uncertainty_weighted_triangulation or args.use_v53_physical_space_calibration or args.use_v54_physical_space_calibration_v2 or args.use_v57_domain_conditional_psc)
             and dataset_id is not None
         ):
             model_kwargs_forward["domain_id"] = dataset_id
@@ -1480,6 +1502,12 @@ def build_compute_loss(args: Namespace):
             v53_psc_loss = getattr(model.module if hasattr(model, "module") else model, "_v53_psc_loss", None)
             if v53_psc_loss is not None and torch.isfinite(v53_psc_loss):
                 metrics["v53_psc_loss"] = v53_psc_loss.item()
+
+        # Optional v57 domain-conditional physical-space calibration auxiliary loss logging.
+        if getattr(args, "use_v57_domain_conditional_psc", False):
+            v57_dcpsc_loss = getattr(model.module if hasattr(model, "module") else model, "_v57_dcpsc_loss", None)
+            if v57_dcpsc_loss is not None and torch.isfinite(v57_dcpsc_loss):
+                metrics["v57_dcpsc_loss"] = v57_dcpsc_loss.item()
 
         # Optional v54 physical-space calibration v2 auxiliary loss logging.
         if getattr(args, "use_v54_physical_space_calibration_v2", False):
@@ -1753,6 +1781,7 @@ def build_eval_metric():
             if len(batch) == 6 and (
                 getattr(model, "use_domain_embedding", False)
                 or getattr(model, "use_v48_domain_generalization", False)
+                or getattr(model, "use_v57_domain_conditional_psc", False)
             ):
                 forward_kwargs["domain_id"] = batch[5].to(device)
             out = model(x, K=K, R=R, t=t, **forward_kwargs)
@@ -2167,6 +2196,26 @@ def parse_args() -> Namespace:
     parser.add_argument("--v53_psc_reproj_weight", type=float, default=0.1, help="Weight for the v53 reprojection consistency term")
     parser.add_argument("--v53_psc_warmup_epochs", type=int, default=0, help="Epochs before the v53 PSC loss is active")
     parser.add_argument("--v53_psc_min_visible_views", type=int, default=2, help="Minimum visible views for a joint to contribute to v53 losses")
+    # v57 domain-conditional physical-space calibration
+    parser.add_argument("--use_v57_domain_conditional_psc", action="store_true", default=False, help="Use v57 domain-conditional physical-space calibration")
+    parser.add_argument("--v57_dcpsc_hidden", type=int, default=64, help="Hidden dimension of the v57 DC-PSC FiLM MLPs")
+    parser.add_argument("--v57_dcpsc_n_layers", type=int, default=2, help="Number of layers in the v57 DC-PSC residual MLP")
+    parser.add_argument("--v57_dcpsc_num_domains", type=int, default=8, help="Number of domains for the v57 DC-PSC embedding and per-domain gates")
+    parser.add_argument("--v57_dcpsc_use_floor", action="store_true", default=True, help="Enable the v57 domain-conditional floor-plane head")
+    parser.add_argument("--no_v57_dcpsc_use_floor", dest="v57_dcpsc_use_floor", action="store_false", help="Disable the v57 domain-conditional floor-plane head")
+    parser.add_argument("--v57_dcpsc_use_bone_scale", action="store_true", default=True, help="Enable the v57 domain-conditional canonical bone-length head")
+    parser.add_argument("--no_v57_dcpsc_use_bone_scale", dest="v57_dcpsc_use_bone_scale", action="store_false", help="Disable the v57 domain-conditional canonical bone-length head")
+    parser.add_argument("--v57_dcpsc_use_uwt_weights", action="store_true", default=True, help="Use v52 UWT weights in the v57 floor head")
+    parser.add_argument("--no_v57_dcpsc_use_uwt_weights", dest="v57_dcpsc_use_uwt_weights", action="store_false", help="Disable v52 UWT weights in the v57 floor head")
+    parser.add_argument("--v57_dcpsc_identity_init", action="store_true", default=True, help="Zero-initialise the v57 DC-PSC final layers and gate")
+    parser.add_argument("--no_v57_dcpsc_identity_init", dest="v57_dcpsc_identity_init", action="store_false", help="Disable v57 DC-PSC identity initialisation")
+    parser.add_argument("--v57_dcpsc_residual_gate_init", type=float, default=-6.0, help="Initial logit for the v57 per-domain residual gate")
+    parser.add_argument("--v57_dcpsc_loss_weight", type=float, default=1.0, help="Weight for the v57 DC-PSC auxiliary loss")
+    parser.add_argument("--v57_dcpsc_floor_weight", type=float, default=0.01, help="Weight for the v57 floor loss term")
+    parser.add_argument("--v57_dcpsc_bone_weight", type=float, default=0.1, help="Weight for the v57 bone-length loss term")
+    parser.add_argument("--v57_dcpsc_reproj_weight", type=float, default=0.1, help="Weight for the v57 reprojection consistency term")
+    parser.add_argument("--v57_dcpsc_warmup_epochs", type=int, default=0, help="Epochs before the v57 DC-PSC loss is active")
+    parser.add_argument("--v57_dcpsc_min_visible_views", type=int, default=2, help="Minimum visible views for a joint to contribute to v57 losses")
     # v54 physical-space calibration v2
     parser.add_argument("--use_v54_physical_space_calibration_v2", action="store_true", default=False, help="Use v54 physical-space calibration v2")
     parser.add_argument("--v54_psc2_hidden", type=int, default=64, help="Hidden dimension of the v54 PSC-v2 refiner")
