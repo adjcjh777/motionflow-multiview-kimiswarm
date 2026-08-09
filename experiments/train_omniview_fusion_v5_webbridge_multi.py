@@ -150,6 +150,12 @@ def build_model_from_args(
         "v45_adaptive_weight_type": getattr(args, "v45_adaptive_weight_type", "per_view"),
         "v45_adaptive_weight_hidden": getattr(args, "v45_adaptive_weight_hidden", 32),
         "v45_adaptive_weight_n_layers": getattr(args, "v45_adaptive_weight_n_layers", 1),
+        # v46 sparse-view generalization
+        "use_v46_sparse_view_generalization": getattr(args, "use_v46_sparse_view_generalization", False),
+        "v46_svg_view_dropout_prob": getattr(args, "v46_svg_view_dropout_prob", 0.3),
+        "v46_svg_min_views": getattr(args, "v46_svg_min_views", 2),
+        "v46_svg_hidden": getattr(args, "v46_svg_hidden", 64),
+        "v46_svg_use_curriculum": getattr(args, "v46_svg_use_curriculum", True),
         "use_physical_space_alignment_v28": getattr(args, "use_physical_space_alignment_v28", False),
         "use_physical_space_alignment_v32": getattr(args, "use_physical_space_alignment_v32", False),
         "v28_floor_loss_weight": getattr(args, "v28_floor_loss_weight", 0.0),
@@ -974,12 +980,32 @@ def build_compute_loss(args: Namespace):
 
         # Training-only augmentations.  Operate on a clone so the DataLoader
         # buffer is not silently modified.
+        #
+        # v46 sparse-view dropout: when enabled, ramp the per-view dropout
+        # probability from 0 up to the target over the first half of training
+        # if the curriculum flag is set.  This is applied via the existing
+        # ``augment_clip`` view-dropout path so the model sees variable
+        # cardinalities without extra data-loader changes.
+        if getattr(args, "use_v46_sparse_view_generalization", False):
+            v46_dropout_prob = args.v46_svg_view_dropout_prob
+            if args.v46_svg_use_curriculum and args.epochs > 1:
+                ramp_epochs = max(1, args.epochs // 2)
+                current_epoch = getattr(model, "epoch", 1) - 1
+                progress = min(1.0, max(0.0, current_epoch / ramp_epochs))
+            else:
+                progress = 1.0
+            v46_dropout_prob = v46_dropout_prob * progress
+            v46_min_views = args.v46_svg_min_views
+        else:
+            v46_dropout_prob = args.view_dropout_rate
+            v46_min_views = args.min_views
+
         x, view_mask = augment_clip(
             x.clone(),
             noise_std=args.noise_std if not args.smoke else 0.0,
             dropout_rate=args.confidence_dropout,
-            view_dropout_rate=args.view_dropout_rate,
-            min_views=args.min_views,
+            view_dropout_rate=v46_dropout_prob,
+            min_views=v46_min_views,
             variable_view_subset=args.variable_view_subset,
         )
 
@@ -1551,6 +1577,13 @@ def parse_args() -> Namespace:
     parser.add_argument("--v45_adaptive_weight_type", type=str, default="per_view", choices=["per_view", "per_joint", "per_view_joint"], help="Granularity of v45 adaptive triangulation weights")
     parser.add_argument("--v45_adaptive_weight_hidden", type=int, default=32, help="Hidden dimension of the v45 adaptive weight MLP")
     parser.add_argument("--v45_adaptive_weight_n_layers", type=int, default=1, help="Number of layers in the v45 adaptive weight MLP")
+    # v46 sparse-view generalization
+    parser.add_argument("--use_v46_sparse_view_generalization", action="store_true", default=False, help="Use v46 sparse-view generalization head")
+    parser.add_argument("--v46_svg_view_dropout_prob", type=float, default=0.3, help="Probability of dropping each view during v46 training")
+    parser.add_argument("--v46_svg_min_views", type=int, default=2, help="Minimum number of retained views during v46 dropout")
+    parser.add_argument("--v46_svg_hidden", type=int, default=64, help="Hidden dimension of the v46 reliability MLP")
+    parser.add_argument("--v46_svg_use_curriculum", action="store_true", default=True, help="Use curriculum for v46 view dropout (default True)")
+    parser.add_argument("--no_v46_svg_use_curriculum", dest="v46_svg_use_curriculum", action="store_false", help="Disable v46 view-dropout curriculum")
     parser.add_argument("--use_test_time_self_evolution_v27", action="store_true", default=False, help="Use v27 test-time self-evolution at inference")
     parser.add_argument("--use_physical_space_alignment_v28", action="store_true", default=False, help="Use v28 physical-space alignment refiner")
     parser.add_argument("--use_physical_space_alignment_v32", action="store_true", default=False, help="Use v32 root-centered per-joint bounded physical-space alignment")
