@@ -1301,14 +1301,15 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
             feat = feat + domain_emb.view(B, 1, 1, 1, self.d)
 
         # Optional v48 domain-conditional feature adaptation (FiLM / conditional BN).
+        v48_domain_logits = None
         if (
             self.use_v48_domain_adapter
             and self.domain_adapter_v48 is not None
             and domain_id is not None
         ):
-            feat = self.domain_adapter_v48(
+            feat, v48_domain_logits = self.domain_adapter_v48(
                 feat,
-                domain_id=domain_id,
+                dataset_id=domain_id,
                 view_mask=view_mask_flat.view(B, T, V),
             )
 
@@ -1685,6 +1686,16 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
             target_reliability = torch.sigmoid(-reproj_err.detach() * 10.0)
             scvr_loss = F.mse_loss(scvr_reliability, target_reliability)
             epi_loss = epi_loss + self.v37_scvr_loss_weight * scvr_loss
+
+        # Optional v48 adversarial domain-discriminator loss (training only).
+        if (
+            self.training
+            and self.use_v48_domain_adapter
+            and v48_domain_logits is not None
+            and domain_id is not None
+        ):
+            v48_domain_loss = F.cross_entropy(v48_domain_logits, domain_id)
+            epi_loss = epi_loss + v48_domain_loss
 
         pred_3d = pred_3d.view(B, T, J, 3)
 
