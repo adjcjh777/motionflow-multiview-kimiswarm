@@ -4,16 +4,15 @@ Last checked: 2026-08-09 03:45:10 UTC
 
 ## Current run
 
-- **Experiment:** v25 + physical loss + domain weights
-- **Launch script:** `scripts/run_v25_physical_domain_local_4090.sh`
-- **Log file:** `outputs/v25_physical_domain_local_4090_full.log`
+- **Experiment:** v45-AGF smoke
+- **Launch script:** `scripts/run_v45_agf_smoke_local_4090.sh`
+- **Log file:** `outputs/v45_agf_smoke_local_4090.log`
 
 ## Latest progress
 
-- **Epoch 1 completed:** `train_loss=6.344643`, `val_loss=0.028768`, `val_MPJPE=27.71mm`
-- **Epoch 2 completed:** `train_loss=6.725480`, `val_loss=0.030088`, `val_MPJPE=53.63mm` (significant overfit vs epoch 1)
-- **Status:** Stopped to free RTX 4090 for v45-AGF smoke. The v25+physical+domain combination regressed sharply after epoch 1.
+- **v25 + physical + domain:** Epoch 1 val_MPJPE 27.71 mm, epoch 2 val_MPJPE 53.63 mm — stopped due to overfit.
+- **v45-AGF smoke:** Running; train step ~2250, loss decreasing from 20.28 to ~6.16 (still running, see log).
 
 ## Notes
 
-Training is continuing; the log is actively updated. The next expected entries are the remainder of epoch 2 training steps followed by the epoch 2 validation metrics.
+The v45-AGF smoke was started after stopping the regressing v25+physical+domain run. Result will guide whether to launch the full A800 v45-AGF run.
