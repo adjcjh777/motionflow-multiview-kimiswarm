@@ -239,8 +239,19 @@ RUNS = [
         "--use_view_joint_graph_network_v34 --v34_vjgn_n_layers 2 --v34_vjgn_n_heads 4 "
         "--use_temporal_view_joint_graph_network_v35 --v35_tvjgn_n_layers 2 --v35_tvjgn_n_heads 4 "
         "--use_uncertainty_gated_iterative_graph_refinement_v36 --v36_ugigr_n_layers 1 --v36_ugigr_n_iters 2 --v36_ugigr_n_heads 4 --v36_ugigr_uncertainty_hidden 64 "
-        "--use_self_critique_view_reliability_v37 --v37_scvr_hidden 64 --v37_scvr_n_layers 2 --v37_scvr_use_temporal_context",
+        "--use_self_critique_view_reliability_v37 --v37_scvr_hidden 64 --v37_scvr_n_layers 2 --v37_scvr_use_temporal_context --v37_scvr_loss_weight 0.01",
         "omniview_fusion_v37_scvr_on_v36_ugigr_a800",
+    ),
+    # v38: v37 + expanded WebBridge training data.
+    (
+        "v38_expanded_data_scvr",
+        "--mixed_manifest configs/splits/webbridge_h36m_mpi_mixed_train_val_expanded.yaml "
+        "--use_hierarchical_multiview_v31 --v31_geometry_bias "
+        "--use_view_joint_graph_network_v34 --v34_vjgn_n_layers 2 --v34_vjgn_n_heads 4 "
+        "--use_temporal_view_joint_graph_network_v35 --v35_tvjgn_n_layers 2 --v35_tvjgn_n_heads 4 "
+        "--use_uncertainty_gated_iterative_graph_refinement_v36 --v36_ugigr_n_layers 1 --v36_ugigr_n_iters 2 --v36_ugigr_n_heads 4 --v36_ugigr_uncertainty_hidden 64 "
+        "--use_self_critique_view_reliability_v37 --v37_scvr_hidden 64 --v37_scvr_n_layers 2 --v37_scvr_use_temporal_context --v37_scvr_loss_weight 0.01",
+        "omniview_fusion_v38_expanded_data_scvr_a800",
     ),
 ]
 
