@@ -110,8 +110,12 @@ class SelfEvolutionFeedbackHeadV50(nn.Module):
         pred_h = torch.cat([pred, ones], dim=-1)  # (B, T, V, J, 4)
         pred_h = pred_h.unsqueeze(-1)  # (B, T, V, J, 4, 1)
         proj = (P @ pred_h).squeeze(-1)  # (B, T, V, J, 3)
-        proj_2d = proj[..., :2] / (proj[..., 2:3] + 1e-8)
+        z = proj[..., 2:3].clamp(min=1e-6)
+        proj_2d = proj[..., :2] / z
         err = (proj_2d - pts).norm(dim=-1)  # (B, T, V, J)
+        # points_2d may contain NaN for occluded joints; mask them out.
+        valid_pts = torch.isfinite(pts).all(dim=-1)  # (B, T, V, J)
+        err = torch.where(valid_pts, err, torch.zeros_like(err))
         return err
 
     def _compute_temporal_residual(self, pred_3d: torch.Tensor) -> torch.Tensor:
@@ -155,7 +159,8 @@ class SelfEvolutionFeedbackHeadV50(nn.Module):
         pred_h = pred_h.unsqueeze(-1)  # (B, T, 1, J, 4, 1)
 
         proj = (P @ pred_h).squeeze(-1)  # (B, T, V, J, 3)
-        proj_2d = proj[..., :2] / (proj[..., 2:3] + 1e-8)
+        z = proj[..., 2:3].clamp(min=1e-6)
+        proj_2d = proj[..., :2] / z
 
         # Median projection across views.
         median = proj_2d.median(dim=2, keepdim=True)[0]  # (B, T, 1, J, 2)
@@ -182,6 +187,12 @@ class SelfEvolutionFeedbackHeadV50(nn.Module):
         epipolar_residual: (B, T, V, J).
         feature: (B, T, V, J, hidden).
         """
+        # Detach the main pose estimate so the auxiliary v50 loss only trains
+        # the feedback head, not the pose estimator.  Gradients through the
+        # reprojection / temporal / epipolar residuals are unstable and can
+        # poison the main model.
+        pred_3d = pred_3d.detach()
+
         reproj = self._compute_reprojection_residual(pred_3d, points_2d, K, R, t)
         temporal = self._compute_temporal_residual(pred_3d)  # (B, T, J)
         epipolar = self._compute_epipolar_residual(pred_3d, K, R, t)

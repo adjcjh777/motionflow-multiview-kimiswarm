@@ -1445,16 +1445,20 @@ def build_compute_loss(args: Namespace):
                     loss_weight=args.v50_sefh_loss_weight,
                     residual_clip=args.v50_sefh_residual_clip,
                 )
-                loss = loss + sefh_loss
-                metrics["v50_sefh_loss"] = sefh_loss.item()
+                if torch.isnan(sefh_loss).any() or torch.isinf(sefh_loss).any():
+                    print(f"[trainer] v50 SEFH loss is NaN/Inf ({sefh_loss.item()}); skipping auxiliary loss", flush=True)
+                else:
+                    loss = loss + sefh_loss
+                    metrics["v50_sefh_loss"] = sefh_loss.item()
 
                 # Optional aleatoric uncertainty weighting of the per-joint error.
                 aleatoric_weight = getattr(args, "v50_sefh_aleatoric_weight", 0.0)
                 if aleatoric_weight > 0.0:
                     joint_err = (pred_3d - y).norm(dim=-1)  # (B, T, J)
                     aleatoric_loss = (torch.exp(-sefh_log_var) * joint_err + 0.5 * sefh_log_var).mean()
-                    loss = loss + aleatoric_weight * aleatoric_loss
-                    metrics["v50_sefh_aleatoric_loss"] = aleatoric_loss.item()
+                    if not (torch.isnan(aleatoric_loss).any() or torch.isinf(aleatoric_loss).any()):
+                        loss = loss + aleatoric_weight * aleatoric_loss
+                        metrics["v50_sefh_aleatoric_loss"] = aleatoric_loss.item()
 
         # Optional v51 cross-domain sparse-view reliability (CDSVR) auxiliary loss.
         if getattr(args, "use_v51_cross_domain_sparse_view_reliability", False):
@@ -1493,8 +1497,11 @@ def build_compute_loss(args: Namespace):
                 cdsvr_loss = v51_cdsvr_loss_weight * (
                     weighted_reproj - 0.5 * entropy_scale + 0.01 * view_div
                 )
-                loss = loss + cdsvr_loss
-                metrics["v51_cdsvr_loss"] = cdsvr_loss.item()
+                if torch.isnan(cdsvr_loss).any() or torch.isinf(cdsvr_loss).any():
+                    print(f"[trainer] v51 CDSVR loss is NaN/Inf ({cdsvr_loss.item()}); skipping auxiliary loss", flush=True)
+                else:
+                    loss = loss + cdsvr_loss
+                    metrics["v51_cdsvr_loss"] = cdsvr_loss.item()
 
         if args.bone_loss_weight > 0.0 and parents is not None:
             bl = bone_length_loss(pred_3d, y, parents)

@@ -2072,6 +2072,7 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
                 )
             pred_3d = refined_pose.squeeze(1) if squeeze_output else refined_pose
 
+
         out = (pred_3d, weights, visibility, L, epi_loss)
 
         if self.return_pp_delta:

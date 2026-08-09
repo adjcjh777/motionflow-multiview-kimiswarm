@@ -2,6 +2,11 @@
 # Local RTX 4090 smoke test for v51 Cross-Domain Sparse-View Reliability
 # (CDSVR) on top of v50 Self-Evolution Feedback Head.
 #
+# Note: v50/v51 auxiliary losses are currently disabled (loss_weight=0.0) while
+# the NaN stability issue is investigated in GitHub issue #181.  The heads are
+# still wired into the forward pass so they can be enabled once the loss is
+# stable.
+#
 # Run only when the GPU is free (do not overlap with other training).
 set -euo pipefail
 
@@ -29,7 +34,7 @@ python -u experiments/train_omniview_fusion_v5_webbridge_multi.py \
     --v50_sefh_hidden 64 \
     --v50_sefh_num_layers 2 \
     --v50_sefh_dropout 0.1 \
-    --v50_sefh_loss_weight 0.01 \
+    --v50_sefh_loss_weight 0.0 \\
     --v50_sefh_aleatoric_weight 0.1 \
     --v50_sefh_identity_init_gate \
     --use_v51_cross_domain_sparse_view_reliability \
@@ -40,7 +45,7 @@ python -u experiments/train_omniview_fusion_v5_webbridge_multi.py \
     --v51_cdsvr_use_domain_label \
     --v51_cdsvr_uncertainty_temperature 1.0 \
     --v51_cdsvr_identity_init_gate \
-    --v51_cdsvr_loss_weight 0.01 \
+    --v51_cdsvr_loss_weight 0.0 \
     --num_workers 0 \
     --d 64 \
     --residual_hidden 128 \
