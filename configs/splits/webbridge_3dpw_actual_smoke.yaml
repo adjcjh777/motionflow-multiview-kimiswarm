@@ -10,12 +10,12 @@ train_paths:
   - data/webbridge/3dpw/converted/train/courtyard_bodyScannerMotions_00_pseudo.npz
   - data/webbridge/3dpw/converted/train/courtyard_box_00_pseudo.npz
 train_names:
-  - 3dpw_pseudo
-  - 3dpw_pseudo
-  - 3dpw_pseudo
-  - 3dpw_pseudo
-  - 3dpw_pseudo
+  - 3dpw
+  - 3dpw
+  - 3dpw
+  - 3dpw
+  - 3dpw
 val_paths:
   - data/webbridge/3dpw/validation/courtyard_basketball_01_actual.npz
 val_names:
-  - 3dpw_actual
+  - 3dpw
