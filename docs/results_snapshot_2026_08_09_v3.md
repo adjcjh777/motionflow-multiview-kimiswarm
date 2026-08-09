@@ -10,7 +10,8 @@ Snapshot time: 2026-08-09 (active).
 | v51 CDSVR medium smoke 200 samples (losses disabled) | 4 | **52.33 mm** | v50/v51 heads wired in, losses disabled; early stopped after no val improvement for 3 epochs |
 | v51 CDSVR tiny smoke (v50/v51 MSE loss 0.01) | 2 | **104.51 mm** | Replaced unstable NLL with MSE targets; v50/v51 losses enabled and stable |
 | v51 CDSVR medium smoke 200 samples (v50/v51 MSE loss 0.01) v1 | 5 | **duspended** | Loss exploded after ~800 steps (1.8k → 3.4k); v50 only detached pred_3d, allowing gradients through K/R/t/points_2d to poison main model |
-| v51 CDSVR medium smoke 200 samples (v50/v51 MSE loss 0.01) v2 | TBD | TBD | Running after detaching all v50 inputs; see `outputs/omniview_fusion_v51_cdsvr_medium_local_4090.log` |
+| v51 CDSVR medium smoke 200 samples (v50/v51 MSE loss 0.01) v2 | 5 | **suspended** | Loss still exploded (107 → 15k) even with all v50 inputs detached; MSE auxiliary loss is unstable beyond tiny smoke |
+| v51 CDSVR medium smoke 200 samples (heads only, losses 0.0) | TBD | TBD | Re-running with v50/v51 auxiliary losses disabled; heads remain wired in for future inference use |
 
 ## Key findings
 

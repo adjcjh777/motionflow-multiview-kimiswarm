@@ -30,7 +30,7 @@ python -u experiments/train_omniview_fusion_v5_webbridge_multi.py \
     --v50_sefh_hidden 64 \
     --v50_sefh_num_layers 2 \
     --v50_sefh_dropout 0.1 \
-    --v50_sefh_loss_weight 0.01 \
+    --v50_sefh_loss_weight 0.0 \
     --v50_sefh_aleatoric_weight 0.0 \
     --v50_sefh_identity_init_gate \
     --use_v51_cross_domain_sparse_view_reliability \
@@ -41,7 +41,7 @@ python -u experiments/train_omniview_fusion_v5_webbridge_multi.py \
     --v51_cdsvr_use_domain_label \
     --v51_cdsvr_uncertainty_temperature 1.0 \
     --v51_cdsvr_identity_init_gate \
-    --v51_cdsvr_loss_weight 0.01 \
+    --v51_cdsvr_loss_weight 0.0 \
     --num_workers 0 \
     --d 64 \
     --residual_hidden 128 \
