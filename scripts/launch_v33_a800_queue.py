@@ -232,6 +232,16 @@ RUNS = [
         "--use_uncertainty_gated_iterative_graph_refinement_v36 --v36_ugigr_n_layers 1 --v36_ugigr_n_iters 1 --v36_ugigr_n_heads 4 --v36_ugigr_uncertainty_hidden 64",
         "omniview_fusion_v36_ugigr_n_iters_1_on_v34_vjgn_a800",
     ),
+    # v37 self-critique view reliability on top of v36 UGIGR.
+    (
+        "v37_scvr_on_v36_ugigr",
+        "--use_hierarchical_multiview_v31 --v31_geometry_bias "
+        "--use_view_joint_graph_network_v34 --v34_vjgn_n_layers 2 --v34_vjgn_n_heads 4 "
+        "--use_temporal_view_joint_graph_network_v35 --v35_tvjgn_n_layers 2 --v35_tvjgn_n_heads 4 "
+        "--use_uncertainty_gated_iterative_graph_refinement_v36 --v36_ugigr_n_layers 1 --v36_ugigr_n_iters 2 --v36_ugigr_n_heads 4 --v36_ugigr_uncertainty_hidden 64 "
+        "--use_self_critique_view_reliability_v37 --v37_scvr_hidden 64 --v37_scvr_n_layers 2 --v37_scvr_use_temporal_context",
+        "omniview_fusion_v37_scvr_on_v36_ugigr_a800",
+    ),
 ]
 
 
