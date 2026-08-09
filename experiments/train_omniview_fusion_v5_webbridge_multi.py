@@ -1380,6 +1380,14 @@ def build_compute_loss(args: Namespace, sefh_head: Optional[torch.nn.Module] = N
             loss = loss + sefh_loss
             metrics["v50_sefh_loss"] = sefh_loss.item()
 
+            # Optional aleatoric uncertainty weighting of the per-joint error.
+            aleatoric_weight = getattr(args, "v50_sefh_aleatoric_weight", 0.0)
+            if aleatoric_weight > 0.0:
+                joint_err = (pred_3d - y).norm(dim=-1)  # (B, T, J)
+                aleatoric_loss = (torch.exp(-sefh_log_var) * joint_err + 0.5 * sefh_log_var).mean()
+                loss = loss + aleatoric_weight * aleatoric_loss
+                metrics["v50_sefh_aleatoric_loss"] = aleatoric_loss.item()
+
         if args.bone_loss_weight > 0.0 and parents is not None:
             bl = bone_length_loss(pred_3d, y, parents)
             loss = loss + args.bone_loss_weight * bl
@@ -1858,6 +1866,7 @@ def parse_args() -> Namespace:
     parser.add_argument("--v50_sefh_loss_weight", type=float, default=0.01, help="Weight for the v50 auxiliary loss")
     parser.add_argument("--v50_sefh_residual_clip", type=float, default=50.0, help="Clip residuals before feeding into the v50 loss")
     parser.add_argument("--v50_sefh_identity_init_gate", action="store_true", default=True, help="Initialize the v50 reliability gate near identity")
+    parser.add_argument("--v50_sefh_aleatoric_weight", type=float, default=0.0, help="Weight for aleatoric uncertainty loss on the per-joint error (0 disables)")
     # v48 domain generalization
     parser.add_argument("--use_v48_domain_generalization", action="store_true", default=False, help="Use v48 domain generalization (DDWL + optional domain FiLM / adversarial loss)")
     parser.add_argument("--v48_dg_hidden", type=int, default=64, help="Hidden dimension of the v48 domain adapter")
