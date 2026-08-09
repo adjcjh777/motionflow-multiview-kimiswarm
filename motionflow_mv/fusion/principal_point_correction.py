@@ -169,7 +169,14 @@ class PrincipalPointCorrection(nn.Module):
         points = x[..., :2]  # (N, V, J, 2)
         conf = x[..., 2]  # (N, V, J)
 
+        # Occluded/padded joints may be NaN.  Mask them out and zero their
+        # confidence so they do not contribute to the per-view descriptor.
+        valid = torch.isfinite(points).all(dim=-1) & torch.isfinite(conf)  # (N, V, J)
+        points = torch.where(valid.unsqueeze(-1), points, torch.zeros_like(points))
+        conf = torch.where(valid, conf, torch.zeros_like(conf))
+
         if weights is not None:
+            weights = torch.where(valid, weights, torch.zeros_like(weights))
             w = (weights * conf).unsqueeze(-1) + 1e-8
             p_mean = (points * w).sum(dim=2) / w.sum(dim=2)
         else:
@@ -183,6 +190,10 @@ class PrincipalPointCorrection(nn.Module):
         skew = K[..., 0, 1]
 
         feat = torch.stack([p_mean[..., 0], p_mean[..., 1], conf.mean(dim=-1), cx, cy, fx, fy, skew], dim=-1)
+
+        # Final safety: occluded joints sometimes leave NaN in the descriptor.
+        # Replace any remaining non-finite entries with zeros before projection.
+        feat = torch.where(torch.isfinite(feat), feat, torch.zeros_like(feat))
 
         return self.fallback_projector(feat)
 

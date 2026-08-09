@@ -86,7 +86,7 @@ def weighted_dlt_triangulate(
         row_x = x[..., None] * Pv[:, 2:3, :] - Pv[:, 0:1, :]  # (N, J, 4)
         row_y = y[..., None] * Pv[:, 2:3, :] - Pv[:, 1:2, :]  # (N, J, 4)
 
-        w = weights_flat[:, v, :].unsqueeze(-1).sqrt().clamp(min=eps)  # (N, J, 1)
+        w = weights_flat[:, v, :].unsqueeze(-1).clamp(min=eps).sqrt()  # (N, J, 1)
         A_view = torch.stack([row_x, row_y], dim=2) * w.unsqueeze(2)  # (N, J, 2, 4)
         A_rows.append(A_view)
 
