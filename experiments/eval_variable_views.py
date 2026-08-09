@@ -180,14 +180,19 @@ def _build_omniview_v5_model(
 
     model = OmniMultiViewFusionV5(**kwargs)
 
-    if n_joints == 28 and hasattr(model, "rebuild_graph"):
-        model.rebuild_graph(n_joints, dataset="mpiinf3dhp")
-
     if checkpoint_path is not None:
         state = torch.load(checkpoint_path, map_location="cpu", weights_only=True)
         if isinstance(state, dict) and "model" in state:
             state = state["model"]
         model.load_state_dict(state, strict=False)
+
+    # Rebuild the (view, joint) graph for the target skeleton.  The graph edge
+    # buffers are saved in the checkpoint, so loading a model trained on a
+    # different skeleton (e.g. 28-joint MPI-INF-3DHP) and evaluating on another
+    # (e.g. 17-joint H36M) would otherwise trigger out-of-bounds gathers.
+    if hasattr(model, "rebuild_graph"):
+        dataset = "mpiinf3dhp" if n_joints == 28 else "h36m"
+        model.rebuild_graph(n_joints, dataset=dataset)
 
     model.to(device)
     model.eval()

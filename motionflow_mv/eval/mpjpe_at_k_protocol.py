@@ -200,6 +200,7 @@ def evaluate_mpjpe_at_k(
     align: str = "none",
     device: Optional[torch.device] = None,
     hardened: bool = False,
+    n_views_max: Optional[int] = None,
 ) -> Dict[int, Dict[str, Any]]:
     """Evaluate ``model`` for variable view counts using the MPJPE@k protocol.
 
@@ -216,6 +217,8 @@ def evaluate_mpjpe_at_k(
         align: ``"none"``, ``"pa"``, or ``"root"``.
         device: PyTorch device; inferred if not provided.
         hardened: Use :class:`HardenedVariableViewInferenceWrapper`.
+        n_views_max: Fixed view count the model expects.  If None, use the
+            dataset's actual view count ``V``.
 
     Returns:
         Mapping ``k -> dict(metrics)``.  Metrics include ``mpjpe``,
@@ -258,7 +261,7 @@ def evaluate_mpjpe_at_k(
                     confidences[start:end, ..., None],
                 ], axis=-1)).float().to(device)
                 x_padded, Kp, Rp, tp, _ = prepare_variable_view_input(
-                    x_clip, K, R, t, active, n_views_max=V
+                    x_clip, K, R, t, active, n_views_max=(n_views_max if n_views_max is not None else V)
                 )
                 with torch.no_grad():
                     pred = wrapper.model(x_padded.unsqueeze(0), K=Kp, R=Rp, t=tp)[0]

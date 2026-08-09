@@ -85,13 +85,19 @@ def main() -> None:
     config_path = _resolve_config_path(args, args.checkpoint)
     config = _load_config(config_path) if config_path else {}
 
-    # n_joints and n_views are inferred from the first dataset.
+    # n_joints is inferred from the first dataset; n_views is taken from the saved
+    # training config (if available) so that models trained on 14-view data can be
+    # evaluated on datasets with fewer views without a state_dict shape mismatch.
     first_npz = _load_datasets(args)[0][1]
     _, confidences, _, _ = _load_npz_dataset(first_npz)
     n_joints = confidences.shape[-1]
-    n_views = confidences.shape[-2]
+    n_views = config.get("n_views", confidences.shape[-2])
 
     model = _build_omniview_v5_model(config, args.checkpoint, n_joints, n_views, device)
+
+    # Use the model's expected view count so that variable-view inputs are
+    # padded/truncated to the same number of views the model was trained on.
+    model_n_views = getattr(model, "n_views", n_views)
 
     datasets = _load_datasets(args)
     output_dir = Path(args.output_dir)
@@ -114,6 +120,7 @@ def main() -> None:
             align=args.align,
             device=device,
             hardened=args.hardened,
+            n_views_max=model_n_views,
         )
         all_results[name] = results
         print_mpjpe_at_k_table(results, label=f"{name} MPJPE@k")

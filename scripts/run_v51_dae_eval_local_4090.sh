@@ -4,7 +4,7 @@
 set -euo pipefail
 
 CHECKPOINT="outputs/v51_dae_smoke_local_4090.pth"
-MANIFEST="configs/splits/webbridge_h36m_mpi_mixed_train_val.yaml"
+MANIFEST="configs/splits/webbridge_h36m_mpi_mixed_val_for_eval.txt"
 
 if [[ ! -f "$CHECKPOINT" ]]; then
     echo "Checkpoint not found: $CHECKPOINT"
