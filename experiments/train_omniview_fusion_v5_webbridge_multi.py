@@ -192,6 +192,11 @@ def build_model_from_args(
         "v36_ugigr_n_heads": getattr(args, "v36_ugigr_n_heads", 4),
         "v36_ugigr_dropout": getattr(args, "v36_ugigr_dropout", 0.0),
         "v36_ugigr_uncertainty_hidden": getattr(args, "v36_ugigr_uncertainty_hidden", 64),
+        # v37 self-critique view reliability estimator
+        "use_self_critique_view_reliability_v37": getattr(args, "use_self_critique_view_reliability_v37", False),
+        "v37_scvr_hidden": getattr(args, "v37_scvr_hidden", 64),
+        "v37_scvr_n_layers": getattr(args, "v37_scvr_n_layers", 2),
+        "v37_scvr_use_temporal_context": getattr(args, "v37_scvr_use_temporal_context", True),
         # v32 temporal trajectory consistency
         "use_trajectory_consistency_v32": getattr(args, "use_traertainty_consistency_v32", False),
         "v32_smooth_weight": getattr(args, "v32_smooth_weight", 1e-3),
@@ -1558,6 +1563,11 @@ def parse_args() -> Namespace:
     parser.add_argument("--v36_ugigr_n_heads", type=int, default=4, help="Number of attention heads in v36 UGIGR")
     parser.add_argument("--v36_ugigr_dropout", type=float, default=0.0, help="Dropout probability for v36 UGIGR")
     parser.add_argument("--v36_ugigr_uncertainty_hidden", type=int, default=64, help="Hidden dimension of v36 UGIGR uncertainty MLP")
+    # v37 self-critique view reliability estimator
+    parser.add_argument("--use_self_critique_view_reliability_v37", action="store_true", default=False, help="Use v37 self-critique view reliability estimator")
+    parser.add_argument("--v37_scvr_hidden", type=int, default=64, help="Hidden dimension of v37 SCVR MLP")
+    parser.add_argument("--v37_scvr_n_layers", type=int, default=2, help="Number of layers in v37 SCVR MLP")
+    parser.add_argument("--v37_scvr_use_temporal_context", action="store_true", default=True, help="Use temporal context in v37 SCVR")
     parser.add_argument("--v30_dropout", type=float, default=0.1, help="Dropout for v30 hierarchical encoder")
     parser.add_argument("--v30_stochastic_depth_prob", type=float, default=0.0, help="Stochastic depth probability for v30 hierarchical encoder")
     parser.add_argument("--use_test_time_self_evolution_v29", action="store_true", default=False, help="Use v29 test-time self-evolution with physical-space alignment at inference")

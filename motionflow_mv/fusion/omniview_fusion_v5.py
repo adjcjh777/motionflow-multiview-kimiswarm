@@ -73,6 +73,9 @@ from motionflow_mv.fusion.temporal_view_joint_graph_network_v35 import (
 from motionflow_mv.fusion.uncertainty_gated_iterative_graph_refinement_v36 import (
     UncertaintyGatedIterativeGraphRefinementV36,
 )
+from motionflow_mv.fusion.self_critique_view_reliability_v37 import (
+    SelfCritiqueViewReliabilityV37,
+)
 from motionflow_mv.fusion.camera_view_embedding_v31 import CameraConditionedViewEmbeddingV31
 from motionflow_mv.losses.physical_collision_penalty_v31 import PhysicalCollisionPenaltyV31
 from motionflow_mv.fusion.prototypes.cross_view_graph_attention import (
@@ -249,6 +252,11 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
         v36_ugigr_n_heads: int = 4,
         v36_ugigr_dropout: float = 0.0,
         v36_ugigr_uncertainty_hidden: int = 64,
+        # v37 self-critique view reliability estimator
+        use_self_critique_view_reliability_v37: bool = False,
+        v37_scvr_hidden: int = 64,
+        v37_scvr_n_layers: int = 2,
+        v37_scvr_use_temporal_context: bool = True,
         # v32 temporal trajectory consistency
         use_trajectory_consistency_v32: bool = False,
         v32_smooth_weight: float = 1e-3,
@@ -716,6 +724,18 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
         else:
             self.uncertainty_gated_iterative_graph_refinement_v36 = None
 
+        # Optional v37 self-critique view reliability estimator (identity at init).
+        self.use_self_critique_view_reliability_v37 = use_self_critique_view_reliability_v37
+        if self.use_self_critique_view_reliability_v37:
+            self.self_critique_view_reliability_v37 = SelfCritiqueViewReliabilityV37(
+                d=self.d,
+                hidden_dim=v37_scvr_hidden,
+                n_layers=v37_scvr_n_layers,
+                use_temporal_context=v37_scvr_use_temporal_context,
+            )
+        else:
+            self.self_critique_view_reliability_v37 = None
+
         # Optional v29 test-time self-evolution (with physical-space alignment).
         self.use_test_time_self_evolution_v29 = use_test_time_self_evolution_v29
         if self.use_test_time_self_evolution_v29:
@@ -1100,6 +1120,19 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
                 view_mask=view_mask_flat.view(B, T, V),
             )
 
+        # Optional v37 self-critique view reliability estimator (identity at init).
+        scvr_reliability = None
+        scvr_view_reliability = None
+        if self.use_self_critique_view_reliability_v37 and self.self_critique_view_reliability_v37 is not None:
+            scvr_reliability, scvr_view_reliability = self.self_critique_view_reliability_v37(
+                feat,
+                points_2d=points_2d.view(B, T, V, J, 2),
+                K=K_corrected.view(B, T, V, 3, 3),
+                R=R.view(B, T, V, 3, 3),
+                t=t.view(B, T, V, 3),
+                view_mask=view_mask_flat.view(B, T, V),
+            )
+
         # Optional v33 ray-conditioned cross-view attention (identity at init).
         if self.use_ray_conditioned_attention_v33 and self.ray_conditioned_attention_v33 is not None:
             feat = feat + self.ray_conditioned_attention_v33(
@@ -1187,6 +1220,13 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
 
         # Apply view mask to weights before triangulation.
         weights = weights * view_mask_flat.unsqueeze(-1)
+
+        # Optional v37 self-critique view reliability: down-weight corrupted views.
+        if scvr_reliability is not None:
+            # scvr_reliability is (B, T, V, J); weights is (B*T, V, J).
+            weights = weights * scvr_reliability.view(B * T, V, J)
+            weights = weights.clamp(min=1e-4, max=1e4)
+
         if self.use_full_precision_dlt:
             weights = weights * confidences * visibility
             weights = weights.clamp(min=1e-4, max=1e4)
