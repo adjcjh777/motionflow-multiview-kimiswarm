@@ -10,7 +10,7 @@ Snapshot time: 2026-08-09 (active).
 | v47 temporal smoke | in progress | — | step ~2100, loss ~6.23 |
 | v48 domain smoke | queued | — | waiting for v47 smoke |
 | v50 SEFH smoke | queued | — | will run after v46/v47/v48 chain |
-| v51 DAE smoke | queued | — | will run after v50 SEFH smoke |
+| v51 DAE smoke | running | — | loss 7.88 at step 600, training stable |
 
 ## A800-D full runs
 
@@ -37,5 +37,5 @@ Snapshot time: 2026-08-09 (active).
 ## Next gates
 
 1. v46-SVG full run on A800 reaches first validation.
-2. Local v46/v47/v48 smoke chain finishes, triggering v49 ablation + v50 smoke + v51 DAE smoke.
-3. v51 DAE smoke shows `val_MPJPE@full` within 1 mm of v46 baseline and `MPJPE@2` improvement ≥2 mm.
+2. Local v51 DAE smoke finishes and passes acceptance (val_MPJPE@full within 1 mm of v46 baseline, MPJPE@2 improvement ≥2 mm).
+3. Run v51 DAE full local 4090 (5 epochs, 5k samples) or queue A800 full run depending on smoke result.
