@@ -11,8 +11,4 @@ Last checked: 2026-08-09 03:45:10 UTC
 ## Latest progress
 
 - **v25 + physical + domain:** Epoch 1 val_MPJPE 27.71 mm, epoch 2 val_MPJPE 53.63 mm — stopped due to overfit.
-- **v45-AGF smoke:** Running; train step ~2250, loss decreasing from 20.28 to ~6.16 (still running, see log).
-
-## Notes
-
-The v45-AGF smoke was started after stopping the regressing v25+physical+domain run. Result will guide whether to launch the full A800 v45-AGF run.
+- **v45-AGF smoke:** Original smoke (`train_samples=500, epochs=2`) was training healthily but too slow; stopped. Fast smoke (`train_samples=50, epochs=1`) now running to get a quick val_MPJPE.
