@@ -115,11 +115,32 @@ def _markdown_table(rows: list[dict]) -> str:
     return "\n".join(lines)
 
 
+def _latex_table(rows: list[dict]) -> str:
+    if not rows:
+        return "No completed runs with val_MPJPE found."
+    lines = [
+        r"\begin{table}[h]",
+        r"\centering",
+        r"\begin{tabular}{lcc}",
+        r"\toprule",
+        r"Run & Best val\_MPJPE (mm) & Latest val\_MPJPE (mm) \\",
+        r"\midrule",
+    ]
+    for row in rows:
+        best = row["best_val_mpjpe_mm"] or "--"
+        latest = row["latest_val_mpjpe_mm"] or "--"
+        run = row["run"].replace("_", r"\_")
+        lines.append(f"{run} & {best} & {latest} \\\\")
+    lines.extend([r"\bottomrule", r"\end{tabular}", r"\caption{MotionFlow-MultiView val\_MPJPE leaderboard}", r"\end{table}"])
+    return "\n".join(lines)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Parse run results and print a leaderboard.")
     parser.add_argument("--outputs_dir", type=Path, default=Path("outputs"), help="Local outputs directory")
     parser.add_argument("--ssh_host", default="a800-D", help="A800 SSH host")
     parser.add_argument("--a800_repo", default="/mnt/nvme0n1p1/zhangzy/motionflow-multiview-kimiswarm-iter20", help="A800 repo path")
+    parser.add_argument("--latex", action="store_true", help="Output LaTeX table instead of Markdown")
     args = parser.parse_args()
 
     rows = _parse_local_outputs(args.outputs_dir)
@@ -134,7 +155,7 @@ def main() -> None:
 
     rows.sort(key=_key)
 
-    print(_markdown_table(rows))
+    print(_latex_table(rows) if args.latex else _markdown_table(rows))
 
 
 if __name__ == "__main__":
