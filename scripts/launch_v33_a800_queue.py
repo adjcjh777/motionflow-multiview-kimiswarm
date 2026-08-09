@@ -292,6 +292,19 @@ RUNS = [
         "--domain_loss_weights 1.0,1.5",
         "omniview_fusion_v41_domain_weighted_loss_on_v40_a800",
     ),
+    # v42: v36 + physical loss + domain weights, without v37/v39.
+    # Tests whether v40/v41 gains require v37 or are orthogonal.
+    (
+        "v42_v36_physical_domain_no_v37",
+        "--mixed_manifest configs/splits/webbridge_h36m_mpi_mixed_train_val_expanded.yaml "
+        "--use_hierarchical_multiview_v31 --v31_geometry_bias "
+        "--use_view_joint_graph_network_v34 --v34_vjgn_n_layers 2 --v34_vjgn_n_heads 4 "
+        "--use_temporal_view_joint_graph_network_v35 --v35_tvjgn_n_layers 2 --v35_tvjgn_n_heads 4 "
+        "--use_uncertainty_gated_iterative_graph_refinement_v36 --v36_ugigr_n_layers 1 --v36_ugigr_n_iters 2 --v36_ugigr_n_heads 4 --v36_ugigr_uncertainty_hidden 64 "
+        "--use_skeleton_physical_loss_v40 --v40_bone_weight 0.05 --v40_joint_limit_weight 0.01 --v40_symmetry_weight 0.02 --v40_floor_weight 0.02 "
+        "--domain_loss_weights 1.0,1.5",
+        "omniview_fusion_v42_v36_physical_domain_no_v37_a800",
+    ),
 ]
 
 
