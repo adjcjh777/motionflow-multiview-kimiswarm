@@ -79,7 +79,18 @@ RUNS = [
         "--d 128 --residual_hidden 256 --n_st_layers 3 --batch_size 16 --clip_len 13 --train_samples 200 --epochs 5 --early_stopping_patience 2 --early_stopping_min_delta 0.001 --weight_decay 1e-4",
         "omniview_fusion_v48_domain_generalization_on_v47_a800",
     ),
-    # Legacy v42/v43 ablations (queued after the new v45-v48 stack).
+    # v49-Lite: causal Conv1D temporal aggregation instead of the v47 transformer.
+    (
+        "v49_lite_temporal_on_v46",
+        "--mixed_manifest configs/splits/webbridge_h36m_mpi_mixed_train_val_expanded.yaml "
+        "--use_multiview_geometry_fusion_v25 --v25_use_geometry_attention --v25_use_learned_depth_triangulation --v25_use_geometry_bundle_adjustment "
+        "--use_v45_adaptive_geometry_fusion --v45_adaptive_weight_type per_view_joint --v45_adaptive_weight_hidden 32 --v45_adaptive_weight_n_layers 1 "
+        "--use_v46_sparse_view_generalization --v46_svg_view_dropout_prob 0.3 --v46_svg_min_views 2 --v46_svg_hidden 64 --v46_svg_use_curriculum "
+        "--use_v49_lite_temporal_aggregation --v49_lite_temporal_d_model 32 --v49_lite_temporal_num_layers 2 --v49_lite_temporal_kernel_size 3 --v49_lite_temporal_loss_weight 0.01 --v49_lite_temporal_use_view_count_conditioning "
+        "--d 128 --residual_hidden 256 --n_st_layers 3 --batch_size 16 --clip_len 13 --train_samples 200 --epochs 5 --early_stopping_patience 2 --early_stopping_min_delta 0.001 --weight_decay 1e-4",
+        "omniview_fusion_v49_lite_temporal_on_v46_a800",
+    ),
+    # Legacy v42/v43 ablations (queued after the new v45-v49 stack).
     (
         "v42_v36_physical_domain_no_v37",
         "--mixed_manifest configs/splits/webbridge_h36m_mpi_mixed_train_val_expanded.yaml "
