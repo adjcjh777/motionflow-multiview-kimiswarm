@@ -8,14 +8,25 @@ Usage with a real dataset and checkpoint:
         --dataset data/webbridge/mpi_inf_3dhp/s_02_seq_01_v14_multiview_m.npz \\
         --checkpoint outputs/ray_attention_temporal_residual_v2.pth \\
         --clip_len 13 --d 64
+
+Usage with OmniMultiViewFusionV5 (v46/v47 comparison):
+    python experiments/eval_variable_views.py \\
+        --model_class omniview_v5 \\
+        --checkpoint outputs/v47_temporal_svg.pth \\
+        --config outputs/v47_temporal_svg.config.json \\
+        --compare_v46_v47 \\
+        --dataset data/webbridge/... --output_csv v46_v47.csv
 """
 
 import argparse
+import inspect
 import json
 import math
 import sys
+from argparse import Namespace
 from itertools import combinations
 from pathlib import Path
+from typing import Any, Dict, Optional
 
 import numpy as np
 import torch
@@ -36,10 +47,104 @@ from motionflow_mv.fusion.ray_attention_temporal_crossview_residual_principal_po
     RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointVisibility,
 )
 from motionflow_mv.fusion.variable_view_inference import (
+    HardenedVariableViewInferenceWrapper,
     VariableViewInferenceWrapper,
     generate_view_subsets,
     prepare_variable_view_input,
 )
+
+
+def _temporal_jerk(poses_m: np.ndarray) -> float:
+    """Mean magnitude of the 3rd temporal derivative of ``poses_m`` (mm)."""
+    if poses_m.shape[0] < 4:
+        return 0.0
+    # Third finite difference along the time axis.
+    third_diff = np.diff(poses_m, n=3, axis=0)  # (T-3, J, 3) in metres
+    jerk_mm = np.linalg.norm(third_diff, axis=-1).mean() * 1000.0
+    return float(jerk_mm)
+
+
+def _load_config(path: str) -> Dict[str, Any]:
+    """Load a flat JSON/YAML configuration saved by the trainer."""
+    p = Path(path)
+    if not p.exists():
+        raise FileNotFoundError(f"Config not found: {path}")
+    if p.suffix in {".yaml", ".yml"}:
+        import yaml
+        with open(p, "r") as f:
+            cfg = yaml.safe_load(f)
+    else:
+        with open(p, "r") as f:
+            cfg = json.load(f)
+    if not isinstance(cfg, dict):
+        raise ValueError(f"Config file {path} must contain a top-level dictionary")
+    return cfg
+
+
+def _build_omniview_v5_model(
+    config: Dict[str, Any],
+    checkpoint_path: str,
+    n_joints: int,
+    n_views: int,
+    device: torch.device,
+) -> torch.nn.Module:
+    """Build ``OmniMultiViewFusionV5`` from saved config and checkpoint."""
+    from motionflow_mv.fusion.omniview_fusion_v5 import OmniMultiViewFusionV5
+
+    sig = inspect.signature(OmniMultiViewFusionV5.__init__)
+    param_names = set(sig.parameters.keys())
+
+    # The trainer exposes ``--v47_use_view_count_conditioning`` but the model
+    # constructor uses a more explicit parameter name.
+    key_map = {
+        "v47_use_view_count_conditioning": "v47_temporal_use_view_count_conditioning",
+    }
+
+    kwargs: Dict[str, Any] = {"j": n_joints, "n_views": n_views}
+    for k, v in config.items():
+        mk = key_map.get(k, k)
+        if mk in param_names and mk not in kwargs:
+            kwargs[mk] = v
+
+    # Provide sensible defaults for v47 parameters that may be absent from an
+    # older config.
+    defaults = {
+        "use_v47_temporal_aggregation": False,
+        "v47_temporal_d_model": 64,
+        "v47_temporal_n_heads": 4,
+        "v47_temporal_num_layers": 2,
+        "v47_temporal_window": None,
+        "v47_temporal_dropout": 0.1,
+        "v47_temporal_residual_gate_init": 0.0,
+        "v47_temporal_use_view_count_conditioning": True,
+    }
+    for dk, dv in defaults.items():
+        kwargs.setdefault(dk, dv)
+
+    model = OmniMultiViewFusionV5(**kwargs)
+
+    if n_joints == 28 and hasattr(model, "rebuild_graph"):
+        model.rebuild_graph(n_joints, dataset="mpiinf3dhp")
+
+    if checkpoint_path is not None:
+        state = torch.load(checkpoint_path, map_location="cpu", weights_only=True)
+        if isinstance(state, dict) and "model" in state:
+            state = state["model"]
+        model.load_state_dict(state, strict=False)
+
+    model.to(device)
+    model.eval()
+    return model
+
+
+def _resolve_config_path(args: argparse.Namespace, checkpoint_path: Optional[str]) -> Optional[str]:
+    """Return the path to the model config, or ``None``."""
+    if args.config is not None:
+        return args.config
+    if checkpoint_path is None:
+        return None
+    candidate = Path(checkpoint_path).with_suffix(".config.json")
+    return str(candidate) if candidate.exists() else None
 
 
 def _make_synthetic_cameras(n_views: int = 4):
@@ -126,6 +231,7 @@ def evaluate_variable_views(
     k_values: list[int] | None = None,
     num_subsets_per_k: int | None = None,
     seed: int = 42,
+    hardened: bool = False,
 ) -> dict:
     """Evaluate model for each view count in [min_views, max_views].
 
@@ -152,7 +258,10 @@ def evaluate_variable_views(
     R = torch.from_numpy(np.stack([cam.R for cam in cameras], axis=0)).float().to(device)
     t = torch.from_numpy(np.stack([cam.t for cam in cameras], axis=0)).float().to(device)
 
-    wrapper = VariableViewInferenceWrapper(model)
+    if hardened:
+        wrapper = HardenedVariableViewInferenceWrapper(model, min_views=2)
+    else:
+        wrapper = VariableViewInferenceWrapper(model)
     rng = np.random.default_rng(seed)
 
     results = {}
@@ -201,6 +310,7 @@ def evaluate_variable_views(
                 "mean_mm": float(np.mean(subset_errors)),
                 "std_mm": float(np.std(subset_errors)),
                 "n_subsets": len(subset_errors),
+                "temporal_jerk": _temporal_jerk(pred_all),
             }
     return results
 
@@ -218,7 +328,7 @@ def main():
     parser.add_argument("--clip_len", type=int, default=9)
     parser.add_argument("--n_temporal_layers", type=int, default=2)
     parser.add_argument("--model_class", type=str, default="temporal_residual",
-                        choices=list(MODEL_CLASSES.keys()),
+                        choices=list(MODEL_CLASSES.keys()) + ["omniview_v5"],
                         help="Model class to instantiate for the checkpoint")
     parser.add_argument("--min_views", type=int, default=2)
     parser.add_argument("--max_views", type=int, default=None)
@@ -236,6 +346,14 @@ def main():
                         help="Optional JSON path to save results")
     parser.add_argument("--output_csv", type=str, default=None,
                         help="Optional CSV path to save per-k summary")
+    parser.add_argument("--config", type=str, default=None,
+                        help="Path to saved training config (JSON/YAML) for model_class=omniview_v5")
+    parser.add_argument("--v46_checkpoint", type=str, default=None,
+                        help="OmniMultiViewFusionV5 v46 checkpoint for side-by-side comparison")
+    parser.add_argument("--v47_checkpoint", type=str, default=None,
+                        help="OmniMultiViewFusionV5 v47 checkpoint for side-by-side comparison")
+    parser.add_argument("--compare_v46_v47", action="store_true",
+                        help="Compare v46 vs v47 by toggling use_v47_temporal_aggregation on the loaded model")
     args = parser.parse_args()
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -260,48 +378,172 @@ def main():
         )
         n_views = args.n_views
 
-    model = _build_model(args.j, n_views, args.d, args.n_temporal_layers, args.checkpoint, args.model_class, args.residual_hidden).to(device)
+    def _run_eval(model):
+        return evaluate_variable_views(
+            model,
+            points_2d,
+            confidences,
+            joints_3d,
+            cameras,
+            clip_len=args.clip_len,
+            device=device,
+            min_views=args.min_views,
+            max_views=args.max_views or n_views,
+            k_values=args.k_values,
+            num_subsets_per_k=args.num_subsets_per_k,
+            seed=args.seed,
+            hardened=isinstance(model.__class__.__name__, str) and "OmniMultiViewFusionV5" in model.__class__.__name__,
+        )
 
-    results = evaluate_variable_views(
-        model,
-        points_2d,
-        confidences,
-        joints_3d,
-        cameras,
-        clip_len=args.clip_len,
-        device=device,
-        min_views=args.min_views,
-        max_views=args.max_views or n_views,
-        k_values=args.k_values,
-        num_subsets_per_k=args.num_subsets_per_k,
-        seed=args.seed,
-    )
+    def _print_single(results, label="Variable view-count"):
+        print(f"{label} benchmark results (MPJPE mm):")
+        for k, res in results.items():
+            print(f"  MPJPE@k={k:2d}: {res['mpjpe_at_k']:.4f} mm, "
+                  f"std={res['std_mm']:.4f} mm, subsets={res['n_subsets']}")
 
-    print("Variable view-count benchmark results (MPJPE mm):")
-    for k, res in results.items():
-        print(f"  MPJPE@k={k:2d}: {res['mpjpe_at_k']:.4f} mm, "
-              f"std={res['std_mm']:.4f} mm, subsets={res['n_subsets']}")
-
-    if args.output_json:
-        out_path = Path(args.output_json)
-        out_path.parent.mkdir(parents=True, exist_ok=True)
-        json_payload = {
-            "mpjpe_at_k": {str(k): res["mpjpe_at_k"] for k, res in results.items()},
-            "per_k": {k: v for k, v in results.items()},
-        }
-        with open(out_path, "w") as f:
-            json.dump(json_payload, f, indent=2)
-        print(f"Saved results to {out_path}")
-
-    if args.output_csv:
-        out_path = Path(args.output_csv)
+    def _write_single_csv(results, out_path):
         out_path.parent.mkdir(parents=True, exist_ok=True)
         with open(out_path, "w") as f:
-            f.write("k,mpjpe_at_k,mean_mm,std_mm,n_subsets\n")
+            f.write("k,mpjpe_at_k,mean_mm,std_mm,n_subsets,temporal_jerk\n")
             for k, res in results.items():
                 f.write(f"{k},{res['mpjpe_at_k']:.4f},{res['mean_mm']:.4f},"
-                        f"{res['std_mm']:.4f},{res['n_subsets']}\n")
+                        f"{res['std_mm']:.4f},{res['n_subsets']},{res.get('temporal_jerk', 0.0):.4f}\n")
         print(f"Saved CSV to {out_path}")
+
+    def _write_comparison_csv(results_v46, results_v47, out_path):
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(out_path, "w") as f:
+            f.write("k,v46_mpjpe_at_k,v47_mpjpe_at_k,delta_mm,delta_pct,"
+                    "v46_temporal_jerk,v47_temporal_jerk\n")
+            for k in sorted(set(results_v46) | set(results_v47)):
+                r46 = results_v46.get(k, {})
+                r47 = results_v47.get(k, {})
+                v46 = r46.get("mpjpe_at_k", float("nan"))
+                v47 = r47.get("mpjpe_at_k", float("nan"))
+                delta = v46 - v47
+                delta_pct = (delta / v46 * 100.0) if v46 > 0 else 0.0
+                j46 = r46.get("temporal_jerk", 0.0)
+                j47 = r47.get("temporal_jerk", 0.0)
+                f.write(f"{k},{v46:.4f},{v47:.4f},{delta:.4f},{delta_pct:.2f},"
+                        f"{j46:.4f},{j47:.4f}\n")
+        print(f"Saved comparison CSV to {out_path}")
+
+    # ------------------------------------------------------------------
+    # v46 vs v47 comparison branch (OmniMultiViewFusionV5)
+    # ------------------------------------------------------------------
+    if args.model_class == "omniview_v5":
+        n_joints = joints_3d.shape[1]
+
+        if args.v46_checkpoint and args.v47_checkpoint:
+            cfg_v46_path = _resolve_config_path(args, args.v46_checkpoint)
+            cfg_v47_path = _resolve_config_path(args, args.v47_checkpoint)
+            if cfg_v46_path is None or cfg_v47_path is None:
+                raise ValueError("--config is required for both v46 and v47 checkpoints")
+            cfg_v46 = _load_config(cfg_v46_path)
+            cfg_v47 = _load_config(cfg_v47_path)
+            model_v46 = _build_omniview_v5_model(cfg_v46, args.v46_checkpoint, n_joints, n_views, device)
+            model_v47 = _build_omniview_v5_model(cfg_v47, args.v47_checkpoint, n_joints, n_views, device)
+
+            results_v46 = _run_eval(model_v46)
+            results_v47 = _run_eval(model_v47)
+
+            print("Variable view-count v46 vs v47 comparison (MPJPE mm):")
+            print(f"{'k':>3} {'v46':>10} {'v47':>10} {'delta':>10} {'delta%':>8} {'jerk46':>10} {'jerk47':>10}")
+            for k in sorted(set(results_v46) | set(results_v47)):
+                r46 = results_v46.get(k, {})
+                r47 = results_v47.get(k, {})
+                v46 = r46.get("mpjpe_at_k", float("nan"))
+                v47 = r47.get("mpjpe_at_k", float("nan"))
+                delta = v46 - v47
+                delta_pct = (delta / v46 * 100.0) if v46 > 0 else 0.0
+                print(f"{k:>3} {v46:>10.4f} {v47:>10.4f} {delta:>10.4f} {delta_pct:>7.2f}% "
+                      f"{r46.get('temporal_jerk', 0.0):>10.4f} {r47.get('temporal_jerk', 0.0):>10.4f}")
+
+            if args.output_json:
+                out_path = Path(args.output_json)
+                out_path.parent.mkdir(parents=True, exist_ok=True)
+                with open(out_path, "w") as f:
+                    json.dump({"v46": results_v46, "v47": results_v47}, f, indent=2)
+                print(f"Saved results to {out_path}")
+
+            if args.output_csv:
+                _write_comparison_csv(results_v46, results_v47, Path(args.output_csv))
+
+        else:
+            if args.checkpoint is None:
+                raise ValueError("--checkpoint is required for model_class=omniview_v5")
+            cfg_path = _resolve_config_path(args, args.checkpoint)
+            if cfg_path is None:
+                raise ValueError("--config is required for model_class=omniview_v5")
+            config = _load_config(cfg_path)
+            model = _build_omniview_v5_model(config, args.checkpoint, n_joints, n_views, device)
+
+            if args.compare_v46_v47 and hasattr(model, "use_v47_temporal_aggregation"):
+                # v46 mode: disable v47 temporal head.
+                model.use_v47_temporal_aggregation = False
+                results_v46 = _run_eval(model)
+                # v47 mode: enable temporal head.
+                model.use_v47_temporal_aggregation = True
+                results_v47 = _run_eval(model)
+
+                print("Variable view-count v46 vs v47 comparison (MPJPE mm):")
+                print(f"{'k':>3} {'v46':>10} {'v47':>10} {'delta':>10} {'delta%':>8} {'jerk46':>10} {'jerk47':>10}")
+                for k in sorted(set(results_v46) | set(results_v47)):
+                    r46 = results_v46.get(k, {})
+                    r47 = results_v47.get(k, {})
+                    v46 = r46.get("mpjpe_at_k", float("nan"))
+                    v47 = r47.get("mpjpe_at_k", float("nan"))
+                    delta = v46 - v47
+                    delta_pct = (delta / v46 * 100.0) if v46 > 0 else 0.0
+                    print(f"{k:>3} {v46:>10.4f} {v47:>10.4f} {delta:>10.4f} {delta_pct:>7.2f}% "
+                          f"{r46.get('temporal_jerk', 0.0):>10.4f} {r47.get('temporal_jerk', 0.0):>10.4f}")
+
+                if args.output_json:
+                    out_path = Path(args.output_json)
+                    out_path.parent.mkdir(parents=True, exist_ok=True)
+                    with open(out_path, "w") as f:
+                        json.dump({"v46": results_v46, "v47": results_v47}, f, indent=2)
+                    print(f"Saved results to {out_path}")
+
+                if args.output_csv:
+                    _write_comparison_csv(results_v46, results_v47, Path(args.output_csv))
+            else:
+                results = _run_eval(model)
+                _print_single(results)
+
+                if args.output_json:
+                    out_path = Path(args.output_json)
+                    out_path.parent.mkdir(parents=True, exist_ok=True)
+                    with open(out_path, "w") as f:
+                        json.dump({"mpjpe_at_k": {str(k): res["mpjpe_at_k"] for k, res in results.items()},
+                                   "per_k": {k: v for k, v in results.items()}}, f, indent=2)
+                    print(f"Saved results to {out_path}")
+
+                if args.output_csv:
+                    _write_single_csv(results, Path(args.output_csv))
+
+    # ------------------------------------------------------------------
+    # Legacy / ray-model branch
+    # ------------------------------------------------------------------
+    else:
+        model = _build_model(args.j, n_views, args.d, args.n_temporal_layers, args.checkpoint, args.model_class, args.residual_hidden).to(device)
+
+        results = _run_eval(model)
+        _print_single(results)
+
+        if args.output_json:
+            out_path = Path(args.output_json)
+            out_path.parent.mkdir(parents=True, exist_ok=True)
+            json_payload = {
+                "mpjpe_at_k": {str(k): res["mpjpe_at_k"] for k, res in results.items()},
+                "per_k": {k: v for k, v in results.items()},
+            }
+            with open(out_path, "w") as f:
+                json.dump(json_payload, f, indent=2)
+            print(f"Saved results to {out_path}")
+
+        if args.output_csv:
+            _write_single_csv(results, Path(args.output_csv))
 
 
 if __name__ == "__main__":

@@ -274,6 +274,24 @@ def build_model_from_args(
     if args.adaptive_view_k is not None:
         model_kwargs["adaptive_view_target_k"] = args.adaptive_view_k
 
+    # v47 temporal aggregation kwargs are only passed when the flag is enabled so
+    # the trainer can be imported/run on checkouts where the model has not yet
+    # been wired for v47.
+    if getattr(args, "use_v47_temporal_aggregation", False):
+        model_kwargs.update(
+            {
+                "use_v47_temporal_aggregation": True,
+                "v47_temporal_d_model": getattr(args, "v47_temporal_d_model", 64),
+                "v47_temporal_n_heads": getattr(args, "v47_temporal_n_heads", 4),
+                "v47_temporal_num_layers": getattr(args, "v47_temporal_num_layers", 2),
+                "v47_temporal_window": getattr(args, "v47_temporal_window", None),
+                "v47_temporal_dropout": getattr(args, "v47_temporal_dropout", 0.1),
+                "v47_temporal_use_view_count_conditioning": getattr(
+                    args, "v47_use_view_count_conditioning", True
+                ),
+            }
+        )
+
     model = OmniMultiViewFusionV5(**model_kwargs)
 
     if n_joints != 17 and n_joints == 28 and hasattr(model, "rebuild_graph"):
@@ -1166,6 +1184,16 @@ def build_compute_loss(args: Namespace):
             loss = loss + temp_loss
             metrics.update(temp_metrics)
 
+        # Optional v47 temporal smoothness loss on the refined trajectory.
+        if (
+            getattr(args, "use_v47_temporal_aggregation", False)
+            and args.v47_temporal_loss_weight > 0.0
+            and pred_3d.shape[1] > 1
+        ):
+            v47_temporal_loss = (pred_3d[:, 1:] - pred_3d[:, :-1]).abs().mean()
+            loss = loss + args.v47_temporal_loss_weight * v47_temporal_loss
+            metrics["v47_temporal_loss"] = v47_temporal_loss.item()
+
         if args.bone_loss_weight > 0.0 and parents is not None:
             bl = bone_length_loss(pred_3d, y, parents)
             loss = loss + args.bone_loss_weight * bl
@@ -1485,6 +1513,17 @@ def unfreeze_all(model: torch.nn.Module) -> None:
         param.requires_grad = True
 
 
+def freeze_v47_base_params(model: torch.nn.Module) -> None:
+    """Freeze everything except the v47 temporal aggregation head.
+
+    Used to warm-start the temporal head while keeping the v46 (and older)
+    per-frame backbone fixed so the head learns on stable per-frame poses.
+    """
+    for name, param in model.named_parameters():
+        if "temporal_aggregation_v47" not in name:
+            param.requires_grad = False
+
+
 # ---------------------------------------------------------------------------
 # Argument parser
 # ---------------------------------------------------------------------------
@@ -1584,6 +1623,17 @@ def parse_args() -> Namespace:
     parser.add_argument("--v46_svg_hidden", type=int, default=64, help="Hidden dimension of the v46 reliability MLP")
     parser.add_argument("--v46_svg_use_curriculum", action="store_true", default=True, help="Use curriculum for v46 view dropout (default True)")
     parser.add_argument("--no_v46_svg_use_curriculum", dest="v46_svg_use_curriculum", action="store_false", help="Disable v46 view-dropout curriculum")
+    # v47 temporal aggregation
+    parser.add_argument("--use_v47_temporal_aggregation", action="store_true", default=False, help="Use v47 temporal aggregation head on top of v46 sparse-view generalization")
+    parser.add_argument("--v47_temporal_d_model", type=int, default=64, help="Hidden dimension of the v47 temporal aggregation transformer")
+    parser.add_argument("--v47_temporal_n_heads", type=int, default=4, help="Number of attention heads in v47 temporal aggregation")
+    parser.add_argument("--v47_temporal_num_layers", type=int, default=2, help="Number of transformer layers in v47 temporal aggregation")
+    parser.add_argument("--v47_temporal_window", type=int, default=None, help="Temporal window size for v47 (None = full-clip attention)")
+    parser.add_argument("--v47_temporal_dropout", type=float, default=0.1, help="Dropout probability in v47 temporal aggregation")
+    parser.add_argument("--v47_temporal_loss_weight", type=float, default=0.01, help="Weight for v47 temporal smoothness loss")
+    parser.add_argument("--v47_use_view_count_conditioning", action="store_true", default=True, help="Condition v47 temporal aggregation on the number of active views per frame")
+    parser.add_argument("--no_v47_use_view_count_conditioning", dest="v47_use_view_count_conditioning", action="store_false", help="Disable view-count conditioning in v47 temporal aggregation")
+    parser.add_argument("--v47_freeze_base_epochs", type=int, default=0, help="Freeze base model parameters for the first N epochs when v47 is enabled (0 disables)")
     parser.add_argument("--use_test_time_self_evolution_v27", action="store_true", default=False, help="Use v27 test-time self-evolution at inference")
     parser.add_argument("--use_physical_space_alignment_v28", action="store_true", default=False, help="Use v28 physical-space alignment refiner")
     parser.add_argument("--use_physical_space_alignment_v32", action="store_true", default=False, help="Use v32 root-centered per-joint bounded physical-space alignment")
@@ -1877,12 +1927,17 @@ def main():
     )
 
     # ------------------------------------------------------------------
-    # Optional staged warm-start: freeze old params for a few epochs.
+    # Optional staged warm-start / v47 temporal head warm-up.
     # ------------------------------------------------------------------
     freeze_epochs = args.warm_start_freeze_epochs if args.warm_start else 0
+    v47_freeze_epochs = args.v47_freeze_base_epochs if args.use_v47_temporal_aggregation else 0
     if freeze_epochs > 0 and freeze_epochs >= total_epochs:
         print("warm_start_freeze_epochs >= total_epochs; no end-to-end training will occur.")
         freeze_epochs = max(0, total_epochs - 1)
+    if v47_freeze_epochs > 0 and v47_freeze_epochs >= total_epochs:
+        print("v47_freeze_base_epochs >= total_epochs; no end-to-end training will occur.")
+        v47_freeze_epochs = max(0, total_epochs - 1)
+    total_freeze_epochs = freeze_epochs + v47_freeze_epochs
 
     output_path = Path(args.output)
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -1913,10 +1968,25 @@ def main():
         print("Unfreezing full model for end-to-end training.")
         unfreeze_all(model)
 
+    if v47_freeze_epochs > 0:
+        print(f"Freezing base model for {v47_freeze_epochs} epoch(s) to warm-start v47 temporal head...")
+        freeze_v47_base_params(model)
+        for freeze_i in range(v47_freeze_epochs):
+            trainer.epoch += 1
+            train_metrics = trainer.train_epoch(train_loader)
+            val_metrics = trainer.evaluate(val_loader, compute_metric=build_eval_metric())
+            trainer.step_scheduler()
+            print(
+                f"[v47 Freeze] Epoch {trainer.epoch}: train_loss={train_metrics.get('loss', float('nan')):.6f}, "
+                f"val_MPJPE={val_metrics.get('mpjpe', float('nan')) * 1000:.2f}mm"
+            )
+        print("Unfreezing full model for end-to-end v47 training.")
+        unfreeze_all(model)
+
     # ------------------------------------------------------------------
     # Main training loop
     # ------------------------------------------------------------------
-    remaining_epochs = total_epochs - freeze_epochs
+    remaining_epochs = total_epochs - total_freeze_epochs
     if remaining_epochs > 0:
         history = trainer.fit(
             train_loader,

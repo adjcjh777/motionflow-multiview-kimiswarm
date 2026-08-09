@@ -13,6 +13,8 @@ New toggles
   lightweight diffusion-based pose refiner.
 * ``use_v46_sparse_view_generalization`` – add a sparse-view generalization head
   that predicts per-view reliability for variable-view triangulation.
+* ``use_v47_temporal_aggregation`` – add a lightweight temporal aggregation head
+  on top of the per-frame triangulated poses to fuse evidence across time.
 
 The model also accepts an explicit ``view_mask`` so that missing views can be
 masked out in confidences, weights, and triangulation.
@@ -40,6 +42,7 @@ from motionflow_mv.fusion.kinematic_anthropometric_prior_v22 import (
     KinematicAnthropometricPrior,
 )
 from motionflow_mv.fusion.multiview_geometry_fusion_v25 import MultiViewGeometryFusionV25
+from motionflow_mv.fusion.temporal_aggregation_v47 import TemporalAggregationV47
 from motionflow_mv.fusion.temporal_geometry_fusion_v26 import TemporalGeometryFusionV26
 from motionflow_mv.fusion.uncertainty_aware_triangulation_v33 import (
     UncertaintyAwareTriangulationV33,
@@ -270,6 +273,15 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
         v46_svg_min_views: int = 2,
         v46_svg_hidden: int = 64,
         v46_svg_use_curriculum: bool = True,
+        # v47 temporal aggregation
+        use_v47_temporal_aggregation: bool = False,
+        v47_temporal_d_model: int = 64,
+        v47_temporal_n_heads: int = 4,
+        v47_temporal_num_layers: int = 2,
+        v47_temporal_window: Optional[int] = None,
+        v47_temporal_dropout: float = 0.1,
+        v47_temporal_residual_gate_init: float = 0.0,
+        v47_temporal_use_view_count_conditioning: bool = True,
         # v37 self-critique view reliability estimator
         use_self_critique_view_reliability_v37: bool = False,
         v37_scvr_hidden: int = 64,
@@ -772,6 +784,24 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
         else:
             self.sparse_view_generalization_v46 = None
 
+        # Optional v47 temporal aggregation head (identity at init).
+        self.use_v47_temporal_aggregation = use_v47_temporal_aggregation
+        self.v47_temporal_d_model = v47_temporal_d_model
+        self.v47_temporal_window = v47_temporal_window
+        if self.use_v47_temporal_aggregation:
+            self.temporal_aggregation_v47 = TemporalAggregationV47(
+                n_joints=self.j,
+                d_model=v47_temporal_d_model,
+                n_heads=v47_temporal_n_heads,
+                num_layers=v47_temporal_num_layers,
+                temporal_window=v47_temporal_window,
+                dropout=v47_temporal_dropout,
+                residual_gate_init=v47_temporal_residual_gate_init,
+                use_view_count_conditioning=v47_temporal_use_view_count_conditioning,
+            )
+        else:
+            self.temporal_aggregation_v47 = None
+
         # Optional v37 self-critique view reliability estimator (identity at init).
         self.use_self_critique_view_reliability_v37 = use_self_critique_view_reliability_v37
         self.v37_scvr_loss_weight = v37_scvr_loss_weight
@@ -972,6 +1002,7 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
         view_mask: Optional[torch.Tensor] = None,
         domain_id: Optional[torch.Tensor] = None,
         outlier_labels: Optional[torch.Tensor] = None,
+        clip_mask: Optional[torch.Tensor] = None,
     ) -> Tuple[torch.Tensor, ...]:
         squeeze_output = False
         if x.dim() == 4:
@@ -1620,6 +1651,17 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
             epi_loss = epi_loss + self.v37_scvr_loss_weight * scvr_loss
 
         pred_3d = pred_3d.view(B, T, J, 3)
+
+        # Optional v47 temporal aggregation over the per-frame triangulated poses.
+        if (
+            self.use_v47_temporal_aggregation
+            and self.temporal_aggregation_v47 is not None
+        ):
+            pred_3d = self.temporal_aggregation_v47(
+                pred_3d,
+                view_mask=view_mask_flat.view(B, T, V),
+                clip_mask=clip_mask,
+            )
 
         # Optional v22 kinematic anthropometric prior.
         if (
