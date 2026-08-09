@@ -54,7 +54,7 @@ This file captures the current A800-D workflow, tmux conventions, and issue labe
 | v34 local ablations queue | HMSP+geometry VJGN and v33 combined-fixed+geometry VJGN | RTX 4090 | v33 HMSP, v34 VJGN, and v34 geometry-aware VJGN full runs stopped to free GPU for quick ablation; can restart later |
 | v34 quick ablations | VJGN vs geometry-aware VJGN (20 samples/seq, 5 epochs) | RTX 4090 | Done: v34 VJGN best 71.32mm; geometry-aware VJGN best 97.28mm; plain VJGN selected for v35 base |
 | v34 HMSP + VJGN stack | v33 HMSP + v34 VJGN together | A800-D | Queued in v33/v34 A800 queue; quick smoke 55.96mm |
-| v34 HMSP + geometry-aware VJGN stack | v33 HMSP + v34 geometry-aware VJGN together | local 4090 | Full local run reached epoch 1 val_MPJPE=25.50mm; A800 queued |
+| v34 HMSP + geometry-aware VJGN stack | v33 HMSP + v34 geometry-aware VJGN together | local 4090 | Process was left running and sharing 4090 with v42; killed to free GPU; epoch 1 val_MPJPE=25.50mm recorded; A800 queued |
 | v35 temporal view-joint graph network | v34 VJGN + temporal edges across frames | RTX 4090 | Full local run reached epoch 1 val_MPJPE=27.08mm (vs v34 VJGN 27.17mm); temporal edges give small gain; still running epoch 2 |
 | v35 A800 queue | v35 TVJGN on top of v34 VJGN / geometry-aware VJGN | A800-D | Added to launch_v33_a800_queue.py; poller restarted; base v34 VJGN selected after quick ablation |
 | v36 uncertainty-gated iterative graph refinement | v35 TVJGN + per-node uncertainty gating + iterative refinement; self-evolving fusion | merged | Smoke passed (clip_len=3, d=32, 10 samples): val_MPJPE 100.47mm; full local epoch 1 val_MPJPE=26.42mm (vs v35 27.08mm); stopped after epoch 2 overfit to 76.88mm; A800 queue running |
