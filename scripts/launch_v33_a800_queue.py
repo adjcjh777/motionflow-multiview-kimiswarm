@@ -111,6 +111,15 @@ RUNS = [
         "--d 128 --residual_hidden 256 --n_st_layers 3 --batch_size 16 --clip_len 13 --train_samples 200 --epochs 5 --early_stopping_patience 2 --early_stopping_min_delta 0.001 --weight_decay 1e-4",
         "omniview_fusion_v43_adaptive_node_residual_all_train_a800",
     ),
+    # v45 adaptive geometry fusion (learnable triangulation weights) on top of v25 all-train.
+    (
+        "v45_adaptive_geometry_fusion_all_train",
+        "--mixed_manifest configs/splits/webbridge_all_train_mixed.yaml "
+        "--use_multiview_geometry_fusion_v25 --v25_use_geometry_attention --v25_use_learned_depth_triangulation --v25_use_geometry_bundle_adjustment "
+        "--use_v45_adaptive_geometry_fusion --v45_adaptive_weight_type per_view_joint --v45_adaptive_weight_hidden 32 --v45_adaptive_weight_n_layers 1 "
+        "--d 128 --residual_hidden 256 --n_st_layers 3 --batch_size 16 --clip_len 13 --train_samples 200 --epochs 5 --early_stopping_patience 2 --early_stopping_min_delta 0.001 --weight_decay 1e-4",
+        "omniview_fusion_v45_adaptive_geometry_fusion_all_train_a800",
+    ),
     # Pending v31 ablation.
     (
         "v31_physical_floor_only",
@@ -420,7 +429,7 @@ def used_gpus_from_tmux() -> set[int]:
         return gpus
     for line in out.splitlines():
         # v31_top5_<name>_gpuN, v32_<name>_gpuN, ..., v39_<name>_gpuN
-        match = re.search(r"((?:v31_top5_|v31_|v32_|v33_|v34_|v35_|v36_|v37_|v38_|v39_)[a-zA-Z0-9_]+)_gpu(\d+):", line)
+        match = re.search(r"((?:v31_top5_|v31_|v32_|v33_|v34_|v35_|v36_|v37_|v38_|v39_|v45_)[a-zA-Z0-9_]+)_gpu(\d+):", line)
         if match:
             gpus.add(int(match.group(2)))
     return gpus
@@ -434,7 +443,7 @@ def running_run_names() -> set[str]:
     except subprocess.CalledProcessError:
         return names
     for line in out.splitlines():
-        match = re.search(r"((?:v31_top5_|v31_|v32_|v33_|v34_|v35_|v36_|v37_|v38_|v39_)[a-zA-Z0-9_]+)_gpu\d+:", line)
+        match = re.search(r"((?:v31_top5_|v31_|v32_|v33_|v34_|v35_|v36_|v37_|v38_|v39_|v45_)[a-zA-Z0-9_]+)_gpu\d+:", line)
         if match:
             names.add(match.group(1))
     return names
