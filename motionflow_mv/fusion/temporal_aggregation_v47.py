@@ -9,7 +9,6 @@ behaviour is preserved during warm-up.
 
 from __future__ import annotations
 
-import math
 from typing import Optional
 
 import torch
