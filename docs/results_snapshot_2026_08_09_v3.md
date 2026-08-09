@@ -9,7 +9,7 @@ Snapshot time: 2026-08-09 (active).
 | v51 CDSVR tiny smoke (losses disabled) | 2 | **104.09 mm** | v50/v51 SEFH/CDSVR loss weights 0.0; stable baseline |
 | v51 CDSVR medium smoke 200 samples (losses disabled) | 4 | **52.33 mm** | v50/v51 heads wired in, losses disabled; early stopped after no val improvement for 3 epochs |
 | v51 CDSVR tiny smoke (v50/v51 MSE loss 0.01) | 2 | **104.51 mm** | Replaced unstable NLL with MSE targets; v50/v51 losses enabled and stable |
-| v51 CDSVR medium smoke 200 samples (v50/v51 MSE loss 0.01) v1 | 5 | **duspended** | Loss exploded after ~800 steps (1.8k → 3.4k); v50 only detached pred_3d, allowing gradients through K/R/t/points_2d to poison main model |
+| v51 CDSVR medium smoke 200 samples (v50/v51 MSE loss 0.01) v1 | 5 | **suspended** | Loss exploded after ~800 steps (1.8k → 3.4k); v50 only detached pred_3d, allowing gradients through K/R/t/points_2d to poison main model |
 | v51 CDSVR medium smoke 200 samples (v50/v51 MSE loss 0.01) v2 | 5 | **suspended** | Loss still exploded (107 → 15k) even with all v50 inputs detached; MSE auxiliary loss is unstable beyond tiny smoke |
 | v51 CDSVR medium smoke 200 samples (heads only, losses 0.0) | TBD | TBD | Re-running with v50/v51 auxiliary losses disabled; heads remain wired in for future inference use |
 
@@ -32,11 +32,16 @@ Snapshot time: 2026-08-09 (active).
 
 | Run | Epochs | Best val_MPJPE | Notes |
 |-----|--------|----------------|-------|
-| v52 UWT smoke (v50/v51 losses disabled) | — | **TBD** | Module implemented and wired; smoke script ready; run after v51 CDSVR smoke frees the RTX 4090 |
+| v52 UWT tiny smoke (v50/v51 losses disabled) | 2 | **102.70 mm** | Identity-at-init; training and validation complete without NaN/OOM; comparable to v51 tiny smoke (104.51 mm) |
+
+## Key findings (v52)
+
+- `UncertaintyWeightedTriangulationV52` is implemented and wired into `OmniMultiViewFusionV5` after v25/v45 triangulation.
+- The module is identity-at-init: the precision MLP and residual correction are zero-initialized, so a v51 checkpoint loads unchanged.
+- The tiny smoke runs to completion and reports `val_MPJPE=102.70 mm`, which is on par with the v51 tiny smoke baseline.
 
 ## Next gates
 
-1. Run the v52 UWT smoke (`bash scripts/run_v52_uwt_smoke_local_4090.sh`) and verify identity-at-init and gradient stability.
-2. Wait for the v51 CDSVR medium smoke (200 samples / 5 epochs) to finish.
-3. Compare v51 CDSVR (heads + MSE losses enabled) against the heads-only baseline (52.33 mm).
-4. If medium smoke is promising, revert the smoke script to 500 samples or launch the full A800 run.
+1. Run a v52 UWT medium smoke (200 samples / 5 epochs) to compare against the v51 heads-only baseline (52.33 mm).
+2. If the medium smoke matches or beats the v51 baseline, launch the A800 full run from `scripts/launch_v33_a800_queue.py`.
+3. Continue v53 design swarm once v52 UWT is validated.

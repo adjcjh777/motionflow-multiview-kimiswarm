@@ -1,12 +1,9 @@
 #!/usr/bin/env bash
-# Local RTX 4090 smoke test for v52 Uncertainty-Weighted Triangulation (UWT)
+# Local RTX 4090 medium run for v52 Uncertainty-Weighted Triangulation (UWT)
 # on top of the v45/v46/v50/v51 stack.
 #
-# Note: v50/v51 auxiliary losses are currently disabled (loss_weight=0.0)
-# while we stabilise them beyond the tiny smoke.  The heads remain wired into
-# the forward pass so they can be used for inference / test-time refinement.
-#
-# Run only when the GPU is free (do not overlap with other training).
+# 200 clips per train sequence / 5 epochs to compare against the v51
+# heads-only medium baseline (52.33 mm).
 set -euo pipefail
 
 python -u experiments/train_omniview_fusion_v5_webbridge_multi.py \
@@ -64,9 +61,9 @@ python -u experiments/train_omniview_fusion_v5_webbridge_multi.py \
     --n_joint_layers 1 \
     --n_heads 4 \
     --clip_len 9 \
-    --epochs 2 \
+    --epochs 5 \
     --batch_size 4 \
-    --train_samples 16 \
+    --train_samples 200 \
     --val_stride 10 \
     --lr 1e-3 \
     --lr_cosine \
@@ -110,5 +107,5 @@ python -u experiments/train_omniview_fusion_v5_webbridge_multi.py \
     --v29_bone_temporal_weight 0.01 \
     --v29_com_jitter_weight 0.001 \
     --v29_physical_loss_warmup_epochs 1 \
-    --output outputs/omniview_fusion_v52_uwt_smoke_local_4090.pth \
-    >> outputs/omniview_fusion_v52_uwt_smoke_local_4090.log 2>&1
+    --output outputs/omniview_fusion_v52_uwt_medium_local_4090.pth \
+    >> outputs/omniview_fusion_v52_uwt_medium_local_4090.log 2>&1
