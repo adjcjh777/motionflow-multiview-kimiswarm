@@ -257,6 +257,7 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
         v37_scvr_hidden: int = 64,
         v37_scvr_n_layers: int = 2,
         v37_scvr_use_temporal_context: bool = True,
+        v37_scvr_loss_weight: float = 0.01,
         # v32 temporal trajectory consistency
         use_trajectory_consistency_v32: bool = False,
         v32_smooth_weight: float = 1e-3,
@@ -726,6 +727,7 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
 
         # Optional v37 self-critique view reliability estimator (identity at init).
         self.use_self_critique_view_reliability_v37 = use_self_critique_view_reliability_v37
+        self.v37_scvr_loss_weight = v37_scvr_loss_weight
         if self.use_self_critique_view_reliability_v37:
             self.self_critique_view_reliability_v37 = SelfCritiqueViewReliabilityV37(
                 d=self.d,
@@ -1493,6 +1495,26 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
             and self.attention_entropy_loss is not None
         ):
             epi_loss = epi_loss + self.attention_entropy_loss(weights)
+
+        # Optional v37 self-critique view reliability auxiliary loss.
+        if (
+            self.use_self_critique_view_reliability_v37
+            and scvr_reliability is not None
+            and self.v37_scvr_loss_weight > 0.0
+        ):
+            # Project the current 3-D estimate back to each view.
+            pred_3d_bt = pred_3d.view(B, T, J, 3)
+            pred_3d_h = torch.cat(
+                [pred_3d_bt, torch.ones(B, T, J, 1, device=device, dtype=pred_3d_bt.dtype)],
+                dim=-1,
+            )
+            x_h = (P.unsqueeze(2) @ pred_3d_h.unsqueeze(1).unsqueeze(-1)).squeeze(-1)
+            x_pred = x_h[..., :2] / (x_h[..., 2:3] + 1e-8)
+            reproj_err = (x_pred - points_2d.view(B, T, V, J, 2)).norm(dim=-1)
+            # High reprojection error -> low target reliability.
+            target_reliability = torch.sigmoid(-reproj_err.detach() * 10.0)
+            scvr_loss = F.mse_loss(scvr_reliability, target_reliability)
+            epi_loss = epi_loss + self.v37_scvr_loss_weight * scvr_loss
 
         pred_3d = pred_3d.view(B, T, J, 3)
 
