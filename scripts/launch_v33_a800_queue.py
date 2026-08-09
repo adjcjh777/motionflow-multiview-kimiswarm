@@ -19,6 +19,7 @@ A800_REPO = "/mnt/nvme0n1p1/zhangzy/motionflow-multiview-kimiswarm-iter20"
 SSH_HOST = "a800-D"
 MIN_FREE_MIB = 30000  # d=64 full run on A800
 POLL_INTERVAL = 60  # seconds
+SYNC_EVERY = 5  # sync repo every N polling iterations
 
 COMMON_FLAGS = (
     "--use_mixed_loader "
@@ -622,8 +623,16 @@ def main() -> None:
     # Track which GPUs have been assigned a run in this poller session to avoid
     # launching multiple runs on the same GPU in rapid succession.
     launched_gpus: set[int] = set()
+    poll_iter = 0
 
     while queue:
+        poll_iter += 1
+        if poll_iter % SYNC_EVERY == 0:
+            try:
+                sync_repo_to_a800()
+                print(f"Synced repo at poll iteration {poll_iter}")
+            except subprocess.CalledProcessError as e:
+                print(f"Warning: periodic rsync failed: {e}")
         pairs = gpu_free_mibs()
         candidates = [
             (g, f) for g, f in pairs
