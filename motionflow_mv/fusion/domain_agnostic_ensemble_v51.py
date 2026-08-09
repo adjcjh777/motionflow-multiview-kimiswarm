@@ -87,12 +87,20 @@ class DomainAgnosticEnsembleV51(nn.Module):
             self.logit_head.bias[0] = 2.0
 
     def _project(self, P: torch.Tensor, K: torch.Tensor, R: torch.Tensor, t: torch.Tensor) -> torch.Tensor:
-        """Project 3-D pose to 2-D.  P: (B, T, J, 3), returns (B, T, V, J, 2)."""
+        """Project 3-D pose to 2-D.  P: (B, T, J, 3), returns (B, T, V, J, 2).
+
+        Supports K/R/t shaped as (B, V, 3, 3) or (B, T, V, 3, 3).
+        """
         B, T, J, _ = P.shape
-        V = K.shape[1]
-        Rt = torch.cat([R, t.unsqueeze(-1)], dim=-1)  # (B, V, 3, 4)
-        Pmat = K @ Rt  # (B, V, 3, 4)
-        Pmat = Pmat.unsqueeze(1).unsqueeze(3)  # (B, 1, V, 1, 3, 4)
+        if K.dim() == 4:
+            # (B, V, 3, 3) -> broadcast over T
+            K = K.unsqueeze(1).expand(-1, T, -1, -1, -1)
+            R = R.unsqueeze(1).expand(-1, T, -1, -1, -1)
+            t = t.unsqueeze(1).expand(-1, T, -1, -1)
+        # Now K, R are (B, T, V, 3, 3); t is (B, T, V, 3)
+        Rt = torch.cat([R, t.unsqueeze(-1)], dim=-1)  # (B, T, V, 3, 4)
+        Pmat = K @ Rt  # (B, T, V, 3, 4)
+        Pmat = Pmat.unsqueeze(3)  # (B, T, V, 1, 3, 4)
         ones = torch.ones(B, T, 1, J, 1, device=P.device, dtype=P.dtype)
         P_h = torch.cat([P.unsqueeze(2), ones], dim=-1).unsqueeze(-1)  # (B, T, V, J, 4, 1)
         proj = (Pmat @ P_h).squeeze(-1)  # (B, T, V, J, 3)
@@ -109,7 +117,7 @@ class DomainAgnosticEnsembleV51(nn.Module):
     ) -> torch.Tensor:
         """Return evidence tensor (B, T, E, J, 5)."""
         B, T = expert_poses[0].shape[:2]
-        V = K.shape[1]
+        V = points_2d.shape[2]
         J = self.j
         E = len(expert_poses)
         device = expert_poses[0].device
@@ -206,14 +214,18 @@ class DomainAgnosticEnsembleV51(nn.Module):
         if E != self.n_experts:
             raise ValueError(f"Expected {self.n_experts} experts, got {E}")
 
-        # Ensure K, R, t are shaped (B, V, ...).
+        # Ensure K, R, t are shaped (B, T, V, ...) when dim >= 4.
         if K.dim() == 3:
             V = K.shape[0]
             K = K.unsqueeze(0).expand(B, -1, -1, -1)
             R = R.unsqueeze(0).expand(B, -1, -1, -1)
             t = t.unsqueeze(0).expand(B, -1, -1)
-        else:
+        elif K.dim() == 4:
             V = K.shape[1]
+        elif K.dim() == 5:
+            V = K.shape[2]
+        else:
+            raise ValueError(f"K must have 3, 4, or 5 dimensions, got {K.dim()}")
 
         # Ensure view mask is (B, T, V).
         if view_mask.dim() == 2:

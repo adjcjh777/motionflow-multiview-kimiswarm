@@ -1733,15 +1733,13 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
         ):
             pred_3d_geo = pred_3d_gn.view(B, T, J, 3)
             pred_3d_res = pred_3d.view(B, T, J, 3)
-            # Flatten batch and time so DAE receives canonical (N, V, ...) shapes.
             pred_3d_ensemble, dae_loss = self.domain_agnostic_ensemble_v51(
-                expert_poses=[pred_3d_geo.view(B * T, 1, J, 3),
-                              pred_3d_res.view(B * T, 1, J, 3)],
-                points_2d=points_2d.view(B * T, 1, V, J, 2),
-                K=K_corrected.view(B * T, V, 3, 3),
-                R=R.view(B * T, V, 3, 3),
-                t=t.view(B * T, V, 3),
-                view_mask=view_mask_flat.view(B * T, V),
+                expert_poses=[pred_3d_geo, pred_3d_res],
+                points_2d=points_2d.view(B, T, V, J, 2),
+                K=K_corrected.view(B, T, V, 3, 3),
+                R=R.view(B, T, V, 3, 3),
+                t=t.view(B, T, V, 3),
+                view_mask=view_mask_flat.view(B, T, V),
             )
             pred_3d = pred_3d_ensemble.view(B * T, J, 3)
             epi_loss = epi_loss + self.v51_dae_loss_weight * dae_loss
