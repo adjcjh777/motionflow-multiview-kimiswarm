@@ -145,6 +145,11 @@ def build_model_from_args(
         "use_uncertainty_depth_proposals_v27": getattr(args, "use_uncertainty_depth_proposals_v27", False),
         "v27_uncertainty_loss_weight": getattr(args, "v27_uncertainty_loss_weight", 0.01),
         "v27_udp_n_mixtures": getattr(args, "v27_udp_n_mixtures", 1),
+        # v45 adaptive geometry fusion for v25 triangulation
+        "use_v45_adaptive_geometry_fusion": getattr(args, "use_v45_adaptive_geometry_fusion", False),
+        "v45_adaptive_weight_type": getattr(args, "v45_adaptive_weight_type", "per_view"),
+        "v45_adaptive_weight_hidden": getattr(args, "v45_adaptive_weight_hidden", 32),
+        "v45_adaptive_weight_n_layers": getattr(args, "v45_adaptive_weight_n_layers", 1),
         "use_physical_space_alignment_v28": getattr(args, "use_physical_space_alignment_v28", False),
         "use_physical_space_alignment_v32": getattr(args, "use_physical_space_alignment_v32", False),
         "v28_floor_loss_weight": getattr(args, "v28_floor_loss_weight", 0.0),
@@ -1541,6 +1546,11 @@ def parse_args() -> Namespace:
     parser.add_argument("--use_uncertainty_depth_proposals_v27", action="store_true", default=False, help="Use v27 uncertainty-aware depth-proposal triangulation head in v25/v26")
     parser.add_argument("--v27_uncertainty_loss_weight", type=float, default=0.01, help="Weight for v27 uncertainty regularisation loss")
     parser.add_argument("--v27_udp_n_mixtures", type=int, default=1, help="Number of Gaussian mixture components for v27 depth proposals (default 1=single Gaussian)")
+    # v45 adaptive geometry fusion for v25 triangulation
+    parser.add_argument("--use_v45_adaptive_geometry_fusion", action="store_true", default=False, help="Use v45 adaptive geometry fusion to learn triangulation weights in v25")
+    parser.add_argument("--v45_adaptive_weight_type", type=str, default="per_view", choices=["per_view", "per_joint", "per_view_joint"], help="Granularity of v45 adaptive triangulation weights")
+    parser.add_argument("--v45_adaptive_weight_hidden", type=int, default=32, help="Hidden dimension of the v45 adaptive weight MLP")
+    parser.add_argument("--v45_adaptive_weight_n_layers", type=int, default=1, help="Number of layers in the v45 adaptive weight MLP")
     parser.add_argument("--use_test_time_self_evolution_v27", action="store_true", default=False, help="Use v27 test-time self-evolution at inference")
     parser.add_argument("--use_physical_space_alignment_v28", action="store_true", default=False, help="Use v28 physical-space alignment refiner")
     parser.add_argument("--use_physical_space_alignment_v32", action="store_true", default=False, help="Use v32 root-centered per-joint bounded physical-space alignment")

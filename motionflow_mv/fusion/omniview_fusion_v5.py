@@ -257,6 +257,11 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
         use_v43_adaptive_node_residual: bool = False,
         # v44 edge-type-aware uncertainty gating on top of v36
         use_v44_edge_type_gate: bool = False,
+        # v45 adaptive geometry fusion for v25 triangulation
+        use_v45_adaptive_geometry_fusion: bool = False,
+        v45_adaptive_weight_type: str = "per_view",
+        v45_adaptive_weight_hidden: int = 32,
+        v45_adaptive_weight_n_layers: int = 1,
         # v37 self-critique view reliability estimator
         use_self_critique_view_reliability_v37: bool = False,
         v37_scvr_hidden: int = 64,
@@ -546,6 +551,10 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
                 use_uncertainty_depth_proposals_v27=use_uncertainty_depth_proposals_v27,
                 v27_uncertainty_loss_weight=v27_uncertainty_loss_weight,
                 v27_udp_n_mixtures=v27_udp_n_mixtures,
+                use_v45_adaptive_geometry_fusion=use_v45_adaptive_geometry_fusion,
+                v45_adaptive_weight_type=v45_adaptive_weight_type,
+                v45_adaptive_weight_hidden=v45_adaptive_weight_hidden,
+                v45_adaptive_weight_n_layers=v45_adaptive_weight_n_layers,
             )
         else:
             self.multiview_geometry_fusion_v25 = None
