@@ -76,6 +76,7 @@ class DomainConditionalPhysicalCalibrationV57(nn.Module):
         reproj_weight: float = 0.1,
         min_visible_views: int = 2,
         stop_grad_to_base: bool = False,
+        max_correction: Optional[float] = None,
     ) -> None:
         super().__init__()
         self.j = j
@@ -92,6 +93,7 @@ class DomainConditionalPhysicalCalibrationV57(nn.Module):
         self.reproj_weight = reproj_weight
         self.min_visible_views = max(1, min_visible_views)
         self.stop_grad_to_base = stop_grad_to_base
+        self.max_correction = max_correction
 
         parent_indices = _default_parents_for_joints(j)
         self.register_buffer("parent_indices", torch.tensor(parent_indices, dtype=torch.long))
@@ -250,7 +252,10 @@ class DomainConditionalPhysicalCalibrationV57(nn.Module):
             h = F.relu(hidden_layer(h))
         residual = self.residual_out(h)
 
-        pred_3d_psc = X + gate.view(-1, 1, 1, 1) * residual
+        correction = gate.view(-1, 1, 1, 1) * residual
+        if self.max_correction is not None:
+            correction = correction.clamp(min=-self.max_correction, max=self.max_correction)
+        pred_3d_psc = X + correction
 
         reproj_loss = torch.tensor(0.0, device=device, dtype=dtype)
         if self.reproj_weight > 0.0:
@@ -453,7 +458,10 @@ class DomainConditionalPhysicalCalibrationV57(nn.Module):
         else:
             gate_logit = self.residual_gate.mean()
         gate = torch.sigmoid(gate_logit)
-        pred_3d_psc = pred_3d_uwt + gate.view(-1, 1, 1, 1) * residual
+        correction = gate.view(-1, 1, 1, 1) * residual
+        if self.max_correction is not None:
+            correction = correction.clamp(min=-self.max_correction, max=self.max_correction)
+        pred_3d_psc = pred_3d_uwt + correction
 
         # Reprojection consistency.
         reproj_loss = torch.tensor(0.0, device=device, dtype=dtype)

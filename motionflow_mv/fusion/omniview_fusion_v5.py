@@ -418,6 +418,7 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
         v57_dcpsc_warmup_epochs: int = 0,
         v57_dcpsc_min_visible_views: int = 2,
         v57_dcpsc_stop_grad_to_base: bool = False,
+        v57_dcpsc_max_correction: Optional[float] = None,
         # v58 simplified domain-conditional physical-space calibration
         use_v58_simplified_domain_psc: bool = False,
         v58_sdpsc_hidden: int = 64,
@@ -1219,6 +1220,7 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
                 reproj_weight=v57_dcpsc_reproj_weight,
                 min_visible_views=v57_dcpsc_min_visible_views,
                 stop_grad_to_base=v57_dcpsc_stop_grad_to_base,
+                max_correction=v57_dcpsc_max_correction,
             )
         else:
             self.domain_conditional_physical_calibration_v57 = None
