@@ -573,6 +573,22 @@ def running_run_names() -> set[str]:
     return names
 
 
+def completed_run_names(runs: list[tuple[str, str, str]]) -> set[str]:
+    """Return run keys whose final checkpoint already exists on A800."""
+    completed: set[str] = set()
+    try:
+        for name, _, output in runs:
+            path = f"{A800_REPO}/outputs/{output}.pth"
+            try:
+                a800_ssh(f"test -f {path}")
+                completed.add(name)
+            except subprocess.CalledProcessError:
+                continue
+    except subprocess.CalledProcessError:
+        pass
+    return completed
+
+
 def launch_run(name: str, extra_flags: str, output: str, gpu: int) -> None:
     session = f"{name}_gpu{gpu}"
     cmd = (
@@ -594,9 +610,13 @@ def main() -> None:
         print(f"Warning: rsync to A800 failed: {e}; continuing with existing A800 repo state")
     tmux_gpus = used_gpus_from_tmux()
     already_running = running_run_names()
-    queue = [(n, f, o) for n, f, o in queue if n not in already_running]
+    already_done = completed_run_names(queue)
+    # Skip runs that are currently running or already produced a final checkpoint.
+    skip = already_running | already_done
+    queue = [(n, f, o) for n, f, o in queue if n not in skip]
     print(f"GPUs with tmux sessions (diagnostic): {tmux_gpus}")
     print(f"Already-running runs names: {already_running}")
+    print(f"Already-completed runs names: {already_done}")
     print(f"Remaining queue: {[n for n, _, _ in queue]}")
 
     # Track which GPUs have been assigned a run in this poller session to avoid
