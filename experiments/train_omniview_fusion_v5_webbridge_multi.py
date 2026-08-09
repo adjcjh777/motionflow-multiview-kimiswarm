@@ -1158,7 +1158,12 @@ def build_compute_loss(args: Namespace):
             if view_mask is None:
                 view_mask = base_view_mask
             else:
-                view_mask = view_mask * base_view_mask
+                # view_mask comes from augment_clip with shape (B, V); base_view_mask
+                # is (B, T, V).  Unsqueeze to align the view dimension.
+                if view_mask.dim() == 2:
+                    view_mask = view_mask.unsqueeze(1) * base_view_mask
+                else:
+                    view_mask = view_mask * base_view_mask
 
         # Optional variable-view training: sample a random subset of views and
         # optionally permute the order of all views.  The model still receives
