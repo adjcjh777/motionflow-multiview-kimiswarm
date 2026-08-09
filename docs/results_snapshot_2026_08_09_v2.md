@@ -11,7 +11,7 @@ Snapshot time: 2026-08-09 (active).
 | v48 domain smoke | queued | — | waiting for v47 smoke |
 | v50 SEFH smoke | queued | — | will run after v46/v47/v48 chain |
 | v51 DAE smoke | done | epoch 1: 35.29 mm (best) | epoch 2 overfit to 158.55 mm; fast smoke (100 samples/1 epoch) 103.64 mm |
-| v52 scale v45/v46 smoke | running | — | local RTX 4090, 1000 samples/2 epochs |
+| v52 scale v45/v46 smoke | done | epoch 1: 34.89 mm (best) | epoch 2 overfit to 148.92 mm; config needs stronger regularization |
 
 ## A800-D full runs
 
