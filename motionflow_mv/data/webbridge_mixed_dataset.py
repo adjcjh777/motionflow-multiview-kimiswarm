@@ -229,6 +229,9 @@ class WebBridgeCanonical17Dataset(Dataset):
                 f"Supported: {list(SKELETON_MAPS.keys())}"
             )
 
+        # Manifests may be written on Windows with backslash separators; normalise
+        # to POSIX paths so the same manifest works on Linux/A800.
+        npz_path = str(npz_path).replace("\\", "/")
         data = np.load(npz_path)
         joint_map = SKELETON_MAPS[dataset_name]
         src_j = int(data["joints_3d"].shape[1])
