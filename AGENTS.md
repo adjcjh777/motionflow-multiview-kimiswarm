@@ -58,7 +58,8 @@ This file captures the current A800-D workflow, tmux conventions, and issue labe
 | v35 temporal view-joint graph network | v34 VJGN + temporal edges across frames | RTX 4090 | Full local run reached epoch 1 val_MPJPE=27.08mm (vs v34 VJGN 27.17mm); temporal edges give small gain; still running epoch 2 |
 | v35 A800 queue | v35 TVJGN on top of v34 VJGN / geometry-aware VJGN | A800-D | Added to launch_v33_a800_queue.py; poller restarted; base v34 VJGN selected after quick ablation |
 | v36 uncertainty-gated iterative graph refinement | v35 TVJGN + per-node uncertainty gating + iterative refinement; self-evolving fusion | merged | Smoke passed (clip_len=3, d=32, 10 samples): val_MPJPE 100.47mm; full local epoch 1 val_MPJPE=26.42mm (vs v35 27.08mm); A800 queue running |
-| v37 self-critique view reliability | v36 UGIGR + per-(view,joint) reliability score learned from reprojection residuals; self-evolution | merged | Module and wiring merged; smoke queued after local GPU frees; A800 queue entry added via launch_v33_a800_queue.py |
+| v37 self-critique view reliability | v36 UGIGR + per-(view,joint) reliability score learned from reprojection residuals; self-evolution | merged | Smoke 97.24mm; full local run in progress; A800 queue entry added |
+| v38 expanded WebBridge data | v37 SCVR + expanded H36M/MPI manifest (104 train / 16 val files) | ready | Manifest and A800 queue entry created; local run script added |
 | v33 HMSP A800 | full scale after v31 top-5 | A800-D | Queued in v33 A800 queue |
 | v32/v33/v34 A800 queue | v31_physical_floor_only, v32 x5, v33 x4, v34 x2, HMSP stacks | A800-D | Poller fixed to include variant prefix in tmux session matching; co-locates when GPU memory >= 30 GiB; v31/v32/v33 runs launching on GPUs 4-7; v34/v35/v36 entries queued |
 | GitHub issues/PRs | Use API token from git remote URL | active | Issues/PRs created and merged via curl/GitHub API |
