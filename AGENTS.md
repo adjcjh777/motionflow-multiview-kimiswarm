@@ -21,19 +21,27 @@ This file captures the current A800-D workflow, tmux conventions, and issue labe
 | v47-temporal | v46-SVG + temporal aggregation across (time, joint) tokens | A800-D | **Queued** after v46-SVG smoke; see `docs/swarm_iter24_action_plan.md` (#162) |
 | v48-domain | v47 + domain-invariant sparse-view refinement + 3DPW actual-mode integration | A800-D | **Ready**; blocked until v47 smoke completes; see `docs/swarm_iter25_action_plan.md` (#164) |
 
+## v46/v47/v48/v49 A800 runs
+
+| Run | Description | GPU | Status |
+|-----|-------------|-----|--------|
+| v46-SVG full | v45-AGF + sparse-view generalization (`p=0.3`, `min_views=2`) + reliability head | GPU6 | **Running** since 2026-08-09 06:19; first validation pending |
+| v47-temporal full | v46-SVG + temporal aggregation across (time, joint) tokens | A800-D | **Queued** after v46-SVG; see `docs/swarm_iter24_action_plan.md` (#162) |
+| v48-domain full | v47 + domain-conditional FiLM/GRL/DDWL + 3DPW actual-mode integration | A800-D | **Queued** after v47 smoke completes; see `docs/swarm_iter25_action_plan.md` (#164) |
+| v49-Lite full | v46-SVG + lightweight causal temporal aggregation (v47 replacement) | A800-D | **Queued** after v46/v47 results; see issue #175 |
+
 ## Local RTX 4090 status snapshot
 
 ### Current local runs (2026-08-09)
 
 | Run | Description | Status |
 |-----|-------------|--------|
-| v43 adaptive per-node residual | v42 + scale v36 UGIGR residual by per-node uncertainty gate | Running; ~step 3600, loss 6.38, no epoch-1 val yet |
-| v42 v36+physical+domain (no v37) | v36 + v40 physical loss + v41 domain weights | Killed after step ~1700; epoch 1 val_MPJPE 26.16 mm (d=64, old manifest) |
-| v44 edge-type-aware uncertainty gating | v43 + learned per-edge-type temperature for the v36 source gate | Smoke passed; full branch decision pending A800 results |
-| v25 + physical + domain | v25 geometry fusion + v40 physical loss + v41 domain weights | Stopped; epoch 1 val_MPJPE 27.71 mm, epoch 2 val_MPJPE 53.63 mm (d=64); regressed, freed GPU |
-| v46-SVG smoke | v25/v45 + on-the-fly view dropout (`p=0.3`, `min_views=2`) + reliability head | Ready; blocked until v45-AGF medium finishes (#160) |
-| v47 temporal aggregation smoke | v46-SVG + lightweight temporal refinement head (`d_model=64`, `num_layers=2`) | Ready; blocked until v46-SVG smoke completes (#162) |
-| v48 domain generalization smoke | v47 + domain-conditional FiLM/GRL/DDWL + 3DPW actual val | Ready; blocked until v47 smoke completes (#164) |
+| v46-SVG smoke | v25/v45 + on-the-fly view dropout (`p=0.3`, `min_views=2`) + reliability head | Running epoch 2; epoch-1 val_MPJPE 32.97 mm |
+| v47 temporal aggregation smoke | v46-SVG + lightweight temporal refinement head (`d_model=64`, `num_layers=2`) | Queued after v46-SVG smoke |
+| v48 domain generalization smoke | v47 + domain-conditional FiLM/GRL/DDWL + 3DPW actual val | Queued after v47 smoke |
+| v49-Lite smoke | v46-SVG + lightweight causal temporal aggregation (v47 replacement) | Queued in A800 queue (issue #175) |
+| v49 ablation matrix | v45/v46/v47/v48/v49-Lite 2-epoch comparison | Ready; waiting for GPU |
+| v50 design swarm | 20-agent design of next module | In progress; see issue #176 |
 
 ### Historical / detailed local run log
 
