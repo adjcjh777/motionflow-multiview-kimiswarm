@@ -184,9 +184,6 @@ def test_drop_views_zeroes_confidence_channel_of_dropped_views():
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.xfail(
-    reason="Depends on Agent-08 wiring use_v46_sparse_view_generalization into OmniMultiViewFusionV5 (#160)."
-)
 def test_v46_flag_wires_into_omniview_fusion_v5():
     """OmniMultiViewFusionV5 with v46 enabled can run a forward pass."""
     from motionflow_mv.fusion.omniview_fusion_v5 import OmniMultiViewFusionV5
@@ -206,11 +203,11 @@ def test_v46_flag_wires_into_omniview_fusion_v5():
         v46_svg_hidden=16,
         return_covariance=False,
     )
-    pred_3d, geom_loss = model(
+    pred_3d, weights, visibility, L, epi_loss = model(
         x=x,
-        K=K.unsqueeze(0).unsqueeze(0).expand(B, T, -1, -1, -1),
-        R=R.unsqueeze(0).unsqueeze(0).expand(B, T, -1, -1, -1),
-        t=t.unsqueeze(0).unsqueeze(0).expand(B, T, -1, -1),
+        K=K.unsqueeze(0).expand(B, -1, -1, -1),
+        R=R.unsqueeze(0).expand(B, -1, -1, -1),
+        t=t.unsqueeze(0).expand(B, -1, -1),
     )
     assert pred_3d.shape == (B, T, J, 3)
-    assert geom_loss.numel() == 1
+    assert epi_loss.numel() == 1
