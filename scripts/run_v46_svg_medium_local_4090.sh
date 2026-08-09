@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Medium v46-SVG local RTX 4090 run (5 epochs, 500 samples, d=64).
+# Local RTX 4090 medium run for v46-SVG baseline.
+# Gives a stronger v46 reference point before committing A800 resources.
 set -euo pipefail
 
 python -u experiments/train_omniview_fusion_v5_webbridge_multi.py \
@@ -31,8 +32,8 @@ python -u experiments/train_omniview_fusion_v5_webbridge_multi.py \
     --n_heads 4 \
     --clip_len 9 \
     --epochs 5 \
-    --batch_size 4 \
-    --train_samples 500 \
+    --batch_size 8 \
+    --train_samples 5000 \
     --val_stride 10 \
     --lr 1e-3 \
     --lr_cosine \
@@ -42,6 +43,7 @@ python -u experiments/train_omniview_fusion_v5_webbridge_multi.py \
     --ema_decay 0.999 \
     --early_stopping_patience 3 \
     --early_stopping_min_delta 0.001 \
+    --weight_decay 1e-4 \
     --use_multiscale_fusion true \
     --use_camera_conditioning true \
     --use_epipolar_bias true \
