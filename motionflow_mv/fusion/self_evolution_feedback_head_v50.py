@@ -256,9 +256,10 @@ def compute_sefh_loss(
 
     # Reprojection negative log-likelihood under predicted reliability and uncertainty.
     r = reproj.clamp(0, residual_clip)
-    # Per-joint uncertainty scale from predicted log-variance.
-    sigma = torch.exp(-0.5 * log_var).unsqueeze(2)  # (B, T, 1, J)
-    reproj_nll = (reliability * (sigma * r + (1.0 / (sigma + 1e-8)) * r)).mean()
+    # Per-joint variance from predicted log-variance.
+    sigma_sq = torch.exp(log_var).unsqueeze(2)  # (B, T, 1, J)
+    # Stable Gaussian NLL: r^2 / sigma^2 + log(sigma^2).
+    reproj_nll = (reliability * (r ** 2 / (sigma_sq + 1e-6) + torch.log(sigma_sq + 1e-6))).mean()
 
     # Temporal smoothness on reliability.
     if reliability.shape[1] > 1:
