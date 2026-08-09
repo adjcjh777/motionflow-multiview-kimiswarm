@@ -16,6 +16,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from .adaptive_geometry_fusion_v45 import AdaptiveGeometryFusionV45
 from .epipolar_attention_bias import compute_epipolar_distance
 from .outlier_view_detector import OutlierViewDetector
 from .triangulation import triangulate_dlt_batched_lstsq
@@ -408,6 +409,10 @@ class MultiViewGeometryFusionV25(nn.Module):
         use_uncertainty_depth_proposals_v27: bool = False,
         v27_uncertainty_loss_weight: float = 0.01,
         v27_udp_n_mixtures: int = 1,
+        use_v45_adaptive_geometry_fusion: bool = False,
+        v45_adaptive_weight_type: str = "per_view",
+        v45_adaptive_weight_hidden: int = 32,
+        v45_adaptive_weight_n_layers: int = 1,
     ):
         super().__init__()
         self.d = d
@@ -421,6 +426,19 @@ class MultiViewGeometryFusionV25(nn.Module):
         self.use_uncertainty_depth_proposals_v27 = use_uncertainty_depth_proposals_v27
         self.v27_uncertainty_loss_weight = v27_uncertainty_loss_weight
         self.v27_udp_n_mixtures = v27_udp_n_mixtures
+
+        self.use_v45_adaptive_geometry_fusion = use_v45_adaptive_geometry_fusion
+        self.v45_adaptive_weight_type = v45_adaptive_weight_type
+        if self.use_v45_adaptive_geometry_fusion:
+            self.adaptive_geometry_fusion_v45 = AdaptiveGeometryFusionV45(
+                n_views=n_views,
+                weight_type=v45_adaptive_weight_type,
+                hidden=v45_adaptive_weight_hidden,
+                n_layers=v45_adaptive_weight_n_layers,
+                dropout=dropout,
+            )
+        else:
+            self.adaptive_geometry_fusion_v45 = None
 
         self.ray_tokenizer = RayTokenizer(d=d, n_ray_samples=n_ray_samples, dropout=dropout)
 
@@ -491,6 +509,21 @@ class MultiViewGeometryFusionV25(nn.Module):
 
         # Initial triangulation if not supplied.
         if pred_3d_init is None:
+            tri_weights = confidence if view_mask is None else confidence * view_mask[:, :, :, None]
+            pred_3d_init = triangulate_initial(pts, K, R, t, weights=tri_weights)
+
+        # Optional v45 adaptive geometry fusion: learn per-view / per-joint
+        # reliability weights from reprojection residuals and re-triangulate.
+        if self.use_v45_adaptive_geometry_fusion and self.adaptive_geometry_fusion_v45 is not None:
+            v45_weights = self.adaptive_geometry_fusion_v45(
+                points_2d=pts,
+                pred_3d=pred_3d_init,
+                K=K,
+                R=R,
+                t=t,
+                view_mask=view_mask,
+            )
+            confidence = confidence * v45_weights
             tri_weights = confidence if view_mask is None else confidence * view_mask[:, :, :, None]
             pred_3d_init = triangulate_initial(pts, K, R, t, weights=tri_weights)
 
