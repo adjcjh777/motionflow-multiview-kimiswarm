@@ -243,6 +243,41 @@ def a800_ssh(cmd: str) -> str:
     )
 
 
+def sync_repo_to_a800() -> None:
+    """Push the local working tree to A800-D.
+
+    GitHub access from A800 is intermittent, so we fall back to rsync-ing
+    the local repo.  The local directory is the source of truth for code;
+    outputs, .git, virtualenvs, and caches are excluded.
+    """
+    import pathlib
+
+    local_root = pathlib.Path(__file__).resolve().parent.parent
+    excludes = [
+        ".git",
+        ".venv",
+        "outputs",
+        "tmp",
+        "data",
+        "__pycache__",
+        ".pytest_cache",
+        "*.pyc",
+        "*.pth",
+        "*.pt",
+        "*.log",
+    ]
+    cmd = [
+        "rsync",
+        "-avz",
+        "--delete",
+        "-e",
+        "ssh -o ConnectTimeout=10 -o BatchMode=yes",
+    ] + [f"--exclude={e}" for e in excludes] + [f"{local_root}/", f"{SSH_HOST}:{A800_REPO}/"]
+    print("Syncing local repo to A800-D via rsync...")
+    subprocess.check_output(cmd, stderr=subprocess.STDOUT)
+    print("rsync complete.")
+
+
 def gpu_free_mibs() -> list[tuple[int, int]]:
     out = a800_ssh("nvidia-smi --query-gpu=index,memory.free --format=csv,noheader,nounits")
     pairs = []
@@ -302,14 +337,10 @@ def launch_run(name: str, extra_flags: str, output: str, gpu: int) -> None:
 
 def main() -> None:
     queue = list(RUNS)
-    print("Syncing A800-D repo to origin/main...")
     try:
-        # Use reset --hard so the A800 repo tracks main exactly.  Local
-        # uncommitted changes are discarded; this keeps the queue from
-        # crashing on stale A800-only code.
-        a800_ssh(f"cd {A800_REPO} && git fetch origin && git reset --hard origin/main")
+        sync_repo_to_a800()
     except subprocess.CalledProcessError as e:
-        print(f"Warning: git sync on A800 failed: {e}")
+        print(f"Warning: rsync to A800 failed: {e}; continuing with existing A800 repo state")
     tmux_gpus = used_gpus_from_tmux()
     already_running = running_run_names()
     queue = [(n, f, o) for n, f, o in queue if n not in already_running]
