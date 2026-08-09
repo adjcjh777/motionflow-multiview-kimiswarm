@@ -27,6 +27,7 @@ python -u experiments/train_omniview_fusion_v5_webbridge_multi.py \
     --v50_sefh_hidden 64 \
     --v50_sefh_num_layers 2 \
     --v50_sefh_loss_weight 0.01 \
+    --v50_sefh_aleatoric_weight 0.1 \
     --num_workers 0 \
     --d 128 \
     --residual_hidden 256 \
