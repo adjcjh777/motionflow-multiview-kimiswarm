@@ -44,6 +44,9 @@ from motionflow_mv.fusion.temporal_geometry_fusion_v26 import (  # noqa: E402
     TemporalGeometryAttention,
     TemporalGeometryFusionV26,
 )
+from motionflow_mv.fusion.uncertainty_gated_iterative_graph_refinement_v36 import (  # noqa: E402
+    UncertaintyGatedIterativeGraphRefinementV36,
+)
 
 
 def _make_cameras(n_views: int = 4) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
@@ -261,6 +264,56 @@ def analyze_v26(
     return summary
 
 
+def analyze_v36(
+    batch_size: int = 2,
+    t: int = 4,
+    n_views: int = 4,
+    n_joints: int = 17,
+    d: int = 128,
+    n_heads: int = 4,
+    n_layers: int = 1,
+    n_iters: int = 2,
+) -> Dict[str, Any]:
+    """Analyze the v36 uncertainty-gated iterative graph refinement module."""
+    torch.manual_seed(42)
+    tokens = torch.randn(batch_size, t, n_views, n_joints, d)
+    view_mask = torch.ones(batch_size, t, n_views).bool()
+
+    model = UncertaintyGatedIterativeGraphRefinementV36(
+        d=d,
+        n_views=n_views,
+        n_layers=n_layers,
+        n_iters=n_iters,
+        n_heads=n_heads,
+    )
+
+    counter = FlopsCounter()
+    counter.register(model)
+    try:
+        with torch.no_grad():
+            model(tokens, view_mask=view_mask)
+    finally:
+        counter.remove()
+
+    params = count_parameters(model)
+    summary = {
+        "model": model.__class__.__name__,
+        "config": {
+            "d": d,
+            "n_heads": n_heads,
+            "n_views": n_views,
+            "n_layers": n_layers,
+            "n_iters": n_iters,
+            "batch_size": batch_size,
+            "t": t,
+            "n_joints": n_joints,
+        },
+        "parameters": params.to_dict(),
+        "flops": counter.flops_by_op.to_dict(),
+    }
+    return summary
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Profile model size and FLOPs for MotionFlow-MultiView models.",
@@ -269,7 +322,11 @@ def parse_args() -> argparse.Namespace:
         "--model",
         type=str,
         default="multiview_geometry_fusion_v25",
-        choices=["multiview_geometry_fusion_v25", "temporal_geometry_fusion_v26"],
+        choices=[
+            "multiview_geometry_fusion_v25",
+            "temporal_geometry_fusion_v26",
+            "uncertainty_gated_iterative_graph_refinement_v36",
+        ],
         help="Model variant to profile.",
     )
     parser.add_argument("--batch-size", type=int, default=2, help="Batch size for profiling.")
@@ -333,6 +390,15 @@ def main() -> int:
             n_heads=args.n_heads,
             n_geometry_layers=args.n_geometry_layers,
             n_ray_samples=args.n_ray_samples,
+        )
+    elif args.model == "uncertainty_gated_iterative_graph_refinement_v36":
+        summary = analyze_v36(
+            batch_size=args.batch_size,
+            t=args.t,
+            n_views=args.n_views,
+            n_joints=args.joints,
+            d=args.d,
+            n_heads=args.n_heads,
         )
     else:
         raise NotImplementedError(f"Model variant '{args.model}' is not yet supported.")
