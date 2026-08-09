@@ -11,8 +11,8 @@ Last checked: 2026-08-09 03:45:10 UTC
 ## Latest progress
 
 - **Epoch 1 completed:** `train_loss=6.344643`, `val_loss=0.028768`, `val_MPJPE=27.71mm`
-- **Epoch 2 in progress:** latest logged step is `train step 2150: loss=6.332538`
-- **Log file size:** actively being written
+- **Epoch 2 completed:** `train_loss=6.725480`, `val_loss=0.030088`, `val_MPJPE=53.63mm` (significant overfit vs epoch 1)
+- **Status:** Stopped to free RTX 4090 for v45-AGF smoke. The v25+physical+domain combination regressed sharply after epoch 1.
 
 ## Notes
 
