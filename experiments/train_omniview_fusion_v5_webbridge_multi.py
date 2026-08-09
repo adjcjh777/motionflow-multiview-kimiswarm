@@ -394,6 +394,14 @@ def build_model_from_args(
             }
         )
 
+    # v60 SEFH -> UWT feedback loop kwargs.
+    if getattr(args, "use_v60_sefh_uwt_feedback", False):
+        model_kwargs.update(
+            {
+                "use_v60_sefh_uwt_feedback": True,
+            }
+        )
+
     # v59 view-count-conditioned sparse-view reliability kwargs.
     if getattr(args, "use_v59_view_count_conditioning", False):
         model_kwargs.update(
@@ -2217,6 +2225,8 @@ def parse_args() -> Namespace:
     parser.add_argument("--v52_uwt_loss_weight", type=float, default=0.01, help="Weight for the v52 UWT auxiliary loss")
     parser.add_argument("--v52_uwt_damping", type=float, default=1e-4, help="Ridge damping for v52 weighted DLT")
     parser.add_argument("--v52_uwt_warmup_epochs", type=int, default=0, help="Epochs before v52 UWT loss is active")
+    # v60 SEFH -> UWT feedback loop
+    parser.add_argument("--use_v60_sefh_uwt_feedback", action="store_true", default=False, help="Feed v50 SEFH reliability into v52 UWT as weights prior")
     # v59 view-count-conditioned sparse-view reliability
     parser.add_argument("--use_v59_view_count_conditioning", action="store_true", default=False, help="Use v59 view-count-conditioned sparse-view reliability on top of v52 UWT")
     parser.add_argument("--v59_vcc_hidden", type=int, default=32, help="Hidden dimension of the v59 view-count MLP")

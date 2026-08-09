@@ -379,6 +379,8 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
         v52_uwt_loss_weight: float = 0.01,
         v52_uwt_damping: float = 1e-4,
         v52_uwt_warmup_epochs: int = 0,
+        # v60 SEFH -> UWT feedback loop
+        use_v60_sefh_uwt_feedback: bool = False,
         # v59 view-count-conditioned sparse-view reliability
         use_v59_view_count_conditioning: bool = False,
         v59_vcc_hidden: int = 32,
@@ -1138,6 +1140,17 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
         else:
             self.uncertainty_weighted_triangulation_v52 = None
         self._v52_uwt_loss: Optional[torch.Tensor] = None
+
+        # Optional v60 SEFH -> UWT feedback loop.
+        self.use_v60_sefh_uwt_feedback = use_v60_sefh_uwt_feedback
+        if self.use_v60_sefh_uwt_feedback and not self.use_v50_self_evolution_feedback_head:
+            raise ValueError(
+                "use_v60_sefh_uwt_feedback requires use_v50_self_evolution_feedback_head=True"
+            )
+        if self.use_v60_sefh_uwt_feedback and not self.use_v52_uncertainty_weighted_triangulation:
+            raise ValueError(
+                "use_v60_sefh_uwt_feedback requires use_v52_uncertainty_weighted_triangulation=True"
+            )
 
         # Optional v59 view-count-conditioned sparse-view reliability (identity at init).
         self.use_v59_view_count_conditioning = use_v59_view_count_conditioning
@@ -2050,6 +2063,39 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
             )
             self._v55_orr_loss = orr_loss
 
+        # Optional v60 SEFH -> UWT feedback loop.
+        # Runs the v50 feedback head on the refined 3D estimate and feeds the
+        # predicted per-view reliability into v52 as an additional weights prior.
+        weights_sefh_for_v52: Optional[torch.Tensor] = None
+        if (
+            self.use_v60_sefh_uwt_feedback
+            and self.use_v50_self_evolution_feedback_head
+            and self.self_evolution_feedback_head_v50 is not None
+        ):
+            pred_3d_gn_5d = pred_3d_gn.view(B, T, J, 3)
+            points_2d_5d = points_2d.view(B, T, V, J, 2)
+            # SEFH expects camera matrices without a temporal dimension; reuse
+            # the first frame's cameras and let the head broadcast over T.
+            K_sefh = K_corrected.view(B, T, V, 3, 3)[:, 0]
+            R_sefh = R.view(B, T, V, 3, 3)[:, 0]
+            t_sefh = t.view(B, T, V, 3)[:, 0]
+            sefh_view_mask = view_mask_flat.view(B, T, V)
+
+            sefh_reliability, _, _, _, _, _ = self.self_evolution_feedback_head_v50(
+                pred_3d_gn_5d,
+                points_2d_5d,
+                K_sefh,
+                R_sefh,
+                t_sefh,
+                view_mask=sefh_view_mask,
+            )
+            weights_sefh_for_v52 = sefh_reliability
+
+            # Combine with any upstream reliability prior (e.g. v55 ORR).
+            if weights_orr_for_v52 is not None:
+                weights_sefh_for_v52 = weights_sefh_for_v52 * weights_orr_for_v52
+                weights_sefh_for_v52 = weights_sefh_for_v52.clamp(0.05, 1.0)
+
         # Optional v52 uncertainty-weighted triangulation refinement.
         uwt_loss = torch.tensor(0.0, device=device, dtype=pred_3d_gn.dtype)
         uwt_weights_for_v53: Optional[torch.Tensor] = None
@@ -2077,7 +2123,7 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
                 pred_3d_init=pred_3d_gn.view(B, T, J, 3),
                 view_mask=view_mask_flat.view(B, T, V),
                 domain_id=domain_id,
-                weights_prior=weights_orr_for_v52,
+                weights_prior=weights_sefh_for_v52 if self.use_v60_sefh_uwt_feedback else weights_orr_for_v52,
                 log_precision_offset=log_precision_offset,
             )
             pred_3d_gn = pred_3d_gn_uwt.view(B * T, J, 3)
