@@ -48,7 +48,9 @@ from motionflow_mv.data.webbridge_mixed_dataset import (  # noqa: E402
 )
 from motionflow_mv.fusion.prototypes.cross_view_graph_attention import (  # noqa: E402
     H36M_17_PARENTS,
+    H36M_17_SYMMETRY_PAIRS,
     MPI_INF_3DHP_28_PARENTS,
+    MPI_INF_3DHP_28_SYMMETRY_PAIRS,
 )
 from motionflow_mv.fusion.omniview_fusion_v5 import (  # noqa: E402
     OmniMultiViewFusionV5,
@@ -56,6 +58,9 @@ from motionflow_mv.fusion.omniview_fusion_v5 import (  # noqa: E402
 from motionflow_mv.losses.kinematic_v15 import (  # noqa: E402
     joint_limit_loss,
     temporal_bone_length_loss,
+)
+from motionflow_mv.losses.skeleton_physical_loss_v40 import (  # noqa: E402
+    SkeletonPhysicalLossV40,
 )
 from motionflow_mv.losses.procrustes_loss import procrustes_mse_loss  # noqa: E402
 from motionflow_mv.training.trainer_v2 import TrainerV2, build_lr_scheduler  # noqa: E402
@@ -894,6 +899,15 @@ def temporal_consistency_loss(
 # Trainer wrapper
 # ---------------------------------------------------------------------------
 
+def _skeleton_config_for_joints(j: int):
+    """Return (parents, symmetry_pairs, foot_indices) for known skeletons."""
+    if j == 17:
+        return H36M_17_PARENTS, H36M_17_SYMMETRY_PAIRS, [11, 14]
+    if j == 28:
+        return MPI_INF_3DHP_28_PARENTS, MPI_INF_3DHP_28_SYMMETRY_PAIRS, [8, 10]
+    return None, None, None
+
+
 def build_compute_loss(args: Namespace):
     """Build the compute_loss closure used by TrainerV2."""
     parents = None
@@ -906,6 +920,22 @@ def build_compute_loss(args: Namespace):
             parents = get_parent_indices(args.j)
         except ValueError:
             parents = None
+
+    # Optional v40 skeleton-aware physical loss.
+    skeleton_physical_loss = None
+    if getattr(args, "use_skeleton_physical_loss_v40", False):
+        sk_parents, sk_sym, sk_feet = _skeleton_config_for_joints(args.j)
+        if sk_parents is not None:
+            skeleton_physical_loss = SkeletonPhysicalLossV40(
+                parents=sk_parents,
+                symmetry_pairs=sk_sym,
+                foot_indices=sk_feet,
+                bone_weight=args.v40_bone_weight,
+                joint_limit_weight=args.v40_joint_limit_weight,
+                symmetry_weight=args.v40_symmetry_weight,
+                floor_weight=args.v40_floor_weight,
+                warmup_epochs=args.v40_warmup_epochs,
+            )
 
     def compute_loss(
         model: torch.nn.Module,
@@ -1111,6 +1141,16 @@ def build_compute_loss(args: Namespace):
             tbl = temporal_bone_length_loss(pred_3d, parents)
             loss = loss + args.temporal_bone_weight * tbl
             metrics["temporal_bone_loss"] = tbl.item()
+
+        # Optional v40 skeleton-aware physical loss.
+        if skeleton_physical_loss is not None:
+            v40_phys = skeleton_physical_loss(
+                pred_3d,
+                target=y,
+                epoch=getattr(model, "epoch", 1) - 1,
+            )
+            loss = loss + v40_phys
+            metrics["v40_phys_loss"] = v40_phys.item()
 
         if args.attention_entropy_weight > 0.0:
             if entropy_loss_out is not None:
@@ -1660,6 +1700,13 @@ def parse_args() -> Namespace:
     parser.add_argument("--joint_limit_weight", type=float, default=0.0, help="Joint-limit (hyper-extension) auxiliary loss weight")
     parser.add_argument("--joint_limit_max_flexion", type=float, default=160.0, help="Maximum allowed interior joint angle in degrees")
     parser.add_argument("--temporal_bone_weight", type=float, default=0.0, help="Temporal bone-length consistency weight")
+    # v40 skeleton-aware physical loss
+    parser.add_argument("--use_skeleton_physical_loss_v40", action="store_true", default=False, help="Use v40 composite skeleton-aware physical loss")
+    parser.add_argument("--v40_bone_weight", type=float, default=0.05, help="Bone-length matching weight in v40 physical loss")
+    parser.add_argument("--v40_joint_limit_weight", type=float, default=0.01, help="Joint-limit penalty weight in v40 physical loss")
+    parser.add_argument("--v40_symmetry_weight", type=float, default=0.02, help="Left/right symmetry weight in v40 physical loss")
+    parser.add_argument("--v40_floor_weight", type=float, default=0.02, help="Foot-floor contact weight in v40 physical loss")
+    parser.add_argument("--v40_warmup_epochs", type=int, default=0, help="Linearly ramp v40 physical loss over this many epochs (0 disables)")
     parser.add_argument("--attention_entropy_weight", type=float, default=0.0, help="Attention-entropy regularisation weight")
     parser.add_argument("--budget_loss_weight", type=float, default=0.0, help="Adaptive-view budget loss weight")
     parser.add_argument("--reproj_loss_weight", type=float, default=0.0, help="2D reprojection loss weight")
