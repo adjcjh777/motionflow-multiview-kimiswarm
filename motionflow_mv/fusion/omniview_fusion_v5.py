@@ -113,6 +113,9 @@ from motionflow_mv.fusion.physical_space_calibration_v2_v54 import (
 from motionflow_mv.fusion.outlier_robust_reliability_v55 import (
     OutlierRobustReliabilityV55,
 )
+from motionflow_mv.fusion.adaptive_physical_loss_v56 import (
+    AdaptivePhysicalLossV56,
+)
 from motionflow_mv.fusion.neural_bundle_adjustment_v21 import NeuralBundleAdjustment
 from motionflow_mv.fusion.omniview_fusion_v4 import OmniMultiViewFusionV4
 from motionflow_mv.fusion.perceiver_view_aggregator import PerceiverViewAggregator
@@ -418,6 +421,12 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
         v55_orr_loss_weight: float = 0.01,
         v55_orr_warmup_epochs: int = 0,
         v55_orr_use_entropy_reg: bool = False,
+        # v56 adaptive physical loss weighting (APL)
+        use_v56_adaptive_physical_loss: bool = False,
+        v56_apl_hidden: int = 32,
+        v56_apl_identity_init: bool = True,
+        v56_apl_loss_weight: float = 0.01,
+        v56_apl_warmup_epochs: int = 0,
         # v48 domain generalization (FiLM / conditional BN / GRL discriminator)
         use_v48_domain_generalization: bool = False,
         v48_dg_hidden: int = 64,
@@ -1162,6 +1171,21 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
         else:
             self.outlier_robust_reliability_v55 = None
         self._v55_orr_loss: Optional[torch.Tensor] = None
+
+        # Optional v56 adaptive physical loss weighting (APL).
+        self.use_v56_adaptive_physical_loss = use_v56_adaptive_physical_loss
+        self.v56_apl_loss_weight = v56_apl_loss_weight
+        self.v56_apl_warmup_epochs = v56_apl_warmup_epochs
+        if self.use_v56_adaptive_physical_loss:
+            if not self.use_v53_physical_space_calibration:
+                raise ValueError("v56 APL requires use_v53_physical_space_calibration=True")
+            self.adaptive_physical_loss_v56 = AdaptivePhysicalLossV56(
+                hidden=v56_apl_hidden,
+                identity_init=v56_apl_identity_init,
+            )
+        else:
+            self.adaptive_physical_loss_v56 = None
+        self._v56_apl_weight: Optional[torch.Tensor] = None
 
         # Optional v37 self-critique view reliability estimator (identity at init).
         self.use_self_critique_view_reliability_v37 = use_self_critique_view_reliability_v37
@@ -2107,7 +2131,27 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
                 or self.epoch >= self.v53_psc_warmup_epochs
             )
             if v53_active:
-                epi_loss = epi_loss + self.v53_psc_loss_weight * self._v53_psc_loss
+                psc_loss = self._v53_psc_loss
+                # Optional v56 adaptive weighting of the v53 PSC loss.
+                self._v56_apl_weight = None
+                if (
+                    self.use_v56_adaptive_physical_loss
+                    and self.adaptive_physical_loss_v56 is not None
+                ):
+                    v56_active = (
+                        self.v56_apl_warmup_epochs <= 0
+                        or self.epoch >= self.v56_apl_warmup_epochs
+                    )
+                    if v56_active:
+                        uncertainty = 1.0 - uwt_weights_for_v53
+                        pred_3d_seq = pred_3d_gn.view(B, T, self.j, 3)
+                        v56_weight = self.adaptive_physical_loss_v56(
+                            uncertainty=uncertainty,
+                            pred_3d=pred_3d_seq,
+                        )
+                        self._v56_apl_weight = v56_weight.mean()
+                        psc_loss = psc_loss * self._v56_apl_weight
+                epi_loss = epi_loss + self.v53_psc_loss_weight * psc_loss
         if (
             self.use_v54_physical_space_calibration_v2
             and hasattr(self, "_v54_psc2_loss")

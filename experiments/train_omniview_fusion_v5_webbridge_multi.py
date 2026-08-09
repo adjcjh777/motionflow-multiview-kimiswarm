@@ -462,6 +462,17 @@ def build_model_from_args(
             }
         )
 
+    if getattr(args, "use_v56_adaptive_physical_loss", False):
+        model_kwargs.update(
+            {
+                "use_v56_adaptive_physical_loss": True,
+                "v56_apl_hidden": getattr(args, "v56_apl_hidden", 32),
+                "v56_apl_identity_init": getattr(args, "v56_apl_identity_init", True),
+                "v56_apl_loss_weight": getattr(args, "v56_apl_loss_weight", 0.01),
+                "v56_apl_warmup_epochs": getattr(args, "v56_apl_warmup_epochs", 0),
+            }
+        )
+
     # v48 domain generalization kwargs are only passed when the flag is enabled
     # so the trainer can be imported/run on checkouts where the model has not
     # yet been wired for v48.
@@ -1476,6 +1487,12 @@ def build_compute_loss(args: Namespace):
             if v54_psc2_loss is not None and torch.isfinite(v54_psc2_loss):
                 metrics["v54_psc2_loss"] = v54_psc2_loss.item()
 
+        # Optional v56 adaptive physical loss weighting logging.
+        if getattr(args, "use_v56_adaptive_physical_loss", False):
+            v56_apl_weight = getattr(model.module if hasattr(model, "module") else model, "_v56_apl_weight", None)
+            if v56_apl_weight is not None and torch.isfinite(v56_apl_weight):
+                metrics["v56_apl_weight"] = v56_apl_weight.item()
+
         # v48 adversarial / gradient-reversal domain loss (e.g. from DomainAdapterV48).
         if v48_domain_loss is not None:
             loss = loss + v48_domain_loss
@@ -2194,6 +2211,13 @@ def parse_args() -> Namespace:
     parser.add_argument("--v55_orr_residual_gate_init", type=float, default=-6.0, help="Initial logit for the v55 OR2 residual gate")
     parser.add_argument("--v55_orr_loss_weight", type=float, default=0.01, help="Weight for the v55 OR2 auxiliary loss")
     parser.add_argument("--v55_orr_warmup_epochs", type=int, default=0, help="Epochs before the v55 OR2 loss is active")
+    # v56 adaptive physical loss weighting
+    parser.add_argument("--use_v56_adaptive_physical_loss", action="store_true", default=False, help="Use v56 adaptive physical loss weighting (APL) on v53 PSC")
+    parser.add_argument("--v56_apl_hidden", type=int, default=32, help="Hidden dimension of the v56 APL MLP")
+    parser.add_argument("--v56_apl_identity_init", action="store_true", default=True, help="Zero-initialise v56 APL final layer (weight=1.0 at init)")
+    parser.add_argument("--no_v56_apl_identity_init", dest="v56_apl_identity_init", action="store_false", help="Disable v56 APL identity initialisation")
+    parser.add_argument("--v56_apl_loss_weight", type=float, default=0.01, help="Weight for the v56 APL auxiliary loss")
+    parser.add_argument("--v56_apl_warmup_epochs", type=int, default=0, help="Epochs before the v56 APL loss is active")
     parser.add_argument("--use_v51_test_time_self_evolution_refiner", action="store_true", default=False, help="Use v51 test-time self-evolution refiner at inference")
     parser.add_argument("--v51_tta_num_steps", type=int, default=3, help="v51 TTSER gradient steps per clip")
     parser.add_argument("--v51_tta_lr", type=float, default=1e-3, help="v51 TTSER Adam learning rate")
