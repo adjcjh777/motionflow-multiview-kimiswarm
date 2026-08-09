@@ -64,6 +64,10 @@ from motionflow_mv.losses.skeleton_physical_loss_v40 import (  # noqa: E402
     SkeletonPhysicalLossV40,
 )
 from motionflow_mv.losses.procrustes_loss import procrustes_mse_loss  # noqa: E402
+from motionflow_mv.fusion.self_evolution_feedback_head_v50 import (  # noqa: E402
+    SelfEvolutionFeedbackHeadV50,
+    compute_sefh_loss,
+)
 from motionflow_mv.training.trainer_v2 import TrainerV2, build_lr_scheduler  # noqa: E402
 
 
@@ -1012,7 +1016,7 @@ def _skeleton_config_for_joints(j: int):
     return None, None, None
 
 
-def build_compute_loss(args: Namespace):
+def build_compute_loss(args: Namespace, sefh_head: Optional[torch.nn.Module] = None):
     """Build the compute_loss closure used by TrainerV2."""
     parents = None
     if (
@@ -1353,6 +1357,29 @@ def build_compute_loss(args: Namespace):
             loss = loss + args.v49_lite_temporal_loss_weight * v49_lite_temporal_loss
             metrics["v49_lite_temporal_loss"] = v49_lite_temporal_loss.item()
 
+        # Optional v50 self-evolution feedback head auxiliary loss.
+        if sefh_head is not None and getattr(args, "use_v50_self_evolution_feedback_head", False):
+            sefh_reliability, sefh_log_var, sefh_reproj, sefh_temporal, sefh_epipolar, _ = sefh_head(
+                pred_3d,
+                x,
+                K_aug,
+                R_aug,
+                t_aug,
+                view_mask=view_mask,
+            )
+            sefh_loss = compute_sefh_loss(
+                sefh_reliability,
+                sefh_log_var,
+                sefh_reproj,
+                sefh_temporal,
+                sefh_epipolar,
+                view_mask=view_mask,
+                loss_weight=args.v50_sefh_loss_weight,
+                residual_clip=args.v50_sefh_residual_clip,
+            )
+            loss = loss + sefh_loss
+            metrics["v50_sefh_loss"] = sefh_loss.item()
+
         if args.bone_loss_weight > 0.0 and parents is not None:
             bl = bone_length_loss(pred_3d, y, parents)
             loss = loss + args.bone_loss_weight * bl
@@ -1507,10 +1534,11 @@ class OmniMultiViewTrainer(TrainerV2):
         optimizer: optim.Optimizer,
         device: torch.device,
         args: Namespace,
+        sefh_head: Optional[torch.nn.Module] = None,
         **kwargs: Any,
     ):
         self.args = args
-        compute_loss = build_compute_loss(args)
+        compute_loss = build_compute_loss(args, sefh_head=sefh_head)
         super().__init__(
             model,
             optimizer,
@@ -1819,6 +1847,17 @@ def parse_args() -> Namespace:
     parser.add_argument("--v49_lite_temporal_use_view_count_conditioning", action="store_true", default=True, help="Condition v49-Lite temporal aggregation on the number of active views per frame")
     parser.add_argument("--no_v49_lite_temporal_use_view_count_conditioning", dest="v49_lite_temporal_use_view_count_conditioning", action="store_false", help="Disable view-count conditioning in v49-Lite temporal aggregation")
     parser.add_argument("--v49_lite_temporal_loss_weight", type=float, default=0.01, help="Weight for v49-Lite temporal smoothness loss")
+    # v50 self-evolution feedback head
+    parser.add_argument("--use_v50_self_evolution_feedback_head", action="store_true", default=False, help="Use v50 self-evolution feedback head auxiliary loss")
+    parser.add_argument("--v50_sefh_hidden", type=int, default=64, help="Hidden dimension of the v50 feedback-head MLP")
+    parser.add_argument("--v50_sefh_num_layers", type=int, default=2, help="Number of layers in the v50 feedback-head MLP")
+    parser.add_argument("--v50_sefh_dropout", type=float, default=0.1, help="Dropout probability in the v50 feedback-head MLP")
+    parser.add_argument("--v50_sefh_reproj_weight", type=float, default=1.0, help="Weight for the reprojection residual branch in v50")
+    parser.add_argument("--v50_sefh_temporal_weight", type=float, default=0.5, help="Weight for the temporal residual branch in v50")
+    parser.add_argument("--v50_sefh_epipolar_weight", type=float, default=0.5, help="Weight for the epipolar residual branch in v50")
+    parser.add_argument("--v50_sefh_loss_weight", type=float, default=0.01, help="Weight for the v50 auxiliary loss")
+    parser.add_argument("--v50_sefh_residual_clip", type=float, default=50.0, help="Clip residuals before feeding into the v50 loss")
+    parser.add_argument("--v50_sefh_identity_init_gate", action="store_true", default=True, help="Initialize the v50 reliability gate near identity")
     # v48 domain generalization
     parser.add_argument("--use_v48_domain_generalization", action="store_true", default=False, help="Use v48 domain generalization (DDWL + optional domain FiLM / adversarial loss)")
     parser.add_argument("--v48_dg_hidden", type=int, default=64, help="Hidden dimension of the v48 domain adapter")
@@ -2127,6 +2166,22 @@ def main():
     print(f"Model params: {sum(p.numel() for p in model.parameters())}")
 
     # ------------------------------------------------------------------
+    # Optional v50 self-evolution feedback head.
+    # ------------------------------------------------------------------
+    sefh_head: Optional[torch.nn.Module] = None
+    if getattr(args, "use_v50_self_evolution_feedback_head", False):
+        sefh_head = SelfEvolutionFeedbackHeadV50(
+            j=n_joints,
+            hidden=args.v50_sefh_hidden,
+            num_layers=args.v50_sefh_num_layers,
+            dropout=args.v50_sefh_dropout,
+            reproj_weight=args.v50_sefh_reproj_weight,
+            temporal_weight=args.v50_sefh_temporal_weight,
+            epipolar_weight=args.v50_sefh_epipolar_weight,
+        ).to(device)
+        print(f"v50 SEFH params: {sum(p.numel() for p in sefh_head.parameters())}")
+
+    # ------------------------------------------------------------------
     # Warm-start
     # ------------------------------------------------------------------
     if args.warm_start is not None:
@@ -2135,7 +2190,10 @@ def main():
     # ------------------------------------------------------------------
     # Optimizer / scheduler / trainer
     # ------------------------------------------------------------------
-    optimizer = optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
+    trainable_params = list(model.parameters())
+    if sefh_head is not None:
+        trainable_params += list(sefh_head.parameters())
+    optimizer = optim.Adam(trainable_params, lr=args.lr, weight_decay=args.weight_decay)
 
     total_epochs = args.epochs
     warmup_epochs = args.lr_warmup_epochs if args.lr_cosine else 0
@@ -2148,6 +2206,7 @@ def main():
         optimizer,
         device,
         args,
+        sefh_head=sefh_head,
         total_epochs=total_epochs,
         max_grad_norm=args.max_grad_norm,
         amp_enabled=args.amp,
