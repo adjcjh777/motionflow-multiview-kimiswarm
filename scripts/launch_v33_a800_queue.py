@@ -86,7 +86,7 @@ RUNS = [
         "--use_v46_sparse_view_generalization --v46_svg_view_dropout_prob 0.3 --v46_svg_min_views 2 --v46_svg_hidden 64 --v46_svg_use_curriculum "
         "--use_v47_temporal_aggregation --v47_temporal_d_model 64 --v47_temporal_n_heads 4 --v47_temporal_num_layers 2 --v47_temporal_loss_weight 0.01 --v47_use_view_count_conditioning "
         "--use_v48_domain_generalization --v48_dg_hidden 64 --v48_dg_grl_lambda 0.1 --v48_dg_use_domain_film --v48_dg_use_ddwl --v48_dg_ddwl_temperature 2.0 --v48_dg_ddwl_warmup_epochs 1 "
-        "--d 128 --residual_hidden 256 --n_st_layers 3 --batch_size 16 --clip_len 13 --train_samples 200 --epochs 5 --early_stopping_patience 2 --early_stopping_min_delta 0.001 --weight_decay 1e-4",
+        "--d 128 --residual_hidden 256 --n_st_layers 3 --batch_size 16 --clip_len 13 --train_samples 1000 --epochs 10 --early_stopping_patience 3 --early_stopping_min_delta 0.001 --weight_decay 1e-4",
         "omniview_fusion_v48_domain_generalization_on_v47_a800",
     ),
     # v49-Lite: causal Conv1D temporal aggregation instead of the v47 transformer.
@@ -97,7 +97,7 @@ RUNS = [
         "--use_v45_adaptive_geometry_fusion --v45_adaptive_weight_type per_view_joint --v45_adaptive_weight_hidden 32 --v45_adaptive_weight_n_layers 1 "
         "--use_v46_sparse_view_generalization --v46_svg_view_dropout_prob 0.3 --v46_svg_min_views 2 --v46_svg_hidden 64 --v46_svg_use_curriculum "
         "--use_v49_lite_temporal_aggregation --v49_lite_temporal_d_model 32 --v49_lite_temporal_num_layers 2 --v49_lite_temporal_kernel_size 3 --v49_lite_temporal_loss_weight 0.01 --v49_lite_temporal_use_view_count_conditioning "
-        "--d 128 --residual_hidden 256 --n_st_layers 3 --batch_size 16 --clip_len 13 --train_samples 200 --epochs 5 --early_stopping_patience 2 --early_stopping_min_delta 0.001 --weight_decay 1e-4",
+        "--d 128 --residual_hidden 256 --n_st_layers 3 --batch_size 16 --clip_len 13 --train_samples 1000 --epochs 10 --early_stopping_patience 3 --early_stopping_min_delta 0.001 --weight_decay 1e-4",
         "omniview_fusion_v49_lite_temporal_on_v46_a800",
     ),
     # v49-Lite scaled: larger model + 10k samples to stress-test temporal aggregation.
