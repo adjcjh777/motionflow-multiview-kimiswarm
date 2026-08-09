@@ -92,6 +92,9 @@ from motionflow_mv.fusion.prototypes.cross_view_graph_attention import (
     MPI_INF_3DHP_28_PARENTS,
 )
 from motionflow_mv.fusion.domain_agnostic_ensemble_v51 import DomainAgnosticEnsembleV51
+from motionflow_mv.fusion.test_time_self_evolution_v51 import (
+    TestTimeSelfEvolutionRefinerV51,
+)
 from motionflow_mv.fusion.neural_bundle_adjustment_v21 import NeuralBundleAdjustment
 from motionflow_mv.fusion.omniview_fusion_v4 import OmniMultiViewFusionV4
 from motionflow_mv.fusion.perceiver_view_aggregator import PerceiverViewAggregator
@@ -303,6 +306,18 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
         v51_dae_identity_bypass: bool = True,
         v51_dae_min_weight: float = 0.05,
         v51_dae_loss_weight: float = 0.005,
+        # v51 test-time self-evolution refiner (reliability / uncertainty buffer)
+        use_v51_test_time_self_evolution_refiner: bool = False,
+        v51_tta_num_steps: int = 3,
+        v51_tta_lr: float = 1e-3,
+        v51_tta_hidden: int = 32,
+        v51_tta_reproj_weight: float = 1.0,
+        v51_tta_temporal_weight: float = 0.5,
+        v51_tta_bone_weight: float = 0.1,
+        v51_tta_entropy_weight: float = 0.01,
+        v51_tta_min_view_rel: float = 0.05,
+        v51_tta_max_view_rel: float = 1.0,
+        v51_tta_use_sefh_init: bool = True,
         # v48 domain generalization (FiLM / conditional BN / GRL discriminator)
         use_v48_domain_generalization: bool = False,
         v48_dg_hidden: int = 64,
@@ -887,6 +902,25 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
             )
         else:
             self.domain_agnostic_ensemble_v51 = None
+
+        # Optional v51 test-time self-evolution refiner (inference-only).
+        self.use_v51_test_time_self_evolution_refiner = use_v51_test_time_self_evolution_refiner
+        if self.use_v51_test_time_self_evolution_refiner:
+            self.test_time_self_evolution_v51 = TestTimeSelfEvolutionRefinerV51(
+                n_views=self.n_views,
+                n_joints=self.j,
+                hidden=v51_tta_hidden,
+                num_steps=v51_tta_num_steps,
+                lr=v51_tta_lr,
+                reproj_weight=v51_tta_reproj_weight,
+                temporal_weight=v51_tta_temporal_weight,
+                bone_weight=v51_tta_bone_weight,
+                entropy_weight=v51_tta_entropy_weight,
+                min_view_rel=v51_tta_min_view_rel,
+                max_view_rel=v51_tta_max_view_rel,
+            )
+        else:
+            self.test_time_self_evolution_v51 = None
 
         # Optional v37 self-critique view reliability estimator (identity at init).
         self.use_self_critique_view_reliability_v37 = use_self_critique_view_reliability_v37
@@ -1878,12 +1912,47 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
             L = L.squeeze(1)
             visibility = visibility.squeeze(1)
 
+        # Optional v51 test-time self-evolution refiner.  Runs only at inference
+        # time and replaces the returned 3-D pose with the refined estimate.
+        v51_tta_reliability: Optional[torch.Tensor] = None
+        v51_tta_uncertainty: Optional[torch.Tensor] = None
+        if (
+            not self.training
+            and self.use_v51_test_time_self_evolution_refiner
+            and self.test_time_self_evolution_v51 is not None
+        ):
+            pose_for_tta = pred_3d.unsqueeze(1) if squeeze_output else pred_3d
+            # Cameras were flattened to (B*T, V, ...) during the forward; the
+            # TTSER needs per-sequence views, so restore the first frame's cameras.
+            K_tta = K.view(B, T, V, 3, 3)[:, 0]
+            R_tta = R.view(B, T, V, 3, 3)[:, 0]
+            t_tta = t.view(B, T, V, 3)[:, 0]
+            # TTSER performs inner-loop gradient steps on a per-sequence buffer,
+            # so we must re-enable autograd even if the caller wrapped inference
+            # in torch.no_grad().
+            with torch.enable_grad():
+                refined_pose, v51_tta_reliability, v51_tta_uncertainty = self.test_time_self_evolution_v51(
+                    pose_3d=pose_for_tta,
+                    x_2d=x,
+                    K=K_tta,
+                    R=R_tta,
+                    t=t_tta,
+                )
+            pred_3d = refined_pose.squeeze(1) if squeeze_output else refined_pose
+
         out = (pred_3d, weights, visibility, L, epi_loss)
 
         if self.return_pp_delta:
             out += (pp_delta,)
             if self.correct_focal:
                 out += (focal_scale,)
+
+        # Expose the last v51 TTSER reliability / uncertainty via attributes so
+        # downstream eval scripts can inspect them without changing the output
+        # tuple contract.
+        if self.use_v51_test_time_self_evolution_refiner:
+            self.v51_tta_last_reliability = v51_tta_reliability
+            self.v51_tta_last_uncertainty = v51_tta_uncertainty
 
         return out
 

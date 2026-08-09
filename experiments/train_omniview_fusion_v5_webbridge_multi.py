@@ -328,6 +328,24 @@ def build_model_from_args(
             }
         )
 
+    # v51 test-time self-evolution refiner kwargs.
+    if getattr(args, "use_v51_test_time_self_evolution_refiner", False):
+        model_kwargs.update(
+            {
+                "use_v51_test_time_self_evolution_refiner": True,
+                "v51_tta_num_steps": getattr(args, "v51_tta_num_steps", 3),
+                "v51_tta_lr": getattr(args, "v51_tta_lr", 1e-3),
+                "v51_tta_hidden": getattr(args, "v51_tta_hidden", 32),
+                "v51_tta_reproj_weight": getattr(args, "v51_tta_reproj_weight", 1.0),
+                "v51_tta_temporal_weight": getattr(args, "v51_tta_temporal_weight", 0.5),
+                "v51_tta_bone_weight": getattr(args, "v51_tta_bone_weight", 0.1),
+                "v51_tta_entropy_weight": getattr(args, "v51_tta_entropy_weight", 0.01),
+                "v51_tta_min_view_rel": getattr(args, "v51_tta_min_view_rel", 0.05),
+                "v51_tta_max_view_rel": getattr(args, "v51_tta_max_view_rel", 1.0),
+                "v51_tta_use_sefh_init": getattr(args, "v51_tta_use_sefh_init", True),
+            }
+        )
+
     # v48 domain generalization kwargs are only passed when the flag is enabled
     # so the trainer can be imported/run on checkouts where the model has not
     # yet been wired for v48.
@@ -1892,6 +1910,17 @@ def parse_args() -> Namespace:
     parser.add_argument("--no_v51_dae_identity_bypass", dest="v51_dae_identity_bypass", action="store_false", help="Disable v51 ensemble identity bypass")
     parser.add_argument("--v51_dae_min_weight", type=float, default=0.05, help="Minimum per-expert weight in the v51 ensemble")
     parser.add_argument("--v51_dae_loss_weight", type=float, default=0.005, help="Weight for the v51 ensemble diversity auxiliary loss")
+    parser.add_argument("--use_v51_test_time_self_evolution_refiner", action="store_true", default=False, help="Use v51 test-time self-evolution refiner at inference")
+    parser.add_argument("--v51_tta_num_steps", type=int, default=3, help="v51 TTSER gradient steps per clip")
+    parser.add_argument("--v51_tta_lr", type=float, default=1e-3, help="v51 TTSER Adam learning rate")
+    parser.add_argument("--v51_tta_hidden", type=int, default=32, help="v51 TTSER update MLP hidden dimension")
+    parser.add_argument("--v51_tta_reproj_weight", type=float, default=1.0, help="v51 TTSER reprojection-loss weight")
+    parser.add_argument("--v51_tta_temporal_weight", type=float, default=0.5, help="v51 TTSER temporal-loss weight")
+    parser.add_argument("--v51_tta_bone_weight", type=float, default=0.1, help="v51 TTSER bone-loss weight")
+    parser.add_argument("--v51_tta_entropy_weight", type=float, default=0.01, help="v51 TTSER entropy regularisation weight")
+    parser.add_argument("--v51_tta_min_view_rel", type=float, default=0.05, help="v51 TTSER minimum per-view reliability")
+    parser.add_argument("--v51_tta_max_view_rel", type=float, default=1.0, help="v51 TTSER maximum per-view reliability")
+    parser.add_argument("--no_v51_tta_use_sefh_init", dest="v51_tta_use_sefh_init", action="store_false", help="Disable v51 TTSER v50 SEFH initialisation")
     # v48 domain generalization
     parser.add_argument("--use_v48_domain_generalization", action="store_true", default=False, help="Use v48 domain generalization (DDWL + optional domain FiLM / adversarial loss)")
     parser.add_argument("--v48_dg_hidden", type=int, default=64, help="Hidden dimension of the v48 domain adapter")
