@@ -131,7 +131,12 @@ class DomainAgnosticEnsembleV51(nn.Module):
         epipolar_all = []
         view_count_all = []
 
-        for p in expert_poses:
+        # Evidence should be an observation of the experts, not a path for the
+        # gate to back-propagate into the upstream pose generators. Detach the
+        # expert poses before computing evidence terms.
+        for p_raw in expert_poses:
+            p = p_raw.detach()
+
             # Reprojection residual.
             proj = self._project(p, K, R, t)  # (B, T, V, J, 2)
             diff = (proj - points_2d).norm(dim=-1)  # (B, T, V, J)
@@ -245,26 +250,19 @@ class DomainAgnosticEnsembleV51(nn.Module):
         # Softmax over experts per joint.
         weights = F.softmax(logits, dim=2)  # (B, T, E, J)
 
-        # Clamp weights to avoid hard switching.
-        if self.min_weight > 0.0:
-            weights = weights.clamp(min=self.min_weight)
-            weights = weights / weights.sum(dim=2, keepdim=True)
-
-        # Optional identity bypass: blend with uniform weights at init.
+        # Optional identity bypass: blend with uniform weights. Use a small,
+        # fixed mixture so the ensemble stays near the mean of experts early in
+        # training while still allowing the gate to become selective.
         if self.identity_bypass:
             uniform = torch.ones_like(weights) / E
-            weights = 0.9 * weights + 0.1 * uniform
+            weights = 0.95 * weights + 0.05 * uniform
 
         # Weighted sum of expert poses.
         poses = torch.stack(expert_poses, dim=2)  # (B, T, E, J, 3)
         weights_expanded = weights.unsqueeze(-1)  # (B, T, E, J, 1)
         ensemble_pose = (weights_expanded * poses).sum(dim=2)  # (B, T, J, 3)
 
-        # Diversity loss: encourage experts to disagree (negative variance penalty).
-        # Use a small weight so it does not dominate the supervised loss.
-        per_expert = poses  # (B, T, E, J, 3)
-        mean_pose = per_expert.mean(dim=2, keepdim=True)  # (B, T, 1, J, 3)
-        diversity = ((per_expert - mean_pose) ** 2).mean()
-        diversity_loss = -0.001 * diversity
-
-        return ensemble_pose, diversity_loss
+        # The original diversity loss penalised agreement between experts and
+        # destabilised training. It is removed; future work may add a supervised
+        # gating loss using ground-truth per-joint errors as soft targets.
+        return ensemble_pose, torch.tensor(0.0, device=ensemble_pose.device, dtype=ensemble_pose.dtype)
