@@ -59,6 +59,7 @@ class TestTimeSelfEvolutionRefinerV51(nn.Module):
         max_view_rel: float = 1.0,
         refine_pose: bool = False,
         pose_lr: float = 1e-4,
+        max_grad_norm: float = 1.0,
     ):
         super().__init__()
         self.n_views = n_views
@@ -73,6 +74,7 @@ class TestTimeSelfEvolutionRefinerV51(nn.Module):
         self.max_view_rel = max_view_rel
         self.refine_pose = refine_pose
         self.pose_lr = pose_lr
+        self.max_grad_norm = max_grad_norm
 
         # Update MLP: takes a small feature vector built from residuals and
         # predicts additive updates for reliability offset and log-uncertainty.
@@ -198,7 +200,9 @@ class TestTimeSelfEvolutionRefinerV51(nn.Module):
         Scalar loss.
         """
         rel = torch.sigmoid(rho).clamp(self.min_view_rel, self.max_view_rel)
-        sigma = torch.exp(log_sigma)
+        # Clamp log_sigma to keep sigma numerically stable.
+        log_sigma_clamped = log_sigma.clamp(-5.0, 5.0)
+        sigma = torch.exp(log_sigma_clamped)
         B, T, J, _ = pose_3d.shape
         V = x_2d.shape[-3]
 
@@ -222,7 +226,10 @@ class TestTimeSelfEvolutionRefinerV51(nn.Module):
         )
         bones = pose_3d[:, :, 1:] - pose_3d[:, :, parents[1:]]
         bone_len = bones.norm(dim=-1)  # (B, T, J-1)
-        bone_loss = bone_len.std(dim=1).mean()  # encourage low variance across time
+        if T > 1:
+            bone_loss = bone_len.std(dim=1).mean()  # encourage low variance across time
+        else:
+            bone_loss = torch.tensor(0.0, device=pose_3d.device)
 
         # Entropy regularisation on reliability.
         entropy_loss = -torch.mean(rel * torch.log(rel + 1e-8) + (1 - rel) * torch.log(1 - rel + 1e-8))
@@ -305,10 +312,13 @@ class TestTimeSelfEvolutionRefinerV51(nn.Module):
         for _ in range(self.num_steps):
             optimizer.zero_grad()
             loss = self._loss(refined_pose, rho, log_sigma, x_2d, K, R, t)
+            if not torch.isfinite(loss):
+                break
             loss.backward()
+            torch.nn.utils.clip_grad_norm_(params, self.max_grad_norm)
             optimizer.step()
 
         refined_reliability = torch.sigmoid(rho).detach().clamp(self.min_view_rel, self.max_view_rel)
-        refined_uncertainty = torch.exp(log_sigma).detach()
+        refined_uncertainty = torch.exp(log_sigma.clamp(-5.0, 5.0)).detach()
 
         return refined_pose.detach(), refined_reliability, refined_uncertainty
