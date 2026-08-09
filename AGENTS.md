@@ -35,6 +35,7 @@ This file captures the current A800-D workflow, tmux conventions, and issue labe
 | v51 DAE on v50 | v50 SEFH + Domain-Agnostic Ensemble of pose experts | A800-D | **Queued** after v50 SEFH results; see issue #178 |
 | v52 UWT on v50/v51 | v45/v46/v50/v51 + learnable uncertainty-weighted DLT triangulation | A800-D | **Queued** in `launch_v33_a800_queue.py`; see issue #182 |
 | v53 PSC on v52 | v45/v46/v50/v51/v52 + physical-space calibration (floor + bone + gated residual) | A800-D | **Queued** in `launch_v33_a800_queue.py`; see issue #183 |
+| v54 PSC-v2 on v53 | v45/v46/v50/v51/v52/v53 + skeleton-graph joint-level physical refiner | A800-D | **Queued** in `launch_v33_a800_queue.py`; see issue #184 |
 | v52 scale v45/v46 | v45-AGF + v46-SVG scaled (d=128, 10k samples, 10 epochs) | A800-D | **Queued** in `launch_v33_a800_queue.py`; see issue #179 |
 
 ## Local RTX 4090 status snapshot
@@ -52,7 +53,9 @@ This file captures the current A800-D workflow, tmux conventions, and issue labe
 | v50 design swarm | 20-agent design of next module | Done; top-1 = Self-Evolution Feedback Head (issue #176) |
 | v50 SEFH smoke | v46-SVG + Self-Evolution Feedback Head | Ready; smoke script added; run after v46/v47/v48 chain |
 | v51 DAE smoke | v46-SVG + Domain-Agnostic Ensemble of pose experts | **Done**; best val_MPJPE 35.29 mm (vs v46 32.97 mm); needs tuning; see issue #178 |
-| v52 UWT smoke | v45/v46/v50/v51 + learnable uncertainty-weighted DLT triangulation | **Ready**; smoke script and config added; run after v51 CDSVR smoke clears; see issue #182 |
+| v52 UWT smoke | v45/v46/v50/v51 + learnable uncertainty-weighted DLT triangulation | **Done**; tiny smoke 102.70 mm; medium smoke in progress (epoch 2/5); see issue #182 |
+| v53 PSC smoke | v45/v46/v50/v51/v52 + physical-space calibration (floor + bone + gated residual) | **Done**; tiny smoke 78.76 mm; medium smoke queued behind v52; see issue #183 |
+| v54 PSC-v2 smoke | v45/v46/v50/v51/v52/v53 + skeleton-graph joint-level physical refiner | **Ready**; implementation pushed, unit tests pass, integration smoke 82.02 mm; run after v52/v53; see issue #184 |
 
 ### Historical / detailed local run log
 
@@ -296,6 +299,48 @@ Tracking issue: #183. Depends on: #160, #162, #175, #176, #178, #181, #182.
   1. Run `bash scripts/run_v53_physical_space_calibration_smoke_local_4090.sh` on the local RTX 4090.
   2. Verify identity-at-init: loading a v52 checkpoint with v53 enabled should not change `val_MPJPE` by more than 0.1 mm.
   3. If smoke is stable (no NaN/Inf/OOM) and `val_MPJPE@full` is within 1 mm of the v52 baseline, start the A800 full run.
+  4. Update the status tables above with epoch-1 val and `MPJPE@k` numbers.
+- **Labels:** `experiment`, `P1-next`
+
+## v54 physical-space calibration v2 conventions
+
+Tracking issue: #184. Depends on: #160, #162, #175, #176, #178, #181, #182, #183.
+
+- **Branch:** `v54-psc-v2`
+- **Module:** `motionflow_mv/fusion/physical_space_calibration_v2_v54.py`
+- **Class:** `PhysicalSpaceCalibrationV2V54`
+- **Base:** reuses v45 Adaptive Geometry Fusion, v46 Sparse-View Generalization, v50 Self-Evolution Feedback Head, v51 Cross-Domain Sparse-View Reliability, v52 Uncertainty-Weighted Triangulation, and v53 Physical-Space Calibration
+- **Model wiring:** `motionflow_mv/fusion/omniview_fusion_v5.py`, placed after the v53 PSC block and before the final residual MLP / v47/v49 temporal / v50 SEFH heads
+- **Trainer:** `experiments/train_omniview_fusion_v5_webbridge_multi.py`
+- **Smoke config:** `configs/benchmark_v54_psc_v2_smoke.yaml`
+- **Smoke script:** `scripts/run_v54_psc_v2_smoke_local_4090.sh`
+- **A800 queue:** `scripts/launch_v33_a800_queue.py` (entry `v54_physical_space_calibration_v2_on_v53`)
+- **Flags:**
+  - `use_v54_physical_space_calibration_v2`
+  - `v54_psc2_hidden` (default `64`)
+  - `v54_psc2_n_layers` (default `2`)
+  - `v54_psc2_num_domains` (default `8`)
+  - `v54_psc2_use_floor` (default `True`)
+  - `v54_psc2_use_contact` (default `True`)
+  - `v54_psc2_use_bone_scale` (default `True`)
+  - `v54_psc2_use_temporal_smoothness` (default `True`)
+  - `v54_psc2_use_gnn` (default `True`)
+  - `v54_psc2_gnn_layers` (default `1`)
+  - `v54_psc2_identity_init` (default `True`)
+  - `v54_psc2_residual_gate_init` (default `-6.0`)
+  - `v54_psc2_loss_weight` (default `1.0`)
+  - `v54_psc2_floor_weight` (default `0.01`)
+  - `v54_psc2_bone_weight` (default `0.05`)
+  - `v54_psc2_contact_weight` (default `0.01`)
+  - `v54_psc2_temporal_weight` (default `0.01`)
+  - `v54_psc2_reproj_weight` (default `0.1`)
+  - `v54_psc2_contact_velocity_thresh` (default `0.3`)
+  - `v54_psc2_min_visible_views` (default `2`)
+  - `v54_psc2_warmup_epochs` (default `0`)
+- **Workflow:**
+  1. Run `bash scripts/run_v54_psc_v2_smoke_local_4090.sh` on the local RTX 4090.
+  2. Verify identity-at-init: loading a v53 checkpoint with v54 enabled should not change `val_MPJPE` by more than 0.1 mm.
+  3. If smoke is stable (no NaN/Inf/OOM) and `val_MPJPE@full` is within 1 mm of the v53 baseline, start the A800 full run.
   4. Update the status tables above with epoch-1 val and `MPJPE@k` numbers.
 - **Labels:** `experiment`, `P1-next`
 

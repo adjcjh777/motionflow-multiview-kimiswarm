@@ -60,8 +60,26 @@ Snapshot time: 2026-08-09 (active).
 - Three auxiliary terms are folded into `psc_loss`: floor-plane calibration, canonical bone-length calibration, and reprojection consistency.
 - Per-domain canonical bone lengths are selected via `domain_id` when available.
 
+## v54 Physical-Space Calibration v2 status
+
+| Run | Epochs | Best val_MPJPE | Notes |
+|-----|--------|----------------|-------|
+| v54 PSC-v2 integration CPU smoke (synthetic, v52+v53+v54) | 1 | **82.02 mm** | Module wired after v53; training/validation complete without NaN/OOM; identity-at-init verified in unit tests |
+
+## Key findings (v54)
+
+- `PhysicalSpaceCalibrationV2V54` is implemented and wired into `OmniMultiViewFusionV5` after the v53 PSC block.
+- The module is identity-at-init: the final GNN/MLP residual projection, bone-scale output, and residual gate are zero-initialized, so a v53 checkpoint loads unchanged.
+- Four loss terms are folded into `psc2_loss`: floor-plane calibration, velocity-gated foot-floor contact, per-domain canonical bone-length calibration, and temporal smoothness of the correction.
+- A shallow skeleton-graph refiner (default `gnn_layers=1`) propagates physical hints along the kinematic chain.
+
+## Trainer fix
+
+- Fixed a bug where `use_v52_uncertainty_weighted_triangulation`, `use_v53_physical_space_calibration`, and `use_v54_physical_space_calibration_v2` were not forwarded to `OmniMultiViewFusionV5` via `model_kwargs`, so the CLI flags had no effect. All three modules are now correctly enabled.
+
 ## Next gates
 
-1. Run `bash scripts/run_v53_physical_space_calibration_smoke_local_4090.sh` and verify identity-at-init (< 0.1 mm difference vs v52 baseline).
-2. If the smoke is stable (no NaN/Inf/OOM) and `val_MPJPE@full` is within 1 mm of the v52 baseline, launch the A800 full run from `scripts/launch_v33_a800_queue.py`.
-3. Continue v53 ablations (floor-only, bone-only, reproj-only) once the smoke baseline is validated.
+1. Wait for the v52 UWT medium smoke to finish on the RTX 4090, then run a v53 medium smoke and compare against the v52 baseline.
+2. Run `bash scripts/run_v54_psc_v2_smoke_local_4090.sh` and verify `val_MPJPE@full` is within 1 mm of the v53 baseline.
+3. If v53/v54 smokes are stable, launch the A800 full runs (`v53_physical_space_calibration_on_v52` and `v54_physical_space_calibration_v2_on_v53`) from `scripts/launch_v33_a800_queue.py`.
+4. Continue v54 ablations (floor/contact/bone-scale/GNN) once the baseline is validated.
