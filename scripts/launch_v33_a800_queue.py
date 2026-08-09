@@ -246,36 +246,29 @@ def a800_ssh(cmd: str) -> str:
 def sync_repo_to_a800() -> None:
     """Push the local working tree to A800-D.
 
-    GitHub access from A800 is intermittent, so we fall back to rsync-ing
-    the local repo.  The local directory is the source of truth for code;
-    outputs, .git, virtualenvs, and caches are excluded.
+    GitHub access from A800 is intermittent, so we sync by archiving the local
+    tracked files and extracting them on A800.  The local directory is the source
+    of truth for code; outputs, .git, virtualenvs, and caches are left untouched
+    on the remote.
     """
     import pathlib
+    import tempfile
 
     local_root = pathlib.Path(__file__).resolve().parent.parent
-    excludes = [
-        ".git",
-        ".venv",
-        "outputs",
-        "tmp",
-        "data",
-        "__pycache__",
-        ".pytest_cache",
-        "*.pyc",
-        "*.pth",
-        "*.pt",
-        "*.log",
-    ]
-    cmd = [
-        "rsync",
-        "-avz",
-        "--delete",
-        "-e",
-        "ssh -o ConnectTimeout=10 -o BatchMode=yes",
-    ] + [f"--exclude={e}" for e in excludes] + [f"{local_root}/", f"{SSH_HOST}:{A800_REPO}/"]
-    print("Syncing local repo to A800-D via rsync...")
-    subprocess.check_output(cmd, stderr=subprocess.STDOUT)
-    print("rsync complete.")
+    archive = pathlib.Path(tempfile.gettempdir()) / "motionflow_a800_sync.tar.gz"
+    print("Syncing local repo to A800-D via git archive + tar...")
+    # Archive tracked files at HEAD.
+    subprocess.check_output(
+        ["git", "-C", str(local_root), "archive", "--format=tar.gz", "-o", str(archive), "HEAD"],
+        stderr=subprocess.STDOUT,
+    )
+    # Copy archive to A800 and extract in place.
+    subprocess.check_output(
+        ["scp", "-o", "ConnectTimeout=10", "-o", "BatchMode=yes", str(archive), f"{SSH_HOST}:{A800_REPO}/.sync.tar.gz"],
+        stderr=subprocess.STDOUT,
+    )
+    a800_ssh(f"cd {A800_REPO} && tar -xzf .sync.tar.gz && rm .sync.tar.gz")
+    print("Archive sync complete.")
 
 
 def gpu_free_mibs() -> list[tuple[int, int]]:
