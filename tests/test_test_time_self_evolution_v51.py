@@ -81,3 +81,25 @@ def test_single_frame(shapes):
     assert refined_pose.shape == (B, 1, J, 3)
     assert rel.shape == (B, V)
     assert unc.shape == (B, J)
+
+
+def test_refine_pose_changes_output(shapes):
+    B, T, V, J = shapes
+    pose = torch.randn(B, T, J, 3)
+    x_2d = torch.randn(B, T, V, J, 2)
+    K = torch.eye(3)[None, None, :, :].expand(B, V, -1, -1).clone()
+    R = torch.eye(3)[None, None, :, :].expand(B, V, -1, -1).clone()
+    t = torch.randn(B, V, 3)
+
+    module_no_refine = TestTimeSelfEvolutionRefinerV51(
+        n_views=V, n_joints=J, num_steps=2, refine_pose=False
+    )
+    module_refine = TestTimeSelfEvolutionRefinerV51(
+        n_views=V, n_joints=J, num_steps=2, refine_pose=True
+    )
+
+    refined_no_refine, _, _ = module_no_refine(pose, x_2d, K, R, t)
+    refined_refine, _, _ = module_refine(pose, x_2d, K, R, t)
+
+    torch.testing.assert_close(refined_no_refine, pose)
+    assert not torch.allclose(refined_refine, pose, atol=1e-6)
