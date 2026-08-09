@@ -5,7 +5,7 @@
 - **Log source:** `outputs/v33_a800_queue.log`
 - **Latest status line:** ~line 259 of 286
 - **Recorded time:** `Sun Aug  9 08:16:37 2026` (poller restart)
-- **State:** All four A800-D GPUs (4-7) are busy; poller is sleeping waiting for a GPU with `>= 30000 MiB` free.
+- **State:** GPUs 4-7 are at 100% utilization running MotionFlow jobs. GPUs 0-3 are idle in SM but hold ~76 GiB memory each (VLLM::Worker_TP processes), leaving no A800 GPU with >= 30 GiB free. The poller is stalled until one of the MotionFlow jobs on GPUs 4-7 finishes and frees memory.
 
 ## Currently Running Jobs (20 total)
 

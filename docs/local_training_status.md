@@ -11,8 +11,8 @@ Last checked: 2026-08-09 03:45:10 UTC
 ## Latest progress
 
 - **Epoch 1 completed:** `train_loss=6.344643`, `val_loss=0.028768`, `val_MPJPE=27.71mm`
-- **Epoch 2 in progress:** latest logged step is `train step 1200: loss=6.370257`
-- **Log file size:** 101 lines (still being written)
+- **Epoch 2 in progress:** latest logged step is `train step 2150: loss=6.332538`
+- **Log file size:** actively being written
 
 ## Notes
 
