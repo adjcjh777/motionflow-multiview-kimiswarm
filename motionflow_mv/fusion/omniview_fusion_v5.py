@@ -104,6 +104,9 @@ from motionflow_mv.fusion.cross_domain_sparse_view_reliability_v51 import (
 from motionflow_mv.fusion.uncertainty_weighted_triangulation_v52 import (
     UncertaintyWeightedTriangulationV52,
 )
+from motionflow_mv.fusion.physical_space_calibration_v53 import (
+    PhysicalSpaceCalibrationV53,
+)
 from motionflow_mv.fusion.neural_bundle_adjustment_v21 import NeuralBundleAdjustment
 from motionflow_mv.fusion.omniview_fusion_v4 import OmniMultiViewFusionV4
 from motionflow_mv.fusion.perceiver_view_aggregator import PerceiverViewAggregator
@@ -358,6 +361,21 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
         v52_uwt_loss_weight: float = 0.01,
         v52_uwt_damping: float = 1e-4,
         v52_uwt_warmup_epochs: int = 0,
+        # v53 physical-space calibration
+        use_v53_physical_space_calibration: bool = False,
+        v53_psc_hidden: int = 64,
+        v53_psc_n_layers: int = 2,
+        v53_psc_identity_init: bool = True,
+        v53_psc_residual_gate_init: float = -6.0,
+        v53_psc_use_uwt_weights: bool = True,
+        v53_psc_use_floor: bool = True,
+        v53_psc_use_bone_scale: bool = True,
+        v53_psc_loss_weight: float = 1.0,
+        v53_psc_floor_weight: float = 0.01,
+        v53_psc_bone_weight: float = 0.1,
+        v53_psc_reproj_weight: float = 0.1,
+        v53_psc_warmup_epochs: int = 0,
+        v53_psc_min_visible_views: int = 2,
         # v48 domain generalization (FiLM / conditional BN / GRL discriminator)
         use_v48_domain_generalization: bool = False,
         v48_dg_hidden: int = 64,
@@ -1023,6 +1041,31 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
         else:
             self.uncertainty_weighted_triangulation_v52 = None
         self._v52_uwt_loss: Optional[torch.Tensor] = None
+
+        # Optional v53 physical-space calibration (identity at init).
+        self.use_v53_physical_space_calibration = use_v53_physical_space_calibration
+        self.v53_psc_loss_weight = v53_psc_loss_weight
+        self.v53_psc_warmup_epochs = v53_psc_warmup_epochs
+        if self.use_v53_physical_space_calibration:
+            self.physical_space_calibration_v53 = PhysicalSpaceCalibrationV53(
+                j=self.j,
+                n_views=n_views,
+                hidden=v53_psc_hidden,
+                n_layers=v53_psc_n_layers,
+                num_domains=max(v48_dg_num_domains, 8),
+                use_floor=v53_psc_use_floor,
+                use_bone_scale=v53_psc_use_bone_scale,
+                use_uwt_weights=v53_psc_use_uwt_weights,
+                identity_init=v53_psc_identity_init,
+                residual_gate_init=v53_psc_residual_gate_init,
+                floor_weight=v53_psc_floor_weight,
+                bone_weight=v53_psc_bone_weight,
+                reproj_weight=v53_psc_reproj_weight,
+                min_visible_views=v53_psc_min_visible_views,
+            )
+        else:
+            self.physical_space_calibration_v53 = None
+        self._v53_psc_loss: Optional[torch.Tensor] = None
 
         # Optional v37 self-critique view reliability estimator (identity at init).
         self.use_self_critique_view_reliability_v37 = use_self_critique_view_reliability_v37
@@ -1747,11 +1790,12 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
 
         # Optional v52 uncertainty-weighted triangulation refinement.
         uwt_loss = torch.tensor(0.0, device=device, dtype=pred_3d_gn.dtype)
+        uwt_weights_for_v53: Optional[torch.Tensor] = None
         if (
             self.use_v52_uncertainty_weighted_triangulation
             and self.uncertainty_weighted_triangulation_v52 is not None
         ):
-            pred_3d_gn_uwt, uwt_loss, uwt_weights, uwt_log_precision = self.uncertainty_weighted_triangulation_v52(
+            pred_3d_gn_uwt, uwt_loss, uwt_weights_for_v53, uwt_log_precision = self.uncertainty_weighted_triangulation_v52(
                 features=feat.view(B, T, V, J, self.d),
                 points_2d=points_2d.view(B, T, V, J, 2),
                 K=K_corrected.view(B, T, V, 3, 3),
@@ -1763,6 +1807,31 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
             )
             pred_3d_gn = pred_3d_gn_uwt.view(B * T, J, 3)
             self._v52_uwt_loss = uwt_loss
+
+        # Optional v53 physical-space calibration refinement.
+        psc_loss = torch.tensor(0.0, device=device, dtype=pred_3d_gn.dtype)
+        if (
+            self.use_v53_physical_space_calibration
+            and self.physical_space_calibration_v53 is not None
+        ):
+            # v53 expects the v52 UWT weights for robust floor estimation; if v52
+            # is not enabled, all views are treated equally.
+            if uwt_weights_for_v53 is None:
+                uwt_weights_for_v53 = torch.ones(
+                    B, T, V, J, device=device, dtype=pred_3d_gn.dtype
+                )
+            pred_3d_gn_psc, psc_loss, psc_floor_height, psc_bone_scale = self.physical_space_calibration_v53(
+                pred_3d_uwt=pred_3d_gn.view(B, T, J, 3),
+                uwt_weights=uwt_weights_for_v53,
+                points_2d=points_2d.view(B, T, V, J, 2),
+                K=K_corrected.view(B, T, V, 3, 3),
+                R=R.view(B, T, V, 3, 3),
+                t=t.view(B, T, V, 3),
+                view_mask=view_mask_flat.view(B, T, V),
+                domain_id=domain_id,
+            )
+            pred_3d_gn = pred_3d_gn_psc.view(B * T, J, 3)
+            self._v53_psc_loss = psc_loss
 
         # Add v33 outlier-view supervised loss to the geometry loss.
         if self.use_outlier_view_rejection_v33:
@@ -1882,6 +1951,17 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
             )
             if v52_active:
                 epi_loss = epi_loss + self.v52_uwt_loss_weight * self._v52_uwt_loss
+        if (
+            self.use_v53_physical_space_calibration
+            and hasattr(self, "_v53_psc_loss")
+            and self._v53_psc_loss is not None
+        ):
+            v53_active = (
+                self.v53_psc_warmup_epochs <= 0
+                or self.epoch >= self.v53_psc_warmup_epochs
+            )
+            if v53_active:
+                epi_loss = epi_loss + self.v53_psc_loss_weight * self._v53_psc_loss
         if self._v32_loss is not None:
             epi_loss = epi_loss + self._v32_loss
 

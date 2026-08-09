@@ -40,8 +40,21 @@ Snapshot time: 2026-08-09 (active).
 - The module is identity-at-init: the precision MLP and residual correction are zero-initialized, so a v51 checkpoint loads unchanged.
 - The tiny smoke runs to completion and reports `val_MPJPE=102.70 mm`, which is on par with the v51 tiny smoke baseline.
 
+## v53 Physical-Space Calibration status
+
+| Run | Epochs | Best val_MPJPE | Notes |
+|-----|--------|----------------|-------|
+| v53 PSC tiny smoke (v50/v51 losses disabled) | TBD | **TBD** | Identity-at-init; waiting for first RTX 4090 smoke |
+
+## Key findings (v53)
+
+- `PhysicalSpaceCalibrationV53` is implemented and wired into `OmniMultiViewFusionV5` after the v52 UWT block.
+- The module is identity-at-init: the final residual MLP and gate are zero-initialized, so a v52 checkpoint loads unchanged.
+- Three auxiliary terms are folded into `psc_loss`: floor-plane calibration, canonical bone-length calibration, and reprojection consistency.
+- Per-domain canonical bone lengths are selected via `domain_id` when available.
+
 ## Next gates
 
-1. Run a v52 UWT medium smoke (200 samples / 5 epochs) to compare against the v51 heads-only baseline (52.33 mm).
-2. If the medium smoke matches or beats the v51 baseline, launch the A800 full run from `scripts/launch_v33_a800_queue.py`.
-3. Continue v53 design swarm once v52 UWT is validated.
+1. Run `bash scripts/run_v53_physical_space_calibration_smoke_local_4090.sh` and verify identity-at-init (< 0.1 mm difference vs v52 baseline).
+2. If the smoke is stable (no NaN/Inf/OOM) and `val_MPJPE@full` is within 1 mm of the v52 baseline, launch the A800 full run from `scripts/launch_v33_a800_queue.py`.
+3. Continue v53 ablations (floor-only, bone-only, reproj-only) once the smoke baseline is validated.

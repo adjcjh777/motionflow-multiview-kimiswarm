@@ -1304,7 +1304,7 @@ def build_compute_loss(args: Namespace):
         if view_mask is not None:
             model_kwargs_forward["view_mask"] = view_mask
         if (
-            (args.use_domain_embedding or use_v48_dg or args.use_v52_uncertainty_weighted_triangulation)
+            (args.use_domain_embedding or use_v48_dg or args.use_v52_uncertainty_weighted_triangulation or args.use_v53_physical_space_calibration)
             and dataset_id is not None
         ):
             model_kwargs_forward["domain_id"] = dataset_id
@@ -1375,6 +1375,13 @@ def build_compute_loss(args: Namespace):
             v52_uwt_loss = getattr(model.module if hasattr(model, "module") else model, "_v52_uwt_loss", None)
             if v52_uwt_loss is not None and torch.isfinite(v52_uwt_loss):
                 metrics["v52_uwt_loss"] = v52_uwt_loss.item()
+
+        # Optional v53 physical-space calibration auxiliary loss logging.
+        # The loss is already folded into ``epi_loss`` inside the model forward.
+        if getattr(args, "use_v53_physical_space_calibration", False):
+            v53_psc_loss = getattr(model.module if hasattr(model, "module") else model, "_v53_psc_loss", None)
+            if v53_psc_loss is not None and torch.isfinite(v53_psc_loss):
+                metrics["v53_psc_loss"] = v53_psc_loss.item()
 
         # v48 adversarial / gradient-reversal domain loss (e.g. from DomainAdapterV48).
         if v48_domain_loss is not None:
@@ -2031,6 +2038,25 @@ def parse_args() -> Namespace:
     parser.add_argument("--v52_uwt_loss_weight", type=float, default=0.01, help="Weight for the v52 UWT auxiliary loss")
     parser.add_argument("--v52_uwt_damping", type=float, default=1e-4, help="Ridge damping for v52 weighted DLT")
     parser.add_argument("--v52_uwt_warmup_epochs", type=int, default=0, help="Epochs before v52 UWT loss is active")
+    # v53 physical-space calibration
+    parser.add_argument("--use_v53_physical_space_calibration", action="store_true", default=False, help="Use v53 physical-space calibration")
+    parser.add_argument("--v53_psc_hidden", type=int, default=64, help="Hidden dimension of the v53 residual MLP")
+    parser.add_argument("--v53_psc_n_layers", type=int, default=2, help="Number of layers in the v53 residual MLP")
+    parser.add_argument("--v53_psc_identity_init", action="store_true", default=True, help="Zero-initialise the v53 residual MLP final layer")
+    parser.add_argument("--no_v53_psc_identity_init", dest="v53_psc_identity_init", action="store_false", help="Disable v53 identity initialisation")
+    parser.add_argument("--v53_psc_residual_gate_init", type=float, default=-6.0, help="Initial logit for the v53 residual gate")
+    parser.add_argument("--v53_psc_use_uwt_weights", action="store_true", default=True, help="Use v52 UWT weights in the v53 floor head")
+    parser.add_argument("--no_v53_psc_use_uwt_weights", dest="v53_psc_use_uwt_weights", action="store_false", help="Disable v52 UWT weights in the v53 floor head")
+    parser.add_argument("--v53_psc_use_floor", action="store_true", default=True, help="Enable the v53 floor-plane head")
+    parser.add_argument("--no_v53_psc_use_floor", dest="v53_psc_use_floor", action="store_false", help="Disable the v53 floor-plane head")
+    parser.add_argument("--v53_psc_use_bone_scale", action="store_true", default=True, help="Enable the v53 canonical bone-length head")
+    parser.add_argument("--no_v53_psc_use_bone_scale", dest="v53_psc_use_bone_scale", action="store_false", help="Disable the v53 canonical bone-length head")
+    parser.add_argument("--v53_psc_loss_weight", type=float, default=1.0, help="Weight for the v53 PSC auxiliary loss")
+    parser.add_argument("--v53_psc_floor_weight", type=float, default=0.01, help="Weight for the v53 floor loss term")
+    parser.add_argument("--v53_psc_bone_weight", type=float, default=0.1, help="Weight for the v53 bone-length loss term")
+    parser.add_argument("--v53_psc_reproj_weight", type=float, default=0.1, help="Weight for the v53 reprojection consistency term")
+    parser.add_argument("--v53_psc_warmup_epochs", type=int, default=0, help="Epochs before the v53 PSC loss is active")
+    parser.add_argument("--v53_psc_min_visible_views", type=int, default=2, help="Minimum visible views for a joint to contribute to v53 losses")
     parser.add_argument("--use_v51_test_time_self_evolution_refiner", action="store_true", default=False, help="Use v51 test-time self-evolution refiner at inference")
     parser.add_argument("--v51_tta_num_steps", type=int, default=3, help="v51 TTSER gradient steps per clip")
     parser.add_argument("--v51_tta_lr", type=float, default=1e-3, help="v51 TTSER Adam learning rate")

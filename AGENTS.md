@@ -34,6 +34,7 @@ This file captures the current A800-D workflow, tmux conventions, and issue labe
 | v51 DAE on v46 | v46-SVG + Domain-Agnostic Ensemble of pose experts | A800-D | **Queued** in `launch_v33_a800_queue.py`; see issue #178 |
 | v51 DAE on v50 | v50 SEFH + Domain-Agnostic Ensemble of pose experts | A800-D | **Queued** after v50 SEFH results; see issue #178 |
 | v52 UWT on v50/v51 | v45/v46/v50/v51 + learnable uncertainty-weighted DLT triangulation | A800-D | **Queued** in `launch_v33_a800_queue.py`; see issue #182 |
+| v53 PSC on v52 | v45/v46/v50/v51/v52 + physical-space calibration (floor + bone + gated residual) | A800-D | **Queued** in `launch_v33_a800_queue.py`; see issue #183 |
 | v52 scale v45/v46 | v45-AGF + v46-SVG scaled (d=128, 10k samples, 10 epochs) | A800-D | **Queued** in `launch_v33_a800_queue.py`; see issue #179 |
 
 ## Local RTX 4090 status snapshot
@@ -261,6 +262,40 @@ Tracking issue: #182. Depends on: #160, #162, #175, #176, #178, #181.
   1. Run `bash scripts/run_v52_uwt_smoke_local_4090.sh` on the local RTX 4090.
   2. Verify identity-at-init: loading a v51 checkpoint with v52 enabled should not change `val_MPJPE` by more than 0.1 mm.
   3. If smoke is stable (no NaN/Inf/OOM) and `val_MPJPE@full` is within 1 mm of the v51 baseline, start the A800 full run.
+  4. Update the status tables above with epoch-1 val and `MPJPE@k` numbers.
+- **Labels:** `experiment`, `P1-next`
+
+## v53 physical-space calibration conventions
+
+Tracking issue: #183. Depends on: #160, #162, #175, #176, #178, #181, #182.
+
+- **Branch:** `v53-psc`
+- **Module:** `motionflow_mv/fusion/physical_space_calibration_v53.py`
+- **Base:** reuses v45 Adaptive Geometry Fusion, v46 Sparse-View Generalization, v50 Self-Evolution Feedback Head, v51 Cross-Domain Sparse-View Reliability, and v52 Uncertainty-Weighted Triangulation
+- **Model wiring:** `motionflow_mv/fusion/omniview_fusion_v5.py`, placed after the v52 UWT block and before the residual MLP
+- **Trainer:** `experiments/train_omniview_fusion_v5_webbridge_multi.py`
+- **Smoke config:** `configs/benchmark_v53_physical_space_calibration_smoke.yaml`
+- **Smoke script:** `scripts/run_v53_physical_space_calibration_smoke_local_4090.sh`
+- **A800 queue:** `scripts/launch_v33_a800_queue.py` (entry `v53_physical_space_calibration_on_v52`)
+- **Flags:**
+  - `use_v53_physical_space_calibration`
+  - `v53_psc_hidden` (default `64`)
+  - `v53_psc_n_layers` (default `2`)
+  - `v53_psc_identity_init` (default `True`)
+  - `v53_psc_residual_gate_init` (default `-6.0`)
+  - `v53_psc_use_uwt_weights` (default `True`)
+  - `v53_psc_use_floor` (default `True`)
+  - `v53_psc_use_bone_scale` (default `True`)
+  - `v53_psc_loss_weight` (default `1.0`)
+  - `v53_psc_floor_weight` (default `0.01`)
+  - `v53_psc_bone_weight` (default `0.1`)
+  - `v53_psc_reproj_weight` (default `0.1`)
+  - `v53_psc_warmup_epochs` (default `0`)
+  - `v53_psc_min_visible_views` (default `2`)
+- **Workflow:**
+  1. Run `bash scripts/run_v53_physical_space_calibration_smoke_local_4090.sh` on the local RTX 4090.
+  2. Verify identity-at-init: loading a v52 checkpoint with v53 enabled should not change `val_MPJPE` by more than 0.1 mm.
+  3. If smoke is stable (no NaN/Inf/OOM) and `val_MPJPE@full` is within 1 mm of the v52 baseline, start the A800 full run.
   4. Update the status tables above with epoch-1 val and `MPJPE@k` numbers.
 - **Labels:** `experiment`, `P1-next`
 
