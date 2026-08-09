@@ -215,6 +215,23 @@ RUNS = [
         "--use_uncertainty_gated_iterative_graph_refinement_v36 --v36_ugigr_n_layers 1 --v36_ugigr_n_iters 2 --v36_ugigr_n_heads 4 --v36_ugigr_uncertainty_hidden 64",
         "omniview_fusion_v36_ugigr_on_v35_tvjgn_a800",
     ),
+    # v36 on top of the strongest v34 stack (HMSP + geometry-aware VJGN).
+    (
+        "v36_ugigr_on_v34_hmsp_geometry_vjgn",
+        "--use_hierarchical_multiview_v31 --v31_geometry_bias "
+        "--use_hierarchical_multiscale_spatial_pyramid_v33 --v33_hmsp_scales 1 2 4 "
+        "--use_geometry_view_joint_graph_network_v34 --v34_gvjgn_n_layers 2 --v34_gvjgn_n_heads 4 "
+        "--use_uncertainty_gated_iterative_graph_refinement_v36 --v36_ugigr_n_layers 1 --v36_ugigr_n_iters 2 --v36_ugigr_n_heads 4 --v36_ugigr_uncertainty_hidden 64",
+        "omniview_fusion_v36_ugigr_on_v34_hmsp_geometry_vjgn_a800",
+    ),
+    # v36 ablation: only 1 iterative step on top of v34 VJGN.
+    (
+        "v36_ugigr_n_iters_1_on_v34_vjgn",
+        "--use_hierarchical_multiview_v31 --v31_geometry_bias "
+        "--use_view_joint_graph_network_v34 --v34_vjgn_n_layers 2 --v34_vjgn_n_heads 4 "
+        "--use_uncertainty_gated_iterative_graph_refinement_v36 --v36_ugigr_n_layers 1 --v36_ugigr_n_iters 1 --v36_ugigr_n_heads 4 --v36_ugigr_uncertainty_hidden 64",
+        "omniview_fusion_v36_ugigr_n_iters_1_on_v34_vjgn_a800",
+    ),
 ]
 
 
