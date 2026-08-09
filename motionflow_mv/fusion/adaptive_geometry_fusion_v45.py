@@ -193,4 +193,6 @@ class AdaptiveGeometryFusionV45(nn.Module):
             mask = view_mask.float().unsqueeze(-1)  # (B, T, V, 1)
             weights = weights * mask
 
-        return weights.clamp(min=1e-4, max=1e4)
+        # Clamp with a floor of 0.0 so masked-out views contribute nothing
+        # to the DLT, while still avoiding negative values.
+        return weights.clamp(min=0.0, max=1e4)
