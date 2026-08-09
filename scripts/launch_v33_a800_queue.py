@@ -51,7 +51,7 @@ RUNS = [
     # v52 scaling run: proven v45-AGF + v46-SVG stack at full capacity and data.
     (
         "v52_scale_v45_v46",
-        "--mixed_manifest configs/splits/webbridge_h36m_mpi_mixed_train_val_expanded.yaml "
+        "--mixed_manifest configs/splits/webbridge_h36m_mpi_aist_mixed_train_val_expanded.yaml "
         "--use_multiview_geometry_fusion_v25 --v25_use_geometry_attention --v25_use_learned_depth_triangulation --v25_use_geometry_bundle_adjustment "
         "--use_v45_adaptive_geometry_fusion --v45_adaptive_weight_type per_view_joint --v45_adaptive_weight_hidden 32 --v45_adaptive_weight_n_layers 1 "
         "--use_v46_sparse_view_generalization --v46_svg_view_dropout_prob 0.3 --v46_svg_min_views 2 --v46_svg_hidden 64 --v46_svg_use_curriculum "
