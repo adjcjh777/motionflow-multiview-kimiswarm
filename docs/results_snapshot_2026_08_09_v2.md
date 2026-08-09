@@ -12,7 +12,7 @@ Snapshot time: 2026-08-09 (active).
 | v50 SEFH smoke | queued | — | will run after v46/v47/v48 chain |
 | v51 DAE smoke | done | epoch 1: 35.29 mm (best) | epoch 2 overfit to 158.55 mm; fast smoke (100 samples/1 epoch) 103.64 mm |
 | v52 scale v45/v46 smoke | done | epoch 1: 34.89 mm (best) | epoch 2 overfit to 148.92 mm; fast reg check (500s/1ep) 104.13 mm; A800 full run queued; smoke YAML added |
-| v46-SVG medium local | 5 | — | 5k samples/5 epochs on RTX 4090; relaunched with nohup/watchdog (PID 31539); step 1000 loss ~6.86, first validation pending |
+| v46-SVG medium local | 5 | — | 5k samples/5 epochs on RTX 4090; relaunched with nohup/watchdog (PID 31539); step 2200 loss ~6.03, first validation pending |
 
 ## A800-D full runs
 
@@ -36,8 +36,14 @@ Snapshot time: 2026-08-09 (active).
 - v50 top-1 module: **Self-Evolution Feedback Head (SEFH)**.
 - v51 top-1 module: **Domain-Agnostic Ensemble (DAE)** — implemented and queued for smoke/full runs.
 
+## Data update
+
+- New manifest `configs/splits/webbridge_h36m_mpi_aist_mixed_train_val_expanded.yaml` (1307 train / 227 val files, ~1.59M train clips) added and CPU smoke-tested.
+- v52 A800 queue now uses this expanded manifest for the full-scale run.
+
 ## Next gates
 
-1. v46-SVG full run on A800 reaches first validation.
-2. Launch v52 scaling run on A800: v45-AGF + v46-SVG, d=128, n_st_layers=3, 10k samples.
-3. Revisit v51 DAE only as an ablation on the scaled v46 checkpoint if v52 shows headroom.
+1. v46-SVG medium local reaches first validation; decide if v52 smoke needs stronger regularisation.
+2. v46-SVG full run on A800 reaches first validation.
+3. Launch v52 scaling run on A800: v45-AGF + v46-SVG, d=128, n_st_layers=3, 10k samples, expanded manifest.
+4. Revisit v51 DAE only as an ablation on the scaled v46 checkpoint if v52 shows headroom.
