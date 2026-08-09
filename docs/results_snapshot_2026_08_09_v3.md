@@ -39,7 +39,7 @@ Snapshot time: 2026-08-09 (active).
 
 | Run | Epochs | Best val_MPJPE | Notes |
 |-----|--------|----------------|-------|
-| v53 PSC tiny smoke (v50/v51 losses disabled) | TBD | **TBD** | Module implemented and wired; unit tests pass (4/4); smoke queued behind v52 medium smoke |
+| v53 PSC tiny smoke (v50/v51 losses disabled) | 2 | **78.76 mm** | Tiny smoke completed, but `use_v53_physical_space_calibration` was not forwarded to the model due to a trainer `model_kwargs` bug. The bug is now fixed; the next v53 run will exercise the module. |
 
 ## Key findings (v52)
 
