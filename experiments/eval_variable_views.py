@@ -42,6 +42,15 @@ import torch
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from motionflow_mv.eval.metrics import mpjpe as mpjpe_metric
+from motionflow_mv.eval.mpjpe_at_k_protocol import (
+    compute_mpjpe_at_k,
+    evaluate_mpjpe_at_k,
+    generate_view_subsets,
+    print_mpjpe_at_k_table,
+    temporal_jerk,
+    write_mpjpe_at_k_csv,
+    write_mpjpe_at_k_json,
+)
 from motionflow_mv.fusion.ray_attention_temporal_residual_model import (
     RayAttentionFusionModelTemporalResidual,
 )
@@ -298,68 +307,31 @@ def evaluate_variable_views(
         if max_views is None:
             max_views = points_2d.shape[1]
         k_values = list(range(min_views, max_views + 1))
-    V = points_2d.shape[1]
-    J = points_2d.shape[2]
-    T = points_2d.shape[0]
 
-    K = torch.from_numpy(np.stack([cam.K for cam in cameras], axis=0)).float().to(device)
-    R = torch.from_numpy(np.stack([cam.R for cam in cameras], axis=0)).float().to(device)
-    t = torch.from_numpy(np.stack([cam.t for cam in cameras], axis=0)).float().to(device)
-
-    if hardened:
-        wrapper = HardenedVariableViewInferenceWrapper(model, min_views=2)
-    else:
-        wrapper = VariableViewInferenceWrapper(model)
-    rng = np.random.default_rng(seed)
-
+    raw = evaluate_mpjpe_at_k(
+        model,
+        points_2d,
+        confidences,
+        joints_3d,
+        cameras,
+        k_values=k_values,
+        clip_len=clip_len,
+        num_subsets_per_k=num_subsets_per_k,
+        seed=seed,
+        align="none",
+        device=device,
+        hardened=hardened,
+    )
+    # Preserve the legacy result shape expected by callers of this function.
     results = {}
-    for k in k_values:
-        if k < 1 or k > V:
-            continue
-        subset_errors = []
-        total_subsets = math.comb(V, k)
-        if num_subsets_per_k is None or total_subsets <= num_subsets_per_k:
-            subsets = list(combinations(range(V), k))
-        else:
-            subsets = set()
-            while len(subsets) < num_subsets_per_k:
-                subsets.add(tuple(sorted(rng.choice(V, size=k, replace=False))))
-            subsets = list(subsets)
-
-        for subset in subsets:
-            active = torch.zeros(V, dtype=torch.bool)
-            active[list(subset)] = True
-            # Use sliding clips.
-            clip_preds = []
-            clip_gts = []
-            for start in range(0, T - clip_len + 1, clip_len):
-                end = start + clip_len
-                x_clip = torch.from_numpy(np.concatenate([
-                    points_2d[start:end],
-                    confidences[start:end, ..., None],
-                ], axis=-1)).float().to(device)
-                x_clip, Kp, Rp, tp, _ = prepare_variable_view_input(
-                    x_clip, K, R, t, active, n_views_max=V
-                )
-                with torch.no_grad():
-                    pred = wrapper.model(x_clip.unsqueeze(0), K=Kp, R=Rp, t=tp)[0]
-                pred = pred.squeeze(0).cpu().numpy()  # (T_clip, J, 3)
-                clip_preds.append(pred)
-                clip_gts.append(joints_3d[start:end])
-            if not clip_preds:
-                continue
-            pred_all = np.concatenate(clip_preds, axis=0)
-            gt_all = np.concatenate(clip_gts, axis=0)
-            err = mpjpe_metric(pred_all * 1000.0, gt_all * 1000.0)
-            subset_errors.append(err)
-        if subset_errors:
-            results[k] = {
-                "mpjpe_at_k": float(np.mean(subset_errors)),
-                "mean_mm": float(np.mean(subset_errors)),
-                "std_mm": float(np.std(subset_errors)),
-                "n_subsets": len(subset_errors),
-                "temporal_jerk": _temporal_jerk(pred_all),
-            }
+    for k, res in raw.items():
+        results[k] = {
+            "mpjpe_at_k": res["mpjpe"],
+            "mean_mm": res["mpjpe"],
+            "std_mm": res["std_mm"],
+            "n_subsets": res["n_subsets"],
+            "temporal_jerk": res["temporal_jerk"],
+        }
     return results
 
 
