@@ -1,0 +1,177 @@
+# configs/benchmark_v48_domain_smoke.yaml
+#
+# Smoke-test configuration for the v48 "Domain Generalization" architecture
+# variant, as defined in docs/proposals/v48_domain_generalization.md.
+#
+# v48 builds on top of the v46/v47 stack and adds a lightweight domain-adaptive
+# module (DomainAdapterV48) plus domain-conditional training so the model
+# generalises across studio multi-view (H36M, MPI-INF-3DHP, AIST++) and
+# in-the-wild monocular (3DPW) data.  This config is intentionally small (d=64,
+# 2 epochs, 500 samples) so it runs in minutes on the local RTX 4090.
+#
+# Run (once the v48 code is wired) with:
+#   python experiments/train_omniview_fusion_v5_webbridge_multi.py \
+#       --config configs/benchmark_v48_domain_smoke.yaml
+# or by converting the documented flags below into CLI arguments.
+
+name: v48_domain_generalization_smoke
+variant: v48-Domain
+variant_id: 48
+description: >
+  Smoke test for v48 domain generalization on top of the v46/v47 stack.
+  Adds a lightweight domain-adapter module (FiLM / conditional BN) and
+  domain-conditional training so the model generalises across studio
+  multi-view and in-the-wild monocular data.
+
+manifest: configs/splits/webbridge_h36m_mpi_mixed_train_val.yaml
+script: experiments/train_omniview_fusion_v5_webbridge_multi.py
+
+training:
+  # Core architecture (small for a fast RTX 4090 smoke).
+  d: 64
+  residual_hidden: 128
+  n_st_layers: 2
+  graph_num_layers: 1
+  n_joint_layers: 1
+  n_heads: 4
+
+  # Schedule
+  clip_len: 9
+  epochs: 2
+  batch_size: 4
+  train_samples: 500
+  val_stride: 10
+  num_workers: 0
+
+  # Optimisation
+  lr: 1.0e-3
+  lr_cosine: true
+  lr_warmup_epochs: 1
+  lr_min: 1.0e-6
+  max_grad_norm: 1.0
+  ema_decay: 0.999
+  early_stopping_patience: 2
+  early_stopping_min_delta: 0.001
+
+  # Standard v5 / v18 / v25 / v30 / v45 toggles.
+  use_full_precision_dlt: true
+  use_robust_dlt_reweight: true
+  use_irls_reweight: true
+  use_domain_embedding: true
+  use_multiscale_fusion: true
+  use_camera_conditioning: true
+  use_epipolar_bias: true
+  use_context_visibility: true
+  use_skeleton_residual: true
+  use_rotation_correction: true
+  use_entropy_regularization: true
+  attention_entropy_weight: 0.01
+  use_camera_view_embedding: true
+  use_set_view_aggregator: true
+  use_deformable_cross_view_attention_v18: true
+
+  # v25 geometry fusion (baseline).
+  use_multiview_geometry_fusion_v25: true
+  v25_geom_loss_weight: 0.1
+  v25_dropout: 0.2
+  v25_use_geometry_attention: true
+  v25_use_learned_depth_triangulation: true
+  v25_use_geometry_bundle_adjustment: true
+
+  # v30 hardened hierarchical encoder.
+  use_hierarchical_multiview_v30: true
+  v30_n_part_layers: 2
+  v30_stochastic_depth_prob: 0.1
+
+  # v29 physical-space temporal loss (kept light, warmed up).
+  use_physical_space_temporal_loss_v29: true
+  v29_floor_loss_weight: 0.01
+  v29_bone_temporal_weight: 0.01
+  v29_com_jitter_weight: 0.001
+  v29_physical_loss_warmup_epochs: 1
+
+  # v45 adaptive geometry fusion.
+  use_v45_adaptive_geometry_fusion: true
+  v45_adaptive_weight_type: per_view  # options: per_view, per_joint, per_view_joint
+  v45_adaptive_weight_hidden: 32
+  v45_adaptive_weight_n_layers: 1
+
+  # v46 sparse-view generalisation.
+  use_v46_sparse_view_generalization: true
+  v46_svg_view_dropout_prob: 0.3
+  v46_svg_min_views: 2
+  v46_svg_hidden: 64
+  v46_svg_use_curriculum: true
+
+  # v47 temporal aggregation.
+  use_v47_temporal_aggregation: true
+  v47_temporal_d_model: 64
+  v47_temporal_n_heads: 4
+  v47_temporal_num_layers: 2
+  v47_temporal_window: null  # null = full-clip attention; set to 7 for local window
+  v47_temporal_dropout: 0.1
+  v47_temporal_loss_weight: 0.01
+  v47_use_view_count_conditioning: true
+
+  # v48 domain generalization (new; requires v48 code patch).
+  use_v48_domain_generalization: true
+  v48_dg_hidden: 64
+  v48_dg_grl_lambda: 0.1
+  v48_dg_use_domain_film: true
+  v48_dg_use_ddwl: true
+  v48_dg_ddwl_temperature: 2.0
+  v48_dg_ddwl_warmup_epochs: 1
+
+  # Loss weights.
+  pa_loss_weight: 0.5
+  monotonic_loss_weight: 0.1
+  monotonic_margin: 5.0
+  reproj_loss_weight: 0.1
+  reproj_warmup_epochs: 1
+  aleatoric_reproj_loss_weight: 0.1
+
+  # Augmentations.
+  use_variable_view_training: true
+  variable_view_min_views: 2
+  variable_view_max_views: 8
+  variable_view_max_views_start: 4
+  variable_view_curriculum_alpha: 2.0
+  variable_view_permute: true
+  outlier_view_prob: 0.3
+  outlier_view_max_views: 1
+  outlier_view_offset_std: 10.0
+  outlier_view_noise_std: 15.0
+
+  # v48 per-domain view dropout (gentler for 3DPW actual in-the-wild data).
+  v48_dropout_per_domain:
+    "0": 0.30
+    "1": 0.30
+    "5": 0.15
+
+  # v48 3DPW actual-mode validation paths (optional for smoke).
+  # Set to a list of .npz paths to enable the actual-mode benchmark.
+  v48_3dpw_actual_val_paths: null
+
+safety:
+  # TTE is broken and must not be used.
+  use_test_time_self_evolution_v27: false
+  use_test_time_self_evolution_v29: false
+
+  # This config is a smoke test only.
+  target_hardware: local_rtx_4090_smoke
+
+output:
+  checkpoint: outputs/omniview_fusion_v48_domain_smoke_local_4090.pth
+  log: outputs/omniview_fusion_v48_domain_smoke_local_4090.log
+
+notes:
+  - Built on top of the v47-Temporal-SVG smoke config.
+  - v48 adds a lightweight domain-adapter module (FiLM / conditional BN) and
+    domain-conditional training for cross-dataset generalisation.
+  - v48 should only be enabled when use_v47_temporal_aggregation is true.
+  - Per-domain view dropout is gentler for 3DPW (domain id 5) to preserve the
+    single moving-camera signal.
+  - TTE remains disabled (known to be broken).
+  - Physical loss is warmed up for 1 epoch to avoid v28-style instability.
+  - This is a smoke config only; full A800 runs should use d=128, n_st_layers=3,
+    clip_len=9/13, and the full WebBridge/H36M/MPI/3DPW manifest.
