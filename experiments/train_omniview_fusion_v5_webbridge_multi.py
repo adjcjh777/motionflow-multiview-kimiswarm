@@ -1092,8 +1092,8 @@ def build_compute_loss(args: Namespace):
         # Optional v41 per-domain loss weighting for mixed training.
         mse_per_sample = F.mse_loss(pred_3d, y, reduction="none").mean(dim=(1, 2, 3))
         if dataset_id is not None and domain_loss_weights is not None:
-            weights = domain_loss_weights.to(device)[dataset_id.squeeze(-1).long()]
-            loss = (mse_per_sample * weights).mean()
+            domain_sample_weights = domain_loss_weights.to(device)[dataset_id.squeeze(-1).long()]
+            loss = (mse_per_sample * domain_sample_weights).mean()
         else:
             loss = mse_per_sample.mean()
         metrics: Dict[str, Any] = {
