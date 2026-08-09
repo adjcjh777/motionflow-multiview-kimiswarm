@@ -30,6 +30,8 @@ This file captures the current A800-D workflow, tmux conventions, and issue labe
 | v48-domain full | v47 + domain-conditional FiLM/GRL/DDWL + 3DPW actual-mode integration | A800-D | **Queued** after v47 smoke completes; see `docs/swarm_iter25_action_plan.md` (#164) |
 | v49-Lite full | v46-SVG + lightweight causal temporal aggregation (v47 replacement) | A800-D | **Queued** after v46/v47 results; see issue #175 |
 | v50 SEFH full | v46-SVG + Self-Evolution Feedback Head | A800-D | **Queued** after v49-Lite results; see issue #176 |
+| v51 DAE on v46 | v46-SVG + Domain-Agnostic Ensemble of pose experts | A800-D | **Queued** in `launch_v33_a800_queue.py`; see issue #178 |
+| v51 DAE on v50 | v50 SEFH + Domain-Agnostic Ensemble of pose experts | A800-D | **Queued** after v50 SEFH results; see issue #178 |
 
 ## Local RTX 4090 status snapshot
 
@@ -44,6 +46,7 @@ This file captures the current A800-D workflow, tmux conventions, and issue labe
 | v49 ablation matrix | v45/v46/v47/v48/v49-Lite 2-epoch comparison | Ready; waiting for GPU |
 | v50 design swarm | 20-agent design of next module | Done; top-1 = Self-Evolution Feedback Head (issue #176) |
 | v50 SEFH smoke | v46-SVG + Self-Evolution Feedback Head | Ready; smoke script added; run after v46/v47/v48 chain |
+| v51 DAE smoke | v46-SVG + Domain-Agnostic Ensemble of pose experts | Ready; smoke script added; run after v49 ablation / v50 SEFH smoke; see issue #178 |
 
 ### Historical / detailed local run log
 
