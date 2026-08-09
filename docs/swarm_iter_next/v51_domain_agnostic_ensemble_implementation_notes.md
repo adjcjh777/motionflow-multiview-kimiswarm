@@ -59,3 +59,24 @@ Future extensions can add v47 temporal, v48 domain-conditioned, and v50 SEFH-cor
 - `MPJPE@2`: −3 to −5 mm vs v46 baseline
 - `MPJPE@3`: −2 to −4 mm
 - `val_MPJPE@full`: within ±0.5 mm of v46 baseline
+
+
+## Smoke results (2026-08-09)
+
+| Run | Best val_MPJPE | Notes |
+|-----|----------------|-------|
+| v46-SVG baseline | **32.97 mm** | epoch 1 |
+| v51 DAE smoke | **35.29 mm** | epoch 1; epoch 2 overfit to 158.55 mm |
+| v51 DAE fast smoke | **103.64 mm** | 100 samples/1 epoch; not converged |
+
+## Lessons learned
+
+1. **Diversity loss hurt.** The negative-variance loss rewarded expert disagreement and contributed to epoch-2 collapse. It was removed in commit `4cbca1b`.
+2. **Evidence should be detached.** Gate gradients were leaking into the upstream expert poses. Expert poses are now detached before evidence computation.
+3. **Hard min-weight and bypass constrained selection.** `min_weight=0.05` and a permanent 10% uniform bypass prevented the gate from suppressing a bad expert. Both were relaxed.
+4. **Two experts is too small.** The original design assumed 5+ experts (geometry, residual, temporal, domain, SEFH); the smoke only used geometry + residual. The gate had little to gain from switching.
+5. **Smoke scale matters.** The 100-sample fast smoke gave no signal; the 500-sample/2-epoch smoke was the minimum usable signal.
+
+## Decision
+
+v51 DAE is **parked**. The next step is v52: scale the proven v45-AGF + v46-SVG stack on A800 (issue #179). v51 DAE may be revisited as an ablation on a stronger scaled checkpoint once more experts are available.
