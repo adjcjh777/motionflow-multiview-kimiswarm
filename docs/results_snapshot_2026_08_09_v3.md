@@ -33,7 +33,7 @@ Snapshot time: 2026-08-09 (active).
 | Run | Epochs | Best val_MPJPE | Notes |
 |-----|--------|----------------|-------|
 | v52 UWT tiny smoke (v50/v51 losses disabled) | 2 | **102.70 mm** | Identity-at-init; training and validation complete without NaN/OOM; comparable to v51 tiny smoke (104.51 mm) |
-| v52 UWT medium smoke 200 clips (v50/v51 losses disabled) | 1 | **60.09 mm** | Epoch 1 validation; loss decreased 19.98 → 6.56. Run is continuing (5 epochs total); epoch-2 step 400 loss ≈ 6.99. |
+| v52 UWT medium smoke 200 clips (v50/v51 losses disabled) | 2 | **60.09 mm** | Epoch 1 validation; loss decreased 19.98 → 6.56. Epoch 2 val_MPJPE=76.17 mm. Run is continuing (5 epochs total). |
 
 ## v53 Physical-Space Calibration status
 
