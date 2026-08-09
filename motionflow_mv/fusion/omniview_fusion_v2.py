@@ -37,7 +37,10 @@ import numpy as np
 import torch
 import torch.nn as nn
 
-from motionflow_mv.fusion.graph_joint_attention_v2 import GraphJointAttentionV2
+from motionflow_mv.fusion.graph_joint_attention_v2 import (
+    GraphJointAttentionV2,
+    build_graph_joint_edge_index,
+)
 from motionflow_mv.fusion.graph_joint_relation import (
     H36M_17_PARENTS,
     H36M_17_SYMMETRY_PAIRS,
@@ -175,12 +178,19 @@ class OmniMultiViewFusionV2(RayAttentionFusionModelBayesianTriV2):
         else:
             self.graph_joint_attention = None
 
-    def rebuild_graph(self, j: int, dataset: str = "h36m") -> None:
-        """Rebuild the (view, joint) graph for a different skeleton.
+    def rebuild_graph(
+        self,
+        j: int,
+        dataset: str = "h36m",
+        n_views: int | None = None,
+    ) -> None:
+        """Rebuild the (view, joint) graph for a different skeleton/view count.
 
         Args:
             j: number of joints.
             dataset: one of "h36m" or "mpiinf3dhp".
+            n_views: number of views to build the graph for; defaults to the
+                model's configured maximum.
         """
         self._current_j = j
         if dataset in ("h36m", "human3.6m", "h36m_17"):
@@ -194,12 +204,15 @@ class OmniMultiViewFusionV2(RayAttentionFusionModelBayesianTriV2):
 
         if self.graph_joint_attention is None:
             return
-        self.graph_joint_attention.build_edge_index(
-            j=j,
-            parents=parents,
-            symmetry_pairs=symmetry,
-            add_self_loops=True,
+        if n_views is None:
+            n_views = self.graph_joint_attention.n_views
+        edge_index, edge_type = build_graph_joint_edge_index(
+            parents, symmetry, n_views, j, add_self_loops=True
         )
+        self.graph_joint_attention.edge_index = edge_index
+        self.graph_joint_attention.edge_type = edge_type
+        # Update n_views so later forward passes use the right graph size.
+        self.graph_joint_attention.n_views = n_views
 
     def _apply_graph_joint_attention(
         self,
@@ -219,13 +232,15 @@ class OmniMultiViewFusionV2(RayAttentionFusionModelBayesianTriV2):
             return feat
         # Also rebuild when the cached edge index is incompatible with the
         # current (V, J) shape. This happens when a checkpoint saved after an
-        # MPI batch is loaded and then evaluated on H36M data.
+        # MPI batch is loaded and then evaluated on H36M data, or when the
+        # number of actual views is less than the configured maximum.
         edge_max = int(self.graph_joint_attention.edge_index.max())
-        n_nodes = feat.shape[1] * feat.shape[2]
+        n_views = feat.shape[1]
+        n_nodes = n_views * j
         if j != self._current_j or edge_max >= n_nodes:
             # Auto-rebuild graph if the input joint count changes. This is a
             # convenience for variable-view / cross-dataset inference.
-            self.rebuild_graph(j, dataset="h36m" if j == 17 else "mpiinf3dhp")
+            self.rebuild_graph(j, dataset="h36m" if j == 17 else "mpiinf3dhp", n_views=n_views)
 
         return self.graph_joint_attention(feat)
 
