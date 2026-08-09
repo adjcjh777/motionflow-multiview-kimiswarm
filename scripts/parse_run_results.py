@@ -17,12 +17,24 @@ def _extract_best_val_mpjpe(text: str) -> str | None:
     return None
 
 
+def _extract_all_val_mpjpe(text: str) -> list[float]:
+    """Return all 'val_MPJPE' values from log text."""
+    return [float(v) for v in re.findall(r"val_MPJPE=([0-9.]+)mm", text)]
+
+
 def _extract_latest_val_mpjpe(text: str) -> str | None:
     """Return the latest 'val_MPJPE' value from log text."""
-    # Lines like: Epoch 1: train_loss=..., val_loss=..., val_MPJPE=83.69mm
-    matches = re.findall(r"val_MPJPE=([0-9.]+)mm", text)
-    if matches:
-        return matches[-1]
+    values = _extract_all_val_mpjpe(text)
+    if values:
+        return str(values[-1])
+    return None
+
+
+def _extract_best_val_mpjpe(text: str) -> str | None:
+    """Return the best (lowest) 'val_MPJPE' value from log text."""
+    values = _extract_all_val_mpjpe(text)
+    if values:
+        return str(min(values))
     return None
 
 
@@ -52,34 +64,39 @@ def _parse_a800_outputs(ssh_host: str, a800_repo: str) -> list[dict]:
         "-o",
         "BatchMode=yes",
         ssh_host,
-        f"find {a800_repo}/outputs -maxdepth 1 -name '*.log' -print0 | xargs -0 grep -H 'Best val MPJPE' 2>/dev/null || true",
+        f"find {a800_repo}/outputs -maxdepth 1 -name '*.log' -print0 | xargs -0 grep -H 'val_MPJPE=' 2>/dev/null || true",
     ]
     try:
         out = subprocess.check_output(cmd, text=True, stderr=subprocess.STDOUT, errors="ignore")
     except subprocess.CalledProcessError:
         return []
 
-    results: list[dict] = []
+    results_by_run: dict[str, dict] = {}
     for line in out.splitlines():
-        # line format: path: ... Best val MPJPE: XX.XXmm -> ...
-        if "Best val MPJPE" not in line:
+        # line format: path: ... val_MPJPE=XX.XXmm
+        if "val_MPJPE=" not in line:
             continue
         parts = line.split(":", 2)
         if len(parts) < 2:
             continue
         log_path = Path(parts[0].strip())
         rest = ":".join(parts[1:])
-        best = _extract_best_val_mpjpe(rest)
-        if best:
-            results.append(
-                {
-                    "run": log_path.stem,
-                    "best_val_mpjpe_mm": best,
-                    "latest_val_mpjpe_mm": "",
-                    "location": "a800",
-                }
-            )
-    return results
+        run_name = log_path.stem
+        values = _extract_all_val_mpjpe(rest)
+        if not values:
+            continue
+        if run_name not in results_by_run:
+            results_by_run[run_name] = {
+                "run": run_name,
+                "best_val_mpjpe_mm": str(min(values)),
+                "latest_val_mpjpe_mm": str(values[-1]),
+                "location": "a800",
+            }
+        else:
+            current_best = float(results_by_run[run_name]["best_val_mpjpe_mm"] or "inf")
+            results_by_run[run_name]["best_val_mpjpe_mm"] = str(min(current_best, *values))
+            results_by_run[run_name]["latest_val_mpjpe_mm"] = str(values[-1])
+    return list(results_by_run.values())
 
 
 def _markdown_table(rows: list[dict]) -> str:
