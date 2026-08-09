@@ -247,12 +247,17 @@ class UncertaintyGatedIterativeGraphRefinementV36(nn.Module):
         self,
         tokens: torch.Tensor,
         view_mask: Optional[torch.Tensor] = None,
+        reliability_gate: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         """Forward pass.
 
         Args:
             tokens: (B, T, V, J, d)
             view_mask: optional (B, T, V) bool.
+            reliability_gate: optional (B, T, V, J) external per-node reliability
+                in [0, 1]. If provided, it is multiplied with the learned
+                uncertainty gate so that less reliable nodes send weaker
+                messages.
 
         Returns:
             refined: (B, T, V, J, d)
@@ -270,6 +275,11 @@ class UncertaintyGatedIterativeGraphRefinementV36(nn.Module):
         # Flatten spatio-temporal nodes: (B, 1, T*V*J, d)
         x = x.view(B, 1, T * V * J, d)
 
+        # Flatten external reliability if provided.
+        reliability_flat = None
+        if reliability_gate is not None:
+            reliability_flat = reliability_gate.view(B, T * V * J, 1)
+
         # Iterative refinement with shared weights.
         for _ in range(max(self.n_iters, 1)):
             # Recompute uncertainty gates each iteration from current tokens.
@@ -277,6 +287,11 @@ class UncertaintyGatedIterativeGraphRefinementV36(nn.Module):
             uncertainty_logits = self.uncertainty_mlp(h_nodes)  # (B, T*V*J, 1)
             # Higher logit -> higher gate -> more message allowed.
             src_gate = torch.sigmoid(uncertainty_logits)
+
+            # v39: couple with external reliability so unreliable nodes
+            # propagate less.  Shape (B, T*V*J, 1).
+            if reliability_flat is not None:
+                src_gate = src_gate * reliability_flat
 
             for layer in self.layers:
                 x = layer(x, edge_index, edge_type, src_gate=src_gate)

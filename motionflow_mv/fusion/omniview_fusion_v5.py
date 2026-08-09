@@ -23,6 +23,7 @@ from typing import List, Optional, Sequence, Tuple
 import numpy as np
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
 from motionflow_mv.fusion.camera_conditioned_view_embedding import (
     CameraConditionedViewEmbedding,
@@ -258,6 +259,8 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
         v37_scvr_n_layers: int = 2,
         v37_scvr_use_temporal_context: bool = True,
         v37_scvr_loss_weight: float = 0.01,
+        # v39 reliability-coupled adaptive graph refinement
+        use_reliability_coupled_graph_refinement_v39: bool = False,
         # v32 temporal trajectory consistency
         use_trajectory_consistency_v32: bool = False,
         v32_smooth_weight: float = 1e-3,
@@ -738,6 +741,11 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
         else:
             self.self_critique_view_reliability_v37 = None
 
+        # Optional v39 reliability-coupled adaptive graph refinement.
+        # Couples v37 reliability scores with v36 uncertainty gates so that
+        # unreliable (view, joint) nodes propagate weaker messages.
+        self.use_reliability_coupled_graph_refinement_v39 = use_reliability_coupled_graph_refinement_v39
+
         # Optional v29 test-time self-evolution (with physical-space alignment).
         self.use_test_time_self_evolution_v29 = use_test_time_self_evolution_v29
         if self.use_test_time_self_evolution_v29:
@@ -1112,6 +1120,33 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
                 view_mask=view_mask_flat.view(B, T, V),
             )
 
+        # v39: if coupled refinement is requested, compute v37 reliability BEFORE
+        # v36 so that the graph refinement can be gated by per-(view,joint)
+        # reliability.  Otherwise keep the original v36-before-v37 order for
+        # backward compatibility.
+        v39_run_v37_first = (
+            self.use_reliability_coupled_graph_refinement_v39
+            and self.use_self_critique_view_reliability_v37
+            and self.use_uncertainty_gated_iterative_graph_refinement_v36
+        )
+
+        # Optional v37 self-critique view reliability estimator (identity at init).
+        scvr_reliability = None
+        scvr_view_reliability = None
+        if v39_run_v37_first or (
+            self.use_self_critique_view_reliability_v37
+            and not self.use_reliability_coupled_graph_refinement_v39
+            and self.self_critique_view_reliability_v37 is not None
+        ):
+            scvr_reliability, scvr_view_reliability = self.self_critique_view_reliability_v37(
+                feat,
+                points_2d=points_2d.view(B, T, V, J, 2),
+                K=K_corrected.view(B, T, V, 3, 3),
+                R=R.view(B, T, V, 3, 3),
+                t=t.view(B, T, V, 3),
+                view_mask=view_mask_flat.view(B, T, V),
+            )
+
         # Optional v36 uncertainty-gated iterative graph refinement (identity at init).
         if (
             self.use_uncertainty_gated_iterative_graph_refinement_v36
@@ -1120,12 +1155,16 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
             feat = feat + self.uncertainty_gated_iterative_graph_refinement_v36(
                 feat,
                 view_mask=view_mask_flat.view(B, T, V),
+                reliability_gate=scvr_reliability if self.use_reliability_coupled_graph_refinement_v39 else None,
             )
 
-        # Optional v37 self-critique view reliability estimator (identity at init).
-        scvr_reliability = None
-        scvr_view_reliability = None
-        if self.use_self_critique_view_reliability_v37 and self.self_critique_view_reliability_v37 is not None:
+        # Compute v37 after v36 when v39 is disabled (legacy order).
+        if (
+            not self.use_reliability_coupled_graph_refinement_v39
+            and self.use_self_critique_view_reliability_v37
+            and scvr_reliability is None
+            and self.self_critique_view_reliability_v37 is not None
+        ):
             scvr_reliability, scvr_view_reliability = self.self_critique_view_reliability_v37(
                 feat,
                 points_2d=points_2d.view(B, T, V, J, 2),
@@ -1508,7 +1547,10 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
                 [pred_3d_bt, torch.ones(B, T, J, 1, device=device, dtype=pred_3d_bt.dtype)],
                 dim=-1,
             )
-            x_h = (P.unsqueeze(2) @ pred_3d_h.unsqueeze(1).unsqueeze(-1)).squeeze(-1)
+            # Reshape P from (B*T, V, 3, 4) to (B, T, V, 3, 4) so it broadcasts
+            # correctly with pred_3d_h (B, T, J, 4).
+            P_bt = P.view(B, T, V, 3, 4)
+            x_h = (P_bt.unsqueeze(3) @ pred_3d_h.unsqueeze(2).unsqueeze(-1)).squeeze(-1)
             x_pred = x_h[..., :2] / (x_h[..., 2:3] + 1e-8)
             reproj_err = (x_pred - points_2d.view(B, T, V, J, 2)).norm(dim=-1)
             # High reprojection error -> low target reliability.
