@@ -34,7 +34,7 @@ This file captures the current A800-D workflow, tmux conventions, and issue labe
 | v51 DAE on v46 | v46-SVG + Domain-Agnostic Ensemble of pose experts | A800-D | **Queued** in `launch_v33_a800_queue.py`; see issue #178 |
 | v51 DAE on v50 | v50 SEFH + Domain-Agnostic Ensemble of pose experts | A800-D | **Queued** after v50 SEFH results; see issue #178 |
 | v52 UWT on v50/v51 | v45/v46/v50/v51 + learnable uncertainty-weighted DLT triangulation | A800-D | **Queued** in `launch_v33_a800_queue.py`; see issue #182 |
-| v53 PSC on v52 | v45/v46/v50/v51/v52 + physical-space calibration (floor + bone + gated residual) | A800-D | **Smoke promising** (tiny 102.56 mm; local medium epoch-1 48.24 mm vs v52 60.09 mm); full run queued in `launch_v33_a800_queue.py`; see issue #183 |
+| v53 PSC on v52 | v45/v46/v50/v51/v52 + physical-space calibration (floor + bone + gated residual) | A800-D | **Smoke promising** (tiny 102.56 mm; local medium v2 epoch-1 66.06 mm, running); A800 full run queued with `v53_psc_loss_weight=0.1`, warmup and weight-decay; see issue #183 |
 | v54 PSC-v2 on v53 | v45/v46/v50/v51/v52/v53 + skeleton-graph joint-level physical refiner | A800-D | **Dropped** after smoke showed no gain; full run removed from queue; see issue #184 |
 | v55 ORR on v54 | v53/v54 + outlier-robust Cauchy reliability head | A800-D | **Dropped** after smoke showed no gain / instability; full run removed from queue; see issue #185 |
 | v52 scale v45/v46 | v45-AGF + v46-SVG scaled (d=128, 10k samples, 10 epochs) | A800-D | **Queued** in `launch_v33_a800_queue.py`; see issue #179 |
@@ -55,7 +55,7 @@ This file captures the current A800-D workflow, tmux conventions, and issue labe
 | v50 SEFH smoke | v46-SVG + Self-Evolution Feedback Head | Ready; smoke script added; run after v46/v47/v48 chain |
 | v51 DAE smoke | v46-SVG + Domain-Agnostic Ensemble of pose experts | **Done**; best val_MPJPE 35.29 mm (vs v46 32.97 mm); needs tuning; see issue #178 |
 | v52 UWT smoke | v45/v46/v50/v51 + learnable uncertainty-weighted DLT triangulation | **Done**; tiny smoke best 78.68 mm; medium best 60.09 mm; see issue #182 |
-| v53 PSC smoke | v45/v46/v50/v51/v52 + physical-space calibration (floor + bone + gated residual) | **Fixed NaN root cause** (`sqrt(weights).clamp` -> `clamp().sqrt()`); A800 tiny smoke best 98.65 mm; local tiny smoke best 78.76 mm; first local medium diverged (epoch 2 232 mm); v2 medium (lower PSC weight + warmup + weight decay) now running; see issue #183 |
+| v53 PSC smoke | v45/v46/v50/v51/v52 + physical-space calibration (floor + bone + gated residual) | **Fixed NaN root cause** (`sqrt(weights).clamp` -> `clamp().sqrt()`); A800 tiny smoke best 98.65 mm; local tiny smoke best 78.76 mm; first local medium diverged (epoch 2 232 mm); v2 medium epoch-1 66.06 mm, running epoch 2; see issue #183 |
 | v54 PSC-v2 smoke | v45/v46/v50/v51/v52/v53 + skeleton-graph joint-level physical refiner | **Dropped**; A800/Local tiny smoke ~103 mm (worse than v52 78.68 mm); not beneficial; see issue #184 |
 | v55 ORR smoke | v53/v54 + outlier-robust Cauchy reliability head before UWT | **Dropped**; local tiny smoke best 98.11 mm, A800 epoch-2 loss exploded; not beneficial; see issue #185 |
 | v56 APL smoke | v53 + learned per-sample PSC loss weight from uncertainty/pose std | **Dropped**; local tiny smoke best 104.30 mm (worse than v53 78.76 mm); not beneficial |
