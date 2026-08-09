@@ -1303,7 +1303,10 @@ def build_compute_loss(args: Namespace):
         model_kwargs_forward: Dict[str, Any] = {}
         if view_mask is not None:
             model_kwargs_forward["view_mask"] = view_mask
-        if (args.use_domain_embedding or use_v48_dg) and dataset_id is not None:
+        if (
+            (args.use_domain_embedding or use_v48_dg or args.use_v52_uncertainty_weighted_triangulation)
+            and dataset_id is not None
+        ):
             model_kwargs_forward["domain_id"] = dataset_id
         if outlier_labels is not None:
             model_kwargs_forward["outlier_labels"] = outlier_labels
@@ -1365,6 +1368,13 @@ def build_compute_loss(args: Namespace):
 
         if epi_loss is not None:
             loss = loss + epi_loss
+
+        # Optional v52 uncertainty-weighted triangulation auxiliary loss logging.
+        # The loss is already folded into ``epi_loss`` inside the model forward.
+        if getattr(args, "use_v52_uncertainty_weighted_triangulation", False):
+            v52_uwt_loss = getattr(model.module if hasattr(model, "module") else model, "_v52_uwt_loss", None)
+            if v52_uwt_loss is not None and torch.isfinite(v52_uwt_loss):
+                metrics["v52_uwt_loss"] = v52_uwt_loss.item()
 
         # v48 adversarial / gradient-reversal domain loss (e.g. from DomainAdapterV48).
         if v48_domain_loss is not None:
@@ -2005,6 +2015,22 @@ def parse_args() -> Namespace:
     parser.add_argument("--no_v51_dae_identity_bypass", dest="v51_dae_identity_bypass", action="store_false", help="Disable v51 ensemble identity bypass")
     parser.add_argument("--v51_dae_min_weight", type=float, default=0.05, help="Minimum per-expert weight in the v51 ensemble")
     parser.add_argument("--v51_dae_loss_weight", type=float, default=0.005, help="Weight for the v51 ensemble diversity auxiliary loss")
+    # v52 uncertainty-weighted triangulation
+    parser.add_argument("--use_v52_uncertainty_weighted_triangulation", action="store_true", default=False, help="Use v52 uncertainty-weighted triangulation")
+    parser.add_argument("--v52_uwt_hidden", type=int, default=64, help="Hidden dimension of the v52 precision MLP")
+    parser.add_argument("--v52_uwt_n_layers", type=int, default=2, help="Number of layers in the v52 precision MLP")
+    parser.add_argument("--v52_uwt_weight_type", type=str, default="per_view_joint", choices=["per_view_joint", "per_view", "per_joint"], help="v52 precision weight type")
+    parser.add_argument("--v52_uwt_temperature", type=float, default=1.0, help="Temperature for v52 precision sigmoid")
+    parser.add_argument("--v52_uwt_use_geometry_bias", action="store_true", default=True, help="Use geometry bias in v52 precision MLP")
+    parser.add_argument("--no_v52_uwt_use_geometry_bias", dest="v52_uwt_use_geometry_bias", action="store_false", help="Disable geometry bias in v52 precision MLP")
+    parser.add_argument("--v52_uwt_use_feature_bias", action="store_true", default=True, help="Use feature bias in v52 precision MLP")
+    parser.add_argument("--no_v52_uwt_use_feature_bias", dest="v52_uwt_use_feature_bias", action="store_false", help="Disable feature bias in v52 precision MLP")
+    parser.add_argument("--v52_uwt_identity_init", action="store_true", default=True, help="Zero-initialise v52 precision MLP final layer")
+    parser.add_argument("--no_v52_uwt_identity_init", dest="v52_uwt_identity_init", action="store_false", help="Disable v52 identity initialisation")
+    parser.add_argument("--v52_uwt_min_weight", type=float, default=0.05, help="Minimum v52 triangulation weight")
+    parser.add_argument("--v52_uwt_loss_weight", type=float, default=0.01, help="Weight for the v52 UWT auxiliary loss")
+    parser.add_argument("--v52_uwt_damping", type=float, default=1e-4, help="Ridge damping for v52 weighted DLT")
+    parser.add_argument("--v52_uwt_warmup_epochs", type=int, default=0, help="Epochs before v52 UWT loss is active")
     parser.add_argument("--use_v51_test_time_self_evolution_refiner", action="store_true", default=False, help="Use v51 test-time self-evolution refiner at inference")
     parser.add_argument("--v51_tta_num_steps", type=int, default=3, help="v51 TTSER gradient steps per clip")
     parser.add_argument("--v51_tta_lr", type=float, default=1e-3, help="v51 TTSER Adam learning rate")

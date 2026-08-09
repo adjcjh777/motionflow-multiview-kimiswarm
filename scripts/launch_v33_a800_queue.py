@@ -201,6 +201,19 @@ RUNS = [
         "--d 128 --residual_hidden 256 --n_st_layers 3 --batch_size 16 --clip_len 13 --train_samples 10000 --epochs 10 --early_stopping_patience 3 --early_stopping_min_delta 0.001 --weight_decay 1e-4",
         "omniview_fusion_v51_domain_agnostic_ensemble_on_v50_a800",
     ),
+    # v52 uncertainty-weighted triangulation on top of the v45/v46/v50/v51 stack.
+    (
+        "v52_uncertainty_weighted_triangulation_on_v50_v51",
+        "--mixed_manifest configs/splits/webbridge_h36m_mpi_mixed_train_val_expanded.yaml "
+        "--use_multiview_geometry_fusion_v25 --v25_use_geometry_attention --v25_use_learned_depth_triangulation --v25_use_geometry_bundle_adjustment "
+        "--use_v45_adaptive_geometry_fusion --v45_adaptive_weight_type per_view_joint --v45_adaptive_weight_hidden 32 --v45_adaptive_weight_n_layers 1 "
+        "--use_v46_sparse_view_generalization --v46_svg_view_dropout_prob 0.3 --v46_svg_min_views 2 --v46_svg_hidden 64 --v46_svg_use_curriculum "
+        "--use_v50_self_evolution_feedback_head --v50_sefh_hidden 64 --v50_sefh_num_layers 2 --v50_sefh_loss_weight 0.0 --v50_sefh_aleatoric_weight 0.0 "
+        "--use_v51_cross_domain_sparse_view_reliability --v51_cdsvr_hidden 64 --v51_cdsvr_num_heads 4 --v51_cdsvr_dropout 0.1 --v51_cdsvr_loss_weight 0.0 "
+        "--use_v52_uncertainty_weighted_triangulation --v52_uwt_hidden 64 --v52_uwt_n_layers 2 --v52_uwt_weight_type per_view_joint --v52_uwt_loss_weight 0.01 "
+        "--d 128 --residual_hidden 256 --n_st_layers 3 --batch_size 16 --clip_len 13 --train_samples 10000 --epochs 5 --early_stopping_patience 3 --early_stopping_min_delta 0.001 --weight_decay 1e-4",
+        "omniview_fusion_v52_uncertainty_weighted_triangulation_on_v50_v51_a800",
+    ),
     # Legacy v42/v43 ablations (queued after the new v45-v49 stack).
     (
         "v42_v36_physical_domain_no_v37",

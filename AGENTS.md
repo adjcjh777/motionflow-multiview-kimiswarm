@@ -33,6 +33,7 @@ This file captures the current A800-D workflow, tmux conventions, and issue labe
 | v50 SEFH full | v46-SVG + Self-Evolution Feedback Head | A800-D | **Queued** after v49-Lite results; see issue #176 |
 | v51 DAE on v46 | v46-SVG + Domain-Agnostic Ensemble of pose experts | A800-D | **Queued** in `launch_v33_a800_queue.py`; see issue #178 |
 | v51 DAE on v50 | v50 SEFH + Domain-Agnostic Ensemble of pose experts | A800-D | **Queued** after v50 SEFH results; see issue #178 |
+| v52 UWT on v50/v51 | v45/v46/v50/v51 + learnable uncertainty-weighted DLT triangulation | A800-D | **Queued** in `launch_v33_a800_queue.py`; see issue #182 |
 | v52 scale v45/v46 | v45-AGF + v46-SVG scaled (d=128, 10k samples, 10 epochs) | A800-D | **Queued** in `launch_v33_a800_queue.py`; see issue #179 |
 
 ## Local RTX 4090 status snapshot
@@ -50,6 +51,7 @@ This file captures the current A800-D workflow, tmux conventions, and issue labe
 | v50 design swarm | 20-agent design of next module | Done; top-1 = Self-Evolution Feedback Head (issue #176) |
 | v50 SEFH smoke | v46-SVG + Self-Evolution Feedback Head | Ready; smoke script added; run after v46/v47/v48 chain |
 | v51 DAE smoke | v46-SVG + Domain-Agnostic Ensemble of pose experts | **Done**; best val_MPJPE 35.29 mm (vs v46 32.97 mm); needs tuning; see issue #178 |
+| v52 UWT smoke | v45/v46/v50/v51 + learnable uncertainty-weighted DLT triangulation | **Ready**; smoke script and config added; run after v51 CDSVR smoke clears; see issue #182 |
 
 ### Historical / detailed local run log
 
@@ -228,6 +230,38 @@ Tracking issue: #164. Depends on: #160, #162.
   2. Run `bash scripts/run_v48_domain_smoke_local_4090.sh`.
   3. If smoke val_MPJPE is finite and per-domain metrics show no NaN/OOM, add/confirm the A800 queue entry and start the full run.
   4. Update the status tables above with epoch-1 val, per-domain `MPJPE@k`, and 3DPW actual `MPJPE@1` numbers.
+- **Labels:** `experiment`, `P1-next`
+
+## v52 uncertainty-weighted triangulation conventions
+
+Tracking issue: #182. Depends on: #160, #162, #175, #176, #178, #181.
+
+- **Branch:** `v52-uwt`
+- **Module:** `motionflow_mv/fusion/uncertainty_weighted_triangulation_v52.py`
+- **Base:** reuses v45 Adaptive Geometry Fusion, v46 Sparse-View Generalization, v50 Self-Evolution Feedback Head, and v51 Cross-Domain Sparse-View Reliability
+- **Model wiring:** `motionflow_mv/fusion/omniview_fusion_v5.py`, placed after the v25/v45 triangulation block
+- **Trainer:** `experiments/train_omniview_fusion_v5_webbridge_multi.py`
+- **Smoke config:** `configs/benchmark_v52_uwt_smoke.yaml`
+- **Smoke script:** `scripts/run_v52_uwt_smoke_local_4090.sh`
+- **A800 queue:** `scripts/launch_v33_a800_queue.py` (entry `v52_uncertainty_weighted_triangulation_on_v50_v51`)
+- **Flags:**
+  - `use_v52_uncertainty_weighted_triangulation`
+  - `v52_uwt_hidden` (default `64`)
+  - `v52_uwt_n_layers` (default `2`)
+  - `v52_uwt_weight_type` (default `"per_view_joint"`)
+  - `v52_uwt_temperature` (default `1.0`)
+  - `v52_uwt_use_geometry_bias` (default `True`)
+  - `v52_uwt_use_feature_bias` (default `True`)
+  - `v52_uwt_identity_init` (default `True`)
+  - `v52_uwt_min_weight` (default `0.05`)
+  - `v52_uwt_loss_weight` (default `0.01`)
+  - `v52_uwt_damping` (default `1e-4`)
+  - `v52_uwt_warmup_epochs` (default `0`)
+- **Workflow:**
+  1. Run `bash scripts/run_v52_uwt_smoke_local_4090.sh` on the local RTX 4090.
+  2. Verify identity-at-init: loading a v51 checkpoint with v52 enabled should not change `val_MPJPE` by more than 0.1 mm.
+  3. If smoke is stable (no NaN/Inf/OOM) and `val_MPJPE@full` is within 1 mm of the v51 baseline, start the A800 full run.
+  4. Update the status tables above with epoch-1 val and `MPJPE@k` numbers.
 - **Labels:** `experiment`, `P1-next`
 
 ## A800 workflow

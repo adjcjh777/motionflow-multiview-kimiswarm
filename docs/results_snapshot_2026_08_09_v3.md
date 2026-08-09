@@ -28,8 +28,15 @@ Snapshot time: 2026-08-09 (active).
 - Commit `864772e`: detach `pred_3d` in v50 SEFH forward, clamp projection z, add NaN/Inf guards in trainer for v50/v51/aleatoric losses, disable unstable losses in smoke script and A800 queue.
 - Commit `6d29b91`: replace unstable NLL with MSE-based SEFH loss, re-enable v50/v51 auxiliary losses, fix a stray double backslash in the smoke script, add medium smoke script.
 
+## v52 Uncertainty-Weighted Triangulation status
+
+| Run | Epochs | Best val_MPJPE | Notes |
+|-----|--------|----------------|-------|
+| v52 UWT smoke (v50/v51 losses disabled) | — | **TBD** | Module implemented and wired; smoke script ready; run after v51 CDSVR smoke frees the RTX 4090 |
+
 ## Next gates
 
-1. Wait for the v51 CDSVR medium smoke (200 samples / 5 epochs) to finish.
-2. Compare v51 CDSVR (heads + MSE losses enabled) against the heads-only baseline (52.33 mm).
-3. If medium smoke is promising, revert the smoke script to 500 samples or launch the full A800 run.
+1. Run the v52 UWT smoke (`bash scripts/run_v52_uwt_smoke_local_4090.sh`) and verify identity-at-init and gradient stability.
+2. Wait for the v51 CDSVR medium smoke (200 samples / 5 epochs) to finish.
+3. Compare v51 CDSVR (heads + MSE losses enabled) against the heads-only baseline (52.33 mm).
+4. If medium smoke is promising, revert the smoke script to 500 samples or launch the full A800 run.

@@ -101,6 +101,9 @@ from motionflow_mv.fusion.self_evolution_feedback_head_v50 import (
 from motionflow_mv.fusion.cross_domain_sparse_view_reliability_v51 import (
     CrossDomainSparseViewReliabilityV51,
 )
+from motionflow_mv.fusion.uncertainty_weighted_triangulation_v52 import (
+    UncertaintyWeightedTriangulationV52,
+)
 from motionflow_mv.fusion.neural_bundle_adjustment_v21 import NeuralBundleAdjustment
 from motionflow_mv.fusion.omniview_fusion_v4 import OmniMultiViewFusionV4
 from motionflow_mv.fusion.perceiver_view_aggregator import PerceiverViewAggregator
@@ -342,6 +345,19 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
         v51_cdsvr_use_domain_label: bool = True,
         v51_cdsvr_uncertainty_temperature: float = 1.0,
         v51_cdsvr_identity_init_gate: bool = True,
+        # v52 uncertainty-weighted triangulation
+        use_v52_uncertainty_weighted_triangulation: bool = False,
+        v52_uwt_hidden: int = 64,
+        v52_uwt_n_layers: int = 2,
+        v52_uwt_weight_type: str = "per_view_joint",
+        v52_uwt_temperature: float = 1.0,
+        v52_uwt_use_geometry_bias: bool = True,
+        v52_uwt_use_feature_bias: bool = True,
+        v52_uwt_identity_init: bool = True,
+        v52_uwt_min_weight: float = 0.05,
+        v52_uwt_loss_weight: float = 0.01,
+        v52_uwt_damping: float = 1e-4,
+        v52_uwt_warmup_epochs: int = 0,
         # v48 domain generalization (FiLM / conditional BN / GRL discriminator)
         use_v48_domain_generalization: bool = False,
         v48_dg_hidden: int = 64,
@@ -986,6 +1002,27 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
             )
         else:
             self.cross_domain_sparse_view_reliability_v51 = None
+
+        # Optional v52 uncertainty-weighted triangulation (identity at init).
+        self.use_v52_uncertainty_weighted_triangulation = use_v52_uncertainty_weighted_triangulation
+        self.v52_uwt_loss_weight = v52_uwt_loss_weight
+        self.v52_uwt_warmup_epochs = v52_uwt_warmup_epochs
+        if self.use_v52_uncertainty_weighted_triangulation:
+            self.uncertainty_weighted_triangulation_v52 = UncertaintyWeightedTriangulationV52(
+                d=self.d,
+                n_views=n_views,
+                hidden=v52_uwt_hidden,
+                n_layers=v52_uwt_n_layers,
+                weight_type=v52_uwt_weight_type,
+                temperature=v52_uwt_temperature,
+                use_geometry_bias=v52_uwt_use_geometry_bias,
+                use_feature_bias=v52_uwt_use_feature_bias,
+                identity_init=v52_uwt_identity_init,
+                min_weight=v52_uwt_min_weight,
+            )
+        else:
+            self.uncertainty_weighted_triangulation_v52 = None
+        self._v52_uwt_loss: Optional[torch.Tensor] = None
 
         # Optional v37 self-critique view reliability estimator (identity at init).
         self.use_self_critique_view_reliability_v37 = use_self_critique_view_reliability_v37
@@ -1708,6 +1745,25 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
             )
             pred_3d_gn = pred_3d_gn_v25.view(B * T, J, 3)
 
+        # Optional v52 uncertainty-weighted triangulation refinement.
+        uwt_loss = torch.tensor(0.0, device=device, dtype=pred_3d_gn.dtype)
+        if (
+            self.use_v52_uncertainty_weighted_triangulation
+            and self.uncertainty_weighted_triangulation_v52 is not None
+        ):
+            pred_3d_gn_uwt, uwt_loss, uwt_weights, uwt_log_precision = self.uncertainty_weighted_triangulation_v52(
+                features=feat.view(B, T, V, J, self.d),
+                points_2d=points_2d.view(B, T, V, J, 2),
+                K=K_corrected.view(B, T, V, 3, 3),
+                R=R.view(B, T, V, 3, 3),
+                t=t.view(B, T, V, 3),
+                pred_3d_init=pred_3d_gn.view(B, T, J, 3),
+                view_mask=view_mask_flat.view(B, T, V),
+                domain_id=domain_id,
+            )
+            pred_3d_gn = pred_3d_gn_uwt.view(B * T, J, 3)
+            self._v52_uwt_loss = uwt_loss
+
         # Add v33 outlier-view supervised loss to the geometry loss.
         if self.use_outlier_view_rejection_v33:
             geom_loss_v25 = geom_loss_v25 + self.v33_outlier_loss_weight * v33_outlier_loss
@@ -1815,6 +1871,17 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
         # Epipolar consistency loss.
         epi_loss = self._epipolar_consistency_loss(points_2d, K_corrected, R, t, L)
         epi_loss = self.epipolar_loss_weight * epi_loss + self.v25_geom_loss_weight * geom_loss_v25
+        if (
+            self.use_v52_uncertainty_weighted_triangulation
+            and hasattr(self, "_v52_uwt_loss")
+            and self._v52_uwt_loss is not None
+        ):
+            v52_active = (
+                self.v52_uwt_warmup_epochs <= 0
+                or self.epoch >= self.v52_uwt_warmup_epochs
+            )
+            if v52_active:
+                epi_loss = epi_loss + self.v52_uwt_loss_weight * self._v52_uwt_loss
         if self._v32_loss is not None:
             epi_loss = epi_loss + self._v32_loss
 
