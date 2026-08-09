@@ -937,6 +937,12 @@ def build_compute_loss(args: Namespace):
                 warmup_epochs=args.v40_warmup_epochs,
             )
 
+    # Optional v41 per-domain loss weights for mixed-loader training.
+    domain_loss_weights: Optional[torch.Tensor] = None
+    if getattr(args, "domain_loss_weights", None) is not None:
+        weights = [float(w.strip()) for w in args.domain_loss_weights.split(",")]
+        domain_loss_weights = torch.tensor(weights, dtype=torch.float32)
+
     def compute_loss(
         model: torch.nn.Module,
         batch: Tuple[torch.Tensor, ...],
@@ -1083,7 +1089,13 @@ def build_compute_loss(args: Namespace):
         entropy_loss_out = out[5] if len(out) > 5 else None
         budget_loss_out = out[6] if len(out) > 6 else None
 
-        loss = F.mse_loss(pred_3d, y)
+        # Optional v41 per-domain loss weighting for mixed training.
+        mse_per_sample = F.mse_loss(pred_3d, y, reduction="none").mean(dim=(1, 2, 3))
+        if dataset_id is not None and domain_loss_weights is not None:
+            weights = domain_loss_weights.to(device)[dataset_id.squeeze(-1).long()]
+            loss = (mse_per_sample * weights).mean()
+        else:
+            loss = mse_per_sample.mean()
         metrics: Dict[str, Any] = {
             "mpjpe": (pred_3d - y).norm(dim=-1).mean().item(),
         }
@@ -1640,6 +1652,7 @@ def parse_args() -> Namespace:
     parser.add_argument("--irls_cauchy_scale", type=float, default=1.0, help="Cauchy kernel scale for IRLS reweighting")
     parser.add_argument("--use_domain_embedding", action="store_true", help="Add a learnable per-dataset embedding (requires --use_mixed_loader)")
     parser.add_argument("--num_domains", type=int, default=2, help="Number of dataset domains for the embedding")
+    parser.add_argument("--domain_loss_weights", type=str, default=None, help="Comma-separated per-domain MSE weights for mixed training (e.g. '1.0,1.5')")
     parser.add_argument("--monotonic_loss_weight", type=float, default=0.0, help="Weight for monotonic multi-view ranking loss")
     parser.add_argument("--monotonic_margin", type=float, default=5.0, help="Margin (mm) for monotonic multi-view loss")
     # Training
