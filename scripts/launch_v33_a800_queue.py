@@ -302,11 +302,14 @@ def launch_run(name: str, extra_flags: str, output: str, gpu: int) -> None:
 
 def main() -> None:
     queue = list(RUNS)
-    print("Pulling latest main on A800-D...")
+    print("Syncing A800-D repo to origin/main...")
     try:
-        a800_ssh(f"cd {A800_REPO} && timeout 15 git pull origin main || true")
+        # Use reset --hard so the A800 repo tracks main exactly.  Local
+        # uncommitted changes are discarded; this keeps the queue from
+        # crashing on stale A800-only code.
+        a800_ssh(f"cd {A800_REPO} && git fetch origin && git reset --hard origin/main")
     except subprocess.CalledProcessError as e:
-        print(f"Warning: git pull on A800 failed: {e}")
+        print(f"Warning: git sync on A800 failed: {e}")
     tmux_gpus = used_gpus_from_tmux()
     already_running = running_run_names()
     queue = [(n, f, o) for n, f, o in queue if n not in already_running]
