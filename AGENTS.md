@@ -366,6 +366,14 @@ Monitor the background process with:
 tail -f outputs/v26_full_queue_local_4090_nohup.log
 ```
 
+For the v52 -> v53 -> v54 medium smoke queue, use:
+
+```bash
+nohup bash scripts/nohup_v52_v53_v54_medium_queue_local_4090.sh > outputs/v52_v53_v54_medium_queue_nohup.log 2>&1 &
+```
+
+This waits for the running v52 UWT medium smoke to finish, then runs v53 PSC medium and v54 PSC-v2 medium sequentially.
+
 ## tmux usage
 
 - **List sessions:**
