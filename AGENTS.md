@@ -26,8 +26,9 @@ This file captures the current A800-D workflow, tmux conventions, and issue labe
 | Run | Description | GPU | Status |
 |-----|-------------|-----|--------|
 | v46-SVG full | v45-AGF + sparse-view generalization (`p=0.3`, `min_views=2`) + reliability head | GPU6 | **Running** since 2026-08-09 06:19; first validation pending |
-| v47-temporal full | v46-SVG + temporal aggregation across (time, joint) tokens | A800-D | **Queued** after v46-SVG; see `docs/swarm_iter24_action_plan.md` (#162) |
-| v48-domain full | v47 + domain-conditional FiLM/GRL/DDWL + 3DPW actual-mode integration | A800-D | **Queued** after v47 smoke completes; see `docs/swarm_iter25_action_plan.md` (#164) |
+| v47-temporal full | v46-SVG + temporal aggregation across (time, joint) tokens | A800-D | **Done**; best val_MPJPE 63.37 mm |
+| v48-domain full | v47 + domain-conditional FiLM/GRL/DDWL + 3DPW actual-mode integration | A800-D | **Running** on GPU6 |
+| v51-CDSVR full | v50 SEFH + domain-conditioned sparse-view reliability/uncertainty | A800-D | **Queued**; see issue #181 |
 | v49-Lite full | v46-SVG + lightweight causal temporal aggregation (v47 replacement) | A800-D | **Queued** after v46/v47 results; see issue #175 |
 | v50 SEFH full | v46-SVG + Self-Evolution Feedback Head | A800-D | **Queued** after v49-Lite results; see issue #176 |
 | v51 DAE on v46 | v46-SVG + Domain-Agnostic Ensemble of pose experts | A800-D | **Queued** in `launch_v33_a800_queue.py`; see issue #178 |
@@ -40,9 +41,10 @@ This file captures the current A800-D workflow, tmux conventions, and issue labe
 
 | Run | Description | Status |
 |-----|-------------|--------|
-| v46-SVG smoke | v25/v45 + on-the-fly view dropout (`p=0.3`, `min_views=2`) + reliability head | Running epoch 2; epoch-1 val_MPJPE 32.97 mm |
-| v47 temporal aggregation smoke | v46-SVG + lightweight temporal refinement head (`d_model=64`, `num_layers=2`) | Queued after v46-SVG smoke |
-| v48 domain generalization smoke | v47 + domain-conditional FiLM/GRL/DDWL + 3DPW actual val | Queued after v47 smoke |
+| v46-SVG smoke | v25/v45 + on-the-fly view dropout (`p=0.3`, `min_views=2`) + reliability head | Stopped to free GPU; epoch-1 val_MPJPE 30.57 mm |
+| v47 temporal aggregation smoke | v46-SVG + lightweight temporal refinement head (`d_model=64`, `num_layers=2`) | Done; best val_MPJPE 63.37 mm on A800 |
+| v48 domain generalization smoke | v47 + domain-conditional FiLM/GRL/DDWL + 3DPW actual val | Launched on A800 (GPU6) |
+| v51 CDSVR smoke | v50 SEFH + domain-conditioned cross-attention reliability/uncertainty | Running on RTX 4090; tracking issue #181 |
 | v49-Lite smoke | v46-SVG + lightweight causal temporal aggregation (v47 replacement) | Queued in A800 queue (issue #175) |
 | v49 ablation matrix | v45/v46/v47/v48/v49-Lite 2-epoch comparison | Ready; waiting for GPU |
 | v50 design swarm | 20-agent design of next module | Done; top-1 = Self-Evolution Feedback Head (issue #176) |
