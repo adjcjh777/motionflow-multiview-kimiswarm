@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import argparse
 import math
+import os
 import random
 import sys
 import warnings
@@ -299,10 +300,13 @@ def build_model_from_args(
         v48_num_domains = max(getattr(args, "num_domains", 2), 6)
         model_kwargs.update(
             {
-                "use_v48_domain_adapter": True,
-                "v48_da_hidden": getattr(args, "v48_dg_hidden", 64),
-                "v48_da_num_domains": v48_num_domains,
-                "v48_da_dropout": 0.1,
+                "use_v48_domain_generalization": True,
+                "v48_dg_hidden": getattr(args, "v48_dg_hidden", 64),
+                "v48_dg_num_domains": v48_num_domains,
+                "v48_dg_dropout": 0.1,
+                "v48_dg_use_domain_film": getattr(args, "v48_dg_use_domain_film", True),
+                "v48_dg_use_grl_discriminator": True,
+                "v48_dg_grl_lambda": getattr(args, "v48_dg_grl_lambda", 0.1),
             }
         )
 
@@ -1212,7 +1216,7 @@ def build_compute_loss(args: Namespace):
         model_kwargs_forward: Dict[str, Any] = {}
         if view_mask is not None:
             model_kwargs_forward["view_mask"] = view_mask
-        if args.use_domain_embedding and dataset_id is not None:
+        if (args.use_domain_embedding or use_v48_dg) and dataset_id is not None:
             model_kwargs_forward["domain_id"] = dataset_id
         if outlier_labels is not None:
             model_kwargs_forward["outlier_labels"] = outlier_labels
@@ -1436,7 +1440,10 @@ def build_eval_metric():
 
         with torch.no_grad():
             forward_kwargs: Dict[str, Any] = {}
-            if len(batch) == 6 and getattr(model, "use_domain_embedding", False):
+            if len(batch) == 6 and (
+                getattr(model, "use_domain_embedding", False)
+                or getattr(model, "use_v48_domain_generalization", False)
+            ):
                 forward_kwargs["domain_id"] = batch[5].to(device)
             out = model(x, K=K, R=R, t=t, **forward_kwargs)
             pred_3d = out[0]
@@ -2020,6 +2027,15 @@ def parse_args() -> Namespace:
 
 def main():
     args = parse_args()
+
+    # Windows/WSL cannot use PyTorch DataLoader workers reliably; force 0.
+    if os.name == "nt" and args.num_workers != 0:
+        warnings.warn(
+            f"Windows detected: num_workers={args.num_workers} is unsupported; "
+            "falling back to num_workers=0."
+        )
+        args.num_workers = 0
+
     set_seed(args.seed)
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")

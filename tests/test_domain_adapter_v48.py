@@ -244,7 +244,7 @@ def test_v48_flag_wires_into_omniview_fusion_v5():
         K=K.unsqueeze(0).expand(B, -1, -1, -1),
         R=R.unsqueeze(0).expand(B, -1, -1, -1),
         t=t.unsqueeze(0).expand(B, -1, -1),
-        dataset_id=torch.zeros(B, dtype=torch.long),
+        domain_id=torch.zeros(B, dtype=torch.long),
     )
     assert pred_3d.shape == (B, T, J, 3)
     assert epi_loss.numel() == 1

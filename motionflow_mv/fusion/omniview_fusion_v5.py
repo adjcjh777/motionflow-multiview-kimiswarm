@@ -15,7 +15,7 @@ New toggles
   that predicts per-view reliability for variable-view triangulation.
 * ``use_v47_temporal_aggregation`` – add a lightweight temporal aggregation head
   on top of the per-frame triangulated poses to fuse evidence across time.
-* ``use_v48_domain_adapter`` – apply a domain-conditional FiLM/conditional-BN
+* ``use_v48_domain_generalization`` – apply a domain-conditional FiLM/conditional-BN
   adapter to the multi-view feature tokens for cross-dataset generalization.
 
 The model also accepts an explicit ``view_mask`` so that missing views can be
@@ -284,11 +284,14 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
         v47_temporal_dropout: float = 0.1,
         v47_temporal_residual_gate_init: float = 0.0,
         v47_temporal_use_view_count_conditioning: bool = True,
-        # v48 domain adapter (FiLM / conditional BN)
-        use_v48_domain_adapter: bool = False,
-        v48_da_hidden: int = 64,
-        v48_da_num_domains: int = 6,
-        v48_da_dropout: float = 0.1,
+        # v48 domain generalization (FiLM / conditional BN / GRL discriminator)
+        use_v48_domain_generalization: bool = False,
+        v48_dg_hidden: int = 64,
+        v48_dg_num_domains: int = 6,
+        v48_dg_dropout: float = 0.1,
+        v48_dg_use_domain_film: bool = True,
+        v48_dg_use_grl_discriminator: bool = True,
+        v48_dg_grl_lambda: float = 0.1,
         # v37 self-critique view reliability estimator
         use_self_critique_view_reliability_v37: bool = False,
         v37_scvr_hidden: int = 64,
@@ -810,18 +813,24 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
             self.temporal_aggregation_v47 = None
 
         # Optional v48 domain adapter (FiLM / conditional BN).
-        self.use_v48_domain_adapter = use_v48_domain_adapter
-        self.v48_da_hidden = v48_da_hidden
-        self.v48_da_num_domains = v48_da_num_domains
-        self.v48_da_dropout = v48_da_dropout
-        if self.use_v48_domain_adapter:
+        self.use_v48_domain_generalization = use_v48_domain_generalization
+        self.v48_dg_hidden = v48_dg_hidden
+        self.v48_dg_num_domains = v48_dg_num_domains
+        self.v48_dg_dropout = v48_dg_dropout
+        self.v48_dg_use_domain_film = v48_dg_use_domain_film
+        self.v48_dg_use_grl_discriminator = v48_dg_use_grl_discriminator
+        self.v48_dg_grl_lambda = v48_dg_grl_lambda
+        if self.use_v48_domain_generalization:
             from motionflow_mv.fusion.domain_adapter_v48 import DomainAdapterV48
 
             self.domain_adapter_v48 = DomainAdapterV48(
                 in_channels=self.d,
-                num_domains=v48_da_num_domains,
-                hidden=v48_da_hidden,
-                dropout=v48_da_dropout,
+                num_domains=v48_dg_num_domains,
+                hidden=v48_dg_hidden,
+                dropout=v48_dg_dropout,
+                use_film=v48_dg_use_domain_film,
+                use_grl_discriminator=v48_dg_use_grl_discriminator,
+                grl_lambda=v48_dg_grl_lambda,
             )
         else:
             self.domain_adapter_v48 = None
@@ -1303,7 +1312,7 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
         # Optional v48 domain-conditional feature adaptation (FiLM / conditional BN).
         v48_domain_logits = None
         if (
-            self.use_v48_domain_adapter
+            self.use_v48_domain_generalization
             and self.domain_adapter_v48 is not None
             and domain_id is not None
         ):
@@ -1690,7 +1699,7 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
         # Optional v48 adversarial domain-discriminator loss (training only).
         if (
             self.training
-            and self.use_v48_domain_adapter
+            and self.use_v48_domain_generalization
             and v48_domain_logits is not None
             and domain_id is not None
         ):
