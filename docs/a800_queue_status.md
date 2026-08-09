@@ -5,7 +5,7 @@
 - **Log source:** `outputs/v33_a800_queue.log`
 - **Latest status line:** ~line 259 of 286
 - **Recorded time:** `Sun Aug  9 08:16:37 2026` (poller restart)
-- **State:** GPUs 0-3 still held by VLLM. GPU 6 freed up ~35 GiB and the poller launched the priority comparison runs: `v25_geometry_fusion_all_train_baseline`, `v25_geometry_fusion_all_train_plus_physical_domain`, `v42_v36_physical_domain_no_v37`, `v43_adaptive_node_residual_on_v42`. GPUs 4-5-7 remain 100% busy.
+- **State:** GPUs 0-3 still held by VLLM. GPU 6 freed up and the poller launched `v25_geometry_fusion_all_train_baseline`. All-train manifests switched to existing `webbridge_h36m_mpi_mixed_train_val.yaml` because A800 lacks aistpp/3dpw data. The v25 all-train baseline is now running; other priority runs remain queued until GPU memory frees.
 
 ## Currently Running Jobs (20 total)
 
