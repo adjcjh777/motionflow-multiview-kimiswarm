@@ -72,6 +72,18 @@ SKELETON_MAPS: Dict[str, np.ndarray] = {
         [4, 23, 24, 25, 18, 19, 20, 3, 5, 6, 9, 10, 11, 14, 15, 16, 7],
         dtype=np.int64,
     ),
+    # 3DPW 24-joint (SMPL order) -> canonical 17-joint mapping.
+    # Source joint order in 3DPW canonical .npz:
+    #   0:pelvis, 1:left_hip, 2:right_hip, 3:spine1, 4:left_knee, 5:right_knee,
+    #   6:spine2, 7:left_ankle, 8:right_ankle, 9:spine3, 10:left_foot, 11:right_foot,
+    #   12:neck, 13:left_collar, 14:right_collar, 15:head, 16:left_shoulder,
+    #   17:right_shoulder, 18:left_elbow, 19:right_elbow, 20:left_wrist,
+    #   21:right_wrist, 22:left_hand, 23:right_hand
+    # Mapping is approximate; head_top is mapped to head.
+    "3dpw": np.array(
+        [0, 2, 5, 8, 1, 4, 7, 6, 12, 15, 16, 18, 20, 17, 19, 21, 15],
+        dtype=np.int64,
+    ),
 }
 
 # Stable dataset IDs used by the loader.
@@ -81,6 +93,7 @@ DATASET_IDS: Dict[str, int] = {
     "aist": 2,
     "shelf": 3,
     "campus": 4,
+    "3dpw": 5,
 }
 
 
