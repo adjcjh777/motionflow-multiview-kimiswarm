@@ -89,7 +89,7 @@ training:
 
   # v45 adaptive geometry fusion.
   use_v45_adaptive_geometry_fusion: true
-  v45_adaptive_weight_type: per_view  # options: per_view, per_joint, per_view_joint
+  v45_adaptive_weight_type: per_view_joint  # matches scripts/run_v46_svg_smoke_local_4090.sh
   v45_adaptive_weight_hidden: 32
   v45_adaptive_weight_n_layers: 1
 
