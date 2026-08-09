@@ -1420,18 +1420,19 @@ def build_compute_loss(args: Namespace):
 
 
 def build_eval_metric():
-    """Validation metric: MSE and MPJPE."""
+    """Validation metric: MSE, MPJPE, and per-domain MPJPE."""
 
     def eval_metric(
         model: torch.nn.Module,
         batch: Tuple[torch.Tensor, ...],
         device: torch.device,
     ) -> Dict[str, Any]:
-        # Mixed loader returns an extra dataset_id field; ignore it for evaluation.
+        # Mixed loader returns an extra dataset_id field; keep it for per-domain metrics.
         if len(batch) == 6:
-            x, y, K, R, t, _ = batch
+            x, y, K, R, t, dataset_id = batch
         else:
             x, y, K, R, t = batch
+            dataset_id = None
         x = x.to(device)
         y = y.to(device)
         K = K.to(device)
@@ -1449,7 +1450,19 @@ def build_eval_metric():
             pred_3d = out[0]
             loss = F.mse_loss(pred_3d, y)
             mpjpe = (pred_3d - y).norm(dim=-1).mean()
-        return {"loss": loss, "mpjpe": mpjpe}
+
+            result: Dict[str, Any] = {"loss": loss, "mpjpe": mpjpe}
+
+            # Per-domain MPJPE: helpful for spotting domain-gap regressions.
+            if dataset_id is not None:
+                domain_ids = batch[5].to(device).squeeze(-1).long()  # (B,)
+                per_joint_error = (pred_3d - y).norm(dim=-1)  # (B, T, J)
+                for d in torch.unique(domain_ids):
+                    mask = domain_ids == d
+                    if mask.any():
+                        result[f"mpjpe_domain_{d.item()}"] = per_joint_error[mask].mean()
+
+        return result
 
     return eval_metric
 
