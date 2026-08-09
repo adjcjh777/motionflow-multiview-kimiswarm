@@ -322,6 +322,9 @@ class PhysicalSpaceCalibrationV53(nn.Module):
         else:
             canonical_lengths = self.canonical_log_bone_lengths[0].unsqueeze(0).expand(B, -1)
 
+        # Clamp log-lengths to avoid unbounded exponential growth.
+        canonical_lengths = canonical_lengths.clamp(min=-3.0, max=3.0)
+
         # Canonical target: exp(log) -> start at 1.0; we interpret it as a
         # multiplicative scale target after normalising by the current mean.
         target_scale = torch.exp(canonical_lengths)  # (B, n_bones)
