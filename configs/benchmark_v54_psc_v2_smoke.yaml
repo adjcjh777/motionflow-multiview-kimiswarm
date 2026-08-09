@@ -1,0 +1,214 @@
+# configs/benchmark_v54_psc_v2_smoke.yaml
+#
+# Smoke-test configuration for v54 Physical-Space Calibration v2 (PSC-v2)
+# on top of the v45/v46/v50/v51/v52/v53 stack.
+#
+# v54 adds a skeleton-graph, joint-level physical refiner on top of v53 PSC.
+# The module is identity at initialization.
+# This config is intentionally small (d=64, 2 epochs, 16 samples) so it runs
+# in minutes on the local RTX 4090.
+#
+# Run with:
+#   bash scripts/run_v54_psc_v2_smoke_local_4090.sh
+
+name: v54_physical_space_calibration_v2_smoke
+variant: v54-PSC-v2
+description: >
+  Smoke test for v54 physical-space calibration v2. Builds on the
+  v45/v46/v50/v51/v52/v53 stack and adds the v54 PSC-v2 module after the
+  v53 PSC block.
+
+manifest: configs/splits/webbridge_h36m_mpi_mixed_train_val.yaml
+script: experiments/train_omniview_fusion_v5_webbridge_multi.py
+
+training:
+  # Core architecture (small for a fast RTX 4090 smoke).
+  d: 64
+  residual_hidden: 128
+  n_st_layers: 2
+  graph_num_layers: 1
+  n_joint_layers: 1
+  n_heads: 4
+
+  # Schedule
+  clip_len: 9
+  epochs: 2
+  batch_size: 4
+  train_samples: 16
+  val_stride: 10
+  num_workers: 0
+
+  # Optimisation
+  lr: 1.0e-3
+  lr_cosine: true
+  lr_warmup_epochs: 1
+  lr_min: 1.0e-6
+  max_grad_norm: 1.0
+  ema_decay: 0.999
+  early_stopping_patience: 2
+  early_stopping_min_delta: 0.001
+
+  # Standard v5 / v18 / v25 / v30 / v45 / v46 / v50 toggles.
+  use_full_precision_dlt: true
+  use_robust_dlt_reweight: true
+  use_irls_reweight: true
+  use_domain_embedding: true
+  use_multiscale_fusion: true
+  use_camera_conditioning: true
+  use_epipolar_bias: true
+  use_context_visibility: true
+  use_skeleton_residual: true
+  use_rotation_correction: true
+  use_entropy_regularization: true
+  attention_entropy_weight: 0.01
+  use_camera_view_embedding: true
+  use_set_view_aggregator: true
+  use_deformable_cross_view_attention_v18: true
+
+  # v25 geometry fusion (baseline).
+  use_multiview_geometry_fusion_v25: true
+  v25_geom_loss_weight: 0.1
+  v25_dropout: 0.2
+  v25_use_geometry_attention: true
+  v25_use_learned_depth_triangulation: true
+  v25_use_geometry_bundle_adjustment: true
+
+  # v30 hardened hierarchical encoder.
+  use_hierarchical_multiview_v30: true
+  v30_n_part_layers: 2
+  v30_stochastic_depth_prob: 0.1
+
+  # v29 physical-space temporal loss (kept light, warmed up).
+  use_physical_space_temporal_loss_v29: true
+  v29_floor_loss_weight: 0.01
+  v29_bone_temporal_weight: 0.01
+  v29_com_jitter_weight: 0.001
+  v29_physical_loss_warmup_epochs: 1
+
+  # v45 adaptive geometry fusion.
+  use_v45_adaptive_geometry_fusion: true
+  v45_adaptive_weight_type: per_view_joint
+  v45_adaptive_weight_hidden: 32
+  v45_adaptive_weight_n_layers: 1
+
+  # v46 sparse-view generalisation.
+  use_v46_sparse_view_generalization: true
+  v46_svg_view_dropout_prob: 0.3
+  v46_svg_min_views: 2
+  v46_svg_hidden: 64
+  v46_svg_use_curriculum: true
+
+  # v50 self-evolution feedback head (required by v51 CDSVR).
+  use_v50_self_evolution_feedback_head: true
+  v50_sefh_hidden: 64
+  v50_sefh_num_layers: 2
+  v50_sefh_dropout: 0.1
+  v50_sefh_loss_weight: 0.0
+  v50_sefh_aleatoric_weight: 0.0
+  v50_sefh_identity_init_gate: true
+
+  # v51 cross-domain sparse-view reliability.
+  use_v51_cross_domain_sparse_view_reliability: true
+  v51_cdsvr_hidden: 64
+  v51_cdsvr_num_heads: 4
+  v51_cdsvr_dropout: 0.1
+  v51_cdsvr_offset_min: 0.05
+  v51_cdsvr_use_domain_label: true
+  v51_cdsvr_uncertainty_temperature: 1.0
+  v51_cdsvr_identity_init_gate: true
+  v51_cdsvr_loss_weight: 0.0
+
+  # v52 uncertainty-weighted triangulation.
+  use_v52_uncertainty_weighted_triangulation: true
+  v52_uwt_hidden: 64
+  v52_uwt_n_layers: 2
+  v52_uwt_weight_type: per_view_joint
+  v52_uwt_temperature: 1.0
+  v52_uwt_use_geometry_bias: true
+  v52_uwt_use_feature_bias: true
+  v52_uwt_identity_init: true
+  v52_uwt_min_weight: 0.05
+  v52_uwt_loss_weight: 0.01
+  v52_uwt_damping: 1.0e-4
+  v52_uwt_warmup_epochs: 0
+
+  # v53 physical-space calibration.
+  use_v53_physical_space_calibration: true
+  v53_psc_hidden: 64
+  v53_psc_n_layers: 2
+  v53_psc_identity_init: true
+  v53_psc_residual_gate_init: -6.0
+  v53_psc_use_uwt_weights: true
+  v53_psc_use_floor: true
+  v53_psc_use_bone_scale: true
+  v53_psc_loss_weight: 1.0
+  v53_psc_floor_weight: 0.01
+  v53_psc_bone_weight: 0.1
+  v53_psc_reproj_weight: 0.1
+  v53_psc_warmup_epochs: 0
+  v53_psc_min_visible_views: 2
+
+  # v54 physical-space calibration v2 (new).
+  use_v54_physical_space_calibration_v2: true
+  v54_psc2_hidden: 64
+  v54_psc2_n_layers: 2
+  v54_psc2_num_domains: 8
+  v54_psc2_use_floor: true
+  v54_psc2_use_contact: true
+  v54_psc2_use_bone_scale: true
+  v54_psc2_use_temporal_smoothness: true
+  v54_psc2_use_gnn: true
+  v54_psc2_gnn_layers: 1
+  v54_psc2_identity_init: true
+  v54_psc2_residual_gate_init: -6.0
+  v54_psc2_loss_weight: 1.0
+  v54_psc2_floor_weight: 0.01
+  v54_psc2_bone_weight: 0.05
+  v54_psc2_contact_weight: 0.01
+  v54_psc2_temporal_weight: 0.01
+  v54_psc2_reproj_weight: 0.1
+  v54_psc2_contact_velocity_thresh: 0.3
+  v54_psc2_min_visible_views: 2
+  v54_psc2_warmup_epochs: 0
+
+  # Loss weights.
+  pa_loss_weight: 0.5
+  monotonic_loss_weight: 0.1
+  monotonic_margin: 5.0
+  reproj_loss_weight: 0.1
+  reproj_warmup_epochs: 1
+  aleatoric_reproj_loss_weight: 0.1
+
+  # Augmentations.
+  use_variable_view_training: true
+  variable_view_min_views: 2
+  variable_view_max_views: 8
+  variable_view_max_views_start: 4
+  variable_view_curriculum_alpha: 2.0
+  variable_view_permute: true
+  outlier_view_prob: 0.3
+  outlier_view_max_views: 1
+  outlier_view_offset_std: 10.0
+  outlier_view_noise_std: 15.0
+
+safety:
+  # TTE is broken and must not be used.
+  use_test_time_self_evolution_v27: false
+  use_test_time_self_evolution_v29: false
+
+  # This config is a smoke test only.
+  target_hardware: local_rtx_4090_smoke
+
+output:
+  checkpoint: outputs/omniview_fusion_v54_psc_v2_smoke_local_4090.pth
+  log: outputs/omniview_fusion_v54_psc_v2_smoke_local_4090.log
+
+notes:
+  - Built from the v45/v46/v50/v51/v52/v53 baseline.
+  - v54 PSC-v2 adds a skeleton-graph, joint-level physical refiner after the v53 PSC block.
+  - v50/v51 auxiliary losses are disabled (0.0) for the smoke; the heads remain
+    wired in for inference and future loss tuning.
+  - TTE remains disabled (known to be broken).
+  - Physical loss is warmed up for 1 epoch to avoid v28-style instability.
+  - This is a smoke test only; full A800 runs should use d=128, n_st_layers=3,
+    clip_len=13, and the full WebBridge/H36M/MPI manifest.

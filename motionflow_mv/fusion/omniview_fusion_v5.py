@@ -107,6 +107,9 @@ from motionflow_mv.fusion.uncertainty_weighted_triangulation_v52 import (
 from motionflow_mv.fusion.physical_space_calibration_v53 import (
     PhysicalSpaceCalibrationV53,
 )
+from motionflow_mv.fusion.physical_space_calibration_v2_v54 import (
+    PhysicalSpaceCalibrationV2V54,
+)
 from motionflow_mv.fusion.neural_bundle_adjustment_v21 import NeuralBundleAdjustment
 from motionflow_mv.fusion.omniview_fusion_v4 import OmniMultiViewFusionV4
 from motionflow_mv.fusion.perceiver_view_aggregator import PerceiverViewAggregator
@@ -376,6 +379,28 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
         v53_psc_reproj_weight: float = 0.1,
         v53_psc_warmup_epochs: int = 0,
         v53_psc_min_visible_views: int = 2,
+        # v54 physical-space calibration v2
+        use_v54_physical_space_calibration_v2: bool = False,
+        v54_psc2_hidden: int = 64,
+        v54_psc2_n_layers: int = 2,
+        v54_psc2_num_domains: int = 8,
+        v54_psc2_use_floor: bool = True,
+        v54_psc2_use_contact: bool = True,
+        v54_psc2_use_bone_scale: bool = True,
+        v54_psc2_use_temporal_smoothness: bool = True,
+        v54_psc2_use_gnn: bool = True,
+        v54_psc2_gnn_layers: int = 1,
+        v54_psc2_identity_init: bool = True,
+        v54_psc2_residual_gate_init: float = -6.0,
+        v54_psc2_loss_weight: float = 1.0,
+        v54_psc2_floor_weight: float = 0.01,
+        v54_psc2_bone_weight: float = 0.05,
+        v54_psc2_contact_weight: float = 0.01,
+        v54_psc2_temporal_weight: float = 0.01,
+        v54_psc2_reproj_weight: float = 0.1,
+        v54_psc2_contact_velocity_thresh: float = 0.3,
+        v54_psc2_min_visible_views: int = 2,
+        v54_psc2_warmup_epochs: int = 0,
         # v48 domain generalization (FiLM / conditional BN / GRL discriminator)
         use_v48_domain_generalization: bool = False,
         v48_dg_hidden: int = 64,
@@ -1066,6 +1091,37 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
         else:
             self.physical_space_calibration_v53 = None
         self._v53_psc_loss: Optional[torch.Tensor] = None
+
+        # Optional v54 physical-space calibration v2 (identity at init).
+        self.use_v54_physical_space_calibration_v2 = use_v54_physical_space_calibration_v2
+        self.v54_psc2_loss_weight = v54_psc2_loss_weight
+        self.v54_psc2_warmup_epochs = v54_psc2_warmup_epochs
+        if self.use_v54_physical_space_calibration_v2:
+            self.physical_space_calibration_v2_v54 = PhysicalSpaceCalibrationV2V54(
+                j=self.j,
+                n_views=n_views,
+                hidden=v54_psc2_hidden,
+                n_layers=v54_psc2_n_layers,
+                num_domains=max(v48_dg_num_domains, v54_psc2_num_domains),
+                use_floor=v54_psc2_use_floor,
+                use_contact=v54_psc2_use_contact,
+                use_bone_scale=v54_psc2_use_bone_scale,
+                use_temporal_smoothness=v54_psc2_use_temporal_smoothness,
+                use_gnn=v54_psc2_use_gnn,
+                gnn_layers=v54_psc2_gnn_layers,
+                identity_init=v54_psc2_identity_init,
+                residual_gate_init=v54_psc2_residual_gate_init,
+                floor_weight=v54_psc2_floor_weight,
+                bone_weight=v54_psc2_bone_weight,
+                contact_weight=v54_psc2_contact_weight,
+                temporal_weight=v54_psc2_temporal_weight,
+                reproj_weight=v54_psc2_reproj_weight,
+                contact_velocity_thresh=v54_psc2_contact_velocity_thresh,
+                min_visible_views=v54_psc2_min_visible_views,
+            )
+        else:
+            self.physical_space_calibration_v2_v54 = None
+        self._v54_psc2_loss: Optional[torch.Tensor] = None
 
         # Optional v37 self-critique view reliability estimator (identity at init).
         self.use_self_critique_view_reliability_v37 = use_self_critique_view_reliability_v37
@@ -1833,6 +1889,25 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
             pred_3d_gn = pred_3d_gn_psc.view(B * T, J, 3)
             self._v53_psc_loss = psc_loss
 
+        # Optional v54 physical-space calibration v2 refinement.
+        psc2_loss = torch.tensor(0.0, device=device, dtype=pred_3d_gn.dtype)
+        if (
+            self.use_v54_physical_space_calibration_v2
+            and self.physical_space_calibration_v2_v54 is not None
+        ):
+            pred_3d_gn_psc2, psc2_loss, psc2_floor_height, psc2_bone_scale = self.physical_space_calibration_v2_v54(
+                pred_3d_psc=pred_3d_gn.view(B, T, J, 3),
+                uwt_weights=uwt_weights_for_v53,
+                points_2d=points_2d.view(B, T, V, J, 2),
+                K=K_corrected.view(B, T, V, 3, 3),
+                R=R.view(B, T, V, 3, 3),
+                t=t.view(B, T, V, 3),
+                view_mask=view_mask_flat.view(B, T, V),
+                domain_id=domain_id,
+            )
+            pred_3d_gn = pred_3d_gn_psc2.view(B * T, J, 3)
+            self._v54_psc2_loss = psc2_loss
+
         # Add v33 outlier-view supervised loss to the geometry loss.
         if self.use_outlier_view_rejection_v33:
             geom_loss_v25 = geom_loss_v25 + self.v33_outlier_loss_weight * v33_outlier_loss
@@ -1962,6 +2037,17 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
             )
             if v53_active:
                 epi_loss = epi_loss + self.v53_psc_loss_weight * self._v53_psc_loss
+        if (
+            self.use_v54_physical_space_calibration_v2
+            and hasattr(self, "_v54_psc2_loss")
+            and self._v54_psc2_loss is not None
+        ):
+            v54_active = (
+                self.v54_psc2_warmup_epochs <= 0
+                or self.epoch >= self.v54_psc2_warmup_epochs
+            )
+            if v54_active:
+                epi_loss = epi_loss + self.v54_psc2_loss_weight * self._v54_psc2_loss
         if self._v32_loss is not None:
             epi_loss = epi_loss + self._v32_loss
 
