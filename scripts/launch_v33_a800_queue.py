@@ -46,6 +46,60 @@ COMMON_FLAGS = (
 )
 
 RUNS = [
+    # Priority comparison runs (v42/v43 vs v25 all-train baseline).
+    (
+        "v25_geometry_fusion_all_train_baseline",
+        "--mixed_manifest configs/splits/webbridge_all_train_mixed.yaml "
+        "--use_multiview_geometry_fusion_v25 --v25_use_geometry_attention --v25_use_learned_depth_triangulation --v25_use_geometry_bundle_adjustment "
+        "--d 128 --residual_hidden 256 --n_st_layers 3 --batch_size 16 --clip_len 13 --train_samples 200 --epochs 5 --early_stopping_patience 2 --early_stopping_min_delta 0.001 --weight_decay 1e-4",
+        "omniview_fusion_v25_geometry_fusion_all_train_baseline_a800",
+    ),
+    (
+        "v42_v36_physical_domain_no_v37",
+        "--mixed_manifest configs/splits/webbridge_h36m_mpi_mixed_train_val_expanded.yaml "
+        "--use_hierarchical_multiview_v31 --v31_geometry_bias "
+        "--use_view_joint_graph_network_v34 --v34_vjgn_n_layers 2 --v34_vjgn_n_heads 4 "
+        "--use_temporal_view_joint_graph_network_v35 --v35_tvjgn_n_layers 2 --v35_tvjgn_n_heads 4 "
+        "--use_uncertainty_gated_iterative_graph_refinement_v36 --v36_ugigr_n_layers 1 --v36_ugigr_n_iters 2 --v36_ugigr_n_heads 4 --v36_ugigr_uncertainty_hidden 64 "
+        "--use_skeleton_physical_loss_v40 --v40_bone_weight 0.05 --v40_joint_limit_weight 0.01 --v40_symmetry_weight 0.02 --v40_floor_weight 0.02 "
+        "--domain_loss_weights 1.0,1.5",
+        "omniview_fusion_v42_v36_physical_domain_no_v37_a800",
+    ),
+    (
+        "v43_adaptive_node_residual_on_v42",
+        "--mixed_manifest configs/splits/webbridge_h36m_mpi_mixed_train_val_expanded.yaml "
+        "--use_hierarchical_multiview_v31 --v31_geometry_bias "
+        "--use_view_joint_graph_network_v34 --v34_vjgn_n_layers 2 --v34_vjgn_n_heads 4 "
+        "--use_temporal_view_joint_graph_network_v35 --v35_tvjgn_n_layers 2 --v35_tvjgn_n_heads 4 "
+        "--use_uncertainty_gated_iterative_graph_refinement_v36 --v36_ugigr_n_layers 1 --v36_ugigr_n_iters 2 --v36_ugigr_n_heads 4 --v36_ugigr_uncertainty_hidden 64 "
+        "--use_skeleton_physical_loss_v40 --v40_bone_weight 0.05 --v40_joint_limit_weight 0.01 --v40_symmetry_weight 0.02 --v40_floor_weight 0.02 "
+        "--domain_loss_weights 1.0,1.5 --use_v43_adaptive_node_residual",
+        "omniview_fusion_v43_adaptive_node_residual_on_v42_a800",
+    ),
+    (
+        "v43_adaptive_node_residual_scaled",
+        "--mixed_manifest configs/splits/webbridge_h36m_mpi_mixed_train_val_expanded.yaml "
+        "--use_hierarchical_multiview_v31 --v31_geometry_bias "
+        "--use_view_joint_graph_network_v34 --v34_vjgn_n_layers 2 --v34_vjgn_n_heads 4 "
+        "--use_temporal_view_joint_graph_network_v35 --v35_tvjgn_n_layers 2 --v35_tvjgn_n_heads 4 "
+        "--use_uncertainty_gated_iterative_graph_refinement_v36 --v36_ugigr_n_layers 1 --v36_ugigr_n_iters 2 --v36_ugigr_n_heads 4 --v36_ugigr_uncertainty_hidden 64 --v36_ugigr_dropout 0.1 "
+        "--use_skeleton_physical_loss_v40 --v40_bone_weight 0.05 --v40_joint_limit_weight 0.01 --v40_symmetry_weight 0.02 --v40_floor_weight 0.02 "
+        "--domain_loss_weights 1.0,1.5 --use_v43_adaptive_node_residual "
+        "--d 128 --residual_hidden 256 --n_st_layers 3 --batch_size 16 --clip_len 13 --train_samples 10000 --epochs 5 --early_stopping_patience 2 --early_stopping_min_delta 0.001 --weight_decay 1e-4",
+        "omniview_fusion_v43_adaptive_node_residual_scaled_a800",
+    ),
+    (
+        "v43_adaptive_node_residual_all_train",
+        "--mixed_manifest configs/splits/webbridge_all_train_mixed.yaml "
+        "--use_hierarchical_multiview_v31 --v31_geometry_bias "
+        "--use_view_joint_graph_network_v34 --v34_vjgn_n_layers 2 --v34_vjgn_n_heads 4 "
+        "--use_temporal_view_joint_graph_network_v35 --v35_tvjgn_n_layers 2 --v35_tvjgn_n_heads 4 "
+        "--use_uncertainty_gated_iterative_graph_refinement_v36 --v36_ugigr_n_layers 1 --v36_ugigr_n_iters 2 --v36_ugigr_n_heads 4 --v36_ugigr_uncertainty_hidden 64 --v36_ugigr_dropout 0.1 "
+        "--use_skeleton_physical_loss_v40 --v40_bone_weight 0.05 --v40_joint_limit_weight 0.01 --v40_symmetry_weight 0.02 --v40_floor_weight 0.02 "
+        "--domain_loss_weights 1.0,1.5 --use_v43_adaptive_node_residual "
+        "--d 128 --residual_hidden 256 --n_st_layers 3 --batch_size 16 --clip_len 13 --train_samples 200 --epochs 5 --early_stopping_patience 2 --early_stopping_min_delta 0.001 --weight_decay 1e-4",
+        "omniview_fusion_v43_adaptive_node_residual_all_train_a800",
+    ),
     # Pending v31 ablation.
     (
         "v31_physical_floor_only",
@@ -291,66 +345,6 @@ RUNS = [
         "--use_skeleton_physical_loss_v40 --v40_bone_weight 0.05 --v40_joint_limit_weight 0.01 --v40_symmetry_weight 0.02 --v40_floor_weight 0.02 "
         "--domain_loss_weights 1.0,1.5",
         "omniview_fusion_v41_domain_weighted_loss_on_v40_a800",
-    ),
-    # v42: v36 + physical loss + domain weights, without v37/v39.
-    # Tests whether v40/v41 gains require v37 or are orthogonal.
-    (
-        "v42_v36_physical_domain_no_v37",
-        "--mixed_manifest configs/splits/webbridge_h36m_mpi_mixed_train_val_expanded.yaml "
-        "--use_hierarchical_multiview_v31 --v31_geometry_bias "
-        "--use_view_joint_graph_network_v34 --v34_vjgn_n_layers 2 --v34_vjgn_n_heads 4 "
-        "--use_temporal_view_joint_graph_network_v35 --v35_tvjgn_n_layers 2 --v35_tvjgn_n_heads 4 "
-        "--use_uncertainty_gated_iterative_graph_refinement_v36 --v36_ugigr_n_layers 1 --v36_ugigr_n_iters 2 --v36_ugigr_n_heads 4 --v36_ugigr_uncertainty_hidden 64 "
-        "--use_skeleton_physical_loss_v40 --v40_bone_weight 0.05 --v40_joint_limit_weight 0.01 --v40_symmetry_weight 0.02 --v40_floor_weight 0.02 "
-        "--domain_loss_weights 1.0,1.5",
-        "omniview_fusion_v42_v36_physical_domain_no_v37_a800",
-    ),
-    # v43: v42 + adaptive per-node residual in v36 UGIGR.
-    (
-        "v43_adaptive_node_residual_on_v42",
-        "--mixed_manifest configs/splits/webbridge_h36m_mpi_mixed_train_val_expanded.yaml "
-        "--use_hierarchical_multiview_v31 --v31_geometry_bias "
-        "--use_view_joint_graph_network_v34 --v34_vjgn_n_layers 2 --v34_vjgn_n_heads 4 "
-        "--use_temporal_view_joint_graph_network_v35 --v35_tvjgn_n_layers 2 --v35_tvjgn_n_heads 4 "
-        "--use_uncertainty_gated_iterative_graph_refinement_v36 --v36_ugigr_n_layers 1 --v36_ugigr_n_iters 2 --v36_ugigr_n_heads 4 --v36_ugigr_uncertainty_hidden 64 "
-        "--use_skeleton_physical_loss_v40 --v40_bone_weight 0.05 --v40_joint_limit_weight 0.01 --v40_symmetry_weight 0.02 --v40_floor_weight 0.02 "
-        "--domain_loss_weights 1.0,1.5 --use_v43_adaptive_node_residual",
-        "omniview_fusion_v43_adaptive_node_residual_on_v42_a800",
-    ),
-    # v43 scaled up to the same capacity as the best A800 v25 run (d=128, 10k samples).
-    (
-        "v43_adaptive_node_residual_scaled",
-        "--mixed_manifest configs/splits/webbridge_h36m_mpi_mixed_train_val_expanded.yaml "
-        "--use_hierarchical_multiview_v31 --v31_geometry_bias "
-        "--use_view_joint_graph_network_v34 --v34_vjgn_n_layers 2 --v34_vjgn_n_heads 4 "
-        "--use_temporal_view_joint_graph_network_v35 --v35_tvjgn_n_layers 2 --v35_tvjgn_n_heads 4 "
-        "--use_uncertainty_gated_iterative_graph_refinement_v36 --v36_ugigr_n_layers 1 --v36_ugigr_n_iters 2 --v36_ugigr_n_heads 4 --v36_ugigr_uncertainty_hidden 64 --v36_ugigr_dropout 0.1 "
-        "--use_skeleton_physical_loss_v40 --v40_bone_weight 0.05 --v40_joint_limit_weight 0.01 --v40_symmetry_weight 0.02 --v40_floor_weight 0.02 "
-        "--domain_loss_weights 1.0,1.5 --use_v43_adaptive_node_residual "
-        "--d 128 --residual_hidden 256 --n_st_layers 3 --batch_size 16 --clip_len 13 --train_samples 10000 --epochs 5 --early_stopping_patience 2 --early_stopping_min_delta 0.001 --weight_decay 1e-4",
-        "omniview_fusion_v43_adaptive_node_residual_scaled_a800",
-    ),
-    # v43 on the full WebBridge mixed manifest (H36M + MPI + 3DPW + AIST++).
-    (
-        "v43_adaptive_node_residual_all_train",
-        "--mixed_manifest configs/splits/webbridge_all_train_mixed.yaml "
-        "--use_hierarchical_multiview_v31 --v31_geometry_bias "
-        "--use_view_joint_graph_network_v34 --v34_vjgn_n_layers 2 --v34_vjgn_n_heads 4 "
-        "--use_temporal_view_joint_graph_network_v35 --v35_tvjgn_n_layers 2 --v35_tvjgn_n_heads 4 "
-        "--use_uncertainty_gated_iterative_graph_refinement_v36 --v36_ugigr_n_layers 1 --v36_ugigr_n_iters 2 --v36_ugigr_n_heads 4 --v36_ugigr_uncertainty_hidden 64 --v36_ugigr_dropout 0.1 "
-        "--use_skeleton_physical_loss_v40 --v40_bone_weight 0.05 --v40_joint_limit_weight 0.01 --v40_symmetry_weight 0.02 --v40_floor_weight 0.02 "
-        "--domain_loss_weights 1.0,1.5 --use_v43_adaptive_node_residual "
-        "--d 128 --residual_hidden 256 --n_st_layers 3 --batch_size 16 --clip_len 13 --train_samples 200 --epochs 5 --early_stopping_patience 2 --early_stopping_min_delta 0.001 --weight_decay 1e-4",
-        "omniview_fusion_v43_adaptive_node_residual_all_train_a800",
-    ),
-    # v25 geometry-fusion baseline on the full WebBridge mixed manifest.
-    # Serves as a strong baseline to judge whether v31-v43 complexity pays off.
-    (
-        "v25_geometry_fusion_all_train_baseline",
-        "--mixed_manifest configs/splits/webbridge_all_train_mixed.yaml "
-        "--use_multiview_geometry_fusion_v25 --v25_use_geometry_attention --v25_use_learned_depth_triangulation --v25_use_geometry_bundle_adjustment "
-        "--d 128 --residual_hidden 256 --n_st_layers 3 --batch_size 16 --clip_len 13 --train_samples 200 --epochs 5 --early_stopping_patience 2 --early_stopping_min_delta 0.001 --weight_decay 1e-4",
-        "omniview_fusion_v25_geometry_fusion_all_train_baseline_a800",
     ),
 ]
 
