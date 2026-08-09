@@ -110,7 +110,16 @@ class UncertaintyGatedCrossViewGraphAttentionLayer(CrossViewGraphAttentionLayer)
         Number of edge categories.
     dropout:
         Dropout on attention weights.
+    use_edge_type_gate:
+        If ``True``, learn a per-edge-type temperature for the source gate.
     """
+
+    def __init__(self, d: int, n_heads: int, n_edge_types: int, dropout: float = 0.0, use_edge_type_gate: bool = False):
+        super().__init__(d, n_heads, n_edge_types, dropout)
+        self.use_edge_type_gate = use_edge_type_gate
+        if use_edge_type_gate:
+            # Initialize near zero so sigmoid ~0.5 and the block starts as plain v36.
+            self.edge_type_gate = nn.Parameter(torch.zeros(n_edge_types, n_heads))
 
     def forward(
         self,
@@ -158,6 +167,10 @@ class UncertaintyGatedCrossViewGraphAttentionLayer(CrossViewGraphAttentionLayer)
             else:
                 gate_per_node = src_gate
             gate_e = gate_per_node.gather(1, src[None, :, None].expand(B, -1, self.n_heads))
+            # v44: modulate the source gate by a learned per-edge-type temperature,
+            # so bone/temporal/cross-view edges can be attenuated independently.
+            if self.use_edge_type_gate:
+                gate_e = gate_e * torch.sigmoid(self.edge_type_gate[edge_type])
             attn = attn * gate_e
 
         edge_feat = self.edge_emb(edge_type).view(1, E, self.n_heads, self.head_dim)
@@ -198,6 +211,7 @@ class UncertaintyGatedIterativeGraphRefinementV36(nn.Module):
         uncertainty_hidden: int = 64,
         gate_init_bias: float = 2.0,
         use_adaptive_node_residual: bool = False,
+        use_edge_type_gate: bool = False,
     ):
         super().__init__()
         self.d = d
@@ -205,9 +219,10 @@ class UncertaintyGatedIterativeGraphRefinementV36(nn.Module):
         self.n_layers = n_layers
         self.n_iters = n_iters
         self.use_adaptive_node_residual = use_adaptive_node_residual
+        self.use_edge_type_gate = use_edge_type_gate
 
         self.layers = nn.ModuleList(
-            [UncertaintyGatedCrossViewGraphAttentionLayer(d, n_heads, n_edge_types=5, dropout=dropout)
+            [UncertaintyGatedCrossViewGraphAttentionLayer(d, n_heads, n_edge_types=5, dropout=dropout, use_edge_type_gate=use_edge_type_gate)
              for _ in range(n_layers)]
         )
 
