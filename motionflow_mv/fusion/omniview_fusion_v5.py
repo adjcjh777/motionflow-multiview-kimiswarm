@@ -11,6 +11,8 @@ New toggles
   (Induced Set Attention Blocks) over views before the time+view transformer.
 * ``use_diffusion_refiner_v20`` – replace the deterministic residual MLP with a
   lightweight diffusion-based pose refiner.
+* ``use_v46_sparse_view_generalization`` – add a sparse-view generalization head
+  that predicts per-view reliability for variable-view triangulation.
 
 The model also accepts an explicit ``view_mask`` so that missing views can be
 masked out in confidences, weights, and triangulation.
@@ -262,6 +264,12 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
         v45_adaptive_weight_type: str = "per_view",
         v45_adaptive_weight_hidden: int = 32,
         v45_adaptive_weight_n_layers: int = 1,
+        # v46 sparse-view generalization
+        use_v46_sparse_view_generalization: bool = False,
+        v46_svg_view_dropout_prob: float = 0.3,
+        v46_svg_min_views: int = 2,
+        v46_svg_hidden: int = 64,
+        v46_svg_use_curriculum: bool = True,
         # v37 self-critique view reliability estimator
         use_self_critique_view_reliability_v37: bool = False,
         v37_scvr_hidden: int = 64,
@@ -745,6 +753,25 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
         else:
             self.uncertainty_gated_iterative_graph_refinement_v36 = None
 
+        # Optional v46 sparse-view generalization (identity at init).
+        self.use_v46_sparse_view_generalization = use_v46_sparse_view_generalization
+        self.v46_svg_view_dropout_prob = v46_svg_view_dropout_prob
+        self.v46_svg_min_views = max(2, v46_svg_min_views)
+        self.v46_svg_hidden = v46_svg_hidden
+        self.v46_svg_use_curriculum = v46_svg_use_curriculum
+        if self.use_v46_sparse_view_generalization:
+            from motionflow_mv.fusion.sparse_view_generalization_v46 import (
+                SparseViewGeneralizationV46,
+            )
+
+            self.sparse_view_generalization_v46 = SparseViewGeneralizationV46(
+                in_channels=self.d,
+                n_views=n_views,
+                hidden=v46_svg_hidden,
+            )
+        else:
+            self.sparse_view_generalization_v46 = None
+
         # Optional v37 self-critique view reliability estimator (identity at init).
         self.use_self_critique_view_reliability_v37 = use_self_critique_view_reliability_v37
         self.v37_scvr_loss_weight = v37_scvr_loss_weight
@@ -1053,6 +1080,17 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
         elif self.use_set_view_aggregator and self.set_view_aggregator is not None:
             feat = self.set_view_aggregator(feat, view_mask=view_mask)
 
+        # Optional v46 sparse-view generalization reliability head.
+        v46_reliability = None
+        if (
+            self.use_v46_sparse_view_generalization
+            and self.sparse_view_generalization_v46 is not None
+        ):
+            v46_reliability = self.sparse_view_generalization_v46(
+                feat,
+                view_mask=view_mask_flat.view(B, T, V).bool(),
+            )  # (B, T, V, J)
+
         # Optional cross-view transformer (v17) with geometric ray/camera embeddings.
         if self.use_cross_view_transformer_v17 and self.cross_view_transformer_v17 is not None:
             # v17 expects 5D points_2d (B, T, V, J, 2); reshape from the internal 4D form.
@@ -1283,6 +1321,12 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
         if scvr_reliability is not None:
             # scvr_reliability is (B, T, V, J); weights is (B*T, V, J).
             weights = weights * scvr_reliability.view(B * T, V, J)
+            weights = weights.clamp(min=1e-4, max=1e4)
+
+        # Optional v46 sparse-view generalization: down-weight dropped/missing views.
+        if v46_reliability is not None:
+            # v46_reliability is (B, T, V, J); weights is (B*T, V, J).
+            weights = weights * v46_reliability.view(B * T, V, J)
             weights = weights.clamp(min=1e-4, max=1e4)
 
         if self.use_full_precision_dlt:
