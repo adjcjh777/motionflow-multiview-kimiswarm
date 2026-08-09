@@ -16,6 +16,7 @@ This file captures the current A800-D workflow, tmux conventions, and issue labe
 | v31 top-5 A800 | domain_balanced, physical_floor, hierarchical_more_dropout, outlier, geometry_attention | GPUs 4-7 | Completed / stopped to free GPUs for v33/v34 queue |
 | v32/v33/v34/v35/v36/v37/v38/v39/v40/v41 queue | Complex-stack variants (TCR, ray attention, UGIGR, SCVR, etc.) | — | Queued behind the v25/v42/v43 priority runs |
 | v44 edge-type-aware uncertainty gating | v43 + learned per-edge-type temperature for the v36 source gate | — | Smoke passed; full run on hold pending A800 v25/v42/v43 results |
+| v45-AGF | v25 + adaptive per-view/per-joint triangulation weights | RTX 4090 | Implemented and merged (PR #158); smoke script ready; waiting for GPU |
 
 ## Local RTX 4090 status snapshot
 
@@ -26,7 +27,7 @@ This file captures the current A800-D workflow, tmux conventions, and issue labe
 | v43 adaptive per-node residual | v42 + scale v36 UGIGR residual by per-node uncertainty gate | Running; ~step 3600, loss 6.38, no epoch-1 val yet |
 | v42 v36+physical+domain (no v37) | v36 + v40 physical loss + v41 domain weights | Killed after step ~1700; epoch 1 val_MPJPE 26.16 mm (d=64, old manifest) |
 | v44 edge-type-aware uncertainty gating | v43 + learned per-edge-type temperature for the v36 source gate | Smoke passed; full branch decision pending A800 results |
-| v25 + physical + domain | v25 geometry fusion + v40 physical loss + v41 domain weights | Epoch 1 val_MPJPE 27.71 mm (d=64); worse than v42 local 26.16 mm |
+| v25 + physical + domain | v25 geometry fusion + v40 physical loss + v41 domain weights | Epoch 1 val_MPJPE 27.71 mm (d=64); epoch 2 step ~3600, loss rising ~6.33→6.73; waiting for epoch 2 val |
 
 ### Historical / detailed local run log
 
