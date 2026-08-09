@@ -75,6 +75,7 @@ class DomainConditionalPhysicalCalibrationV57(nn.Module):
         bone_weight: float = 0.1,
         reproj_weight: float = 0.1,
         min_visible_views: int = 2,
+        stop_grad_to_base: bool = False,
     ) -> None:
         super().__init__()
         self.j = j
@@ -90,6 +91,7 @@ class DomainConditionalPhysicalCalibrationV57(nn.Module):
         self.bone_weight = bone_weight
         self.reproj_weight = reproj_weight
         self.min_visible_views = max(1, min_visible_views)
+        self.stop_grad_to_base = stop_grad_to_base
 
         parent_indices = _default_parents_for_joints(j)
         self.register_buffer("parent_indices", torch.tensor(parent_indices, dtype=torch.long))
@@ -194,6 +196,72 @@ class DomainConditionalPhysicalCalibrationV57(nn.Module):
             scale = scale.unsqueeze(1)
             shift = shift.unsqueeze(1)
         return scale * h + shift
+
+    def _compute_psc_loss(
+        self,
+        X: torch.Tensor,
+        uwt_weights: Optional[torch.Tensor],
+        points_2d: torch.Tensor,
+        K: torch.Tensor,
+        R: torch.Tensor,
+        t: torch.Tensor,
+        view_mask: Optional[torch.Tensor],
+        domain_id: Optional[torch.Tensor],
+        domain_emb: torch.Tensor,
+        gate: torch.Tensor,
+    ) -> torch.Tensor:
+        """Compute the v57 PSC auxiliary loss on a detached copy of the input.
+
+        When ``stop_grad_to_base`` is enabled, the main forward path still uses
+        the undetached input so earlier modules receive gradients from the final
+        MSE loss.  The auxiliary loss, however, is computed on a detached branch,
+        so it only updates the v57 head parameters and cannot destabilise the
+        v52/v60 stack.
+        """
+        B, T, J, _ = X.shape
+        device, dtype = X.device, X.dtype
+
+        floor_loss = torch.tensor(0.0, device=device, dtype=dtype)
+        bone_loss = torch.tensor(0.0, device=device, dtype=dtype)
+        bone_scale = torch.ones(
+            B, T, self.canonical_log_bone_lengths.shape[-1], device=device, dtype=dtype
+        )
+
+        if self.use_floor and self.floor_first is not None:
+            floor_loss, _ = self._floor_term(X, uwt_weights, view_mask, domain_emb)
+
+        if self.use_bone_scale:
+            bone_loss, bone_scale = self._bone_scale_term(X, domain_id, domain_emb)
+
+        g = self.gravity_dir.to(device, dtype)
+        heights = torch.einsum("btjc,c->btj", X, g)
+        floor_hint = heights
+        bone_hint = bone_scale.mean(dim=-1, keepdim=True).expand(-1, -1, J)
+        emb_tiled = domain_emb.unsqueeze(1).unsqueeze(1).expand(-1, T, J, -1)
+        feat = torch.cat(
+            [X, floor_hint.unsqueeze(-1), bone_hint.unsqueeze(-1), emb_tiled], dim=-1
+        )
+
+        h = F.relu(self.residual_first(feat))
+        for hidden_layer, scale_layer, shift_layer in zip(
+            self.residual_hidden_layers, self.residual_film_scales, self.residual_film_shifts
+        ):
+            h = self._film(h, domain_emb, scale_layer, shift_layer)
+            h = F.relu(hidden_layer(h))
+        residual = self.residual_out(h)
+
+        pred_3d_psc = X + gate.view(-1, 1, 1, 1) * residual
+
+        reproj_loss = torch.tensor(0.0, device=device, dtype=dtype)
+        if self.reproj_weight > 0.0:
+            with torch.no_grad():
+                residual_in = _reprojection_residual(X, points_2d, K, R, t, view_mask)
+                target = torch.exp(-residual_in / 5.0).clamp(min=0.05, max=1.0)
+            pred_residual = _reprojection_residual(pred_3d_psc, points_2d, K, R, t, view_mask)
+            weights = target if view_mask is None else target * view_mask.unsqueeze(-1).float()
+            reproj_loss = F.mse_loss(pred_residual * weights, residual_in.detach() * weights)
+
+        return self.floor_weight * floor_loss + self.bone_weight * bone_loss + self.reproj_weight * reproj_loss
 
     def _floor_term(
         self,
@@ -402,5 +470,22 @@ class DomainConditionalPhysicalCalibrationV57(nn.Module):
             + self.bone_weight * bone_loss
             + self.reproj_weight * reproj_loss
         )
+
+        # If requested, recompute the auxiliary loss on a detached input so that
+        # the v57 PSC loss only updates v57 parameters and cannot destabilise the
+        # v52 UWT / v60 SEFH->UWT feedback stack.
+        if self.stop_grad_to_base and self.training:
+            psc_loss = self._compute_psc_loss(
+                pred_3d_uwt.detach(),
+                uwt_weights,
+                points_2d,
+                K,
+                R,
+                t,
+                view_mask,
+                domain_id,
+                domain_emb,
+                gate,
+            )
 
         return pred_3d_psc, psc_loss, floor_height.detach(), bone_scale.detach()

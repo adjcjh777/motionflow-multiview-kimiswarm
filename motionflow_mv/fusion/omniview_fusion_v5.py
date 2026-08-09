@@ -417,6 +417,7 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
         v57_dcpsc_reproj_weight: float = 0.1,
         v57_dcpsc_warmup_epochs: int = 0,
         v57_dcpsc_min_visible_views: int = 2,
+        v57_dcpsc_stop_grad_to_base: bool = False,
         # v58 simplified domain-conditional physical-space calibration
         use_v58_simplified_domain_psc: bool = False,
         v58_sdpsc_hidden: int = 64,
@@ -1195,6 +1196,7 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
         self.use_v57_domain_conditional_psc = use_v57_domain_conditional_psc
         self.v57_dcpsc_loss_weight = v57_dcpsc_loss_weight
         self.v57_dcpsc_warmup_epochs = v57_dcpsc_warmup_epochs
+        self.v57_dcpsc_stop_grad_to_base = v57_dcpsc_stop_grad_to_base
         if self.use_v57_domain_conditional_psc and self.use_v53_physical_space_calibration:
             raise ValueError(
                 "use_v57_domain_conditional_psc and use_v53_physical_space_calibration "
@@ -1216,6 +1218,7 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
                 bone_weight=v57_dcpsc_bone_weight,
                 reproj_weight=v57_dcpsc_reproj_weight,
                 min_visible_views=v57_dcpsc_min_visible_views,
+                stop_grad_to_base=v57_dcpsc_stop_grad_to_base,
             )
         else:
             self.domain_conditional_physical_calibration_v57 = None

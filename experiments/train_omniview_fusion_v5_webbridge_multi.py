@@ -453,6 +453,7 @@ def build_model_from_args(
                 "v57_dcpsc_reproj_weight": getattr(args, "v57_dcpsc_reproj_weight", 0.1),
                 "v57_dcpsc_warmup_epochs": getattr(args, "v57_dcpsc_warmup_epochs", 0),
                 "v57_dcpsc_min_visible_views": getattr(args, "v57_dcpsc_min_visible_views", 2),
+                "v57_dcpsc_stop_grad_to_base": getattr(args, "v57_dcpsc_stop_grad_to_base", False),
             }
         )
 
@@ -2271,6 +2272,7 @@ def parse_args() -> Namespace:
     parser.add_argument("--v57_dcpsc_reproj_weight", type=float, default=0.1, help="Weight for the v57 reprojection consistency term")
     parser.add_argument("--v57_dcpsc_warmup_epochs", type=int, default=0, help="Epochs before the v57 DC-PSC loss is active")
     parser.add_argument("--v57_dcpsc_min_visible_views", type=int, default=2, help="Minimum visible views for a joint to contribute to v57 losses")
+    parser.add_argument("--v57_dcpsc_stop_grad_to_base", action="store_true", default=False, help="Stop v57 PSC auxiliary loss gradients from reaching the v52/v60 base")
     # v58 simplified domain-conditional physical-space calibration
     parser.add_argument("--use_v58_simplified_domain_psc", action="store_true", default=False, help="Use v58 simplified domain-conditional physical-space calibration")
     parser.add_argument("--v58_sdpsc_hidden", type=int, default=64, help="Hidden dimension of the v58 SD-PSC residual MLP")
