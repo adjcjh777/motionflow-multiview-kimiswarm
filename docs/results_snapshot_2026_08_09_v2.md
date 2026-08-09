@@ -7,7 +7,7 @@ Snapshot time: 2026-08-09 (active).
 | Run | Epochs | Best val_MPJPE | Notes |
 |-----|--------|----------------|-------|
 | v46-SVG smoke | 2 | **32.97 mm** | epoch 1; epoch 2 overfit to 208.67 mm |
-| v47 temporal smoke | in progress | — | step ~900, loss ~7.3 |
+| v47 temporal smoke | in progress | — | step ~1750, loss ~6.39 |
 | v48 domain smoke | queued | — | waiting for v47 smoke |
 | v50 SEFH smoke | queued | — | will run after v46/v47/v48 chain |
 
@@ -24,6 +24,7 @@ Snapshot time: 2026-08-09 (active).
 | v50 SEFH on v48 | — | Queued | — | ablation |
 | v50 SEFH on v49-Lite | — | Queued | — | ablation |
 | v50 SEFH low loss weight (0.001) | — | Queued | — | ablation |
+| v50 SEFH aleatoric weight (0.1) | — | Queued | — | ablation |
 
 ## Design decisions
 
