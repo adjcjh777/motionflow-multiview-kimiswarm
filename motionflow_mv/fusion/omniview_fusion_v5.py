@@ -95,6 +95,12 @@ from motionflow_mv.fusion.domain_agnostic_ensemble_v51 import DomainAgnosticEnse
 from motionflow_mv.fusion.test_time_self_evolution_v51 import (
     TestTimeSelfEvolutionRefinerV51,
 )
+from motionflow_mv.fusion.self_evolution_feedback_head_v50 import (
+    SelfEvolutionFeedbackHeadV50,
+)
+from motionflow_mv.fusion.cross_domain_sparse_view_reliability_v51 import (
+    CrossDomainSparseViewReliabilityV51,
+)
 from motionflow_mv.fusion.neural_bundle_adjustment_v21 import NeuralBundleAdjustment
 from motionflow_mv.fusion.omniview_fusion_v4 import OmniMultiViewFusionV4
 from motionflow_mv.fusion.perceiver_view_aggregator import PerceiverViewAggregator
@@ -318,6 +324,24 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
         v51_tta_min_view_rel: float = 0.05,
         v51_tta_max_view_rel: float = 1.0,
         v51_tta_use_sefh_init: bool = True,
+        # v50 self-evolution feedback head (training-only auxiliary head)
+        use_v50_self_evolution_feedback_head: bool = False,
+        v50_sefh_hidden: int = 64,
+        v50_sefh_num_layers: int = 2,
+        v50_sefh_dropout: float = 0.1,
+        v50_sefh_reproj_weight: float = 1.0,
+        v50_sefh_temporal_weight: float = 0.5,
+        v50_sefh_epipolar_weight: float = 0.5,
+        v50_sefh_identity_init_gate: bool = True,
+        # v51 cross-domain sparse-view reliability (CDSVR)
+        use_v51_cross_domain_sparse_view_reliability: bool = False,
+        v51_cdsvr_hidden: int = 64,
+        v51_cdsvr_num_heads: int = 4,
+        v51_cdsvr_dropout: float = 0.1,
+        v51_cdsvr_offset_min: float = 0.05,
+        v51_cdsvr_use_domain_label: bool = True,
+        v51_cdsvr_uncertainty_temperature: float = 1.0,
+        v51_cdsvr_identity_init_gate: bool = True,
         # v48 domain generalization (FiLM / conditional BN / GRL discriminator)
         use_v48_domain_generalization: bool = False,
         v48_dg_hidden: int = 64,
@@ -923,6 +947,45 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
             )
         else:
             self.test_time_self_evolution_v51 = None
+
+        # Optional v50 self-evolution feedback head (training-only auxiliary head).
+        self.use_v50_self_evolution_feedback_head = use_v50_self_evolution_feedback_head
+        if self.use_v50_self_evolution_feedback_head:
+            self.self_evolution_feedback_head_v50 = SelfEvolutionFeedbackHeadV50(
+                j=self.j,
+                hidden=v50_sefh_hidden,
+                num_layers=v50_sefh_num_layers,
+                dropout=v50_sefh_dropout,
+                reproj_weight=v50_sefh_reproj_weight,
+                temporal_weight=v50_sefh_temporal_weight,
+                epipolar_weight=v50_sefh_epipolar_weight,
+                identity_init_gate=v50_sefh_identity_init_gate,
+            )
+        else:
+            self.self_evolution_feedback_head_v50 = None
+
+        # Optional v51 cross-domain sparse-view reliability (CDSVR).
+        self.use_v51_cross_domain_sparse_view_reliability = use_v51_cross_domain_sparse_view_reliability
+        if self.use_v51_cross_domain_sparse_view_reliability:
+            if not self.use_v50_self_evolution_feedback_head:
+                raise ValueError(
+                    "use_v51_cross_domain_sparse_view_reliability requires "
+                    "use_v50_self_evolution_feedback_head=True"
+                )
+            self.cross_domain_sparse_view_reliability_v51 = CrossDomainSparseViewReliabilityV51(
+                n_views=n_views,
+                n_joints=self.j,
+                hidden=v51_cdsvr_hidden,
+                num_heads=v51_cdsvr_num_heads,
+                dropout=v51_cdsvr_dropout,
+                offset_min=v51_cdsvr_offset_min,
+                use_domain_label=v51_cdsvr_use_domain_label,
+                uncertainty_temperature=v51_cdsvr_uncertainty_temperature,
+                identity_init_gate=v51_cdsvr_identity_init_gate,
+                num_domains=v48_dg_num_domains,
+            )
+        else:
+            self.cross_domain_sparse_view_reliability_v51 = None
 
         # Optional v37 self-critique view reliability estimator (identity at init).
         self.use_self_critique_view_reliability_v37 = use_self_critique_view_reliability_v37
@@ -1903,6 +1966,73 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
         ):
             collision_loss, _ = self.physical_collision_penalty_v31(pred_3d)
             epi_loss = epi_loss + collision_loss
+
+        # Optional v50 self-evolution feedback head (training only).
+        # Computes per-view reliability and per-joint log-variance from residuals.
+        self.last_sefh_reliability: Optional[torch.Tensor] = None
+        self.last_sefh_log_var: Optional[torch.Tensor] = None
+        self.last_sefh_reproj: Optional[torch.Tensor] = None
+        self.last_sefh_temporal: Optional[torch.Tensor] = None
+        self.last_sefh_epipolar: Optional[torch.Tensor] = None
+        self.last_cdsvr_reliability_offset: Optional[torch.Tensor] = None
+        self.last_cdsvr_uncertainty_scale: Optional[torch.Tensor] = None
+        self.last_cdsvr_reliability_refined: Optional[torch.Tensor] = None
+        self.last_cdsvr_log_var_refined: Optional[torch.Tensor] = None
+        if self.training and self.use_v50_self_evolution_feedback_head:
+            sefh_K = K_corrected.view(B, T, V, 3, 3)[:, 0]
+            sefh_R = R.view(B, T, V, 3, 3)[:, 0]
+            sefh_t = t.view(B, T, V, 3)[:, 0]
+            sefh_x = points_2d.view(B, T, V, J, 2)
+            sefh_view_mask = view_mask_flat.view(B, T, V)
+            (
+                sefh_reliability,
+                sefh_log_var,
+                sefh_reproj,
+                sefh_temporal,
+                sefh_epipolar,
+                _,
+            ) = self.self_evolution_feedback_head_v50(
+                pred_3d,
+                sefh_x,
+                sefh_K,
+                sefh_R,
+                sefh_t,
+                view_mask=sefh_view_mask,
+            )
+            self.last_sefh_reliability = sefh_reliability
+            self.last_sefh_log_var = sefh_log_var
+            self.last_sefh_reproj = sefh_reproj
+            self.last_sefh_temporal = sefh_temporal
+            self.last_sefh_epipolar = sefh_epipolar
+
+            # Optional v51 cross-domain sparse-view reliability on top of v50.
+            if self.use_v51_cross_domain_sparse_view_reliability:
+                # Pool SEFH outputs over time and joints to match CDSVR inputs.
+                sefh_reliability_bv = sefh_reliability.mean(dim=(1, 3))  # (B, V)
+                sefh_log_var_bj = sefh_log_var.mean(dim=1)  # (B, J)
+
+                # Pass the integer domain label if available; CDSVR embeds it.
+                cdsvr_domain_id = None
+                if domain_id is not None:
+                    cdsvr_domain_id = domain_id.long().view(-1)
+
+                (
+                    cdsvr_offset,
+                    cdsvr_scale,
+                ) = self.cross_domain_sparse_view_reliability_v51(
+                    sefh_reliability_bv,
+                    sefh_log_var_bj,
+                    domain_id=cdsvr_domain_id,
+                    domain_emb=None,
+                )
+
+                refined_reliability_bv = sefh_reliability_bv + cdsvr_offset
+                refined_log_var_bj = sefh_log_var_bj - 2.0 * torch.log(cdsvr_scale)
+
+                self.last_cdsvr_reliability_offset = cdsvr_offset
+                self.last_cdsvr_uncertainty_scale = cdsvr_scale
+                self.last_cdsvr_reliability_refined = refined_reliability_bv
+                self.last_cdsvr_log_var_refined = refined_log_var_bj
 
         weights = weights.view(B, T, V, J)
         L = L.view(B, T, V, J, 2, 2)

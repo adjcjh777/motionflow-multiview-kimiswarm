@@ -65,7 +65,6 @@ from motionflow_mv.losses.skeleton_physical_loss_v40 import (  # noqa: E402
 )
 from motionflow_mv.losses.procrustes_loss import procrustes_mse_loss  # noqa: E402
 from motionflow_mv.fusion.self_evolution_feedback_head_v50 import (  # noqa: E402
-    SelfEvolutionFeedbackHeadV50,
     compute_sefh_loss,
 )
 from motionflow_mv.training.trainer_v2 import TrainerV2, build_lr_scheduler  # noqa: E402
@@ -343,6 +342,36 @@ def build_model_from_args(
                 "v51_tta_min_view_rel": getattr(args, "v51_tta_min_view_rel", 0.05),
                 "v51_tta_max_view_rel": getattr(args, "v51_tta_max_view_rel", 1.0),
                 "v51_tta_use_sefh_init": getattr(args, "v51_tta_use_sefh_init", True),
+            }
+        )
+
+    # v50 self-evolution feedback head kwargs.
+    if getattr(args, "use_v50_self_evolution_feedback_head", False):
+        model_kwargs.update(
+            {
+                "use_v50_self_evolution_feedback_head": True,
+                "v50_sefh_hidden": getattr(args, "v50_sefh_hidden", 64),
+                "v50_sefh_num_layers": getattr(args, "v50_sefh_num_layers", 2),
+                "v50_sefh_dropout": getattr(args, "v50_sefh_dropout", 0.1),
+                "v50_sefh_reproj_weight": getattr(args, "v50_sefh_reproj_weight", 1.0),
+                "v50_sefh_temporal_weight": getattr(args, "v50_sefh_temporal_weight", 0.5),
+                "v50_sefh_epipolar_weight": getattr(args, "v50_sefh_epipolar_weight", 0.5),
+                "v50_sefh_identity_init_gate": getattr(args, "v50_sefh_identity_init_gate", True),
+            }
+        )
+
+    # v51 cross-domain sparse-view reliability kwargs.
+    if getattr(args, "use_v51_cross_domain_sparse_view_reliability", False):
+        model_kwargs.update(
+            {
+                "use_v51_cross_domain_sparse_view_reliability": True,
+                "v51_cdsvr_hidden": getattr(args, "v51_cdsvr_hidden", 64),
+                "v51_cdsvr_num_heads": getattr(args, "v51_cdsvr_num_heads", 4),
+                "v51_cdsvr_dropout": getattr(args, "v51_cdsvr_dropout", 0.1),
+                "v51_cdsvr_offset_min": getattr(args, "v51_cdsvr_offset_min", 0.05),
+                "v51_cdsvr_use_domain_label": getattr(args, "v51_cdsvr_use_domain_label", True),
+                "v51_cdsvr_uncertainty_temperature": getattr(args, "v51_cdsvr_uncertainty_temperature", 1.0),
+                "v51_cdsvr_identity_init_gate": getattr(args, "v51_cdsvr_identity_init_gate", True),
             }
         )
 
@@ -1049,7 +1078,7 @@ def _skeleton_config_for_joints(j: int):
     return None, None, None
 
 
-def build_compute_loss(args: Namespace, sefh_head: Optional[torch.nn.Module] = None):
+def build_compute_loss(args: Namespace):
     """Build the compute_loss closure used by TrainerV2."""
     parents = None
     if (
@@ -1391,35 +1420,81 @@ def build_compute_loss(args: Namespace, sefh_head: Optional[torch.nn.Module] = N
             metrics["v49_lite_temporal_loss"] = v49_lite_temporal_loss.item()
 
         # Optional v50 self-evolution feedback head auxiliary loss.
-        if sefh_head is not None and getattr(args, "use_v50_self_evolution_feedback_head", False):
-            sefh_reliability, sefh_log_var, sefh_reproj, sefh_temporal, sefh_epipolar, _ = sefh_head(
-                pred_3d,
-                x,
-                K_aug,
-                R_aug,
-                t_aug,
-                view_mask=view_mask,
-            )
-            sefh_loss = compute_sefh_loss(
-                sefh_reliability,
-                sefh_log_var,
-                sefh_reproj,
-                sefh_temporal,
-                sefh_epipolar,
-                view_mask=view_mask,
-                loss_weight=args.v50_sefh_loss_weight,
-                residual_clip=args.v50_sefh_residual_clip,
-            )
-            loss = loss + sefh_loss
-            metrics["v50_sefh_loss"] = sefh_loss.item()
+        # The head is now instantiated inside the model and its outputs are
+        # exposed via attributes.
+        if getattr(args, "use_v50_self_evolution_feedback_head", False):
+            sefh_reliability = getattr(model, "last_sefh_reliability", None)
+            sefh_log_var = getattr(model, "last_sefh_log_var", None)
+            sefh_reproj = getattr(model, "last_sefh_reproj", None)
+            sefh_temporal = getattr(model, "last_sefh_temporal", None)
+            sefh_epipolar = getattr(model, "last_sefh_epipolar", None)
+            if (
+                sefh_reliability is not None
+                and sefh_log_var is not None
+                and sefh_reproj is not None
+                and sefh_temporal is not None
+                and sefh_epipolar is not None
+            ):
+                sefh_loss = compute_sefh_loss(
+                    sefh_reliability,
+                    sefh_log_var,
+                    sefh_reproj,
+                    sefh_temporal,
+                    sefh_epipolar,
+                    view_mask=view_mask,
+                    loss_weight=args.v50_sefh_loss_weight,
+                    residual_clip=args.v50_sefh_residual_clip,
+                )
+                loss = loss + sefh_loss
+                metrics["v50_sefh_loss"] = sefh_loss.item()
 
-            # Optional aleatoric uncertainty weighting of the per-joint error.
-            aleatoric_weight = getattr(args, "v50_sefh_aleatoric_weight", 0.0)
-            if aleatoric_weight > 0.0:
-                joint_err = (pred_3d - y).norm(dim=-1)  # (B, T, J)
-                aleatoric_loss = (torch.exp(-sefh_log_var) * joint_err + 0.5 * sefh_log_var).mean()
-                loss = loss + aleatoric_weight * aleatoric_loss
-                metrics["v50_sefh_aleatoric_loss"] = aleatoric_loss.item()
+                # Optional aleatoric uncertainty weighting of the per-joint error.
+                aleatoric_weight = getattr(args, "v50_sefh_aleatoric_weight", 0.0)
+                if aleatoric_weight > 0.0:
+                    joint_err = (pred_3d - y).norm(dim=-1)  # (B, T, J)
+                    aleatoric_loss = (torch.exp(-sefh_log_var) * joint_err + 0.5 * sefh_log_var).mean()
+                    loss = loss + aleatoric_weight * aleatoric_loss
+                    metrics["v50_sefh_aleatoric_loss"] = aleatoric_loss.item()
+
+        # Optional v51 cross-domain sparse-view reliability (CDSVR) auxiliary loss.
+        if getattr(args, "use_v51_cross_domain_sparse_view_reliability", False):
+            cdsvr_reliability_refined = getattr(model, "last_cdsvr_reliability_refined", None)
+            cdsvr_uncertainty_scale = getattr(model, "last_cdsvr_uncertainty_scale", None)
+            if cdsvr_reliability_refined is not None and cdsvr_uncertainty_scale is not None:
+                # Compute per-view reprojection residual from the current 3-D estimate.
+                # project_points_3d_to_2d expects K/R/t of shape (B, V, ...).
+                # The residual is detached because we only want to supervise the
+                # refined reliability, not backprop through the projection math.
+                with torch.no_grad():
+                    uv_pred = project_points_3d_to_2d(
+                        pred_3d, K_aug, R_aug, t_aug
+                    )  # (B, T, V, J, 2)
+                    reproj_err = (uv_pred - x[..., :2]).norm(dim=-1)  # (B, T, V, J)
+                    # Average per-view residual across time and joints.
+                    eps_view = reproj_err.mean(dim=(1, 3)).detach()  # (B, V)
+
+                tau = getattr(args, "v51_cdsvr_uncertainty_temperature", 1.0)
+                w_refined = torch.sigmoid(cdsvr_reliability_refined / tau)  # (B, V)
+
+                # Weighted reprojection residual (Huber-like via sqrt(x^2 + delta^2)).
+                delta = 0.1
+                huber_res = torch.sqrt(eps_view ** 2 + delta ** 2)
+                weighted_reproj = (w_refined * huber_res).mean()
+
+                # Prevent collapsed uncertainty scales.
+                entropy_scale = -torch.log(cdsvr_uncertainty_scale + 1e-8).mean()
+
+                # Preserve view diversity (avoid all reliabilities collapsing).
+                # Use a squared-deviation diversity term that is finite for any V>=1.
+                mean_w = w_refined.mean(dim=-1, keepdim=True)
+                view_div = ((w_refined - mean_w) ** 2).mean(dim=-1).mean()
+
+                v51_cdsvr_loss_weight = getattr(args, "v51_cdsvr_loss_weight", 0.01)
+                cdsvr_loss = v51_cdsvr_loss_weight * (
+                    weighted_reproj - 0.5 * entropy_scale + 0.01 * view_div
+                )
+                loss = loss + cdsvr_loss
+                metrics["v51_cdsvr_loss"] = cdsvr_loss.item()
 
         if args.bone_loss_weight > 0.0 and parents is not None:
             bl = bone_length_loss(pred_3d, y, parents)
@@ -1510,7 +1585,8 @@ def build_compute_loss(args: Namespace, sefh_head: Optional[torch.nn.Module] = N
         # or numerical overflow) can otherwise explode the model and make the rest
         # of the epoch unusable.  Drop/clip such batches before backward.
         if not loss.isfinite():
-            loss = torch.zeros_like(loss)
+            # Create a zero loss that still requires grad so backward succeeds.
+            loss = torch.zeros((), device=device, requires_grad=True)
         loss = loss.clamp(max=1e6)
 
         return loss, metrics
@@ -1575,11 +1651,10 @@ class OmniMultiViewTrainer(TrainerV2):
         optimizer: optim.Optimizer,
         device: torch.device,
         args: Namespace,
-        sefh_head: Optional[torch.nn.Module] = None,
         **kwargs: Any,
     ):
         self.args = args
-        compute_loss = build_compute_loss(args, sefh_head=sefh_head)
+        compute_loss = build_compute_loss(args)
         super().__init__(
             model,
             optimizer,
@@ -1899,7 +1974,20 @@ def parse_args() -> Namespace:
     parser.add_argument("--v50_sefh_loss_weight", type=float, default=0.01, help="Weight for the v50 auxiliary loss")
     parser.add_argument("--v50_sefh_residual_clip", type=float, default=50.0, help="Clip residuals before feeding into the v50 loss")
     parser.add_argument("--v50_sefh_identity_init_gate", action="store_true", default=True, help="Initialize the v50 reliability gate near identity")
+    parser.add_argument("--no_v50_sefh_identity_init_gate", dest="v50_sefh_identity_init_gate", action="store_false", help="Disable v50 identity init gate")
     parser.add_argument("--v50_sefh_aleatoric_weight", type=float, default=0.0, help="Weight for aleatoric uncertainty loss on the per-joint error (0 disables)")
+    # v51 cross-domain sparse-view reliability (CDSVR)
+    parser.add_argument("--use_v51_cross_domain_sparse_view_reliability", action="store_true", default=False, help="Use v51 cross-domain sparse-view reliability head on top of v50 SEFH")
+    parser.add_argument("--v51_cdsvr_hidden", type=int, default=64, help="Hidden dimension of the v51 CDSVR cross-attention block")
+    parser.add_argument("--v51_cdsvr_num_heads", type=int, default=4, help="Number of attention heads in v51 CDSVR")
+    parser.add_argument("--v51_cdsvr_dropout", type=float, default=0.1, help="Dropout probability in v51 CDSVR")
+    parser.add_argument("--v51_cdsvr_offset_min", type=float, default=0.05, help="Minimum floor for refined reliability weight in v51 CDSVR")
+    parser.add_argument("--v51_cdsvr_use_domain_label", action="store_true", default=True, help="Use one-hot domain label in v51 CDSVR")
+    parser.add_argument("--no_v51_cdsvr_use_domain_label", dest="v51_cdsvr_use_domain_label", action="store_false", help="Disable domain label in v51 CDSVR")
+    parser.add_argument("--v51_cdsvr_uncertainty_temperature", type=float, default=1.0, help="Temperature for refined reliability sigmoid in v51 CDSVR")
+    parser.add_argument("--v51_cdsvr_identity_init_gate", action="store_true", default=True, help="Initialize v51 CDSVR near identity")
+    parser.add_argument("--no_v51_cdsvr_identity_init_gate", dest="v51_cdsvr_identity_init_gate", action="store_false", help="Disable v51 CDSVR identity init gate")
+    parser.add_argument("--v51_cdsvr_loss_weight", type=float, default=0.01, help="Weight for the v51 CDSVR auxiliary loss")
     # v51 domain-agnostic ensemble of pose experts
     parser.add_argument("--use_v51_domain_agnostic_ensemble", action="store_true", default=False, help="Use v51 domain-agnostic ensemble of pose experts")
     parser.add_argument("--v51_dae_hidden", type=int, default=64, help="Hidden dimension of the v51 ensemble evidence MLP")
@@ -2229,22 +2317,6 @@ def main():
     print(f"Model params: {sum(p.numel() for p in model.parameters())}")
 
     # ------------------------------------------------------------------
-    # Optional v50 self-evolution feedback head.
-    # ------------------------------------------------------------------
-    sefh_head: Optional[torch.nn.Module] = None
-    if getattr(args, "use_v50_self_evolution_feedback_head", False):
-        sefh_head = SelfEvolutionFeedbackHeadV50(
-            j=n_joints,
-            hidden=args.v50_sefh_hidden,
-            num_layers=args.v50_sefh_num_layers,
-            dropout=args.v50_sefh_dropout,
-            reproj_weight=args.v50_sefh_reproj_weight,
-            temporal_weight=args.v50_sefh_temporal_weight,
-            epipolar_weight=args.v50_sefh_epipolar_weight,
-        ).to(device)
-        print(f"v50 SEFH params: {sum(p.numel() for p in sefh_head.parameters())}")
-
-    # ------------------------------------------------------------------
     # Warm-start
     # ------------------------------------------------------------------
     if args.warm_start is not None:
@@ -2254,8 +2326,6 @@ def main():
     # Optimizer / scheduler / trainer
     # ------------------------------------------------------------------
     trainable_params = list(model.parameters())
-    if sefh_head is not None:
-        trainable_params += list(sefh_head.parameters())
     optimizer = optim.Adam(trainable_params, lr=args.lr, weight_decay=args.weight_decay)
 
     total_epochs = args.epochs
@@ -2269,7 +2339,6 @@ def main():
         optimizer,
         device,
         args,
-        sefh_head=sefh_head,
         total_epochs=total_epochs,
         max_grad_norm=args.max_grad_norm,
         amp_enabled=args.amp,
