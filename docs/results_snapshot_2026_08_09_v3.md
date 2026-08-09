@@ -8,21 +8,26 @@ Snapshot time: 2026-08-09 (active).
 |-----|--------|----------------|-------|
 | v51 CDSVR tiny smoke (losses disabled) | 2 | **104.09 mm** | v50/v51 SEFH/CDSVR loss weights 0.0; stable baseline |
 | v51 CDSVR medium smoke 200 samples (losses disabled) | 4 | **52.33 mm** | v50/v51 heads wired in, losses disabled; early stopped after no val improvement for 3 epochs |
-| v51 CDSVR tiny smoke (v50 loss 0.01) | 2 | nan | Main model emits NaN `pred_3d` and cameras when v50/v51 losses are enabled; under investigation (issue #181) |
+| v51 CDSVR tiny smoke (v50/v51 MSE loss 0.01) | 2 | **104.51 mm** | Replaced unstable NLL with MSE targets; v50/v51 losses enabled and stable |
+| v51 CDSVR medium smoke 200 samples (v50/v51 MSE loss 0.01) | TBD | TBD | Running; see `outputs/omniview_fusion_v51_cdsvr_medium_local_4090.log` |
 
 ## Key findings
 
 - `SelfEvolutionFeedbackHeadV50` and `CrossDomainSparseViewReliabilityV51` heads can be wired into `OmniMultiViewFusionV5` without breaking the baseline when their auxiliary losses are disabled (`loss_weight=0.0`).
-- With v50 loss weight > 0, the main model produces NaN `pred_3d` and camera inputs from the first training step, causing the v50/v51 losses to become NaN and validation to fail.
-- Detaching `pred_3d` (and even all v50 inputs: `K`, `R`, `t`, `points_2d`) did not prevent the NaN, suggesting the instability is not from back-prop through the residuals.
-- The v50 SEFH NLL loss was stabilized by clamping the depth `z` and masking NaN `points_2d` in the reprojection residual, but the upstream NaN `pred_3d` issue remains.
+- The original v50 SEFH loss used a Gaussian negative-log-likelihood with `exp(log_var)` and division by `sigma^2`, which produced NaNs as soon as the loss weight was > 0.
+- Replacing the NLL with stable MSE targets removes the NaN:
+  - `target_reliability = exp(-reproj / 5.0)`
+  - `target_log_var = log(reproj + 1.0).mean(dim=2)`
+  - `loss = MSE(reliability, target_reliability) + 0.1 * MSE(log_var, target_log_var) + 0.01 * temporal_smoothness`
+- The v50/v51 auxiliary losses are now re-enabled in the local smoke script and in the A800 queue.
 
 ## Code changes
 
 - Commit `864772e`: detach `pred_3d` in v50 SEFH forward, clamp projection z, add NaN/Inf guards in trainer for v50/v51/aleatoric losses, disable unstable losses in smoke script and A800 queue.
+- Commit `6d29b91`: replace unstable NLL with MSE-based SEFH loss, re-enable v50/v51 auxiliary losses, fix a stray double backslash in the smoke script, add medium smoke script.
 
 ## Next gates
 
-1. Root-cause why enabling v50/v51 auxiliary losses makes the main model emit NaN `pred_3d`/cameras.
-2. Re-enable v50/v51 losses once stable and rerun smoke/full A800 runs.
-3. Compare v51 CDSVR (heads only) against v46/v50 baselines on the same medium/full config.
+1. Wait for the v51 CDSVR medium smoke (200 samples / 5 epochs) to finish.
+2. Compare v51 CDSVR (heads + MSE losses enabled) against the heads-only baseline (52.33 mm).
+3. If medium smoke is promising, revert the smoke script to 500 samples or launch the full A800 run.
