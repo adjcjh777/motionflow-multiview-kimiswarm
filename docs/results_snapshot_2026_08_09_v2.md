@@ -10,7 +10,7 @@ Snapshot time: 2026-08-09 (active).
 | v47 temporal smoke | in progress | — | step ~2100, loss ~6.23 |
 | v48 domain smoke | queued | — | waiting for v47 smoke |
 | v50 SEFH smoke | queued | — | will run after v46/v47/v48 chain |
-| v51 DAE smoke | running | epoch 1: 35.29 mm | epoch 2 in progress; loss 5.76 at step 1150 |
+| v51 DAE smoke | done | epoch 1: 35.29 mm (best) | epoch 2 overfit to 158.55 mm; single-dataset MPJPE@4 29.48 mm |
 
 ## A800-D full runs
 
@@ -37,5 +37,5 @@ Snapshot time: 2026-08-09 (active).
 ## Next gates
 
 1. v46-SVG full run on A800 reaches first validation.
-2. Local v51 DAE smoke finishes and passes acceptance (val_MPJPE@full within 1 mm of v46 baseline, MPJPE@2 improvement ≥2 mm).
-3. Run v51 DAE full local 4090 (5 epochs, 5k samples) or queue A800 full run depending on smoke result.
+2. Decide whether to tune v51 DAE (reduce diversity loss, increase identity bypass, freeze experts early) or pivot to a different v52 module.
+3. Run a corrected v51 ablation: v51 DAE on v46 vs v45 baseline with matched training cost.
