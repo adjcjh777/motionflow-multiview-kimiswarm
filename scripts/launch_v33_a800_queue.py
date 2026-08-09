@@ -267,7 +267,7 @@ def used_gpus_from_tmux() -> set[int]:
         return gpus
     for line in out.splitlines():
         # v31_top5_<name>_gpuN, v32_<name>_gpuN, or v33_<name>_gpuN
-        match = re.search(r"((?:v31_top5|v31|v32|v33|v34|v35|v36)_[a-zA-Z0-9_]+)_gpu(\d+):", line)
+        match = re.search(r"((?:v31_top5_|v31_|v32_|v33_|v34_|v35_|v36_)[a-zA-Z0-9_]+)_gpu(\d+):", line)
         if match:
             gpus.add(int(match.group(2)))
     return gpus
@@ -281,7 +281,7 @@ def running_run_names() -> set[str]:
     except subprocess.CalledProcessError:
         return names
     for line in out.splitlines():
-        match = re.search(r"((?:v31_top5|v31|v32|v33|v34|v35|v36)_[a-zA-Z0-9_]+)_gpu\d+:", line)
+        match = re.search(r"((?:v31_top5_|v31_|v32_|v33_|v34_|v35_|v36_)[a-zA-Z0-9_]+)_gpu\d+:", line)
         if match:
             names.add(match.group(1))
     return names
