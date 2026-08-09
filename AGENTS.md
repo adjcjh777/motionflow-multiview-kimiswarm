@@ -17,6 +17,7 @@ This file captures the current A800-D workflow, tmux conventions, and issue labe
 | v32/v33/v34/v35/v36/v37/v38/v39/v40/v41 queue | Complex-stack variants (TCR, ray attention, UGIGR, SCVR, etc.) | — | Queued behind the v25/v42/v43 priority runs |
 | v44 edge-type-aware uncertainty gating | v43 + learned per-edge-type temperature for the v36 source gate | — | Smoke passed; full run on hold pending A800 v25/v42/v43 results |
 | v45-AGF | v25 + adaptive per-view/per-joint triangulation weights | RTX 4090 | Fast smoke done (1 epoch, 50 samples); medium run (500 samples, 5 epochs) now running; full A800 run queued |
+| v46-SVG | v25/v45 + sparse-view generalization (view dropout + reliability head) | A800-D | **Queued** after v45-AGF results; see `docs/swarm_iter23_action_plan.md` (#160) |
 
 ## Local RTX 4090 status snapshot
 
@@ -28,6 +29,7 @@ This file captures the current A800-D workflow, tmux conventions, and issue labe
 | v42 v36+physical+domain (no v37) | v36 + v40 physical loss + v41 domain weights | Killed after step ~1700; epoch 1 val_MPJPE 26.16 mm (d=64, old manifest) |
 | v44 edge-type-aware uncertainty gating | v43 + learned per-edge-type temperature for the v36 source gate | Smoke passed; full branch decision pending A800 results |
 | v25 + physical + domain | v25 geometry fusion + v40 physical loss + v41 domain weights | Stopped; epoch 1 val_MPJPE 27.71 mm, epoch 2 val_MPJPE 53.63 mm (d=64); regressed, freed GPU |
+| v46-SVG smoke | v25/v45 + on-the-fly view dropout (`p=0.3`, `min_views=2`) + reliability head | Ready; blocked until v45-AGF medium finishes (#160) |
 
 ### Historical / detailed local run log
 
@@ -122,6 +124,32 @@ The v44 architecture will be chosen conditionally once the priority A800 runs fi
 5. Run v44 smoke on the local RTX 4090, then queue a full A800 run.
 
 No new GPU training should start until the A800 priority queue results are in and the branch is chosen.
+
+## v46 sparse-view generalization (SVG) conventions
+
+Tracking issue: #160. Depends on: #154, v45-AGF.
+
+- **Branch:** `v46-svg`
+- **Module:** `motionflow_mv/fusion/sparse_view_generalization_v46.py`
+- **Augmentation:** `motionflow_mv/data/view_dropout_augmentation_v46.py`
+- **Model wiring:** `motionflow_mv/fusion/omniview_fusion_v5.py`
+- **Trainer:** `experiments/train_omniview_fusion_v5_webbridge_multi.py`
+- **Smoke config:** `configs/benchmark_v46_svg_smoke.yaml`
+- **Smoke script:** `scripts/run_v46_svg_smoke_local_4090.sh`
+- **Evaluation:** `experiments/eval_variable_views.py` reports `MPJPE@k` for `k = 2, 3, 4` plus full views.
+- **A800 queue:** `scripts/launch_v33_a800_queue.py`
+- **Flags:**
+  - `use_v46_sparse_view_generalization`
+  - `v46_svg_view_dropout_prob` (default 0.3)
+  - `v46_svg_min_views` (default 2)
+  - `v46_svg_hidden` (default 64)
+  - `v46_svg_use_curriculum` (default True)
+- **Workflow:**
+  1. Do not start v46 smoke until the v45-AGF medium run frees the RTX 4090.
+  2. Run `bash scripts/run_v46_svg_smoke_local_4090.sh`.
+  3. If smoke val_MPJPE < 80 mm, add/confirm the A800 queue entry and start the full run.
+  4. Update the status tables above with epoch-1 val and `MPJPE@k` numbers.
+- **Labels:** `experiment`, `P1-next`
 
 ## A800 workflow
 
