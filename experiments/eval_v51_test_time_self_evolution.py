@@ -20,6 +20,7 @@ Usage
 from __future__ import annotations
 
 import argparse
+import inspect
 import json
 import math
 import sys
@@ -131,6 +132,45 @@ def build_smoke_batch(clip_len: int = 9):
     return x, y, K[None].expand(B, -1, -1, -1), R[None].expand(B, -1, -1, -1), t[None].expand(B, -1, -1)
 
 
+def _load_model_from_checkpoint(checkpoint_path: str, tta_num_steps: int) -> OmniMultiViewFusionV5:
+    """Load an OmniMultiViewFusionV5 from a checkpoint and its saved config."""
+    checkpoint_path = Path(checkpoint_path)
+    config_path = checkpoint_path.with_suffix(".config.json")
+    with open(config_path, "r") as f:
+        config = json.load(f)
+    config["use_v51_test_time_self_evolution_refiner"] = True
+    config["v51_tta_num_steps"] = tta_num_steps
+    sig = inspect.signature(OmniMultiViewFusionV5.__init__).parameters.keys()
+    model_kwargs = {k: v for k, v in config.items() if k in sig}
+    model = OmniMultiViewFusionV5(**model_kwargs)
+    state = torch.load(checkpoint_path, map_location="cpu")
+    model.load_state_dict(state, strict=False)
+    return model
+
+
+def _load_npz_clip(npz_path: str, clip_len: int):
+    """Load a single clip from a WebBridge .npz file."""
+    data = np.load(npz_path)
+    points_2d = torch.from_numpy(data["points_2d"]).float()
+    confidences = torch.from_numpy(data["confidences"]).float()
+    joints_3d = torch.from_numpy(data["joints_3d"]).float()
+    K = torch.from_numpy(data["camera_K"]).float()
+    R = torch.from_numpy(data["camera_R"]).float()
+    t = torch.from_numpy(data["camera_t"]).float()
+
+    total = points_2d.shape[0]
+    if total < clip_len:
+        raise ValueError(f"Sequence has {total} frames, need at least {clip_len}")
+    start = 0
+    end = start + clip_len
+    x = torch.cat(
+        [points_2d[start:end], confidences[start:end].unsqueeze(-1)],
+        dim=-1,
+    )
+    y = joints_3d[start:end]
+    return x, y, K, R, t
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="v51 TTSER mini-evaluation")
     parser.add_argument("--checkpoint", type=str, default=None)
@@ -145,8 +185,11 @@ def main() -> None:
     if args.smoke:
         model = build_smoke_model()
         x, y, K, R, t = build_smoke_batch(args.clip_len)
+    elif args.checkpoint and args.npz:
+        model = _load_model_from_checkpoint(args.checkpoint, args.tta_num_steps)
+        x, y, K, R, t = _load_npz_clip(args.npz, args.clip_len)
     else:
-        raise NotImplementedError("Real-data eval not yet implemented; use --smoke")
+        parser.error("Use --smoke or provide both --checkpoint and --npz")
 
     model = model.to(args.device)
     x = x.to(args.device)
