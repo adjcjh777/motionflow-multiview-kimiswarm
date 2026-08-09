@@ -543,12 +543,20 @@ def sync_repo_to_a800() -> None:
 
 
 def gpu_free_mibs() -> list[tuple[int, int]]:
-    out = a800_ssh("nvidia-smi --query-gpu=index,memory.free --format=csv,noheader,nounits")
+    try:
+        out = a800_ssh("nvidia-smi --query-gpu=index,memory.free --format=csv,noheader,nounits")
+    except subprocess.CalledProcessError as e:
+        print(f"Warning: nvidia-smi query failed: {e}")
+        return []
     pairs = []
     for line in out.strip().splitlines():
         parts = [p.strip() for p in line.split(",")]
         if len(parts) == 2:
-            pairs.append((int(parts[0]), int(parts[1])))
+            try:
+                pairs.append((int(parts[0]), int(parts[1])))
+            except ValueError:
+                print(f"Warning: could not parse GPU memory line: {line}")
+                continue
     return pairs
 
 
