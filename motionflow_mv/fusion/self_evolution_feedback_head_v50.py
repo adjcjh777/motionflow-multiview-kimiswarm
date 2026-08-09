@@ -187,11 +187,15 @@ class SelfEvolutionFeedbackHeadV50(nn.Module):
         epipolar_residual: (B, T, V, J).
         feature: (B, T, V, J, hidden).
         """
-        # Detach the main pose estimate so the auxiliary v50 loss only trains
-        # the feedback head, not the pose estimator.  Gradients through the
-        # reprojection / temporal / epipolar residuals are unstable and can
+        # Detach all inputs so the auxiliary v50 loss only trains the feedback
+        # head, not the pose estimator or camera correction.  Gradients through
+        # the reprojection / temporal / epipolar residuals are unstable and can
         # poison the main model.
         pred_3d = pred_3d.detach()
+        points_2d = points_2d.detach()
+        K = K.detach()
+        R = R.detach()
+        t = t.detach()
 
         reproj = self._compute_reprojection_residual(pred_3d, points_2d, K, R, t)
         temporal = self._compute_temporal_residual(pred_3d)  # (B, T, J)
