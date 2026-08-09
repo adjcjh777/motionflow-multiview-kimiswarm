@@ -19,6 +19,7 @@ This file captures the current A800-D workflow, tmux conventions, and issue labe
 | v45-AGF | v25 + adaptive per-view/per-joint triangulation weights | RTX 4090 | Fast smoke done (1 epoch, 50 samples); medium run (500 samples, 5 epochs) now running; full A800 run queued |
 | v46-SVG | v25/v45 + sparse-view generalization (view dropout + reliability head) | A800-D | **Queued** after v45-AGF results; see `docs/swarm_iter23_action_plan.md` (#160) |
 | v47-temporal | v46-SVG + temporal aggregation across (time, joint) tokens | A800-D | **Queued** after v46-SVG smoke; see `docs/swarm_iter24_action_plan.md` (#162) |
+| v48-domain | v47 + domain-invariant sparse-view refinement + 3DPW actual-mode integration | A800-D | **Ready**; blocked until v47 smoke completes; see `docs/swarm_iter25_action_plan.md` (#164) |
 
 ## Local RTX 4090 status snapshot
 
@@ -32,6 +33,7 @@ This file captures the current A800-D workflow, tmux conventions, and issue labe
 | v25 + physical + domain | v25 geometry fusion + v40 physical loss + v41 domain weights | Stopped; epoch 1 val_MPJPE 27.71 mm, epoch 2 val_MPJPE 53.63 mm (d=64); regressed, freed GPU |
 | v46-SVG smoke | v25/v45 + on-the-fly view dropout (`p=0.3`, `min_views=2`) + reliability head | Ready; blocked until v45-AGF medium finishes (#160) |
 | v47 temporal aggregation smoke | v46-SVG + lightweight temporal refinement head (`d_model=64`, `num_layers=2`) | Ready; blocked until v46-SVG smoke completes (#162) |
+| v48 domain generalization smoke | v47 + domain-conditional FiLM/GRL/DDWL + 3DPW actual val | Ready; blocked until v47 smoke completes (#164) |
 
 ### Historical / detailed local run log
 
@@ -180,6 +182,36 @@ Tracking issue: #162. Depends on: #160, v45-AGF.
   2. Run `bash scripts/run_v47_temporal_svg_smoke_local_4090.sh`.
   3. If smoke val_MPJPE < 75 mm, add/confirm the A800 queue entry and start the full run.
   4. Update the status tables above with epoch-1 val and `MPJPE@k` numbers.
+- **Labels:** `experiment`, `P1-next`
+
+## v48 domain generalization conventions
+
+Tracking issue: #164. Depends on: #160, #162.
+
+- **Branch:** `v48-domain`
+- **Module:** `motionflow_mv/fusion/domain_adapter_v48.py`
+- **Base:** reuses v46 Sparse-View Generalization and v47 Temporal Aggregation
+- **Model wiring:** `motionflow_mv/fusion/omniview_fusion_v5.py`
+- **Trainer:** `experiments/train_omniview_fusion_v5_webbridge_multi.py`
+- **Smoke config:** `configs/benchmark_v48_domain_smoke.yaml`
+- **Smoke script:** `scripts/run_v48_domain_smoke_local_4090.sh`
+- **Evaluation:** `experiments/eval_variable_views.py` reports per-domain `MPJPE@k` and 3DPW actual `MPJPE@1`.
+- **A800 queue:** `scripts/launch_v33_a800_queue.py`
+- **Flags:**
+  - `use_v48_domain_generalization`
+  - `v48_dg_hidden` (default `64`)
+  - `v48_dg_grl_lambda` (default `0.1`)
+  - `v48_dg_use_domain_film` (default `True`)
+  - `v48_dg_use_ddwl` (default `True`)
+  - `v48_dg_ddwl_temperature` (default `2.0`)
+  - `v48_dg_ddwl_warmup_epochs` (default `1`)
+  - `v48_3dpw_actual_val_paths` (default `None`)
+  - `v48_dropout_per_domain` (default `{"0": 0.30, "1": 0.30, "5": 0.15}`)
+- **Workflow:**
+  1. Wait for v47-temporal smoke results.
+  2. Run `bash scripts/run_v48_domain_smoke_local_4090.sh`.
+  3. If smoke val_MPJPE is finite and per-domain metrics show no NaN/OOM, add/confirm the A800 queue entry and start the full run.
+  4. Update the status tables above with epoch-1 val, per-domain `MPJPE@k`, and 3DPW actual `MPJPE@1` numbers.
 - **Labels:** `experiment`, `P1-next`
 
 ## A800 workflow

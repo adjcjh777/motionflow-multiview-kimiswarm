@@ -292,6 +292,20 @@ def build_model_from_args(
             }
         )
 
+    # v48 domain generalization kwargs are only passed when the flag is enabled
+    # so the trainer can be imported/run on checkouts where the model has not
+    # yet been wired for v48.
+    if getattr(args, "use_v48_domain_generalization", False):
+        v48_num_domains = max(getattr(args, "num_domains", 2), 6)
+        model_kwargs.update(
+            {
+                "use_v48_domain_adapter": True,
+                "v48_da_hidden": getattr(args, "v48_dg_hidden", 64),
+                "v48_da_num_domains": v48_num_domains,
+                "v48_da_dropout": 0.1,
+            }
+        )
+
     model = OmniMultiViewFusionV5(**model_kwargs)
 
     if n_joints != 17 and n_joints == 28 and hasattr(model, "rebuild_graph"):
@@ -677,6 +691,43 @@ def augment_clip(
     return x, view_mask
 
 
+def apply_per_domain_view_dropout(
+    x: torch.Tensor,
+    dataset_id: torch.Tensor,
+    dropout_per_domain: Dict[str, float],
+    min_views: int = 2,
+) -> torch.Tensor:
+    """Apply per-sample view dropout with a probability that depends on domain.
+
+    Args:
+        x: (B, T, V, C) tensor of observations; confidence lives in channel 2.
+        dataset_id: (B,) or (B, 1) integer domain ids.
+        dropout_per_domain: Mapping from domain id string to dropout probability.
+        min_views: Minimum number of views to retain per sample.
+
+    Returns:
+        x with confidence channel zeroed for dropped views.
+    """
+    B, T, V, C = x.shape
+    device = x.device
+    dataset_id = dataset_id.squeeze(-1).long()
+    for i in range(B):
+        d = str(dataset_id[i].item())
+        p = float(dropout_per_domain.get(d, 0.0))
+        if p <= 0.0:
+            continue
+        mask = (torch.rand(V, device=device) > p).float()
+        if int(mask.sum().item()) < min_views:
+            needed = min_views - int(mask.sum().item())
+            dropped = (mask == 0).nonzero(as_tuple=True)[0]
+            if dropped.numel() > 0:
+                perm = torch.randperm(dropped.numel())
+                extra = dropped[perm[:needed]]
+                mask[extra] = 1.0
+        x[i, :, :, 2] = x[i, :, :, 2] * mask.view(1, V, 1)
+    return x
+
+
 # ---------------------------------------------------------------------------
 # Calibration perturbation helpers
 # ---------------------------------------------------------------------------
@@ -976,6 +1027,18 @@ def build_compute_loss(args: Namespace):
         weights = [float(w.strip()) for w in args.domain_loss_weights.split(",")]
         domain_loss_weights = torch.tensor(weights, dtype=torch.float32)
 
+    # v48 domain-difficulty-weighted loss (DDWL) state.  Maintains a running
+    # EMA of per-domain MSE; weights are inverse to the EMA so harder domains
+    # receive larger gradients.  The state lives in the closure so it persists
+    # across training steps.
+    use_v48_dg = getattr(args, "use_v48_domain_generalization", False)
+    v48_use_ddwl = use_v48_dg and getattr(args, "v48_dg_use_ddwl", True)
+    v48_ddwl_temperature = getattr(args, "v48_dg_ddwl_temperature", 2.0)
+    v48_ddwl_warmup_epochs = getattr(args, "v48_dg_ddwl_warmup_epochs", 1)
+    v48_ddwl_beta = 0.9
+    v48_num_domains_ddwl = max(getattr(args, "num_domains", 2), 6) if use_v48_dg else getattr(args, "num_domains", 2)
+    v48_loss_ema: Dict[int, float] = {d: 0.0 for d in range(v48_num_domains_ddwl)}
+
     def compute_loss(
         model: torch.nn.Module,
         batch: Tuple[torch.Tensor, ...],
@@ -1004,18 +1067,30 @@ def build_compute_loss(args: Namespace):
         # if the curriculum flag is set.  This is applied via the existing
         # ``augment_clip`` view-dropout path so the model sees variable
         # cardinalities without extra data-loader changes.
+        # v48 per-domain view dropout: when enabled, it takes precedence over
+        # the global v46 view dropout probability.  The global v46 probability
+        # is set to 0 here and the per-domain schedule is applied after
+        # ``augment_clip`` so different domains can see different dropout rates.
+        v48_dropout_per_domain: Optional[Dict[str, float]] = None
+        if use_v48_dg and getattr(args, "v48_dropout_per_domain", None) is not None:
+            v48_dropout_per_domain = args.v48_dropout_per_domain  # type: ignore[assignment]
+
         if getattr(args, "use_v46_sparse_view_generalization", False):
-            v46_dropout_prob = args.v46_svg_view_dropout_prob
-            if args.v46_svg_use_curriculum and args.epochs > 1:
-                ramp_epochs = max(1, args.epochs // 2)
-                current_epoch = getattr(model, "epoch", 1) - 1
-                progress = min(1.0, max(0.0, current_epoch / ramp_epochs))
+            if v48_dropout_per_domain is not None:
+                v46_dropout_prob = 0.0
+                v46_min_views = args.v46_svg_min_views
             else:
-                progress = 1.0
-            v46_dropout_prob = v46_dropout_prob * progress
-            v46_min_views = args.v46_svg_min_views
+                v46_dropout_prob = args.v46_svg_view_dropout_prob
+                if args.v46_svg_use_curriculum and args.epochs > 1:
+                    ramp_epochs = max(1, args.epochs // 2)
+                    current_epoch = getattr(model, "epoch", 1) - 1
+                    progress = min(1.0, max(0.0, current_epoch / ramp_epochs))
+                else:
+                    progress = 1.0
+                v46_dropout_prob = v46_dropout_prob * progress
+                v46_min_views = args.v46_svg_min_views
         else:
-            v46_dropout_prob = args.view_dropout_rate
+            v46_dropout_prob = 0.0 if v48_dropout_per_domain is not None else args.view_dropout_rate
             v46_min_views = args.min_views
 
         x, view_mask = augment_clip(
@@ -1026,6 +1101,14 @@ def build_compute_loss(args: Namespace):
             min_views=v46_min_views,
             variable_view_subset=args.variable_view_subset,
         )
+
+        if v48_dropout_per_domain is not None and dataset_id is not None:
+            x = apply_per_domain_view_dropout(
+                x,
+                dataset_id,
+                v48_dropout_per_domain,
+                min_views=v46_min_views,
+            )
 
         # Optional outlier-view augmentation: corrupt a random subset of views with
         # large offsets and pixel noise.  Confidence remains > 0 so the robust DLT
@@ -1141,20 +1224,61 @@ def build_compute_loss(args: Namespace):
         epi_loss = out[4]
         entropy_loss_out = out[5] if len(out) > 5 else None
         budget_loss_out = out[6] if len(out) > 6 else None
+        # v48 domain adapter may return an adversarial / gradient-reversal loss.
+        v48_domain_loss = out[7] if len(out) > 7 else None
 
-        # Optional v41 per-domain loss weighting for mixed training.
+        # v41 static or v48 dynamic per-domain loss weighting for mixed training.
         mse_per_sample = F.mse_loss(pred_3d, y, reduction="none").mean(dim=(1, 2, 3))
-        if dataset_id is not None and domain_loss_weights is not None:
+        sample_weights: Optional[torch.Tensor] = None
+        if dataset_id is not None and v48_use_ddwl:
+            # Update per-domain EMA with the detached current batch loss.
+            with torch.no_grad():
+                for d in range(v48_num_domains_ddwl):
+                    mask = (dataset_id.squeeze(-1) == d)
+                    if mask.any():
+                        mean_loss_d = mse_per_sample[mask].mean().item()
+                        v48_loss_ema[d] = (
+                            v48_ddwl_beta * v48_loss_ema[d]
+                            + (1.0 - v48_ddwl_beta) * mean_loss_d
+                        )
+            # After warmup, give harder domains higher weight.
+            current_epoch = getattr(model, "epoch", 1) - 1
+            if current_epoch >= v48_ddwl_warmup_epochs:
+                ema_t = torch.tensor(
+                    [max(v48_loss_ema[d], 1e-8) for d in range(v48_num_domains_ddwl)],
+                    device=device,
+                    dtype=torch.float32,
+                )
+                w_d_raw = (ema_t / ema_t.max()) ** (-1.0 / v48_ddwl_temperature)
+                w_d = w_d_raw / w_d_raw.sum() * v48_num_domains_ddwl
+                w_d = w_d.clamp(0.5, 2.0)
+            else:
+                w_d = torch.ones(v48_num_domains_ddwl, device=device, dtype=torch.float32)
+            sample_weights = w_d[dataset_id.squeeze(-1).long()]
+            loss = (mse_per_sample * sample_weights).mean()
+            metrics: Dict[str, Any] = {
+                "mpjpe": (pred_3d - y).norm(dim=-1).mean().item(),
+                "v48_ddwl_weights": w_d.detach().cpu().numpy().tolist(),
+            }
+        elif dataset_id is not None and domain_loss_weights is not None:
             domain_sample_weights = domain_loss_weights.to(device)[dataset_id.squeeze(-1).long()]
             loss = (mse_per_sample * domain_sample_weights).mean()
+            metrics = {
+                "mpjpe": (pred_3d - y).norm(dim=-1).mean().item(),
+            }
         else:
             loss = mse_per_sample.mean()
-        metrics: Dict[str, Any] = {
-            "mpjpe": (pred_3d - y).norm(dim=-1).mean().item(),
-        }
+            metrics = {
+                "mpjpe": (pred_3d - y).norm(dim=-1).mean().item(),
+            }
 
         if epi_loss is not None:
             loss = loss + epi_loss
+
+        # v48 adversarial / gradient-reversal domain loss (e.g. from DomainAdapterV48).
+        if v48_domain_loss is not None:
+            loss = loss + v48_domain_loss
+            metrics["v48_domain_loss"] = v48_domain_loss.item()
 
         if args.visibility_loss_weight > 0.0:
             visible_target = (x[..., 2] > 0).float()
@@ -1634,6 +1758,18 @@ def parse_args() -> Namespace:
     parser.add_argument("--v47_use_view_count_conditioning", action="store_true", default=True, help="Condition v47 temporal aggregation on the number of active views per frame")
     parser.add_argument("--no_v47_use_view_count_conditioning", dest="v47_use_view_count_conditioning", action="store_false", help="Disable view-count conditioning in v47 temporal aggregation")
     parser.add_argument("--v47_freeze_base_epochs", type=int, default=0, help="Freeze base model parameters for the first N epochs when v47 is enabled (0 disables)")
+    # v48 domain generalization
+    parser.add_argument("--use_v48_domain_generalization", action="store_true", default=False, help="Use v48 domain generalization (DDWL + optional domain FiLM / adversarial loss)")
+    parser.add_argument("--v48_dg_hidden", type=int, default=64, help="Hidden dimension of the v48 domain adapter")
+    parser.add_argument("--v48_dg_grl_lambda", type=float, default=0.1, help="Gradient-reversal lambda for the v48 domain discriminator")
+    parser.add_argument("--v48_dg_use_domain_film", action="store_true", default=True, help="Use domain-conditional FiLM offsets in v48")
+    parser.add_argument("--no_v48_dg_use_domain_film", dest="v48_dg_use_domain_film", action="store_false", help="Disable domain-conditional FiLM offsets in v48")
+    parser.add_argument("--v48_dg_use_ddwl", action="store_true", default=True, help="Use v48 dynamic domain-difficulty-weighted loss (DDWL)")
+    parser.add_argument("--no_v48_dg_use_ddwl", dest="v48_dg_use_ddwl", action="store_false", help="Disable v48 DDWL")
+    parser.add_argument("--v48_dg_ddwl_temperature", type=float, default=2.0, help="Temperature for v48 DDWL adaptive weights")
+    parser.add_argument("--v48_dg_ddwl_warmup_epochs", type=int, default=1, help="Epochs of uniform DDWL weights before adapting")
+    parser.add_argument("--v48_3dpw_actual_val_paths", type=str, default=None, help="Comma-separated list of 3DPW actual-mode .npz files for validation")
+    parser.add_argument("--v48_dropout_per_domain", type=str, default=None, help="JSON dict of per-domain view-dropout probabilities, e.g. '{\"0\": 0.30, \"1\": 0.30, \"5\": 0.15}'")
     parser.add_argument("--use_test_time_self_evolution_v27", action="store_true", default=False, help="Use v27 test-time self-evolution at inference")
     parser.add_argument("--use_physical_space_alignment_v28", action="store_true", default=False, help="Use v28 physical-space alignment refiner")
     parser.add_argument("--use_physical_space_alignment_v32", action="store_true", default=False, help="Use v32 root-centered per-joint bounded physical-space alignment")
@@ -1836,6 +1972,29 @@ def parse_args() -> Namespace:
     # I/O
     parser.add_argument("--output", type=str, default="outputs/omniview_fusion_v5_webbridge_multi.pth", help="Checkpoint path")
     args = parser.parse_args()
+
+    # Parse v48 comma-separated 3DPW actual-mode validation paths.
+    if getattr(args, "v48_3dpw_actual_val_paths", None) is not None:
+        args.v48_3dpw_actual_val_paths = [
+            p.strip() for p in args.v48_3dpw_actual_val_paths.split(",") if p.strip()
+        ]
+    else:
+        args.v48_3dpw_actual_val_paths = None
+
+    # Parse v48 per-domain view-dropout dictionary (JSON string).
+    if getattr(args, "v48_dropout_per_domain", None) is not None:
+        import json
+        try:
+            parsed = json.loads(args.v48_dropout_per_domain)
+            args.v48_dropout_per_domain = {str(k): float(v) for k, v in parsed.items()}
+        except Exception:
+            raise ValueError(
+                f"--v48_dropout_per_domain must be a JSON dict, got: {args.v48_dropout_per_domain}"
+            )
+
+    # v48 needs at least 6 domains (h36m, mpi, aist, shelf, campus, 3dpw).
+    if getattr(args, "use_v48_domain_generalization", False):
+        args.num_domains = max(args.num_domains, 6)
 
     # Default manifest if none provided and no legacy --train/--val.
     if args.manifest is None and (args.train is None or args.val is None):

@@ -1,7 +1,7 @@
 """WebBridge mixed-dataset loader with a unified 17-joint canonical skeleton.
 
 The loader consumes canonical ``.npz`` files from any WebBridge source
-(H36M, MPI-INF-3DHP, AIST++, Shelf, Campus), re-indexes the joint
+(H36M, MPI-INF-3DHP, AIST++, Shelf, Campus, 3DPW), re-indexes the joint
 skeleton to a common 17-joint layout, pads views to the largest rig
 (14 views for MPI-INF-3DHP), and yields temporal clips.
 
@@ -13,6 +13,16 @@ Expected canonical ``.npz`` layout::
     camera_K    (V, 3, 3)
     camera_R    (V, 3, 3)
     camera_t    (V, 3)
+
+3DPW ``actual`` mode files may also contain per-frame moving-camera arrays::
+
+    camera_K_frames  (T, 1, 3, 3)
+    camera_R_frames  (T, 1, 3, 3)
+    camera_t_frames  (T, 1, 3)
+
+When these are present, the returned camera tensors have shape
+``(T, MAX_VIEWS, 3, 3)`` / ``(T, MAX_VIEWS, 3)`` instead of the static
+``(MAX_VIEWS, 3, 3)`` / ``(MAX_VIEWS, 3)``.
 
 Each sample returns ``(x, y, K, R, t, dataset_id)`` where ``x`` has shape
 ``(T, MAX_VIEWS, 17, 3)`` and ``y`` has shape ``(T, 17, 3)``.
@@ -119,6 +129,39 @@ def _pad_cameras(
     return K_pad, R_pad, t_pad
 
 
+def _pad_per_frame_cameras(
+    camera_K_frames: np.ndarray,
+    camera_R_frames: np.ndarray,
+    camera_t_frames: np.ndarray,
+    max_views: int = MAX_VIEWS,
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Pad per-frame camera arrays from ``(T, V, ...)`` to ``(T, MAX_VIEWS, ...)``.
+
+    Parameters
+    ----------
+    camera_K_frames: (T, V, 3, 3)
+    camera_R_frames: (T, V, 3, 3)
+    camera_t_frames: (T, V, 3)
+    max_views:
+        Target number of views.
+
+    Returns
+    -------
+    Padded arrays with shape ``(T, max_views, ...)``.
+    """
+    T, src_v = camera_K_frames.shape[:2]
+    if src_v > max_views:
+        raise ValueError(f"{src_v} views exceeds MAX_VIEWS={max_views}")
+
+    K_pad = np.eye(3, dtype=camera_K_frames.dtype)[None, None, ...].repeat(T, axis=0).repeat(max_views, axis=1)
+    R_pad = np.eye(3, dtype=camera_R_frames.dtype)[None, None, ...].repeat(T, axis=0).repeat(max_views, axis=1)
+    t_pad = np.zeros((T, max_views, 3), dtype=camera_t_frames.dtype)
+    K_pad[:, :src_v] = camera_K_frames
+    R_pad[:, :src_v] = camera_R_frames
+    t_pad[:, :src_v] = camera_t_frames
+    return K_pad, R_pad, t_pad
+
+
 def _reindex_and_pad_views(
     points_2d: np.ndarray,
     confidences: np.ndarray,
@@ -207,6 +250,21 @@ class WebBridgeCanonical17Dataset(Dataset):
             data["camera_K"], data["camera_R"], data["camera_t"]
         )
 
+        # Detect 3DPW actual mode: per-frame moving cameras are stored in
+        # camera_*_frames arrays. These override the static placeholders.
+        has_per_frame = all(k in data for k in ("camera_K_frames", "camera_R_frames", "camera_t_frames"))
+        if has_per_frame:
+            per_K, per_R, per_t = _pad_per_frame_cameras(
+                data["camera_K_frames"], data["camera_R_frames"], data["camera_t_frames"]
+            )
+            self.camera_K_frames = torch.from_numpy(per_K).float()
+            self.camera_R_frames = torch.from_numpy(per_R).float()
+            self.camera_t_frames = torch.from_numpy(per_t).float()
+        else:
+            self.camera_K_frames = None
+            self.camera_R_frames = None
+            self.camera_t_frames = None
+
         self.points_2d = torch.from_numpy(points_2d).float()
         self.confidences = torch.from_numpy(confidences).float()
         self.joints_3d = torch.from_numpy(joints_3d).float()
@@ -238,11 +296,22 @@ class WebBridgeCanonical17Dataset(Dataset):
             dim=-1,
         )  # (T, V, J, 3)
         y = self.joints_3d[start:end]  # (T, J, 3)
+
+        # Per-frame cameras for 3DPW actual mode; otherwise static cameras.
+        if self.camera_K_frames is not None:
+            K = self.camera_K_frames[start:end]  # (T, MAX_VIEWS, 3, 3)
+            R = self.camera_R_frames[start:end]
+            t = self.camera_t_frames[start:end]  # (T, MAX_VIEWS, 3)
+        else:
+            K = self.camera_K
+            R = self.camera_R
+            t = self.camera_t
+
         if self.return_view_mask:
             view_mask = torch.zeros(MAX_VIEWS, dtype=torch.bool)
             view_mask[: self.n_views] = True
-            return x, y, self.camera_K, self.camera_R, self.camera_t, self.dataset_id, view_mask
-        return x, y, self.camera_K, self.camera_R, self.camera_t, self.dataset_id
+            return x, y, K, R, t, self.dataset_id, view_mask
+        return x, y, K, R, t, self.dataset_id
 
 
 class WebBridgeMixedDataset(ConcatDataset):
