@@ -68,5 +68,7 @@ class AdaptivePhysicalLossV56(nn.Module):
 
         feat = torch.stack([u_mean, u_std, p_std], dim=1)  # (B, 3)
         logit = self.mlp(feat).squeeze(-1)  # (B,)
-        weight = F.softplus(logit) + 1.0
+        # exp gives a positive weight and is exactly 1.0 when the zero-init
+        # final layer produces logits=0, satisfying identity-at-init.
+        weight = torch.exp(logit)
         return weight
