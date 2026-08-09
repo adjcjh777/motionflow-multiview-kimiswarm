@@ -10,7 +10,7 @@ Snapshot time: 2026-08-09 (active).
 | v47 temporal smoke | in progress | — | step ~2100, loss ~6.23 |
 | v48 domain smoke | queued | — | waiting for v47 smoke |
 | v50 SEFH smoke | queued | — | will run after v46/v47/v48 chain |
-| v51 DAE smoke | running | — | loss 7.88 at step 600, training stable |
+| v51 DAE smoke | running | — | loss 6.24 at step 1800, training stable |
 
 ## A800-D full runs
 
