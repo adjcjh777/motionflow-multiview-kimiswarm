@@ -31,6 +31,28 @@ Stop stacking new modules and instead scale the strongest proven stack: v45 adap
 
 The local smoke overfit, suggesting the original regularization was too weak for the scaled capacity and 1000 samples.
 
+### Fast regularization check (RTX 4090)
+
+`scripts/run_v52_scale_v45_v46_smoke_fast_local_4090.sh`
+
+| Setting | Value |
+|---------|-------|
+| d | 64 |
+| n_st_layers | 2 |
+| batch_size | 8 |
+| clip_len | 9 |
+| train_samples | 500 |
+| epochs | 1 |
+| weight_decay | 5e-4 |
+| v25_dropout | 0.3 |
+| v30_stochastic_depth_prob | 0.2 |
+
+| Epoch | val_MPJPE |
+|-------|-----------|
+| 1 | **104.13 mm** |
+
+The 500-sample/1-epoch fast smoke gives no useful signal beyond confirming the code runs. The full A800 run (10k samples, 10 epochs) is the only meaningful test.
+
 ## A800 full run
 
 `scripts/launch_v33_a800_queue.py` entry `v52_scale_v45_v46`
