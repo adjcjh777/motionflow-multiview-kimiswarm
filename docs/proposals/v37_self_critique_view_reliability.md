@@ -36,11 +36,8 @@ v5 tokens (B, T, V, J, d)
    - `--v37_scvr_n_layers 2`
    - `--v37_scvr_use_temporal_context`
    - `--v37_scvr_loss_weight 0.01`
-5. Auxiliary self-supervised losses:
-   - **Reprojection residual**: high reprojection error => low reliability.
-   - **Temporal inconsistency**: large 2-D temporal jump => low reliability.
-   - **Bone-length inconsistency**: inconsistent bone length => low reliability.
-   - **Entropy regularization**: encourage reliability not to collapse to uniform.
+5. Auxiliary self-supervised loss (implemented):
+   - **Reprojection residual**: after triangulation, project the 3-D estimate back to each view and compute per-(view, joint) reprojection error. High error => low target reliability via `target = sigmoid(-reproj_err * 10)`. The predicted reliability is supervised with MSE, weight `v37_scvr_loss_weight` (default 0.01).
 
 ## Training
 
