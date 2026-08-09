@@ -104,6 +104,9 @@ from motionflow_mv.fusion.cross_domain_sparse_view_reliability_v51 import (
 from motionflow_mv.fusion.uncertainty_weighted_triangulation_v52 import (
     UncertaintyWeightedTriangulationV52,
 )
+from motionflow_mv.fusion.view_count_conditioned_reliability_v59 import (
+    ViewCountConditionedReliabilityV59,
+)
 from motionflow_mv.fusion.physical_space_calibration_v53 import (
     PhysicalSpaceCalibrationV53,
 )
@@ -376,6 +379,11 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
         v52_uwt_loss_weight: float = 0.01,
         v52_uwt_damping: float = 1e-4,
         v52_uwt_warmup_epochs: int = 0,
+        # v59 view-count-conditioned sparse-view reliability
+        use_v59_view_count_conditioning: bool = False,
+        v59_vcc_hidden: int = 32,
+        v59_vcc_n_layers: int = 2,
+        v59_vcc_max_views: int = 8,
         # v53 physical-space calibration
         use_v53_physical_space_calibration: bool = False,
         v53_psc_hidden: int = 64,
@@ -1130,6 +1138,20 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
         else:
             self.uncertainty_weighted_triangulation_v52 = None
         self._v52_uwt_loss: Optional[torch.Tensor] = None
+
+        # Optional v59 view-count-conditioned sparse-view reliability (identity at init).
+        self.use_v59_view_count_conditioning = use_v59_view_count_conditioning
+        self.v59_vcc_hidden = v59_vcc_hidden
+        if self.use_v59_view_count_conditioning:
+            self.view_count_conditioned_reliability_v59 = ViewCountConditionedReliabilityV59(
+                d=self.d,
+                n_views=n_views,
+                hidden=v59_vcc_hidden,
+                n_layers=v59_vcc_n_layers,
+                max_views=v59_vcc_max_views,
+            )
+        else:
+            self.view_count_conditioned_reliability_v59 = None
 
         # Optional v53 physical-space calibration (identity at init).
         self.use_v53_physical_space_calibration = use_v53_physical_space_calibration
@@ -2035,6 +2057,17 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
             self.use_v52_uncertainty_weighted_triangulation
             and self.uncertainty_weighted_triangulation_v52 is not None
         ):
+            # Optional v59 view-count-conditioned reliability offset.
+            log_precision_offset = None
+            if (
+                self.use_v59_view_count_conditioning
+                and self.view_count_conditioned_reliability_v59 is not None
+            ):
+                log_precision_offset = self.view_count_conditioned_reliability_v59(
+                    features=feat.view(B, T, V, J, self.d),
+                    view_mask=view_mask_flat.view(B, T, V),
+                )
+
             pred_3d_gn_uwt, uwt_loss, uwt_weights_for_v53, uwt_log_precision = self.uncertainty_weighted_triangulation_v52(
                 features=feat.view(B, T, V, J, self.d),
                 points_2d=points_2d.view(B, T, V, J, 2),
@@ -2045,6 +2078,7 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
                 view_mask=view_mask_flat.view(B, T, V),
                 domain_id=domain_id,
                 weights_prior=weights_orr_for_v52,
+                log_precision_offset=log_precision_offset,
             )
             pred_3d_gn = pred_3d_gn_uwt.view(B * T, J, 3)
             self._v52_uwt_loss = uwt_loss

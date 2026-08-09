@@ -185,6 +185,7 @@ class UncertaintyWeightedTriangulationV52(nn.Module):
         view_mask: Optional[torch.Tensor] = None,
         domain_id: Optional[torch.Tensor] = None,
         weights_prior: Optional[torch.Tensor] = None,
+        log_precision_offset: Optional[torch.Tensor] = None,
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         """Predict precision weights, re-triangulate, and refine.
 
@@ -200,6 +201,8 @@ class UncertaintyWeightedTriangulationV52(nn.Module):
                 for API compatibility).
             weights_prior: optional (B, T, V, J) prior weights from an upstream
                 reliability module (e.g. v55 OR2).
+            log_precision_offset: optional (B, T, V, J) additive offset added
+                to the predicted log-precision before the sigmoid (e.g. v59).
 
         Returns:
             pred_3d: (B, T, J, 3) refined 3-D estimate.
@@ -222,6 +225,10 @@ class UncertaintyWeightedTriangulationV52(nn.Module):
             feat_pooled = feat.mean(dim=2)  # (B, T, J, feat_dim)
             log_precision = self.precision_mlp(feat_pooled).squeeze(-1)  # (B, T, J)
             log_precision = log_precision.unsqueeze(2).expand(-1, -1, V, -1)
+
+        # Apply optional additive log-precision offset (e.g. v59 view-count conditioning).
+        if log_precision_offset is not None:
+            log_precision = log_precision + log_precision_offset
 
         # Stable precision weights.
         weights = torch.sigmoid(log_precision / self.temperature)

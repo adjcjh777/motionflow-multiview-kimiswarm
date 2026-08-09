@@ -394,6 +394,17 @@ def build_model_from_args(
             }
         )
 
+    # v59 view-count-conditioned sparse-view reliability kwargs.
+    if getattr(args, "use_v59_view_count_conditioning", False):
+        model_kwargs.update(
+            {
+                "use_v59_view_count_conditioning": True,
+                "v59_vcc_hidden": getattr(args, "v59_vcc_hidden", 32),
+                "v59_vcc_n_layers": getattr(args, "v59_vcc_n_layers", 2),
+                "v59_vcc_max_views": getattr(args, "v59_vcc_max_views", 8),
+            }
+        )
+
     # v53 physical-space calibration kwargs.
     if getattr(args, "use_v53_physical_space_calibration", False):
         model_kwargs.update(
@@ -2206,6 +2217,11 @@ def parse_args() -> Namespace:
     parser.add_argument("--v52_uwt_loss_weight", type=float, default=0.01, help="Weight for the v52 UWT auxiliary loss")
     parser.add_argument("--v52_uwt_damping", type=float, default=1e-4, help="Ridge damping for v52 weighted DLT")
     parser.add_argument("--v52_uwt_warmup_epochs", type=int, default=0, help="Epochs before v52 UWT loss is active")
+    # v59 view-count-conditioned sparse-view reliability
+    parser.add_argument("--use_v59_view_count_conditioning", action="store_true", default=False, help="Use v59 view-count-conditioned sparse-view reliability on top of v52 UWT")
+    parser.add_argument("--v59_vcc_hidden", type=int, default=32, help="Hidden dimension of the v59 view-count MLP")
+    parser.add_argument("--v59_vcc_n_layers", type=int, default=2, help="Number of layers in the v59 view-count MLP")
+    parser.add_argument("--v59_vcc_max_views", type=int, default=8, help="Maximum number of views supported by the v59 count embedding")
     # v53 physical-space calibration
     parser.add_argument("--use_v53_physical_space_calibration", action="store_true", default=False, help="Use v53 physical-space calibration")
     parser.add_argument("--v53_psc_hidden", type=int, default=64, help="Hidden dimension of the v53 residual MLP")
