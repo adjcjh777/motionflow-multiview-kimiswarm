@@ -339,6 +339,10 @@ class DomainConditionalPhysicalCalibrationV57(nn.Module):
         dtype = pred_3d_uwt.dtype
 
         domain_emb = self._lookup_domain_embedding(domain_id)  # (B, hidden)
+        # Defensive: when no domain_id is supplied (e.g. monotonic-loss forward),
+        # broadcast the fallback mean embedding to the current batch size.
+        if domain_emb.shape[0] != B:
+            domain_emb = domain_emb.expand(B, -1)
 
         floor_loss = torch.tensor(0.0, device=device, dtype=dtype)
         bone_loss = torch.tensor(0.0, device=device, dtype=dtype)
