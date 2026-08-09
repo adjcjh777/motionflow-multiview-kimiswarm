@@ -31,7 +31,7 @@ python -u experiments/train_omniview_fusion_v5_webbridge_multi.py \
     --v47_temporal_dropout 0.1 \
     --v47_temporal_loss_weight 0.01 \
     --v47_use_view_count_conditioning \
-    --num_workers 4 \
+    --num_workers 0 \
     --d 64 \
     --residual_hidden 128 \
     --n_st_layers 2 \

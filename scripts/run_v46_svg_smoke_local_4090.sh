@@ -23,7 +23,7 @@ python -u experiments/train_omniview_fusion_v5_webbridge_multi.py \
     --v46_svg_min_views 2 \
     --v46_svg_hidden 64 \
     --v46_svg_use_curriculum \
-    --num_workers 4 \
+    --num_workers 0 \
     --d 64 \
     --residual_hidden 128 \
     --n_st_layers 2 \

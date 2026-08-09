@@ -38,7 +38,7 @@ python -u experiments/train_omniview_fusion_v5_webbridge_multi.py \
     --v48_dg_use_ddwl \
     --v48_dg_ddwl_temperature 2.0 \
     --v48_dg_ddwl_warmup_epochs 1 \
-    --num_workers 4 \
+    --num_workers 0 \
     --d 64 \
     --residual_hidden 128 \
     --n_st_layers 2 \
