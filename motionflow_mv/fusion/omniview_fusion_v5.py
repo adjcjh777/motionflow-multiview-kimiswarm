@@ -15,6 +15,8 @@ New toggles
   that predicts per-view reliability for variable-view triangulation.
 * ``use_v47_temporal_aggregation`` – add a lightweight temporal aggregation head
   on top of the per-frame triangulated poses to fuse evidence across time.
+* ``use_v48_domain_adapter`` – apply a domain-conditional FiLM/conditional-BN
+  adapter to the multi-view feature tokens for cross-dataset generalization.
 
 The model also accepts an explicit ``view_mask`` so that missing views can be
 masked out in confidences, weights, and triangulation.
@@ -282,6 +284,11 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
         v47_temporal_dropout: float = 0.1,
         v47_temporal_residual_gate_init: float = 0.0,
         v47_temporal_use_view_count_conditioning: bool = True,
+        # v48 domain adapter (FiLM / conditional BN)
+        use_v48_domain_adapter: bool = False,
+        v48_da_hidden: int = 64,
+        v48_da_num_domains: int = 6,
+        v48_da_dropout: float = 0.1,
         # v37 self-critique view reliability estimator
         use_self_critique_view_reliability_v37: bool = False,
         v37_scvr_hidden: int = 64,
@@ -802,6 +809,23 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
         else:
             self.temporal_aggregation_v47 = None
 
+        # Optional v48 domain adapter (FiLM / conditional BN).
+        self.use_v48_domain_adapter = use_v48_domain_adapter
+        self.v48_da_hidden = v48_da_hidden
+        self.v48_da_num_domains = v48_da_num_domains
+        self.v48_da_dropout = v48_da_dropout
+        if self.use_v48_domain_adapter:
+            from motionflow_mv.fusion.domain_adapter_v48 import DomainAdapterV48
+
+            self.domain_adapter_v48 = DomainAdapterV48(
+                in_channels=self.d,
+                num_domains=v48_da_num_domains,
+                hidden=v48_da_hidden,
+                dropout=v48_da_dropout,
+            )
+        else:
+            self.domain_adapter_v48 = None
+
         # Optional v37 self-critique view reliability estimator (identity at init).
         self.use_self_critique_view_reliability_v37 = use_self_critique_view_reliability_v37
         self.v37_scvr_loss_weight = v37_scvr_loss_weight
@@ -1275,6 +1299,18 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
         if self.use_domain_embedding and domain_id is not None:
             domain_emb = self.domain_embedding(domain_id)  # (B, d)
             feat = feat + domain_emb.view(B, 1, 1, 1, self.d)
+
+        # Optional v48 domain-conditional feature adaptation (FiLM / conditional BN).
+        if (
+            self.use_v48_domain_adapter
+            and self.domain_adapter_v48 is not None
+            and domain_id is not None
+        ):
+            feat = self.domain_adapter_v48(
+                feat,
+                domain_id=domain_id,
+                view_mask=view_mask_flat.view(B, T, V),
+            )
 
         # Spatio-temporal (time + view) attention with optional epipolar bias.
         time_emb = self.time_pos_embed[:T].view(1, T, 1, 1, self.d)
