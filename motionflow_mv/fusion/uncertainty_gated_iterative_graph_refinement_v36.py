@@ -197,12 +197,14 @@ class UncertaintyGatedIterativeGraphRefinementV36(nn.Module):
         dropout: float = 0.0,
         uncertainty_hidden: int = 64,
         gate_init_bias: float = 2.0,
+        use_adaptive_node_residual: bool = False,
     ):
         super().__init__()
         self.d = d
         self.n_views = n_views
         self.n_layers = n_layers
         self.n_iters = n_iters
+        self.use_adaptive_node_residual = use_adaptive_node_residual
 
         self.layers = nn.ModuleList(
             [UncertaintyGatedCrossViewGraphAttentionLayer(d, n_heads, n_edge_types=5, dropout=dropout)
@@ -301,6 +303,14 @@ class UncertaintyGatedIterativeGraphRefinementV36(nn.Module):
 
         if view_mask is not None:
             out = out * view_mask[..., None, None].float()
+
+        # v43: scale the residual by the final per-node uncertainty gate so that
+        # uncertain tokens are refined more strongly and confident tokens are
+        # left almost untouched.  This keeps the block identity at init because
+        # the residual gate starts near zero.
+        if self.use_adaptive_node_residual:
+            node_gate = src_gate.view(B, T, V, J, 1)
+            out = out * node_gate
 
         gate = torch.sigmoid(self.residual_gate)
         return tokens + gate * out

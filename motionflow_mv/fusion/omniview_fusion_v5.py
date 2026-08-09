@@ -253,6 +253,8 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
         v36_ugigr_n_heads: int = 4,
         v36_ugigr_dropout: float = 0.0,
         v36_ugigr_uncertainty_hidden: int = 64,
+        # v43 adaptive per-node residual on top of v36
+        use_v43_adaptive_node_residual: bool = False,
         # v37 self-critique view reliability estimator
         use_self_critique_view_reliability_v37: bool = False,
         v37_scvr_hidden: int = 64,
@@ -715,6 +717,7 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
 
         # Optional v36 uncertainty-gated iterative graph refinement.
         self.use_uncertainty_gated_iterative_graph_refinement_v36 = use_uncertainty_gated_iterative_graph_refinement_v36
+        self.use_v43_adaptive_node_residual = use_v43_adaptive_node_residual
         if self.use_uncertainty_gated_iterative_graph_refinement_v36:
             self.uncertainty_gated_iterative_graph_refinement_v36 = UncertaintyGatedIterativeGraphRefinementV36(
                 d=self.d,
@@ -724,6 +727,7 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
                 n_heads=v36_ugigr_n_heads,
                 dropout=v36_ugigr_dropout,
                 uncertainty_hidden=v36_ugigr_uncertainty_hidden,
+                use_adaptive_node_residual=use_v43_adaptive_node_residual,
             )
         else:
             self.uncertainty_gated_iterative_graph_refinement_v36 = None

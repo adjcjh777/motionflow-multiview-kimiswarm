@@ -197,6 +197,8 @@ def build_model_from_args(
         "v36_ugigr_n_heads": getattr(args, "v36_ugigr_n_heads", 4),
         "v36_ugigr_dropout": getattr(args, "v36_ugigr_dropout", 0.0),
         "v36_ugigr_uncertainty_hidden": getattr(args, "v36_ugigr_uncertainty_hidden", 64),
+        # v43 adaptive per-node residual on top of v36 UGIGR
+        "use_v43_adaptive_node_residual": getattr(args, "use_v43_adaptive_node_residual", False),
         # v37 self-critique view reliability estimator
         "use_self_critique_view_reliability_v37": getattr(args, "use_self_critique_view_reliability_v37", False),
         "v37_scvr_hidden": getattr(args, "v37_scvr_hidden", 64),
@@ -1618,6 +1620,8 @@ def parse_args() -> Namespace:
     parser.add_argument("--v36_ugigr_n_heads", type=int, default=4, help="Number of attention heads in v36 UGIGR")
     parser.add_argument("--v36_ugigr_dropout", type=float, default=0.0, help="Dropout probability for v36 UGIGR")
     parser.add_argument("--v36_ugigr_uncertainty_hidden", type=int, default=64, help="Hidden dimension of v36 UGIGR uncertainty MLP")
+    # v43 adaptive per-node residual on top of v36 UGIGR
+    parser.add_argument("--use_v43_adaptive_node_residual", action="store_true", default=False, help="Use v43 adaptive per-node residual in v36 UGIGR")
     # v37 self-critique view reliability estimator
     parser.add_argument("--use_self_critique_view_reliability_v37", action="store_true", default=False, help="Use v37 self-critique view reliability estimator")
     parser.add_argument("--v37_scvr_hidden", type=int, default=64, help="Hidden dimension of v37 SCVR MLP")
