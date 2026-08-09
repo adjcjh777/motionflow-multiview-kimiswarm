@@ -82,7 +82,7 @@ def main() -> None:
     if args.model_class != "omniview_v5":
         raise NotImplementedError("Only model_class='omniview_v5' is currently supported.")
 
-    config_path = _resolve_config_path(args)
+    config_path = _resolve_config_path(args, args.checkpoint)
     config = _load_config(config_path) if config_path else {}
 
     # n_joints and n_views are inferred from the first dataset.
