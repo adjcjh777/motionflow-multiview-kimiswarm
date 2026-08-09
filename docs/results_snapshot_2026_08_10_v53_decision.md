@@ -30,12 +30,23 @@ This snapshot records the v53/v54/v55 smoke/medium results and the decision on w
 
 **Decision:** Drop. Unstable and not beneficial.
 
-## v56 APL (in progress)
+## v56 APL
 
-`motionflow_mv/fusion/adaptive_physical_loss_v56.py` implemented. Tiny smoke running on RTX 4090 to verify identity-at-init and compare with v53 tiny 78.76 mm.
+| Scale | val_MPJPE | Notes |
+|---|---|---|
+| Tiny smoke (RTX 4090) | **104.30 mm** | Worse than v53 78.76 mm; identity-at-init was fixed (exp weighting) |
+
+**Decision:** Drop. Adaptive per-sample PSC loss weighting does not help at tiny scale and may destabilise training.
+
+## Summary
+
+- **Keep v53 PSC** and run A800 full-scale (`v53_physical_space_calibration_on_v52`).
+- **Drop v54, v55, v56** — none improved over v52/v53 tiny smoke.
+- The next iteration should not add another loss-weighting module on v53; instead, focus on scaling v53 and on data/regularisation (e.g. expanded manifest, larger model, longer training).
 
 ## Next steps
 
-1. Wait for v56 tiny smoke.
-2. If v56 tiny is within ~1 mm of v53 tiny, run v56 medium and then A800 full.
-3. Keep monitoring local v53 PSC medium run and A800 v53 tiny smoke for convergence.
+1. Monitor local v53 PSC medium run to completion.
+2. Monitor A800 v53 tiny smoke to completion.
+3. Launch A800 full v53 run when GPU memory frees.
+4. Consider v57 only after v53 full results are in.
