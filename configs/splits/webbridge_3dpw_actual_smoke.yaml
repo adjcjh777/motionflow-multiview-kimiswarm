@@ -1,0 +1,21 @@
+name: 3DPW pseudo-train / actual-val smoke manifest
+note: |
+  Small 3DPW-only manifest for v48 actual-mode smoke.
+  Train on pseudo-multi-view 3DPW (synthetic 14-view cameras).
+  Validate on the single actual-mode 3DPW clip with per-frame moving camera.
+train_paths:
+  - data/webbridge/3dpw/converted/train/courtyard_arguing_00_pseudo.npz
+  - data/webbridge/3dpw/converted/train/courtyard_backpack_00_pseudo.npz
+  - data/webbridge/3dpw/converted/train/courtyard_basketball_00_pseudo.npz
+  - data/webbridge/3dpw/converted/train/courtyard_bodyScannerMotions_00_pseudo.npz
+  - data/webbridge/3dpw/converted/train/courtyard_box_00_pseudo.npz
+train_names:
+  - 3dpw_pseudo
+  - 3dpw_pseudo
+  - 3dpw_pseudo
+  - 3dpw_pseudo
+  - 3dpw_pseudo
+val_paths:
+  - data/webbridge/3dpw/validation/courtyard_basketball_01_actual.npz
+val_names:
+  - 3dpw_actual
