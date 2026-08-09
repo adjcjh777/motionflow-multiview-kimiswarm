@@ -16,7 +16,7 @@ This file captures the current A800-D workflow, tmux conventions, and issue labe
 | v31 top-5 A800 | domain_balanced, physical_floor, hierarchical_more_dropout, outlier, geometry_attention | GPUs 4-7 | Completed / stopped to free GPUs for v33/v34 queue |
 | v32/v33/v34/v35/v36/v37/v38/v39/v40/v41 queue | Complex-stack variants (TCR, ray attention, UGIGR, SCVR, etc.) | — | Queued behind the v25/v42/v43 priority runs |
 | v44 edge-type-aware uncertainty gating | v43 + learned per-edge-type temperature for the v36 source gate | — | Smoke passed; full run on hold pending A800 v25/v42/v43 results |
-| v45-AGF | v25 + adaptive per-view/per-joint triangulation weights | RTX 4090 | Fast smoke running (1 epoch, 50 samples) to verify code path; full A800 run queued |
+| v45-AGF | v25 + adaptive per-view/per-joint triangulation weights | RTX 4090 | Fast smoke done (1 epoch, 50 samples); medium run (500 samples, 5 epochs) now running; full A800 run queued |
 
 ## Local RTX 4090 status snapshot
 
