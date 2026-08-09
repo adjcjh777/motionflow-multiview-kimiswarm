@@ -96,7 +96,8 @@ class TemporalAggregationV47(nn.Module):
         nn.init.zeros_(self.output_proj.weight)
         nn.init.zeros_(self.output_proj.bias)
 
-        # Learnable residual gate; identity behaviour when it is zero.
+        # Learnable residual gate; identity behaviour when it is zero.  Clamp to
+        # [0, 1] to prevent unbounded over-smoothing.
         self.residual_gate = nn.Parameter(torch.tensor(residual_gate_init, dtype=torch.float32))
 
     def _build_local_window_mask(self, t: int, device: torch.device) -> torch.Tensor:
@@ -196,17 +197,19 @@ class TemporalAggregationV47(nn.Module):
         tokens = features.reshape(B, T * J, -1)  # (B, T*J, in_dim)
         tokens = self.input_proj(tokens)  # (B, T*J, d_model)
 
-        # Add positional embeddings.
+        # Add positional embeddings.  Avoid mutating the registered parameter by
+        # extending it locally when the current clip is longer than the configured
+        # maximum length.
         if T > self.max_temporal_len:
-            # Extend temporal positional embedding with zeros for unseen lengths.
             extra = T - self.max_temporal_len
-            self.temporal_pos.data = torch.cat(
+            temporal_pos = torch.cat(
                 [self.temporal_pos, torch.zeros(extra, self.d_model, device=device)],
                 dim=0,
             )
-            self.max_temporal_len = T
+        else:
+            temporal_pos = self.temporal_pos
 
-        t_pos = self.temporal_pos[:T].unsqueeze(1).expand(-1, J, -1).reshape(T * J, -1)
+        t_pos = temporal_pos[:T].unsqueeze(1).expand(-1, J, -1).reshape(T * J, -1)
         j_pos = self.joint_pos.unsqueeze(0).expand(T, -1, -1).reshape(T * J, -1)
         tokens = tokens + t_pos[None, :, :] + j_pos[None, :, :]
 
@@ -237,7 +240,8 @@ class TemporalAggregationV47(nn.Module):
         # Do not modify frames that are invalid in the clip / have no views.
         delta = delta * frame_valid.unsqueeze(-1).unsqueeze(-1).float()
 
-        refined = x + self.residual_gate * delta
+        gate = self.residual_gate.clamp(0.0, 1.0)
+        refined = x + gate * delta
         return refined
 
 
