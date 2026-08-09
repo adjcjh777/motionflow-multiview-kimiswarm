@@ -265,12 +265,17 @@ def compute_sefh_loss(
         B, T, V, J = reliability.shape
         mask = torch.ones_like(reliability)
 
-    # Reprojection negative log-likelihood under predicted reliability and uncertainty.
+    # Stable regression targets from the (detached) residuals.
+    # Target reliability: high when residual is low, low when residual is high.
+    # Use a soft target based on the exponential decay of the residual.
     r = reproj.clamp(0, residual_clip)
-    # Per-joint variance from predicted log-variance; clamp to avoid collapse/explosion.
-    sigma_sq = torch.exp(log_var).unsqueeze(2).clamp(0.01, 100.0)  # (B, T, 1, J)
-    # Stable Gaussian NLL: r^2 / sigma^2 + log(sigma^2).
-    reproj_nll = (reliability * (r ** 2 / (sigma_sq + 1e-6) + torch.log(sigma_sq + 1e-6))).mean()
+    target_reliability = torch.exp(-r / 5.0)  # decay with residual magnitude
+    # Target log-variance: higher residual -> higher log-variance.
+    target_log_var = torch.log(r + 1.0).mean(dim=2)  # (B, T, J)
+
+    # MSE supervision losses.
+    reliability_loss = F.mse_loss(reliability, target_reliability)
+    log_var_loss = F.mse_loss(log_var, target_log_var)
 
     # Temporal smoothness on reliability.
     if reliability.shape[1] > 1:
@@ -278,9 +283,5 @@ def compute_sefh_loss(
     else:
         rel_smooth = torch.tensor(0.0, device=reliability.device, dtype=reliability.dtype)
 
-    # Entropy regularization to prevent uniform collapse.
-    p = reliability.clamp(1e-6, 1 - 1e-6)
-    entropy = -(p * p.log() + (1 - p) * (1 - p).log()).mean()
-
-    loss = loss_weight * (reproj_nll + 0.1 * rel_smooth - 0.001 * entropy)
+    loss = loss_weight * (reliability_loss + 0.1 * log_var_loss + 0.01 * rel_smooth)
     return loss
