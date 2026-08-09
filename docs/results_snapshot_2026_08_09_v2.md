@@ -10,6 +10,7 @@ Snapshot time: 2026-08-09 (active).
 | v47 temporal smoke | in progress | — | step ~2100, loss ~6.23 |
 | v48 domain smoke | queued | — | waiting for v47 smoke |
 | v50 SEFH smoke | queued | — | will run after v46/v47/v48 chain |
+| v51 DAE smoke | queued | — | will run after v50 SEFH smoke |
 
 ## A800-D full runs
 
@@ -25,14 +26,16 @@ Snapshot time: 2026-08-09 (active).
 | v50 SEFH on v49-Lite | — | Queued | — | ablation |
 | v50 SEFH low loss weight (0.001) | — | Queued | — | ablation |
 | v50 SEFH aleatoric weight (0.1) | — | Queued | — | ablation |
+| v51 DAE on v46 | — | Queued | — | after v50 SEFH on v46 |
+| v51 DAE on v50 | — | Queued | — | after v50 SEFH on v50 |
 
 ## Design decisions
 
 - v50 top-1 module: **Self-Evolution Feedback Head (SEFH)**.
-- v51 will be decided after v50 smoke and A800 full results.
+- v51 top-1 module: **Domain-Agnostic Ensemble (DAE)** — implemented and queued for smoke/full runs.
 
 ## Next gates
 
 1. v46-SVG full run on A800 reaches first validation.
-2. Local v47/v48 smoke chain finishes, triggering v49 ablation + v50 smoke.
-3. v50 smoke shows `val_MPJPE@full` within 1 mm of v46 baseline and `MPJPE@2` improvement ≥2 mm.
+2. Local v46/v47/v48 smoke chain finishes, triggering v49 ablation + v50 smoke + v51 DAE smoke.
+3. v51 DAE smoke shows `val_MPJPE@full` within 1 mm of v46 baseline and `MPJPE@2` improvement ≥2 mm.
