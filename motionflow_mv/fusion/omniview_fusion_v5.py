@@ -45,6 +45,7 @@ from motionflow_mv.fusion.kinematic_anthropometric_prior_v22 import (
 )
 from motionflow_mv.fusion.multiview_geometry_fusion_v25 import MultiViewGeometryFusionV25
 from motionflow_mv.fusion.temporal_aggregation_v47 import TemporalAggregationV47
+from motionflow_mv.fusion.temporal_aggregation_v49_lite import TemporalAggregationV49Lite
 from motionflow_mv.fusion.temporal_geometry_fusion_v26 import TemporalGeometryFusionV26
 from motionflow_mv.fusion.uncertainty_aware_triangulation_v33 import (
     UncertaintyAwareTriangulationV33,
@@ -284,6 +285,14 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
         v47_temporal_dropout: float = 0.1,
         v47_temporal_residual_gate_init: float = 0.0,
         v47_temporal_use_view_count_conditioning: bool = True,
+        # v49-Lite lightweight temporal aggregation (causal Conv1D, RTX 4090 friendly)
+        use_v49_lite_temporal_aggregation: bool = False,
+        v49_lite_temporal_d_model: int = 32,
+        v49_lite_temporal_num_layers: int = 2,
+        v49_lite_temporal_kernel_size: int = 3,
+        v49_lite_temporal_dropout: float = 0.1,
+        v49_lite_temporal_residual_gate_init: float = 0.0,
+        v49_lite_temporal_use_view_count_conditioning: bool = True,
         # v48 domain generalization (FiLM / conditional BN / GRL discriminator)
         use_v48_domain_generalization: bool = False,
         v48_dg_hidden: int = 64,
@@ -811,6 +820,24 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
             )
         else:
             self.temporal_aggregation_v47 = None
+
+        # Optional v49-Lite lightweight causal temporal aggregation head.
+        self.use_v49_lite_temporal_aggregation = use_v49_lite_temporal_aggregation
+        self.v49_lite_temporal_d_model = v49_lite_temporal_d_model
+        if self.use_v49_lite_temporal_aggregation:
+            if self.use_v47_temporal_aggregation:
+                raise ValueError("use_v49_lite_temporal_aggregation and use_v47_temporal_aggregation cannot both be True")
+            self.temporal_aggregation_v49_lite = TemporalAggregationV49Lite(
+                n_joints=self.j,
+                d_model=v49_lite_temporal_d_model,
+                num_layers=v49_lite_temporal_num_layers,
+                kernel_size=v49_lite_temporal_kernel_size,
+                dropout=v49_lite_temporal_dropout,
+                residual_gate_init=v49_lite_temporal_residual_gate_init,
+                use_view_count_conditioning=v49_lite_temporal_use_view_count_conditioning,
+            )
+        else:
+            self.temporal_aggregation_v49_lite = None
 
         # Optional v48 domain adapter (FiLM / conditional BN).
         self.use_v48_domain_generalization = use_v48_domain_generalization
@@ -1714,6 +1741,17 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
             and self.temporal_aggregation_v47 is not None
         ):
             pred_3d = self.temporal_aggregation_v47(
+                pred_3d,
+                view_mask=view_mask_flat.view(B, T, V),
+                clip_mask=clip_mask,
+            )
+
+        # Optional v49-Lite lightweight causal temporal aggregation.
+        if (
+            self.use_v49_lite_temporal_aggregation
+            and self.temporal_aggregation_v49_lite is not None
+        ):
+            pred_3d = self.temporal_aggregation_v49_lite(
                 pred_3d,
                 view_mask=view_mask_flat.view(B, T, V),
                 clip_mask=clip_mask,

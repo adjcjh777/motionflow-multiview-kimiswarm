@@ -293,6 +293,22 @@ def build_model_from_args(
             }
         )
 
+    # v49-Lite temporal aggregation kwargs.
+    if getattr(args, "use_v49_lite_temporal_aggregation", False):
+        model_kwargs.update(
+            {
+                "use_v49_lite_temporal_aggregation": True,
+                "v49_lite_temporal_d_model": getattr(args, "v49_lite_temporal_d_model", 32),
+                "v49_lite_temporal_num_layers": getattr(args, "v49_lite_temporal_num_layers", 2),
+                "v49_lite_temporal_kernel_size": getattr(args, "v49_lite_temporal_kernel_size", 3),
+                "v49_lite_temporal_dropout": getattr(args, "v49_lite_temporal_dropout", 0.1),
+                "v49_lite_temporal_residual_gate_init": getattr(args, "v49_lite_temporal_residual_gate_init", 0.0),
+                "v49_lite_temporal_use_view_count_conditioning": getattr(
+                    args, "v49_lite_temporal_use_view_count_conditioning", True
+                ),
+            }
+        )
+
     # v48 domain generalization kwargs are only passed when the flag is enabled
     # so the trainer can be imported/run on checkouts where the model has not
     # yet been wired for v48.
@@ -1327,6 +1343,16 @@ def build_compute_loss(args: Namespace):
             loss = loss + args.v47_temporal_loss_weight * v47_temporal_loss
             metrics["v47_temporal_loss"] = v47_temporal_loss.item()
 
+        # Optional v49-Lite temporal smoothness loss on the refined trajectory.
+        if (
+            getattr(args, "use_v49_lite_temporal_aggregation", False)
+            and args.v49_lite_temporal_loss_weight > 0.0
+            and pred_3d.shape[1] > 1
+        ):
+            v49_lite_temporal_loss = (pred_3d[:, 1:] - pred_3d[:, :-1]).abs().mean()
+            loss = loss + args.v49_lite_temporal_loss_weight * v49_lite_temporal_loss
+            metrics["v49_lite_temporal_loss"] = v49_lite_temporal_loss.item()
+
         if args.bone_loss_weight > 0.0 and parents is not None:
             bl = bone_length_loss(pred_3d, y, parents)
             loss = loss + args.bone_loss_weight * bl
@@ -1783,6 +1809,16 @@ def parse_args() -> Namespace:
     parser.add_argument("--v47_use_view_count_conditioning", action="store_true", default=True, help="Condition v47 temporal aggregation on the number of active views per frame")
     parser.add_argument("--no_v47_use_view_count_conditioning", dest="v47_use_view_count_conditioning", action="store_false", help="Disable view-count conditioning in v47 temporal aggregation")
     parser.add_argument("--v47_freeze_base_epochs", type=int, default=0, help="Freeze base model parameters for the first N epochs when v47 is enabled (0 disables)")
+    # v49-Lite lightweight causal temporal aggregation
+    parser.add_argument("--use_v49_lite_temporal_aggregation", action="store_true", default=False, help="Use v49-Lite lightweight causal Conv1D temporal aggregation instead of v47")
+    parser.add_argument("--v49_lite_temporal_d_model", type=int, default=32, help="Hidden dimension of the v49-Lite temporal aggregation")
+    parser.add_argument("--v49_lite_temporal_num_layers", type=int, default=2, help="Number of causal Conv1D blocks in v49-Lite temporal aggregation")
+    parser.add_argument("--v49_lite_temporal_kernel_size", type=int, default=3, help="Kernel size for v49-Lite causal Conv1D (odd)")
+    parser.add_argument("--v49_lite_temporal_dropout", type=float, default=0.1, help="Dropout probability in v49-Lite temporal aggregation")
+    parser.add_argument("--v49_lite_temporal_residual_gate_init", type=float, default=0.0, help="Initial residual gate for v49-Lite temporal aggregation (0 = identity at init)")
+    parser.add_argument("--v49_lite_temporal_use_view_count_conditioning", action="store_true", default=True, help="Condition v49-Lite temporal aggregation on the number of active views per frame")
+    parser.add_argument("--no_v49_lite_temporal_use_view_count_conditioning", dest="v49_lite_temporal_use_view_count_conditioning", action="store_false", help="Disable view-count conditioning in v49-Lite temporal aggregation")
+    parser.add_argument("--v49_lite_temporal_loss_weight", type=float, default=0.01, help="Weight for v49-Lite temporal smoothness loss")
     # v48 domain generalization
     parser.add_argument("--use_v48_domain_generalization", action="store_true", default=False, help="Use v48 domain generalization (DDWL + optional domain FiLM / adversarial loss)")
     parser.add_argument("--v48_dg_hidden", type=int, default=64, help="Hidden dimension of the v48 domain adapter")
