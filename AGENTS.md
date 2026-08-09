@@ -66,7 +66,7 @@ This file captures the current A800-D workflow, tmux conventions, and issue labe
 | v42 v36+physical+domain (no v37) | v36 + v40 physical loss + v41 domain weights; tests whether gains require v37 | RTX 4090 | Epoch 1 val_MPJPE=26.16mm; running under nohup; A800 queue entry added |
 | v43 adaptive per-node residual | v42 + scale v36 UGIGR residual by per-node uncertainty gate | RTX 4090 | Local full run at step ~3600 (loss 6.38, no epoch-1 val yet); A800 queue entries: base v43, scaled d128/10k-samples, full WebBridge all-train mixed (1333/156 files), and v25 all-train baseline; issue #152 |
 | v44 edge-type-aware uncertainty gating | v43 + learned per-edge-type temperature for the v36 source gate | RTX 4090 | Smoke passed (tiny, 10 samples): epoch 2 val_MPJPE 100.51 mm (not representative); waiting for v43 results before A800 queue; issue #153 |
-| A800 queue priority | v25 all-train baseline, v42, v43 base/scaled/all-train moved to front of `launch_v33_a800_queue.py` | A800-D | Reordered and committed; poller restarted; waiting for GPU 4-7 to free |
+| A800 queue priority | v25 all-train baseline, v25+physical+domain, v42, v43 base/scaled/all-train moved to front of `launch_v33_a800_queue.py` | A800-D | Reordered and committed; poller restarted; waiting for GPU 4-7 to free |
 | v33 HMSP A800 | full scale after v31 top-5 | A800-D | Queued in v33 A800 queue |
 | v32/v33/v34 A800 queue | v31_physical_floor_only, v32 x5, v33 x4, v34 x2, HMSP stacks | A800-D | Poller fixed to include variant prefix in tmux session matching; co-locates when GPU memory >= 30 GiB; v31/v32/v33 runs launching on GPUs 4-7; v34/v35/v36 entries queued |
 | GitHub issues/PRs | Use API token from git remote URL | active | Issues/PRs created and merged via curl/GitHub API |
