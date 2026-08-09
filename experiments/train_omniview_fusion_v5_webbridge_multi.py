@@ -1154,7 +1154,7 @@ def build_compute_loss(args: Namespace):
                 elif dataset_id[i].item() == 1:  # MPI-INF-3DHP
                     base_view_mask[i, :, :14] = 1.0
                 else:
-                    base_view_mask[i, :, :] = 1.0
+                    base_view_mask[i, :, :].fill_(1.0)
             if view_mask is None:
                 view_mask = base_view_mask
             else:
