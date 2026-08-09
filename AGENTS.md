@@ -29,6 +29,7 @@ This file captures the current A800-D workflow, tmux conventions, and issue labe
 | v47-temporal full | v46-SVG + temporal aggregation across (time, joint) tokens | A800-D | **Queued** after v46-SVG; see `docs/swarm_iter24_action_plan.md` (#162) |
 | v48-domain full | v47 + domain-conditional FiLM/GRL/DDWL + 3DPW actual-mode integration | A800-D | **Queued** after v47 smoke completes; see `docs/swarm_iter25_action_plan.md` (#164) |
 | v49-Lite full | v46-SVG + lightweight causal temporal aggregation (v47 replacement) | A800-D | **Queued** after v46/v47 results; see issue #175 |
+| v50 SEFH full | v46-SVG + Self-Evolution Feedback Head | A800-D | **Queued** after v49-Lite results; see issue #176 |
 
 ## Local RTX 4090 status snapshot
 
@@ -41,7 +42,8 @@ This file captures the current A800-D workflow, tmux conventions, and issue labe
 | v48 domain generalization smoke | v47 + domain-conditional FiLM/GRL/DDWL + 3DPW actual val | Queued after v47 smoke |
 | v49-Lite smoke | v46-SVG + lightweight causal temporal aggregation (v47 replacement) | Queued in A800 queue (issue #175) |
 | v49 ablation matrix | v45/v46/v47/v48/v49-Lite 2-epoch comparison | Ready; waiting for GPU |
-| v50 design swarm | 20-agent design of next module | In progress; see issue #176 |
+| v50 design swarm | 20-agent design of next module | Done; top-1 = Self-Evolution Feedback Head (issue #176) |
+| v50 SEFH smoke | v46-SVG + Self-Evolution Feedback Head | Ready; smoke script added; run after v46/v47/v48 chain |
 
 ### Historical / detailed local run log
 
