@@ -110,6 +110,9 @@ from motionflow_mv.fusion.physical_space_calibration_v53 import (
 from motionflow_mv.fusion.physical_space_calibration_v2_v54 import (
     PhysicalSpaceCalibrationV2V54,
 )
+from motionflow_mv.fusion.outlier_robust_reliability_v55 import (
+    OutlierRobustReliabilityV55,
+)
 from motionflow_mv.fusion.neural_bundle_adjustment_v21 import NeuralBundleAdjustment
 from motionflow_mv.fusion.omniview_fusion_v4 import OmniMultiViewFusionV4
 from motionflow_mv.fusion.perceiver_view_aggregator import PerceiverViewAggregator
@@ -401,6 +404,20 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
         v54_psc2_contact_velocity_thresh: float = 0.3,
         v54_psc2_min_visible_views: int = 2,
         v54_psc2_warmup_epochs: int = 0,
+        # v55 outlier-robust reliability (OR2)
+        use_v55_outlier_robust_reliability: bool = False,
+        v55_orr_hidden: int = 64,
+        v55_orr_n_layers: int = 2,
+        v55_orr_weight_type: str = "per_view_joint",
+        v55_orr_use_geometry_bias: bool = True,
+        v55_orr_use_feature_bias: bool = True,
+        v55_orr_identity_init: bool = True,
+        v55_orr_min_weight: float = 0.05,
+        v55_orr_cauchy_gamma_init: float = 1.0,
+        v55_orr_residual_gate_init: float = -6.0,
+        v55_orr_loss_weight: float = 0.01,
+        v55_orr_warmup_epochs: int = 0,
+        v55_orr_use_entropy_reg: bool = False,
         # v48 domain generalization (FiLM / conditional BN / GRL discriminator)
         use_v48_domain_generalization: bool = False,
         v48_dg_hidden: int = 64,
@@ -1123,6 +1140,29 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
             self.physical_space_calibration_v2_v54 = None
         self._v54_psc2_loss: Optional[torch.Tensor] = None
 
+        # Optional v55 outlier-robust reliability (identity at init).
+        self.use_v55_outlier_robust_reliability = use_v55_outlier_robust_reliability
+        self.v55_orr_loss_weight = v55_orr_loss_weight
+        self.v55_orr_warmup_epochs = v55_orr_warmup_epochs
+        if self.use_v55_outlier_robust_reliability:
+            self.outlier_robust_reliability_v55 = OutlierRobustReliabilityV55(
+                d=self.d,
+                n_views=n_views,
+                hidden=v55_orr_hidden,
+                n_layers=v55_orr_n_layers,
+                weight_type=v55_orr_weight_type,
+                use_geometry_bias=v55_orr_use_geometry_bias,
+                use_feature_bias=v55_orr_use_feature_bias,
+                identity_init=v55_orr_identity_init,
+                min_weight=v55_orr_min_weight,
+                cauchy_gamma_init=v55_orr_cauchy_gamma_init,
+                residual_gate_init=v55_orr_residual_gate_init,
+                use_entropy_reg=v55_orr_use_entropy_reg,
+            )
+        else:
+            self.outlier_robust_reliability_v55 = None
+        self._v55_orr_loss: Optional[torch.Tensor] = None
+
         # Optional v37 self-critique view reliability estimator (identity at init).
         self.use_self_critique_view_reliability_v37 = use_self_critique_view_reliability_v37
         self.v37_scvr_loss_weight = v37_scvr_loss_weight
@@ -1844,6 +1884,25 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
             )
             pred_3d_gn = pred_3d_gn_v25.view(B * T, J, 3)
 
+        # Optional v55 outlier-robust reliability pre-conditioning for v52.
+        orr_loss = torch.tensor(0.0, device=device, dtype=pred_3d_gn.dtype)
+        weights_orr_for_v52: Optional[torch.Tensor] = None
+        if (
+            self.use_v55_outlier_robust_reliability
+            and self.outlier_robust_reliability_v55 is not None
+        ):
+            weights_orr_for_v52, orr_loss = self.outlier_robust_reliability_v55(
+                features=feat.view(B, T, V, J, self.d),
+                points_2d=points_2d.view(B, T, V, J, 2),
+                K=K_corrected.view(B, T, V, 3, 3),
+                R=R.view(B, T, V, 3, 3),
+                t=t.view(B, T, V, 3),
+                pred_3d_init=pred_3d_gn.view(B, T, J, 3),
+                view_mask=view_mask_flat.view(B, T, V),
+                weights_init=None,
+            )
+            self._v55_orr_loss = orr_loss
+
         # Optional v52 uncertainty-weighted triangulation refinement.
         uwt_loss = torch.tensor(0.0, device=device, dtype=pred_3d_gn.dtype)
         uwt_weights_for_v53: Optional[torch.Tensor] = None
@@ -1860,6 +1919,7 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
                 pred_3d_init=pred_3d_gn.view(B, T, J, 3),
                 view_mask=view_mask_flat.view(B, T, V),
                 domain_id=domain_id,
+                weights_prior=weights_orr_for_v52,
             )
             pred_3d_gn = pred_3d_gn_uwt.view(B * T, J, 3)
             self._v52_uwt_loss = uwt_loss
@@ -2015,6 +2075,17 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
         # Epipolar consistency loss.
         epi_loss = self._epipolar_consistency_loss(points_2d, K_corrected, R, t, L)
         epi_loss = self.epipolar_loss_weight * epi_loss + self.v25_geom_loss_weight * geom_loss_v25
+        if (
+            self.use_v55_outlier_robust_reliability
+            and hasattr(self, "_v55_orr_loss")
+            and self._v55_orr_loss is not None
+        ):
+            v55_active = (
+                self.v55_orr_warmup_epochs <= 0
+                or self.epoch >= self.v55_orr_warmup_epochs
+            )
+            if v55_active:
+                epi_loss = epi_loss + self.v55_orr_loss_weight * self._v55_orr_loss
         if (
             self.use_v52_uncertainty_weighted_triangulation
             and hasattr(self, "_v52_uwt_loss")

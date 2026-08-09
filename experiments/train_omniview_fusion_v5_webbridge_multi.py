@@ -443,6 +443,25 @@ def build_model_from_args(
             }
         )
 
+    if getattr(args, "use_v55_outlier_robust_reliability", False):
+        model_kwargs.update(
+            {
+                "use_v55_outlier_robust_reliability": True,
+                "v55_orr_hidden": getattr(args, "v55_orr_hidden", 64),
+                "v55_orr_n_layers": getattr(args, "v55_orr_n_layers", 2),
+                "v55_orr_weight_type": getattr(args, "v55_orr_weight_type", "per_view_joint"),
+                "v55_orr_use_geometry_bias": getattr(args, "v55_orr_use_geometry_bias", True),
+                "v55_orr_use_feature_bias": getattr(args, "v55_orr_use_feature_bias", True),
+                "v55_orr_identity_init": getattr(args, "v55_orr_identity_init", True),
+                "v55_orr_min_weight": getattr(args, "v55_orr_min_weight", 0.05),
+                "v55_orr_cauchy_gamma_init": getattr(args, "v55_orr_cauchy_gamma_init", 1.0),
+                "v55_orr_residual_gate_init": getattr(args, "v55_orr_residual_gate_init", -6.0),
+                "v55_orr_loss_weight": getattr(args, "v55_orr_loss_weight", 0.01),
+                "v55_orr_warmup_epochs": getattr(args, "v55_orr_warmup_epochs", 0),
+                "v55_orr_use_entropy_reg": getattr(args, "v55_orr_use_entropy_reg", False),
+            }
+        )
+
     # v48 domain generalization kwargs are only passed when the flag is enabled
     # so the trainer can be imported/run on checkouts where the model has not
     # yet been wired for v48.

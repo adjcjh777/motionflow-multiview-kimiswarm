@@ -184,6 +184,7 @@ class UncertaintyWeightedTriangulationV52(nn.Module):
         pred_3d_init: torch.Tensor,
         view_mask: Optional[torch.Tensor] = None,
         domain_id: Optional[torch.Tensor] = None,
+        weights_prior: Optional[torch.Tensor] = None,
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         """Predict precision weights, re-triangulate, and refine.
 
@@ -197,6 +198,8 @@ class UncertaintyWeightedTriangulationV52(nn.Module):
             view_mask: optional (B, T, V) bool mask. True = view valid.
             domain_id: optional (B,) integer domain labels (unused but kept
                 for API compatibility).
+            weights_prior: optional (B, T, V, J) prior weights from an upstream
+                reliability module (e.g. v55 OR2).
 
         Returns:
             pred_3d: (B, T, J, 3) refined 3-D estimate.
@@ -223,6 +226,11 @@ class UncertaintyWeightedTriangulationV52(nn.Module):
         # Stable precision weights.
         weights = torch.sigmoid(log_precision / self.temperature)
         weights = weights.clamp(min=self.min_weight, max=1.0)
+
+        # Apply optional upstream reliability prior (e.g. v55 OR2).
+        if weights_prior is not None:
+            weights = weights * weights_prior
+            weights = weights.clamp(min=self.min_weight, max=1.0)
 
         # Apply view mask to zero out missing views.
         if view_mask is not None:
