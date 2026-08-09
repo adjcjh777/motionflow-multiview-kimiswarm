@@ -34,9 +34,9 @@ This file captures the current A800-D workflow, tmux conventions, and issue labe
 | v51 DAE on v46 | v46-SVG + Domain-Agnostic Ensemble of pose experts | A800-D | **Queued** in `launch_v33_a800_queue.py`; see issue #178 |
 | v51 DAE on v50 | v50 SEFH + Domain-Agnostic Ensemble of pose experts | A800-D | **Queued** after v50 SEFH results; see issue #178 |
 | v52 UWT on v50/v51 | v45/v46/v50/v51 + learnable uncertainty-weighted DLT triangulation | A800-D | **Queued** in `launch_v33_a800_queue.py`; see issue #182 |
-| v53 PSC on v52 | v45/v46/v50/v51/v52 + physical-space calibration (floor + bone + gated residual) | A800-D | **Smoke running** on GPU4; full run queued in `launch_v33_a800_queue.py`; see issue #183 |
-| v54 PSC-v2 on v53 | v45/v46/v50/v51/v52/v53 + skeleton-graph joint-level physical refiner | A800-D | **Smoke running** on GPU5; full run queued in `launch_v33_a800_queue.py`; see issue #184 |
-| v55 ORR on v54 | v53/v54 + outlier-robust Cauchy reliability head | A800-D | **Smoke running** on GPU6; full run queued in `launch_v33_a800_queue.py`; see issue #185 |
+| v53 PSC on v52 | v45/v46/v50/v51/v52 + physical-space calibration (floor + bone + gated residual) | A800-D | **Smoke promising** (tiny 102.56 mm; local medium epoch-1 48.24 mm vs v52 60.09 mm); full run queued in `launch_v33_a800_queue.py`; see issue #183 |
+| v54 PSC-v2 on v53 | v45/v46/v50/v51/v52/v53 + skeleton-graph joint-level physical refiner | A800-D | **Dropped** after smoke showed no gain; full run removed from queue; see issue #184 |
+| v55 ORR on v54 | v53/v54 + outlier-robust Cauchy reliability head | A800-D | **Dropped** after smoke showed no gain / instability; full run removed from queue; see issue #185 |
 | v52 scale v45/v46 | v45-AGF + v46-SVG scaled (d=128, 10k samples, 10 epochs) | A800-D | **Queued** in `launch_v33_a800_queue.py`; see issue #179 |
 
 ## Local RTX 4090 status snapshot
@@ -54,10 +54,10 @@ This file captures the current A800-D workflow, tmux conventions, and issue labe
 | v50 design swarm | 20-agent design of next module | Done; top-1 = Self-Evolution Feedback Head (issue #176) |
 | v50 SEFH smoke | v46-SVG + Self-Evolution Feedback Head | Ready; smoke script added; run after v46/v47/v48 chain |
 | v51 DAE smoke | v46-SVG + Domain-Agnostic Ensemble of pose experts | **Done**; best val_MPJPE 35.29 mm (vs v46 32.97 mm); needs tuning; see issue #178 |
-| v52 UWT smoke | v45/v46/v50/v51 + learnable uncertainty-weighted DLT triangulation | **Done**; tiny smoke 102.70 mm; medium smoke in progress (epoch 2/5); see issue #182 |
-| v53 PSC smoke | v45/v46/v50/v51/v52 + physical-space calibration (floor + bone + gated residual) | **Fixed NaN root cause** (`sqrt(weights).clamp` -> `clamp().sqrt()`); A800 tiny smoke running on GPU4; local RTX 4090 medium run epoch-1 val_MPJPE **48.24 mm** (v52 medium best 60.09 mm); see issue #183 |
-| v54 PSC-v2 smoke | v45/v46/v50/v51/v52/v53 + skeleton-graph joint-level physical refiner | A800 tiny smoke running on GPU5; previous local tiny smoke **100.88 mm** (worse than v52 78.68 mm); ablation matrix script added; see issue #184 |
-| v55 ORR smoke | v53/v54 + outlier-robust Cauchy reliability head before UWT | A800 tiny smoke running on GPU6 after fixing stale launch against old code; see issue #185 |
+| v52 UWT smoke | v45/v46/v50/v51 + learnable uncertainty-weighted DLT triangulation | **Done**; tiny smoke best 78.68 mm; medium best 60.09 mm; see issue #182 |
+| v53 PSC smoke | v45/v46/v50/v51/v52 + physical-space calibration (floor + bone + gated residual) | **Fixed NaN root cause** (`sqrt(weights).clamp` -> `clamp().sqrt()`); A800 tiny smoke epoch-1 102.56 mm; local tiny smoke best 78.76 mm; local RTX 4090 medium run epoch-1 val_MPJPE **48.24 mm** (v52 medium best 60.09 mm); see issue #183 |
+| v54 PSC-v2 smoke | v45/v46/v50/v51/v52/v53 + skeleton-graph joint-level physical refiner | **Dropped**; A800/Local tiny smoke ~103 mm (worse than v52 78.68 mm); not beneficial; see issue #184 |
+| v55 ORR smoke | v53/v54 + outlier-robust Cauchy reliability head before UWT | **Dropped**; local tiny smoke best 98.11 mm, A800 epoch-2 loss exploded; not beneficial; see issue #185 |
 
 ### Historical / detailed local run log
 
