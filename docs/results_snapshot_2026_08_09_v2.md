@@ -12,7 +12,7 @@ Snapshot time: 2026-08-09 (active).
 | v50 SEFH smoke | queued | — | will run after v46/v47/v48 chain |
 | v51 DAE smoke | done | epoch 1: 35.29 mm (best) | epoch 2 overfit to 158.55 mm; fast smoke (100 samples/1 epoch) 103.64 mm |
 | v52 scale v45/v46 smoke | done | epoch 1: 34.89 mm (best) | epoch 2 overfit to 148.92 mm; fast reg check (500s/1ep) 104.13 mm; A800 full run queued; smoke YAML added |
-| v46-SVG medium local | 5 | — | 5k samples/5 epochs on RTX 4090; relaunched with nohup/watchdog (PID 31539); step 2200 loss ~6.03, first validation pending |
+| v46-SVG medium local (fast) | 5 | — | 1k samples/seq (29k clips total), 5 epochs on RTX 4090; relaunched with nohup/watchdog (PID 32003); first validation pending |
 
 ## A800-D full runs
 
