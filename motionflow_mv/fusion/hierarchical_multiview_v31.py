@@ -357,6 +357,8 @@ class HierarchicalViewEncoderV31(nn.Module):
         # Optional ray-conditioned token bias.
         if self.use_ray_attention and points_2d is not None and K is not None and R is not None and t is not None:
             centre, direction = compute_rays(points_2d, K, R, t)
+            if centre.dim() == 4:
+                centre = centre.unsqueeze(3).expand(-1, -1, -1, J, -1)
             ray_input = torch.cat([centre, direction], dim=-1)  # (B, T, V, J, 6)
             ray_emb = self.ray_proj(ray_input) * self.ray_gate  # (B, T, V, J, d)
             tokens = tokens + ray_emb
