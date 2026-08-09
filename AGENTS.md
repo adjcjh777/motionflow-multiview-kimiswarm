@@ -7,10 +7,10 @@ This file captures the current A800-D workflow, tmux conventions, and issue labe
 | Run | Description | GPU | Status |
 |-----|-------------|-----|--------|
 | v25 geometry fusion full | v18 + geometry fusion (full WebBridge/H36M/MPI) | GPU4 (historical) | **Best val_MPJPE 17.17 mm**; still the strongest known baseline |
-| v25 all-train baseline | v25 on expanded WebBridge all-train mixed (1333 train / 156 val) | — | **Queued** — priority #1 in `launch_v33_a800_queue.py` |
-| v25 + physical + domain | v25 + v40 skeleton-aware physical loss + v41 domain weights | — | **Queued** — priority #2 |
-| v42 v36+physical+domain | v36 UGIGR + v40 physical loss + v41 domain weights (no v37) | — | **Queued** — priority #3; local epoch-1 26.16 mm (d=64) |
-| v43 adaptive per-node residual base | v42 + residual scaled by per-node uncertainty gate | — | **Queued** — priority #4 |
+| v25 all-train baseline | v25 on expanded WebBridge all-train mixed (1333 train / 156 val) | GPU6 | **Running** — launched after GPU6 freed ~35 GiB |
+| v25 + physical + domain | v25 + v40 skeleton-aware physical loss + v41 domain weights | GPU6 | **Running** — launched after GPU6 freed ~35 GiB |
+| v42 v36+physical+domain | v36 UGIGR + v40 physical loss + v41 domain weights (no v37) | GPU6 | **Running** — launched after GPU6 freed ~35 GiB; local epoch-1 26.16 mm (d=64) |
+| v43 adaptive per-node residual base | v42 + residual scaled by per-node uncertainty gate | GPU6 | **Running** — launched after GPU6 freed ~35 GiB |
 | v43 adaptive per-node residual scaled | v43 with d=128 / 10k samples | — | **Queued** |
 | v43 adaptive per-node residual all-train | v43 on full WebBridge all-train mixed | — | **Queued** |
 | v31 top-5 A800 | domain_balanced, physical_floor, hierarchical_more_dropout, outlier, geometry_attention | GPUs 4-7 | Completed / stopped to free GPUs for v33/v34 queue |

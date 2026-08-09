@@ -5,7 +5,7 @@
 - **Log source:** `outputs/v33_a800_queue.log`
 - **Latest status line:** ~line 259 of 286
 - **Recorded time:** `Sun Aug  9 08:16:37 2026` (poller restart)
-- **State:** GPUs 4-7 are at 100% utilization running MotionFlow jobs. GPUs 0-3 are idle in SM but hold ~76 GiB memory each (VLLM::Worker_TP processes), leaving no A800 GPU with >= 30 GiB free. The poller is stalled until one of the MotionFlow jobs on GPUs 4-7 finishes and frees memory.
+- **State:** GPUs 0-3 still held by VLLM. GPU 6 freed up ~35 GiB and the poller launched the priority comparison runs: `v25_geometry_fusion_all_train_baseline`, `v25_geometry_fusion_all_train_plus_physical_domain`, `v42_v36_physical_domain_no_v37`, `v43_adaptive_node_residual_on_v42`. GPUs 4-5-7 remain 100% busy.
 
 ## Currently Running Jobs (20 total)
 
@@ -57,7 +57,6 @@
 
 ## Notes
 
-- GPUs 4, 5, 6, and 7 are occupied; no launches have completed since the latest `Already-running runs names` dump.
-- The remaining `v31_top5_*` runs (e.g., `v31_domain_balanced`, `v31_hierarchical_more_dropout`, `v31_geometry_attention`) appear to have finished, while `v31_physical_floor_only` and `v31_top5_v31_outlier_view_adaptive` are still active.
-- Recent additions to the queue include `v42_*`, `v43_*`, and `v25_geometry_fusion_all_train_*` baselines.
-- The log ends with repeated `No GPU with >= 30000 MiB free; sleeping 60s`, so the queue is stalled until one of the running jobs frees a GPU.
+- GPU 6 freed ~35 GiB; the poller launched the four priority comparison runs on GPU 6.
+- `v45_adaptive_geometry_fusion_all_train` remains queued behind the priority runs.
+- The log now reports `No GPU with >= 30000 MiB free` again after launching on GPU 6.
