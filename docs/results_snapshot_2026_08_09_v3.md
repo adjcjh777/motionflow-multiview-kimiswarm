@@ -33,6 +33,13 @@ Snapshot time: 2026-08-09 (active).
 | Run | Epochs | Best val_MPJPE | Notes |
 |-----|--------|----------------|-------|
 | v52 UWT tiny smoke (v50/v51 losses disabled) | 2 | **102.70 mm** | Identity-at-init; training and validation complete without NaN/OOM; comparable to v51 tiny smoke (104.51 mm) |
+| v52 UWT medium smoke 200 clips (v50/v51 losses disabled) | TBD | **TBD** | Running on RTX 4090 (background task); see `outputs/omniview_fusion_v52_uwt_medium_local_4090.log` |
+
+## v53 Physical-Space Calibration status
+
+| Run | Epochs | Best val_MPJPE | Notes |
+|-----|--------|----------------|-------|
+| v53 PSC tiny smoke (v50/v51 losses disabled) | TBD | **TBD** | Module implemented and wired; unit tests pass (4/4); smoke queued behind v52 medium smoke |
 
 ## Key findings (v52)
 
