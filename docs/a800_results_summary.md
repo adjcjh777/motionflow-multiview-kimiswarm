@@ -62,3 +62,4 @@ Read-only summary extracted from `/mnt/nvme0n1p1/zhangzy/motionflow-multiview-ki
 1. The v25 geometry-fusion baseline is stronger than many later stacks. We should consider whether the complexity added after v25 is justified.
 2. If v36/v42/v43 do not beat v25 full (~17 mm) on A800, we may need to either (a) return to a v25-based stack and add only high-ROI components, or (b) increase model/data scale.
 3. WebBridge mixed training and full A800 runs are needed before drawing firm conclusions; local RTX 4090 results may not translate directly.
+4. The best A800 run (v25 full) reached its best value at **epoch 1** and then overfit (17.17 mm -> 59.14 mm). This suggests heavy overfitting is a systemic issue. Future runs should prioritize epoch-1 validation and strong regularization/early stopping.
