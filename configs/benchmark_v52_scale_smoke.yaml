@@ -1,0 +1,113 @@
+# configs/benchmark_v52_scale_smoke.yaml
+#
+# Smoke-test configuration for the v52 "Scale v45-AGF + v46-SVG" variant.
+# This mirrors the A800 full-run stack but at a small local scale so it can be
+# validated quickly on the RTX 4090 before committing GPU resources.
+
+name: v52_scale_v45_v46_smoke
+variant: v52-Scale
+variant_id: 52
+description: >
+  Smoke test for v52: the same v45-AGF + v46-SVG stack that will be scaled on
+  A800 (d=128, n_st_layers=3, 10k samples), but at d=64 / 2 epochs / 1k samples
+  for fast local validation.
+
+manifest: configs/splits/webbridge_h36m_mpi_mixed_train_val.yaml
+script: experiments/train_omniview_fusion_v5_webbridge_multi.py
+
+training:
+  d: 64
+  residual_hidden: 128
+  n_st_layers: 2
+  graph_num_layers: 1
+  n_joint_layers: 1
+  n_heads: 4
+
+  clip_len: 9
+  epochs: 2
+  batch_size: 8
+  train_samples: 1000
+  val_stride: 10
+  num_workers: 0
+
+  lr: 1.0e-3
+  lr_cosine: true
+  lr_warmup_epochs: 1
+  lr_min: 1.0e-6
+  max_grad_norm: 1.0
+  ema_decay: 0.999
+  early_stopping_patience: 2
+  early_stopping_min_delta: 0.001
+
+  use_full_precision_dlt: true
+  use_robust_dlt_reweight: true
+  use_irls_reweight: true
+  use_domain_embedding: true
+  use_multiscale_fusion: true
+  use_camera_conditioning: true
+  use_epipolar_bias: true
+  use_context_visibility: true
+  use_skeleton_residual: true
+  use_rotation_correction: true
+  use_entropy_regularization: true
+  attention_entropy_weight: 0.01
+  use_camera_view_embedding: true
+  use_set_view_aggregator: true
+  use_deformable_cross_view_attention_v18: true
+
+  use_multiview_geometry_fusion_v25: true
+  v25_geom_loss_weight: 0.1
+  v25_dropout: 0.2
+  v25_use_geometry_attention: true
+  v25_use_learned_depth_triangulation: true
+  v25_use_geometry_bundle_adjustment: true
+
+  use_hierarchical_multiview_v30: true
+  v30_n_part_layers: 2
+  v30_stochastic_depth_prob: 0.1
+
+  use_v45_adaptive_geometry_fusion: true
+  v45_adaptive_weight_type: per_view_joint
+  v45_adaptive_weight_hidden: 32
+  v45_adaptive_weight_n_layers: 1
+
+  use_v46_sparse_view_generalization: true
+  v46_svg_view_dropout_prob: 0.3
+  v46_svg_min_views: 2
+  v46_svg_hidden: 64
+  v46_svg_use_curriculum: true
+
+  pa_loss_weight: 0.5
+  monotonic_loss_weight: 0.1
+  monotonic_margin: 5.0
+  reproj_loss_weight: 0.1
+  reproj_warmup_epochs: 1
+  aleatoric_reproj_loss_weight: 0.1
+
+  use_variable_view_training: true
+  variable_view_min_views: 2
+  variable_view_max_views: 8
+  variable_view_max_views_start: 4
+  variable_view_curriculum_alpha: 2.0
+  variable_view_permute: true
+  outlier_view_prob: 0.3
+  outlier_view_max_views: 1
+  outlier_view_offset_std: 10.0
+  outlier_view_noise_std: 15.0
+
+safety:
+  use_test_time_self_evolution_v27: false
+  use_test_time_self_evolution_v29: false
+
+  target_hardware: local_rtx_4090_smoke
+
+output:
+  checkpoint: outputs/v52_scale_v45_v46_smoke_local_4090.pth
+  log: outputs/v52_scale_v45_v46_smoke_local_4090.log
+
+notes:
+  - Local smoke for the same stack as the A800 v52 scale-up.
+  - A800 full run uses d=128, n_st_layers=3, batch_size=16, clip_len=13,
+    train_samples=10000, epochs=10, and the expanded WebBridge manifest.
+  - If this local smoke overfits by epoch 2, the A800 run needs stronger
+    regularisation before launch.
