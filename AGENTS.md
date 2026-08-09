@@ -46,7 +46,7 @@ This file captures the current A800-D workflow, tmux conventions, and issue labe
 | v49 ablation matrix | v45/v46/v47/v48/v49-Lite 2-epoch comparison | Ready; waiting for GPU |
 | v50 design swarm | 20-agent design of next module | Done; top-1 = Self-Evolution Feedback Head (issue #176) |
 | v50 SEFH smoke | v46-SVG + Self-Evolution Feedback Head | Ready; smoke script added; run after v46/v47/v48 chain |
-| v51 DAE smoke | v46-SVG + Domain-Agnostic Ensemble of pose experts | Ready; smoke script added; run after v49 ablation / v50 SEFH smoke; see issue #178 |
+| v51 DAE smoke | v46-SVG + Domain-Agnostic Ensemble of pose experts | **Running** since 2026-08-09 15:35; loss 7.16 at step 850; see issue #178 |
 
 ### Historical / detailed local run log
 
