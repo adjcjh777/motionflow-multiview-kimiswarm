@@ -149,6 +149,13 @@ def _pad_per_frame_cameras(
     -------
     Padded arrays with shape ``(T, max_views, ...)``.
     """
+    # 3DPW actual-mode files sometimes store a single moving camera without a
+    # view dimension: (T, 3, 3) / (T, 3).  Add the view axis when needed.
+    if camera_K_frames.ndim == 3:
+        camera_K_frames = camera_K_frames[:, None, :, :]
+        camera_R_frames = camera_R_frames[:, None, :, :]
+        camera_t_frames = camera_t_frames[:, None, :]
+
     T, src_v = camera_K_frames.shape[:2]
     if src_v > max_views:
         raise ValueError(f"{src_v} views exceeds MAX_VIEWS={max_views}")
