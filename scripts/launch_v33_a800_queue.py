@@ -228,6 +228,20 @@ RUNS = [
         "--d 128 --residual_hidden 256 --n_st_layers 3 --batch_size 16 --clip_len 13 --train_samples 10000 --epochs 5 --early_stopping_patience 3 --early_stopping_min_delta 0.001 --weight_decay 1e-4",
         "omniview_fusion_v53_physical_space_calibration_on_v52_a800",
     ),
+    # v57 domain-conditional physical-space calibration on top of v45/v46/v50/v51/v52.
+    (
+        "v57_domain_conditional_psc_on_v52",
+        "--mixed_manifest configs/splits/webbridge_h36m_mpi_mixed_train_val_expanded.yaml "
+        "--use_multiview_geometry_fusion_v25 --v25_use_geometry_attention --v25_use_learned_depth_triangulation --v25_use_geometry_bundle_adjustment "
+        "--use_v45_adaptive_geometry_fusion --v45_adaptive_weight_type per_view_joint --v45_adaptive_weight_hidden 32 --v45_adaptive_weight_n_layers 1 "
+        "--use_v46_sparse_view_generalization --v46_svg_view_dropout_prob 0.3 --v46_svg_min_views 2 --v46_svg_hidden 64 --v46_svg_use_curriculum "
+        "--use_v50_self_evolution_feedback_head --v50_sefh_hidden 64 --v50_sefh_num_layers 2 --v50_sefh_loss_weight 0.0 --v50_sefh_aleatoric_weight 0.0 "
+        "--use_v51_cross_domain_sparse_view_reliability --v51_cdsvr_hidden 64 --v51_cdsvr_num_heads 4 --v51_cdsvr_dropout 0.1 --v51_cdsvr_loss_weight 0.0 "
+        "--use_v52_uncertainty_weighted_triangulation --v52_uwt_hidden 64 --v52_uwt_n_layers 2 --v52_uwt_weight_type per_view_joint --v52_uwt_loss_weight 0.01 "
+        "--use_v57_domain_conditional_psc --v57_dcpsc_hidden 64 --v57_dcpsc_n_layers 2 --v57_dcpsc_num_domains 8 --v57_dcpsc_identity_init --v57_dcpsc_residual_gate_init -6.0 --v57_dcpsc_use_floor --v57_dcpsc_use_bone_scale --v57_dcpsc_use_uwt_weights --v57_dcpsc_loss_weight 0.1 --v57_dcpsc_floor_weight 0.01 --v57_dcpsc_bone_weight 0.1 --v57_dcpsc_reproj_weight 0.1 --v57_dcpsc_warmup_epochs 1 --v57_dcpsc_min_visible_views 2 "
+        "--d 128 --residual_hidden 256 --n_st_layers 3 --batch_size 16 --clip_len 13 --train_samples 10000 --epochs 5 --early_stopping_patience 3 --early_stopping_min_delta 0.001 --weight_decay 1e-4",
+        "omniview_fusion_v57_domain_conditional_psc_on_v52_a800",
+    ),
     # v54/v55: dropped after smoke tests showed no benefit (and v55 unstable).
     # Legacy v42/v43 ablations (queued after the new v45-v49 stack).
     (
