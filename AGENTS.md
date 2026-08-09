@@ -57,7 +57,7 @@ This file captures the current A800-D workflow, tmux conventions, and issue labe
 | v34 HMSP + geometry-aware VJGN stack | v33 HMSP + v34 geometry-aware VJGN together | local 4090 | Full local run reached epoch 1 val_MPJPE=25.50mm; A800 queued |
 | v35 temporal view-joint graph network | v34 VJGN + temporal edges across frames | RTX 4090 | Smoke passed (clip_len=3, d=32); full local run at step ~2000, loss ~7.3, no val yet |
 | v35 A800 queue | v35 TVJGN on top of v34 VJGN / geometry-aware VJGN | A800-D | Added to launch_v33_a800_queue.py; poller restarted; base v34 VJGN selected after quick ablation |
-| v36 uncertainty-gated iterative graph refinement | v35 TVJGN + per-node uncertainty gating + iterative refinement; self-evolving fusion | merged | Smoke passed (clip_len=3, d=32, 10 samples): val_MPJPE 100.47mm; PR #145 merged; added to A800 queue; full local run script ready, waiting for GPU |
+| v36 uncertainty-gated iterative graph refinement | v35 TVJGN + per-node uncertainty gating + iterative refinement; self-evolving fusion | merged | Smoke passed (clip_len=3, d=32, 10 samples): val_MPJPE 100.47mm; PR #145 merged; A800 queue includes on-v34-vjgn, on-v35-tvjgn, on-v34-hmsp-geometry-vjgn, and n_iters=1 ablation; full local run script ready, waiting for GPU |
 | v33 HMSP A800 | full scale after v31 top-5 | A800-D | Queued in v33 A800 queue |
 | v32/v33/v34 A800 queue | v31_physical_floor_only, v32 x5, v33 x4, v34 x2, HMSP stacks | A800-D | Poller updated to co-locate runs when GPU memory >= 30 GiB; v31_physical_floor_only launched on GPU5, v32_domain_aware on GPU4; v34/v35/v36 entries also queued |
 | GitHub issues/PRs | Use API token from git remote URL | active | Issues/PRs created and merged via curl/GitHub API |
