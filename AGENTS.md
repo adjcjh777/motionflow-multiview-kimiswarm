@@ -6,15 +6,29 @@ This file captures the current A800-D workflow, tmux conventions, and issue labe
 
 | Run | Description | GPU | Status |
 |-----|-------------|-----|--------|
-| v25 full | v18 + geometry fusion (full WebBridge/H36M/MPI) | GPU4 | Running |
-| v25 small | v18 + geometry fusion (small subset) | GPU7 | Epoch 1 18.31 mm (best), epoch 3 66.56 mm; early stopping likely triggered; shared GPU7 with v11 fullscale |
-| v25 ablation | v18 + geometry fusion with `geom_loss_weight=1.0` | GPU6 | Running |
-| v18 | v18 deformable attention baseline | GPU5 | Running (legacy baseline) |
-| v11 fullscale | IRLS full-scale baseline | GPU7 | Running; shared GPU7 with v25 small |
-| v26 small | v18 + temporal geometry fusion | — | Prepared; blocked until a GPU frees |
-| v21 | neural BA | — | Stopped; regressed to 128.27 mm |
+| v25 geometry fusion full | v18 + geometry fusion (full WebBridge/H36M/MPI) | GPU4 (historical) | **Best val_MPJPE 17.17 mm**; still the strongest known baseline |
+| v25 all-train baseline | v25 on expanded WebBridge all-train mixed (1333 train / 156 val) | — | **Queued** — priority #1 in `launch_v33_a800_queue.py` |
+| v25 + physical + domain | v25 + v40 skeleton-aware physical loss + v41 domain weights | — | **Queued** — priority #2 |
+| v42 v36+physical+domain | v36 UGIGR + v40 physical loss + v41 domain weights (no v37) | — | **Queued** — priority #3; local epoch-1 26.16 mm (d=64) |
+| v43 adaptive per-node residual base | v42 + residual scaled by per-node uncertainty gate | — | **Queued** — priority #4 |
+| v43 adaptive per-node residual scaled | v43 with d=128 / 10k samples | — | **Queued** |
+| v43 adaptive per-node residual all-train | v43 on full WebBridge all-train mixed | — | **Queued** |
+| v31 top-5 A800 | domain_balanced, physical_floor, hierarchical_more_dropout, outlier, geometry_attention | GPUs 4-7 | Completed / stopped to free GPUs for v33/v34 queue |
+| v32/v33/v34/v35/v36/v37/v38/v39/v40/v41 queue | Complex-stack variants (TCR, ray attention, UGIGR, SCVR, etc.) | — | Queued behind the v25/v42/v43 priority runs |
+| v44 edge-type-aware uncertainty gating | v43 + learned per-edge-type temperature for the v36 source gate | — | Smoke passed; full run on hold pending A800 v25/v42/v43 results |
 
 ## Local RTX 4090 status snapshot
+
+### Current local runs (2026-08-09)
+
+| Run | Description | Status |
+|-----|-------------|--------|
+| v43 adaptive per-node residual | v42 + scale v36 UGIGR residual by per-node uncertainty gate | Running; ~step 3600, loss 6.38, no epoch-1 val yet |
+| v42 v36+physical+domain (no v37) | v36 + v40 physical loss + v41 domain weights | Killed after step ~1700; epoch 1 val_MPJPE 26.16 mm (d=64, old manifest) |
+| v44 edge-type-aware uncertainty gating | v43 + learned per-edge-type temperature for the v36 source gate | Smoke passed; full branch decision pending A800 results |
+| v25 + physical + domain | v25 geometry fusion + v40 physical loss + v41 domain weights | Epoch 1 val_MPJPE 27.71 mm (d=64); worse than v42 local 26.16 mm |
+
+### Historical / detailed local run log
 
 | Run | Description | Status |
 |-----|-------------|--------|
@@ -89,6 +103,24 @@ This file captures the current A800-D workflow, tmux conventions, and issue labe
 - **Access rule:** A800-D code is synced from the local repo via `git archive` + `scp` because GitHub HTTPS access from A800 is intermittent. The poller (`scripts/launch_v33_a800_queue.py`) archives the local tracked files and extracts them on A800 before launching runs.
 - **Local repo:** `D:\WSL_workspace\about_eassys\motionflow-multivie-kimiswarm`
 - **Hardware:** local WSL + RTX 4090 for smoke tests and fast iterations; A800-D for full runs.
+
+## Next steps and v44 decision plan
+
+Snapshot date: 2026-08-09.
+
+The v44 architecture will be chosen conditionally once the priority A800 runs finish:
+
+1. Wait for A800 results from the priority queue: `v25 all-train baseline`, `v25 + physical + domain`, `v42`, and `v43` variants.
+2. Compare epoch-1 val_MPJPE against the v25 baseline (~17 mm on A800; local v42/v43 ~26 mm).
+3. Choose a branch (see `docs/v44_decision_plan.md` for full details):
+   - **Branch A (v25 wins / most likely as of 2026-08-09):** v44 = v25 + selective additions (physical loss + domain weights; then possibly outlier/variable-view augmentation).
+   - **Branch B (v42 beats v25):** Keep the v31-v36 stack and add stronger regularization (higher weight decay, dropout, stochastic depth, SWA/EMA).
+   - **Branch C (v43 beats v42):** Keep the adaptive per-node residual and explore edge-type-aware gating.
+   - **Branch D (capacity/data wins):** Scale the winning architecture (d=128, n_st_layers=3, batch_size=16, clip_len=13, train_samples=10000).
+4. Update `docs/results_snapshot_2026_08_09.md` with the A800 numbers.
+5. Run v44 smoke on the local RTX 4090, then queue a full A800 run.
+
+No new GPU training should start until the A800 priority queue results are in and the branch is chosen.
 
 ## A800 workflow
 
