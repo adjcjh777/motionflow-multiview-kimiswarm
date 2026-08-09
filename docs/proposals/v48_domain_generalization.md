@@ -1,8 +1,8 @@
 # v48: Domain Generalization and 3DPW Integration
 
-**Status:** Proposal / ready for design review  
+**Status:** Implementation in progress  
 **Labels:** `experiment`, `P1-next`  
-**Tracking issue:** #162 (depends on v47-temporal)  
+**Tracking issue:** #164 (depends on v47-temporal #162)
 
 ## Motivation
 
@@ -181,3 +181,155 @@ v48 supports the claim: *Our model generalizes across camera rigs, frame rates, 
 3. Add `DomainInvariantSparseViewV48` and DDWL to the v47 trainer.
 4. Smoke on RTX 4090 and compare per-domain MPJPE@k with v47.
 5. Queue full A800 run starting from the best v47 checkpoint.
+
+---
+
+# User Guide: Enabling v48 Domain Generalization and 3DPW Actual-Mode Evaluation
+
+## Quick Start
+
+1. **Ensure you are on the `v48-domain` branch and that v46-SVG and v47-temporal are already enabled.**
+2. **Run the smoke test locally once the v48 code is wired:**
+   ```bash
+   bash scripts/run_v48_domain_smoke_local_4090.sh
+   ```
+3. **To enable in a custom run, add to your YAML config or CLI:**
+   ```yaml
+   model:
+     use_v48_domain_generalization: true
+     v48_dg_hidden: 64
+     v48_dg_grl_lambda: 0.1
+     v48_dg_use_domain_film: true
+     v48_dg_use_ddwl: true
+     v48_dg_ddwl_temperature: 2.0
+     v48_dg_ddwl_warmup_epochs: 1
+     v48_3dpw_actual_val_paths: null
+     v48_dropout_per_domain:
+       "0": 0.30
+       "1": 0.30
+       "5": 0.15
+   ```
+
+## Enabling in Training
+
+### YAML Configuration
+
+A minimal v48-enabled YAML snippet builds on the v47 smoke config and adds the domain-generalization block:
+
+```yaml
+model:
+  # v46 / v47 base flags are required and unchanged.
+  use_v46_sparse_view_generalization: true
+  use_v47_temporal_aggregation: true
+
+  # v48 domain generalization
+  use_v48_domain_generalization: true
+  v48_dg_hidden: 64
+  v48_dg_grl_lambda: 0.1
+  v48_dg_use_domain_film: true
+  v48_dg_use_ddwl: true
+  v48_dg_ddwl_temperature: 2.0
+  v48_dg_ddwl_warmup_epochs: 1
+
+  # Optional: per-domain view dropout schedule.
+  v48_dropout_per_domain:
+    "0": 0.30   # H36M / MPI-style studio multi-view
+    "1": 0.30   # MPI-INF-3DHP
+    "5": 0.15   # 3DPW in-the-wild (gentler dropout)
+
+  # Optional: list of 3DPW `actual` .npz files for real moving-camera validation.
+  v48_3dpw_actual_val_paths: null
+
+training:
+  # Existing v46/v47 training settings remain unchanged.
+  # Typical warm-start recipe: freeze v25/v45/v46/v47 for 1 epoch,
+  # then unfreeze and continue with the mixed manifest.
+```
+
+### CLI Override
+
+```bash
+python experiments/train_omniview_fusion_v5_webbridge_multi.py \
+  --config configs/benchmark_v48_domain_smoke.yaml \
+  --use_v48_domain_generalization \
+  --v48_dg_hidden 64 \
+  --v48_dg_grl_lambda 0.1 \
+  --v48_dg_use_domain_film \
+  --v48_dg_use_ddwl \
+  --v48_dg_ddwl_temperature 2.0 \
+  --v48_dg_ddwl_warmup_epochs 1
+```
+
+## Running Evaluation
+
+### Per-dataset MPJPE on standard val splits
+
+After training, evaluate the checkpoint on each domain separately:
+
+```bash
+python experiments/eval_variable_views.py \
+  --checkpoint outputs/omniview_fusion_v48_domain_smoke_local_4090.pth \
+  --config configs/benchmark_v48_domain_smoke.yaml \
+  --view_subsets 1,2,3,4,full \
+  --per_domain \
+  --out outputs/v48_domain_eval.json
+```
+
+The output JSON contains `MPJPE@k` per domain plus the cross-domain gap.
+
+### 3DPW `actual`-mode monocular benchmark
+
+To enable the real moving-camera benchmark, point `v48_3dpw_actual_val_paths` at the 3DPW `actual` validation `.npz` files and run:
+
+```bash
+python experiments/eval_variable_views.py \
+  --checkpoint outputs/omniview_fusion_v48_domain_smoke_local_4090.pth \
+  --config configs/benchmark_v48_domain_smoke.yaml \
+  --view_subsets 1 \
+  --eval_3dpw_actual \
+  --out outputs/v48_3dpw_actual_eval.json
+```
+
+`MPJPE@1` on the 3DPW `actual` split is the primary in-the-wild metric.
+
+## Interpreting Results
+
+- **`MPJPE@full` (studio domains)**: Should be within ~1 mm of the v47 baseline at full views.
+- **`MPJPE@1` (3DPW actual)**: Should be finite and lower than a v47 baseline run on the same actual-mode data.
+- **`domain_gap`**: The maximum difference in `MPJPE@full` across the studio domains and 3DPW pseudo. v48 targets a ≥20% reduction versus v47.
+- **`domain_discriminator_acc`**: Should stay near chance (`[0.45, 0.55]`) after convergence, confirming that the adapter is producing domain-invariant features.
+- **`MPJPE@2` / `MPJPE@3` (studio)**: Should remain comparable to v47; the goal is no regression at sparse views while improving cross-domain transfer.
+
+## When to Use v48
+
+Use v48 when:
+
+- You need a single checkpoint that works across both studio multi-view (H36M, MPI-INF-3DHP, AIST++) and in-the-wild monocular (3DPW) data.
+- You have 3DPW data available in either `pseudo` (synthetic 4-view) or `actual` (real moving-camera) mode.
+- You already have a strong v46/v47 checkpoint and want to add domain-invariant refinement without changing the backbone.
+
+Do not use v48 if:
+
+- You only train and evaluate on a single studio domain (v46/v47 is sufficient).
+- 3DPW data is not available and no cross-domain generalization is needed.
+- You cannot afford the extra memory / compute from the gradient-reversal and DDWL losses.
+
+## Common Issues
+
+| Symptom | Cause | Fix |
+|---------|-------|-----|
+| `NaN` during training | `v48_dg_grl_lambda` too high, or DDWL weights exploded. | Lower `v48_dg_grl_lambda` to `0.01`, increase `v48_dg_ddwl_warmup_epochs`, or reduce the learning rate. |
+| 3DPW `actual` eval fails | `v48_3dpw_actual_val_paths` is `null` or points at `pseudo` files. | Check that the paths are real 3DPW `actual` `.npz` files with `V=1` and per-frame camera poses. |
+| No cross-domain improvement | Domain labels are missing or all samples map to the same domain id. | Verify the manifest provides `dataset_id` (0=H36M, 1=MPI, 5=3DPW, ...). |
+| Over-smoothing on 3DPW fast motion | v47 temporal window too wide for in-the-wild framerates. | Set `v47_temporal_window: 7` or use a domain-conditional window once implemented. |
+| v48 flags ignored | `use_v48_domain_generalization` is true but v46/v47 are not enabled. | Ensure both `use_v46_sparse_view_generalization` and `use_v47_temporal_aggregation` are set. |
+
+## See Also
+
+- Issue #164 — v48 tracking
+- Issue #162 — v47-temporal dependency
+- Issue #160 — v46-SVG dependency
+- `docs/swarm_iter25_action_plan.md` — full agent task list
+- `motionflow_mv/fusion/domain_adapter_v48.py` — domain adapter module
+- `motionflow_mv/fusion/temporal_aggregation_v47.py` — v47 base module
+- `motionflow_mv/data/webbridge_mixed_dataset.py` — mixed loader with 3DPW support
