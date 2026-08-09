@@ -48,7 +48,7 @@ COMMON_FLAGS = (
 RUNS = [
     # Pending v31 ablation.
     (
-        "v31_physical_floor_only",
+        "physical_floor_only",
         "--use_hierarchical_multiview_v30 --use_physical_space_temporal_loss_v29 --v29_floor_loss_weight 0.01 --v29_bone_temporal_weight 0.0 --v29_com_jitter_weight 0.0 --v29_physical_loss_warmup_epochs 3",
         "omniview_fusion_v31_physical_floor_only_a800",
     ),
@@ -267,7 +267,7 @@ def used_gpus_from_tmux() -> set[int]:
         return gpus
     for line in out.splitlines():
         # v31_top5_<name>_gpuN, v32_<name>_gpuN, or v33_<name>_gpuN
-        match = re.search(r"(?:v31_top5|v32|v33|v34|v35|v36)_(.+)_gpu(\d+):", line)
+        match = re.search(r"(?:v31_top5|v31|v32|v33|v34|v35|v36)_(.+)_gpu(\d+):", line)
         if match:
             gpus.add(int(match.group(2)))
     return gpus
@@ -281,7 +281,7 @@ def running_run_names() -> set[str]:
     except subprocess.CalledProcessError:
         return names
     for line in out.splitlines():
-        match = re.search(r"(?:v31_top5|v32|v33|v34|v35|v36)_(.+)_gpu\d+:", line)
+        match = re.search(r"(?:v31_top5|v31|v32|v33|v34|v35|v36)_(.+)_gpu\d+:", line)
         if match:
             names.add(match.group(1))
     return names
