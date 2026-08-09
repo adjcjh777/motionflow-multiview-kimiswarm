@@ -110,6 +110,9 @@ from motionflow_mv.fusion.physical_space_calibration_v53 import (
 from motionflow_mv.fusion.domain_conditional_physical_calibration_v57 import (
     DomainConditionalPhysicalCalibrationV57,
 )
+from motionflow_mv.fusion.simplified_domain_psc_v58 import (
+    SimplifiedDomainPhysicalCalibrationV58,
+)
 from motionflow_mv.fusion.physical_space_calibration_v2_v54 import (
     PhysicalSpaceCalibrationV2V54,
 )
@@ -404,6 +407,22 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
         v57_dcpsc_reproj_weight: float = 0.1,
         v57_dcpsc_warmup_epochs: int = 0,
         v57_dcpsc_min_visible_views: int = 2,
+        # v58 simplified domain-conditional physical-space calibration
+        use_v58_simplified_domain_psc: bool = False,
+        v58_sdpsc_hidden: int = 64,
+        v58_sdpsc_n_layers: int = 2,
+        v58_sdpsc_num_domains: int = 8,
+        v58_sdpsc_use_floor: bool = True,
+        v58_sdpsc_use_bone_scale: bool = True,
+        v58_sdpsc_use_uwt_weights: bool = True,
+        v58_sdpsc_identity_init: bool = True,
+        v58_sdpsc_residual_gate_init: float = -6.0,
+        v58_sdpsc_loss_weight: float = 1.0,
+        v58_sdpsc_floor_weight: float = 0.01,
+        v58_sdpsc_bone_weight: float = 0.1,
+        v58_sdpsc_reproj_weight: float = 0.1,
+        v58_sdpsc_warmup_epochs: int = 0,
+        v58_sdpsc_min_visible_views: int = 2,
         # v54 physical-space calibration v2
         use_v54_physical_space_calibration_v2: bool = False,
         v54_psc2_hidden: int = 64,
@@ -1166,6 +1185,39 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
         else:
             self.domain_conditional_physical_calibration_v57 = None
         self._v57_dcpsc_loss: Optional[torch.Tensor] = None
+
+        # Optional v58 simplified domain-conditional physical-space calibration (identity at init).
+        self.use_v58_simplified_domain_psc = use_v58_simplified_domain_psc
+        self.v58_sdpsc_loss_weight = v58_sdpsc_loss_weight
+        self.v58_sdpsc_warmup_epochs = v58_sdpsc_warmup_epochs
+        if (
+            self.use_v58_simplified_domain_psc
+            and (self.use_v53_physical_space_calibration or self.use_v57_domain_conditional_psc)
+        ):
+            raise ValueError(
+                "use_v58_simplified_domain_psc is mutually exclusive with "
+                "use_v53_physical_space_calibration and use_v57_domain_conditional_psc"
+            )
+        if self.use_v58_simplified_domain_psc:
+            self.simplified_domain_psc_v58 = SimplifiedDomainPhysicalCalibrationV58(
+                j=self.j,
+                n_views=n_views,
+                hidden=v58_sdpsc_hidden,
+                n_layers=v58_sdpsc_n_layers,
+                num_domains=max(v48_dg_num_domains, v58_sdpsc_num_domains),
+                use_floor=v58_sdpsc_use_floor,
+                use_bone_scale=v58_sdpsc_use_bone_scale,
+                use_uwt_weights=v58_sdpsc_use_uwt_weights,
+                identity_init=v58_sdpsc_identity_init,
+                residual_gate_init=v58_sdpsc_residual_gate_init,
+                floor_weight=v58_sdpsc_floor_weight,
+                bone_weight=v58_sdpsc_bone_weight,
+                reproj_weight=v58_sdpsc_reproj_weight,
+                min_visible_views=v58_sdpsc_min_visible_views,
+            )
+        else:
+            self.simplified_domain_psc_v58 = None
+        self._v58_sdpsc_loss: Optional[torch.Tensor] = None
 
         # Optional v54 physical-space calibration v2 (identity at init).
         self.use_v54_physical_space_calibration_v2 = use_v54_physical_space_calibration_v2
@@ -2020,6 +2072,29 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
             pred_3d_gn = pred_3d_gn_dcpsc.view(B * T, J, 3)
             self._v57_dcpsc_loss = dcpsc_loss
 
+        # Optional v58 simplified domain-conditional physical-space calibration refinement.
+        sdpsc_loss = torch.tensor(0.0, device=device, dtype=pred_3d_gn.dtype)
+        if (
+            self.use_v58_simplified_domain_psc
+            and self.simplified_domain_psc_v58 is not None
+        ):
+            if uwt_weights_for_v53 is None:
+                uwt_weights_for_v53 = torch.ones(
+                    B, T, V, J, device=device, dtype=pred_3d_gn.dtype
+                )
+            pred_3d_gn_sdpsc, sdpsc_loss, sdpsc_floor_height, sdpsc_bone_scale = self.simplified_domain_psc_v58(
+                pred_3d_uwt=pred_3d_gn.view(B, T, J, 3),
+                uwt_weights=uwt_weights_for_v53,
+                points_2d=points_2d.view(B, T, V, J, 2),
+                K=K_corrected.view(B, T, V, 3, 3),
+                R=R.view(B, T, V, 3, 3),
+                t=t.view(B, T, V, 3),
+                view_mask=view_mask_flat.view(B, T, V),
+                domain_id=domain_id,
+            )
+            pred_3d_gn = pred_3d_gn_sdpsc.view(B * T, J, 3)
+            self._v58_sdpsc_loss = sdpsc_loss
+
         # Optional v53 physical-space calibration refinement.
         psc_loss = torch.tensor(0.0, device=device, dtype=pred_3d_gn.dtype)
         if (
@@ -2235,6 +2310,17 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
             )
             if v57_active:
                 epi_loss = epi_loss + self.v57_dcpsc_loss_weight * self._v57_dcpsc_loss
+        if (
+            self.use_v58_simplified_domain_psc
+            and hasattr(self, "_v58_sdpsc_loss")
+            and self._v58_sdpsc_loss is not None
+        ):
+            v58_active = (
+                self.v58_sdpsc_warmup_epochs <= 0
+                or self.epoch >= self.v58_sdpsc_warmup_epochs
+            )
+            if v58_active:
+                epi_loss = epi_loss + self.v58_sdpsc_loss_weight * self._v58_sdpsc_loss
         if (
             self.use_v54_physical_space_calibration_v2
             and hasattr(self, "_v54_psc2_loss")
