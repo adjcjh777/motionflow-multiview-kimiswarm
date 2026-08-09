@@ -54,6 +54,17 @@ RUNS = [
         "--d 128 --residual_hidden 256 --n_st_layers 3 --batch_size 16 --clip_len 13 --train_samples 200 --epochs 5 --early_stopping_patience 2 --early_stopping_min_delta 0.001 --weight_decay 1e-4",
         "omniview_fusion_v25_geometry_fusion_all_train_baseline_a800",
     ),
+    # v25 all-train baseline + v40 physical loss + v41 domain weights.
+    # Tests whether the strongest additions from v42 can improve the simple v25 baseline.
+    (
+        "v25_geometry_fusion_all_train_plus_physical_domain",
+        "--mixed_manifest configs/splits/webbridge_all_train_mixed.yaml "
+        "--use_multiview_geometry_fusion_v25 --v25_use_geometry_attention --v25_use_learned_depth_triangulation --v25_use_geometry_bundle_adjustment "
+        "--use_skeleton_physical_loss_v40 --v40_bone_weight 0.05 --v40_joint_limit_weight 0.01 --v40_symmetry_weight 0.02 --v40_floor_weight 0.02 "
+        "--domain_loss_weights 1.0,1.5 "
+        "--d 128 --residual_hidden 256 --n_st_layers 3 --batch_size 16 --clip_len 13 --train_samples 200 --epochs 5 --early_stopping_patience 2 --early_stopping_min_delta 0.001 --weight_decay 1e-4",
+        "omniview_fusion_v25_geometry_fusion_all_train_plus_physical_domain_a800",
+    ),
     (
         "v42_v36_physical_domain_no_v37",
         "--mixed_manifest configs/splits/webbridge_h36m_mpi_mixed_train_val_expanded.yaml "
