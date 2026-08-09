@@ -32,6 +32,7 @@ This file captures the current A800-D workflow, tmux conventions, and issue labe
 | v50 SEFH full | v46-SVG + Self-Evolution Feedback Head | A800-D | **Queued** after v49-Lite results; see issue #176 |
 | v51 DAE on v46 | v46-SVG + Domain-Agnostic Ensemble of pose experts | A800-D | **Queued** in `launch_v33_a800_queue.py`; see issue #178 |
 | v51 DAE on v50 | v50 SEFH + Domain-Agnostic Ensemble of pose experts | A800-D | **Queued** after v50 SEFH results; see issue #178 |
+| v52 scale v45/v46 | v45-AGF + v46-SVG scaled (d=128, 10k samples, 10 epochs) | A800-D | **Queued** in `launch_v33_a800_queue.py`; see issue #179 |
 
 ## Local RTX 4090 status snapshot
 
