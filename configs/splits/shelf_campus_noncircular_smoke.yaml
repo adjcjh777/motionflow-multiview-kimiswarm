@@ -1,0 +1,17 @@
+# Non-circular smoke split for MotionFlow-MultiView.
+# Excludes H36M (circular labels) and trains only on Shelf/Campus
+# (detection 2D + true 3D GT, 5 views, 17 joints).
+# Designed for fast local RTX 4090 smoke runs.
+name: Shelf/Campus Non-Circular Smoke
+train_paths:
+  - data/webbridge/shelf_campus/shelf_seq1_train_v5_multiview_m.npz
+  - data/webbridge/shelf_campus/campus_seq1_train_v3_multiview_m.npz
+train_names:
+  - shelf
+  - campus
+val_paths:
+  - data/webbridge/shelf_campus/shelf_seq1_val_v5_multiview_m.npz
+  - data/webbridge/shelf_campus/campus_seq1_val_v3_multiview_m.npz
+val_names:
+  - shelf
+  - campus
