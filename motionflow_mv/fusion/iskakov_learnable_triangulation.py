@@ -170,6 +170,7 @@ class IskakovLearnableTriangulation(nn.Module):
         R: torch.Tensor,
         t: torch.Tensor,
         return_weights: bool = False,
+        view_mask: torch.Tensor | None = None,
     ):
         """Triangulate 3D joints from per-view detections.
 
@@ -178,6 +179,9 @@ class IskakovLearnableTriangulation(nn.Module):
             confidences: (N, V, J).
             K: (V, 3, 3), R: (V, 3, 3), t: (V, 3) shared cameras.
             return_weights: also return the predicted (N, V, J) weights.
+            view_mask: optional (N, V) 0/1 tensor; masked-out views get weight
+                0 and are ignored by the weighted DLT solve (sparse-view /
+                view-dropout training support).
 
         Returns:
             X: (N, J, 3) triangulated points in the same units as the
@@ -186,6 +190,8 @@ class IskakovLearnableTriangulation(nn.Module):
         P = build_projection_matrices(K, R, t)
         feats = build_features(points_2d, confidences, K, R, t, self.default_ray_depth)
         weights = self.predict_weights(feats)
+        if view_mask is not None:
+            weights = weights * view_mask.unsqueeze(-1).to(weights.dtype)
         X = triangulate_dlt_batched_lstsq(points_2d, P, weights=weights)
         if return_weights:
             return X, weights

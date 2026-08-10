@@ -112,6 +112,14 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--seed", type=int, default=20260810)
     p.add_argument("--hidden_dim", type=int, default=32)
     p.add_argument("--per_view", action="store_true", help="disable cross-view feature mode (ablation)")
+    p.add_argument("--view_dropout_prob", type=float, default=0.0,
+                   help="per-step probability of applying random view dropout during training")
+    p.add_argument("--view_dropout_min_views", type=int, default=2,
+                   help="minimum number of kept views when view dropout fires")
+    p.add_argument("--view_dropout_mode", choices=["subset", "mask"], default="subset",
+                   help="subset: physically drop views (features + solve) — matches eval-time "
+                        "sparse subsets; mask: keep all features, zero the DLT weights of "
+                        "dropped views")
     p.add_argument("--train_samples_per_epoch", type=int, default=0,
                    help="if >0, sample this many frames per epoch instead of a full pass")
     p.add_argument("--ref_max_frames", type=int, default=2000,
@@ -283,7 +291,8 @@ def main() -> None:
     model = IskakovLearnableTriangulation(hidden_dim=args.hidden_dim, cross_view=cross_view).to(device)
     n_params = sum(p.numel() for p in model.parameters())
     log(f"model: IskakovLearnableTriangulation hidden_dim={args.hidden_dim} "
-        f"cross_view={cross_view} params={n_params}")
+        f"cross_view={cross_view} params={n_params} "
+        f"view_dropout_prob={args.view_dropout_prob} min_views={args.view_dropout_min_views}")
 
     # ---- Frozen references (no learning) -----------------------------------
     log(f"computing frozen DLT references on val (SVD routine, "
@@ -322,7 +331,25 @@ def main() -> None:
             idx = torch.from_numpy(rng.integers(0, ds.n, size=args.batch_size)).long().to(device)
 
             p2d, conf, gt, K, R, t = ds.batch(idx)
-            pred = model(p2d, conf, K, R, t)
+            view_mask = None
+            if args.view_dropout_prob > 0 and rng.random() < args.view_dropout_prob:
+                V = p2d.shape[1]
+                lo = max(args.view_dropout_min_views, 1)
+                k = int(rng.integers(lo, V + 1)) if V > lo else V
+                keep = np.sort(rng.choice(V, size=k, replace=False))
+                if args.view_dropout_mode == "subset" and k < V:
+                    # Physically drop views so training matches eval-time
+                    # sparse-view subsets (MPJPE@k protocol).
+                    keep_t = torch.from_numpy(keep).long().to(device)
+                    p2d = p2d[:, keep_t]
+                    conf = conf[:, keep_t]
+                    K = K[keep_t]
+                    R = R[keep_t]
+                    t = t[keep_t]
+                elif k < V:
+                    view_mask = torch.zeros(p2d.shape[0], V, device=device)
+                    view_mask[:, keep] = 1.0
+            pred = model(p2d, conf, K, R, t, view_mask=view_mask)
             loss = mpjpe_mm(pred, gt)
             if not torch.isfinite(loss):
                 raise RuntimeError(f"NaN/inf loss at epoch {epoch} step {b}")

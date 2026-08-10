@@ -151,6 +151,25 @@ MPI detected-2D once P0-1/P0-2 unblock).
 best checkpoint `..._long.pth` (epoch-7 weights); local script
 `scripts/run_v80_shelf_campus_detected_long_a800.sh`.
 
+### Sparse-view MPJPE@k of the long-run v80 best checkpoint (2026-08-11)
+
+`scripts/run_mpjpe_at_k_benchmark.py` with `--align root` on the same
+epoch-7 checkpoint, root-aligned MPJPE in mm (deterministic subset
+enumeration):
+
+| k | Campus | Shelf (calibration caveat) |
+|---:|---:|---:|
+| 2 | 437.31 | 301.94 |
+| 3 | 221.23 | 247.75 |
+| 4 | — | 236.12 |
+| 5 | — | 232.30 |
+
+Output: `outputs/mpjpe_at_k_v80_long/*.json`. Even its sparse-view profile
+stays well above the DLT anchors (Campus 120.61 root at full views; Shelf
+124.13), consistent with the long-run conclusion that this config overfits
+rather than learns transferable view-reliability. Compare the Iskakov-style
+baseline's curves in `docs/results_iskakov_h36m_true_gt.md`.
+
 ### Companion v57 long run (25 epochs, same A800 protocol, completed)
 
 `scripts/run_v57_shelf_campus_detected_long_a800.sh`, same scaling as v80
