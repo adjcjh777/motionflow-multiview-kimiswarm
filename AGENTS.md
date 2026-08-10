@@ -66,7 +66,8 @@ This file captures the current A800-D workflow, tmux conventions, and issue labe
 | v62 v57 stop-grad + v60 | v60 + v57 DC-PSC with `stop_grad_to_base` and `loss_weight=0.1` | **Stable** 2-epoch tiny smoke; best val_MPJPE **100.55 mm**; needs larger scale / clamp to judge; see issue #189 |
 | v63 v57 clamp + v60 | v60 + v57 DC-PSC with `max_correction=0.5` m + `stop_grad_to_base` + `loss_weight=0.1` | **Stable** 2-epoch tiny smoke; best val_MPJPE **100.11 mm**; PSC loss dominates; see issue #189 |
 | v67 v57 identity clamp + v60 | v60 + v57 DC-PSC with `max_correction=0.5` m, `loss_weight=0.0`; v57 learns only from main MSE | **Stable** tiny smoke; best val_MPJPE **101.18 mm**; confirms v57 and v60 should not be trained jointly; see issue #189 |
-| v57 DC-PSC medium | v57 alone (no v60) on 50 samples, 3 epochs | Running on RTX 4090 to reproduce the 48.64 mm result; see issue #189 |
+| v57 DC-PSC medium | v57 alone (no v60) on 50 samples, 3 epochs | Reproduced/improved: best val_MPJPE **47.66 mm**; see issue #189 |
+| v60 SEFH→UWT medium | v60 alone (no v57) on 50 samples, 3 epochs | Running on RTX 4090; see issue #189 |
 | v66 v57 residual-only + v60 | v60 + v57 DC-PSC with floor/bone disabled; only gated residual + reproj | Script ready; queued after v63; see issue #189 |
 | v54 PSC-v2 smoke | v45/v46/v50/v51/v52/v53 + skeleton-graph joint-level physical refiner | **Dropped**; A800/Local tiny smoke ~103 mm (worse than v52 78.68 mm); not beneficial; see issue #184 |
 | v55 ORR smoke | v53/v54 + outlier-robust Cauchy reliability head before UWT | **Dropped**; local tiny smoke best 98.11 mm, A800 epoch-2 loss exploded; not beneficial; see issue #185 |
