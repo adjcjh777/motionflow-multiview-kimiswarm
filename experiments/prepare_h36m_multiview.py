@@ -127,9 +127,42 @@ def main():
     cam_names = sorted(first_cams_dict.keys(), key=lambda c: first_cams_dict[c][0])
     subject_key = f"S{args.subject}"
     first_idxs = [first_cams_dict[cam][0] for cam in cam_names]
+
+    # Determine the physical camera per slot.  In the train split the pkl's
+    # per-row ``camera_name`` is consistent within each slot, but in the test
+    # split it is shuffled across frames within a slot, so the first row cannot
+    # be trusted.  If every slot carries a single camera_name across the first
+    # base group we use it; otherwise we fall back to the fixed H36M studio
+    # order (slot 01..04 -> 54138969, 55011271, 58860488, 60457274), which was
+    # verified by reprojection (~3-8 px RMSE of the true mocap GT).
+    H36M_FIXED_CAMERAS = ["54138969", "55011271", "58860488", "60457274"]
+    per_slot_names = []
+    consistent = True
+    for cam in cam_names:
+        names_in_slot = {
+            str(split_data["camera_name"][i]) for i in first_cams_dict[cam]
+        }
+        if len(names_in_slot) != 1:
+            consistent = False
+            break
+        per_slot_names.append(names_in_slot.pop())
+    if consistent and len(per_slot_names) == len(cam_names):
+        camera_names = per_slot_names
+    else:
+        if len(cam_names) != 4:
+            raise ValueError(
+                "Cannot infer camera names: inconsistent camera_name within "
+                f"slots and {len(cam_names)} slots (expected 4)."
+            )
+        camera_names = H36M_FIXED_CAMERAS
+        print(
+            "NOTE: camera_name column is shuffled within camera slots "
+            f"(test split); using fixed H36M camera order {camera_names}."
+        )
+
     cameras = []
     for i, cam_name in enumerate(cam_names):
-        camera_name = split_data["camera_name"][first_idxs[i]]
+        camera_name = camera_names[i]
         intr = cam_params["intrinsics"][camera_name]["calibration_matrix"]
         K = np.array(intr, dtype=np.float64)
         ext = cam_params["extrinsics"][subject_key][camera_name]
