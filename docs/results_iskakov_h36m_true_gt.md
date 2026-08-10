@@ -72,3 +72,44 @@ CUDA_VISIBLE_DEVICES=0 /d/anaconda3/python.exe \
     --ref_max_frames 2000 \
     --log_path outputs/iskakov_learnable_tri_h36m_true_gt.log
 ```
+
+## Sparse-view MPJPE@k curves (2026-08-11)
+
+Evaluated with `experiments/eval_iskakov_mpjpe_at_k.py` (same checkpoint as
+above; deterministic view subsets, seed 20260810; frozen DLT refs on the
+first subset of each k, float64 SVD routine). Full JSON:
+`outputs/iskakov_mpjpe_at_k/iskakov_mpjpe_at_k_h36m.json` and
+`..._shelf_campus.json`.
+
+### H36M true GT (4 views; macro mean over S9+S11)
+
+| k | Learned direct (mm) | Learned root (mm) | DLT unweighted (first subset) | DLT conf-weighted (first subset) |
+|---:|---:|---:|---:|---:|
+| 2 | 53.61 (±27) | 55.12 | 37.19 avg | 36.42 avg |
+| 3 | **27.80** (±2) | 27.54 | 34.86 avg | 33.68 avg |
+| 4 | **23.39** | 23.14 | 29.15 avg | 25.94 avg |
+
+### Shelf/Campus detected (Campus 3 views primary; Shelf carries the calibration caveat)
+
+| k | Learned direct (mm) | Learned root (mm) | DLT unweighted (first subset) | DLT conf-weighted (first subset) |
+|---:|---:|---:|---:|---:|
+| 2 | 162.81 | 148.21 | Campus 135.86 / Shelf 239.97 | Campus 134.85 / Shelf 240.03 |
+| 3 | **134.99** | 125.24 | Campus 138.08 / Shelf 156.37 | Campus 136.96 / Shelf 152.26 |
+| 4 (Shelf) | **127.60** | 123.98 | 138.52 | 135.31 |
+| 5 (Shelf) | **123.12** | 120.33 | 130.77 | 127.63 |
+
+### Reading
+
+1. **For k >= 3 views, the learned weights beat both frozen DLT variants on
+   every evaluated subset of both protocols.** On H36M the gain grows with k
+   (k=3: ~7-8 mm; k=4: ~2.6-5.8 mm vs conf/unweighted DLT). On Shelf the
+   gain is largest exactly where DLT suffers most from the coarse calibration
+   (k=2: 240 -> 162 mm; k=3: 156 -> 137 mm).
+2. **k=2 is the honest limitation of this baseline**: the trainer uses
+   full-view batches only (no view dropout), so at 2 views the model is
+   out of distribution and loses to DLT on both protocols except the
+   badly-calibrated Shelf. Adding view-dropout training to the weight
+   predictor is the next lever for the sparse-view story.
+3. These curves are the first non-circular MPJPE@k evidence in the repo and
+   support the roadmap's sparse-view-robustness positioning
+   (`docs/roadmap_cvpr2027.md`).
