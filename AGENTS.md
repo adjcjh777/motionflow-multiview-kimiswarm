@@ -411,6 +411,7 @@ Tracking issue: #184. Depends on: #160, #162, #175, #176, #178, #181, #182, #183
 3. Use `scripts/auto_eval_when_ready.sh` (or its host-side cron) for periodic evaluation; do not run it manually on A800-D.
 4. Check A800-D status read-only via SSH, then update the status table in this file or the relevant `docs/swarm_iter*/status.md`.
 5. When a GPU frees, launch the prepared next run (e.g., `v24`) after double-checking its checkpoint path and YAML config.
+6. **Fixed GPU policy**: the poller (`scripts/launch_v33_a800_queue.py`) now runs all queued jobs on a single fixed GPU (default `GPU 6`, configurable via `A800_FIXED_GPU`). This avoids scattering runs across all A800 cards and makes resource management predictable.
 
 ## Long-running local runs (tmux is not available in the WSL env)
 

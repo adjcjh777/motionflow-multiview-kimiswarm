@@ -10,9 +10,13 @@ v48 domain generalization runs.
 
 from __future__ import annotations
 
+import os
 import re
 import subprocess
 import time
+
+
+FIXED_GPU = int(os.environ.get("A800_FIXED_GPU", 6))  # fixed A800 GPU for all queued runs
 
 
 A800_REPO = "/mnt/nvme0n1p1/zhangzy/motionflow-multiview-kimiswarm-iter20"
@@ -710,19 +714,18 @@ def main() -> None:
             except subprocess.CalledProcessError as e:
                 print(f"Warning: periodic rsync failed: {e}")
         pairs = gpu_free_mibs()
+        # Run all queued jobs on a single fixed GPU.
         candidates = [
             (g, f) for g, f in pairs
-            if f >= MIN_FREE_MIB and g not in launched_gpus
+            if g == FIXED_GPU and f >= MIN_FREE_MIB and g not in launched_gpus
         ]
         if not candidates:
-            # All candidate GPUs are busy; reset so we can try again next round
-            # after a full polling interval has passed.
-            launched_gpus.clear()
-            print(f"No GPU with >= {MIN_FREE_MIB} MiB free; sleeping {POLL_INTERVAL}s")
+            # Fixed GPU is busy; reset its lock and wait for the next polling interval.
+            launched_gpus.discard(FIXED_GPU)
+            print(f"Fixed GPU {FIXED_GPU} not ready (need >= {MIN_FREE_MIB} MiB free); sleeping {POLL_INTERVAL}s")
             time.sleep(POLL_INTERVAL)
             continue
-        # Prefer the GPU with the most free memory.
-        gpu, free_mib = max(candidates, key=lambda x: x[1])
+        gpu, free_mib = candidates[0]
         launched_gpus.add(gpu)
         name, extra_flags, output = queue.pop(0)
         launch_run(name, extra_flags, output, gpu)

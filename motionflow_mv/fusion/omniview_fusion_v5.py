@@ -113,6 +113,9 @@ from motionflow_mv.fusion.physical_space_calibration_v53 import (
 from motionflow_mv.fusion.domain_conditional_physical_calibration_v57 import (
     DomainConditionalPhysicalCalibrationV57,
 )
+from motionflow_mv.fusion.canonical_view_refinement_v79 import (
+    CanonicalViewRefinementV79,
+)
 from motionflow_mv.fusion.simplified_domain_psc_v58 import (
     SimplifiedDomainPhysicalCalibrationV58,
 )
@@ -419,6 +422,12 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
         v57_dcpsc_min_visible_views: int = 2,
         v57_dcpsc_stop_grad_to_base: bool = False,
         v57_dcpsc_max_correction: Optional[float] = None,
+        # v79 canonical-view geometric refinement (ARGUS-inspired)
+        use_v79_canonical_view_refinement: bool = False,
+        v79_cvr_hidden: int = 64,
+        v79_cvr_n_layers: int = 2,
+        v79_cvr_identity_init: bool = True,
+        v79_cvr_residual_gate_init: float = -6.0,
         # v58 simplified domain-conditional physical-space calibration
         use_v58_simplified_domain_psc: bool = False,
         v58_sdpsc_hidden: int = 64,
