@@ -151,6 +151,17 @@ MPI detected-2D once P0-1/P0-2 unblock).
 best checkpoint `..._long.pth` (epoch-7 weights); local script
 `scripts/run_v80_shelf_campus_detected_long_a800.sh`.
 
+### Companion v57 long run (25 epochs, same A800 protocol, completed)
+
+`scripts/run_v57_shelf_campus_detected_long_a800.sh`, same scaling as v80
+(epochs=25, batch_size=8, train_samples=512, val_stride=2), GPUs 4,5.
+Trajectory (val MPJPE, mm): 432.1 → 417.6 → 391.8 → **306.5** (best,
+epoch 4) → 490.7 → … → 833.7 (final epoch 25). No NaN/inf. Same pattern as
+v80: a modest long-run gain over the 3-epoch smoke (424.63 → 306.45 mm)
+followed by monotone overfitting; still loses to root-aligned DLT (122.37 mm)
+by 2.5×. Evidence: remote log
+`a800-D:/mnt/nvme0n1p1/zhangzy/motionflow-mv-detected-long/outputs/omniview_fusion_v57_shelf_campus_detected_long.log`.
+
 ## Next steps for this protocol
 
 - [x] Longer v80/v57 runs (full data, >= 20 epochs) to see if any learned model
