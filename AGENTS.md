@@ -70,6 +70,7 @@ This file captures the current A800-D workflow, tmux conventions, and issue labe
 | v60 SEFH→UWT medium | v60 alone (no v57) on 50 samples, 3 epochs | Best val_MPJPE **74.30 mm**; worse than v57, so v57 remains the stronger single module; see issue #189 |
 | v57 DC-PSC large | v57 alone (no v60) on 500 samples, 5 epochs | Stopped; too slow on RTX 4090; full-scale run left to A800 queue; see issue #189 |
 | v74 v57+v49-Lite temporal | v57 + lightweight causal temporal aggregation | Tiny smoke best **102.50 mm**; worse than v57 alone; see issue #189 |
+| v78 v57 200 samples | v57 alone (no v60) on 200 samples, 3 epochs | Running on RTX 4090; see issue #189 |
 | v66 v57 residual-only + v60 | v60 + v57 DC-PSC with floor/bone disabled; only gated residual + reproj | Script ready; queued after v63; see issue #189 |
 | v54 PSC-v2 smoke | v45/v46/v50/v51/v52/v53 + skeleton-graph joint-level physical refiner | **Dropped**; A800/Local tiny smoke ~103 mm (worse than v52 78.68 mm); not beneficial; see issue #184 |
 | v55 ORR smoke | v53/v54 + outlier-robust Cauchy reliability head before UWT | **Dropped**; local tiny smoke best 98.11 mm, A800 epoch-2 loss exploded; not beneficial; see issue #185 |
