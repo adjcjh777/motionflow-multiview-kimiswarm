@@ -1,7 +1,12 @@
 # MotionFlow-MultiView: A Reproducible Multi-View Human Motion Capture Workflow
 
-> System-level paper story v2 — integrates the A800-D research design with the current ICRA/CVPR 2027 experimental results.  
-> Last updated: 2026-08-07.  
+> ⚠️ **SUPERSEDED (2026-08-10).** Experimental results cited here come from
+> circular-label protocols and are invalidated by the data-foundation audit.
+> Current story: `docs/roadmap_cvpr2027.md`; verified results:
+> `docs/results_true_gt_shelf_campus.md`.
+
+> System-level paper story v2 — integrates the A800-D research design with the current ICRA/CVPR 2027 experimental results.
+> Last updated: 2026-08-07.
 > Target venues: ICRA / CVPR 2027 (system + robot-learning track).
 
 ---

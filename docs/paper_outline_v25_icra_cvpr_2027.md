@@ -1,5 +1,10 @@
 # MotionFlow-MultiView v25: Paper Story Outline for ICRA / CVPR 2027
 
+> ⚠️ **SUPERSEDED (2026-08-10).** Results backing this outline come from
+> circular-label protocols and are invalidated by the data-foundation audit.
+> Current story: `docs/roadmap_cvpr2027.md`; verified results:
+> `docs/results_true_gt_shelf_campus.md`.
+
 **Working title:** Geometry-First Multi-View 3D Human Pose Fusion with Ray-Aware Attention and Learned Depth Triangulation
 
 **Target venues:** ICRA 2027 / CVPR 2027

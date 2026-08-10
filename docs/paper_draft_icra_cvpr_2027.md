@@ -1,5 +1,13 @@
 # MotionFlow-MultiView: Residual Refinement of Temporal Ray-Attention Fusion for Calibrated Multi-View 3D Human Pose Estimation
 
+> ⚠️ **SUPERSEDED (2026-08-10).** Every headline number in this draft comes
+> from circular-label protocols (H36M `joints_3d = DLT(points_2d, cameras)`;
+> MPI-INF-3DHP GT-projection 2D) and is invalidated by the data-foundation
+> audit. Do not cite the MPI 9.32 mm or H36M 0.62 mm results. See
+> `docs/data_foundation_blocker.md` and the repositioned story in
+> `docs/roadmap_cvpr2027.md`; the only verified leaderboard so far is
+> `docs/results_true_gt_shelf_campus.md`.
+
 **Abstract.**
 We present a lightweight residual refinement head that boosts calibrated multi-view 3D human pose estimation and integrates it into a robotics-oriented pipeline. Starting from a temporal ray-attention fusion baseline, our model first predicts per-view weights and triangulates a 3D pose via weighted DLT, then refines the result with a small MLP that corrects the residual triangulation error. On MPI-INF-3DHP, the proposed model reduces cross-subject MPJPE from 25.2 mm to **9.32 mm** (PA-MPJPE 5.37 mm) with a 243 k-parameter model, and a robust re-train with direct principal-point supervision further improves it to **8.75 mm** (PA-MPJPE 4.95 mm). A learned principal-point correction layer is the key driver of the improved accuracy and calibration robustness. On Human3.6M, the same architecture achieves **0.62 mm MPJPE** (S1→S5, CamPE+GraphJR). We further introduce geometry-based camera positional encoding (CamPE) and a skeleton-aware graph joint relation (GJR) module to support variable camera rigs and anatomical constraints. The fusion module is exposed as a pluggable `MultiViewFusionPlugin` inside MotionFlow, consumes calibrated multi-view 2D keypoints, and outputs a `HumanMotionIR` that feeds robot retargeting and policy training. It runs at 12.7–194 clips/s on an RTX 4090, making it suitable for robotics and immersive-video applications.
 

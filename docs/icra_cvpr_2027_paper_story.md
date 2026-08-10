@@ -1,6 +1,11 @@
 # MotionFlow-MultiView: The ICRA/CVPR 2027 Paper Story
 
-> A living story document for the next submission cycle.  
+> ⚠️ **SUPERSEDED (2026-08-10).** All accuracy claims here (incl. the
+> 8.61 mm MPI ensemble) rest on circular-label protocols and are invalidated
+> by the data-foundation audit. Current story: `docs/roadmap_cvpr2027.md`;
+> verified results: `docs/results_true_gt_shelf_campus.md`.
+
+> A living story document for the next submission cycle.
 > Last updated: 2026-08-07 after an ensemble of two d=128 Bayesian Tri v2 checkpoints reached **8.61 mm** MPJPE on MPI-INF-3DHP S2/Seq1.
 
 ---

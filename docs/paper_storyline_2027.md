@@ -1,5 +1,14 @@
 # ICRA / CVPR 2027 Publication Storyline
 
+> ⚠️ **Numbers SUPERSEDED (2026-08-10).** The 17.17 mm v25 anchor and all
+> other results below come from the circular H36M protocol and are
+> invalidated by the data-foundation audit. Current story and verified
+> numbers: `docs/roadmap_cvpr2027.md` and
+> `docs/results_true_gt_shelf_campus.md`. Note: the geometry-first thesis of
+> this document is *strengthened* by the true-GT results — on real labels,
+> plain DLT beats every 3-epoch learned model, so "a strong geometric
+> baseline outperforms complex fusion stacks" remains the honest narrative.
+
 **Working title:** Geometry-First Multi-View 3D Human Pose: When a Strong Baseline Outperforms Complex Fusion Stacks
 
 **Target venues:** CVPR 2027 (primary) / ICRA 2027 (secondary, robotics angle)

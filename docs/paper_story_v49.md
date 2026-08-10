@@ -1,5 +1,10 @@
 # MotionFlow-MultiView v49 Paper Story
 
+> ⚠️ **SUPERSEDED (2026-08-10).** Numbers referenced by this story come from
+> circular-label protocols and are invalidated by the data-foundation audit.
+> Current story: `docs/roadmap_cvpr2027.md`; verified results:
+> `docs/results_true_gt_shelf_campus.md`.
+
 ## One-sentence claim
 
 > MotionFlow-MultiView is a self-evolving multi-view 3D human pose system that uses geometric triangulation as a foundation, learns per-view reliability from its own reprojection residuals, and then generalizes the resulting pose estimator across sparse views, time, domains, and real-time streaming constraints.
