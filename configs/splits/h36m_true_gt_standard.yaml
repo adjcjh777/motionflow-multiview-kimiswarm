@@ -1,0 +1,28 @@
+# Non-circular H36M true-GT split (standard protocol S1,5,6,7,8 -> S9/S11).
+# Metre-convention *_m.npz generated from data/h36m_true_gt/ by
+# experiments/make_h36m_true_gt_metres.py. Labels come from the VideoPose3D
+# official-mocap-derived 3D (issue #194), NOT from DLT triangulation.
+# Double acceptance gates passed on 2026-08-10:
+#   circularity direct MJE 27,762-37,320 mm (>> 0)
+#   reprojection RMSE 3.13-7.15 px (<= 15 px)
+# All entries share dataset name 'h36m' (single domain id; the mixed loader
+# only accepts names in its SKELETON_MAPS registry).
+name: H36M True GT Standard (S1,5,6,7,8 -> S9/S11)
+train_paths:
+  - data/h36m_true_gt/s_01_acts_02_03_04_05_06_07_08_09_10_11_12_13_14_15_16_multiview_m.npz
+  - data/h36m_true_gt/s_05_acts_02_03_04_05_06_07_08_09_10_11_12_13_14_15_16_multiview_m.npz
+  - data/h36m_true_gt/s_06_acts_02_03_04_05_06_07_08_09_10_11_12_13_14_15_16_multiview_m.npz
+  - data/h36m_true_gt/s_07_acts_02_03_04_05_06_07_08_09_10_11_12_13_14_15_16_multiview_m.npz
+  - data/h36m_true_gt/s_08_acts_02_03_04_05_06_07_08_09_10_11_12_13_14_15_16_multiview_m.npz
+train_names:
+  - h36m
+  - h36m
+  - h36m
+  - h36m
+  - h36m
+val_paths:
+  - data/h36m_true_gt/s_09_acts_02_03_04_05_06_07_08_09_10_11_12_13_14_15_16_multiview_m.npz
+  - data/h36m_true_gt/s_11_acts_02_03_04_05_06_07_08_09_10_11_12_13_14_15_16_multiview_m.npz
+val_names:
+  - h36m
+  - h36m
