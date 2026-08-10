@@ -68,8 +68,37 @@ The converter triangulates the input 2D detections and stores the result as the 
 - [x] Stop all training/polling, including A800 tmux training sessions.
 - [x] Write and run the DLT diagnostic.
 - [x] Confirm `joint3d_image` is not usable as true world GT.
-- [ ] Repair the data foundation for CVPR 2027.
-  - [ ] Decide whether to download/obtain original H36M 3D or pivot to MPI/Shelf/synthetic.
-  - [ ] Regenerate affected `.npz` files with corrected labels.
-- [ ] Re-run the diagnostic and confirm MPJPE between DLT and corrected labels is non-zero.
+- [x] Repair the data foundation for CVPR 2027 (H36M part: P0-1 closed 2026-08-10, see below).
+  - [x] Obtain a true H36M 3D source (VideoPose3D-format `data_3d_h36m.npz`; issue #194).
+  - [x] Regenerate affected `.npz` files with corrected labels.
+- [x] Re-run the diagnostic and confirm MPJPE between DLT and corrected labels is non-zero (S9: 30,404 mm / 37,320 mm direct MJE).
 - [ ] Re-run v25 baseline on the corrected protocol.
+
+## P0-1 resolution (2026-08-10, issue #194)
+
+True H36M 3D GT is now in place via the MHFormer public Google Drive file
+`data_3d_h36m.npz` (id `1mAHq0YhO75frDkgUgebFQYnnPQOjUcr4`, exactly
+182,626,216 bytes) at `data/h36m_true_gt/data_3d_h36m.npz`. Key facts
+verified during integration:
+
+- Source layout: pickled dict `positions_3d` -> `{"S{n}": {"<Action> [k]": (F, 32, 3) float32}}`,
+  **metres**, 32 mocap joints. `experiments/prepare_h36m_true_gt.py --data3d-npz`
+  scales to mm and selects the standard 17-joint skeleton
+  `[0,1,2,3,6,7,8,12,13,14,15,17,18,19,25,26,27]` (`VP3D_JOINT_INDICES`).
+- The pkl action-id order is the karfly convention (7=Posing, 12=Photo,
+  13=Waiting, 14=Walking, 15=WalkDog, 16=WalkTogether), not the official
+  release order — encoded in `ACTION_NAMES_PKL`.
+- The pkl's per-row `camera_name` is **shuffled within camera slots in the
+  test split**; the canonical converters now fall back to the fixed studio
+  order (01..04 -> 54138969/55011271/58860488/60457274), verified by
+  reprojection at 3–8 px RMSE.
+- Acceptance gates on `data/h36m_true_gt/*_multiview.npz` (all 7 subjects):
+  reprojection RMSE 3.13–7.15 px (threshold 25 px, target ≤15 px) and
+  circularity direct MJE 27,762–37,320 mm (>> 0).
+- DLT baseline on the true-GT S9 test npz: MPJPE 29.54 mm / PA-MPJPE 32.44 mm
+  (full test), 28.22 mm / 30.61 mm (acts 2+14) — inside the plausible
+  15–30 mm range; S11 full test 21.81 mm / 23.67 mm.
+- 21/21 unit tests pass in `tests/test_h36m_true_gt_pipeline.py`.
+
+Remaining for P0-1 completion criteria: wire these npz into a training
+manifest and re-run v25/v80 on the corrected protocol.

@@ -33,3 +33,18 @@
 - **模型**：子代理与主模型一致（不覆盖 model）
 - **结论**：（待补）
 - **后续动作**：（待补）
+
+---
+
+## 2026-08-10 · P0-1 h36m-true-gt-acquisition（完成，issue #194）
+
+- **目的**：获取 H36M 真 3D GT 并接入项目管线（P0-1）。
+- **规模**：单 track（workflow P0-1 分支）。
+- **结论**：
+  1. 主渠道成功：MHFormer GDrive `data_3d_h36m.npz`（182,626,216 B，精确匹配）下载至 `data/h36m_true_gt/data_3d_h36m.npz`；结构为 `positions_3d -> {"S{n}": {"<Action> [k]": (F,32,3) f32}}`，单位**米**（recon 预估的 mm 不对，已按重投影验证改为 ×1000）。
+  2. `experiments/prepare_h36m_true_gt.py` 新增 `--data3d-npz`：按 pkl 帧数逐组精确匹配/拼接子动作（含排列搜索），17 关节选择 = 标准 H36M-17 `[0,1,2,3,6,7,8,12,13,14,15,17,18,19,25,26,27]`（非 range(17)，已用重投影 3.9 px vs 262 px 证伪 range(17)）。
+  3. 修复 test-split 相机退化：pkl `camera_name` 在 test 分割内逐行打乱，canonical 转换器改用固定 H36M 相机顺序（01..04 -> 54138969/55011271/58860488/60457274），重投影验证。
+  4. 双验收门全过：7 个主体 canonical npz reproj RMSE 3.13–7.15 px（≤15 px 目标内），circularity direct MJE 27,762–37,320 mm（>>0）。DLT baseline：S9 29.54/21.81 mm（full）、S9 acts2+14 28.22 mm、S11 21.81 mm——在 15–30 mm 合理区间。
+  5. 单测 21/21 通过（含新增 5 个 data3d 路径用例）。
+- **产出**：`data/h36m_true_gt/` 下 8 个 canonical npz（S9/S11 全 test + S1/5/6/7/8 全 train）+ 日志 `s_*_gen.log`、`dlt_baseline_h36m*.json`、`diagnose_s9_s11_full.log`。
+- **后续动作**：将 npz 写入训练 manifest；在修正协议上重跑 v25/v80 基线；A800 同步新 npz。

@@ -2,7 +2,7 @@
 
 > **Status: DATA FOUNDATION BLOCKER — 2026-08-10**
 >
-> H36M labels are circular (`joints_3d == DLT(points_2d, cameras)`). All GPU training, including A800 tmux sessions, is stopped. Current focus is CVPR 2027 data-foundation repair. See [`docs/data_foundation_blocker.md`](docs/data_foundation_blocker.md).
+> H36M labels are circular (`joints_3d == DLT(points_2d, cameras)`). All GPU training, including A800 tmux sessions, is stopped. Current focus is CVPR 2027 data-foundation repair. See [`docs/data_foundation_blocker.md`](docs/data_foundation_blocker.md) and the latest handoff [`docs/handoff_qwen3.8max.md`](docs/handoff_qwen3.8max.md).
 >
 > Target: **CVPR 2027** (~2026-11). ICRA 2027 is too tight.
 
@@ -26,8 +26,8 @@
 |--------|----------|--------|
 | `data/h36m_hf/*.npz` | No | Circular labels; do not use for model selection |
 | `data/webbridge/h36m*.npz` | No | Same circular labels |
-| MPI-INF-3DHP | Yes | Not fully downloaded; standard protocol needs detected 2D |
-| Shelf/Campus | Yes | Small; inputs are GT projections |
+| MPI-INF-3DHP | Yes | Labels are real mocap, but current 2D is GT-projection; standard protocol needs real detected 2D |
+| Shelf/Campus | Yes | Non-circular `.npz` rebuilt from `detection.json + annotation_3d.json` at `data/webbridge/shelf_campus_detected/` |
 | A800-D `/mnt/nvme0n1/zhangzy/projects` | No true H36M found | Read-only only |
 
 ## CVPR 2027 plan
