@@ -129,3 +129,26 @@ CUDA_VISIBLE_DEVICES=0 /d/anaconda3/python.exe experiments/train_iskakov_baselin
 (The learned baseline is the first method on this protocol to beat a frozen
 DLT variant head-to-head on direct MPJPE; it does not yet beat the
 root-aligned DLT macro mean.)
+
+## Reproducibility check (2026-08-10, same seed 20260810)
+
+- Campus-only rerun (`outputs/iskakov_learnable_tri_campus_only_rerun.log`):
+  combined direct **132.34** / root **118.17** mm, best epoch 3 — bit-identical
+  to the original Campus-only run.
+- Mixed (shelf+campus) rerun (`outputs/iskakov_learnable_tri_detected_rerun.log`):
+  combined direct **128.73** / root **119.23** mm, best epoch 3 — within
+  ~0.7 mm direct of the original 128.05 / 119.32 (epoch-4 best). The small
+  drift comes from the trainer now sampling train batches per step
+  (needed for the H36M protocol), which changes RNG consumption vs the
+  original full-permutation-per-domain loop.
+
+## H36M true-GT protocol (issue #194, 2026-08-10)
+
+The same baseline was extended to the H36M true-GT standard protocol
+(`--protocol h36m`; see `docs/results_iskakov_h36m_true_gt.md`): one shared
+1,569-param model trained on S1,5,6,7,8 (~390k frames) and evaluated on
+S9/S11. Frozen refs (stride-subsampled): combined direct 29.19 unweighted /
+25.87 conf-weighted mm. Learned: combined direct **23.38** mm
+(+2.49 vs conf-DLT, +5.81 vs unweighted DLT); per-subject S9 27.13 /
+S11 19.64 mm — inside the expected 15–30 mm band. Log:
+`outputs/iskakov_learnable_tri_h36m_true_gt.log`.
