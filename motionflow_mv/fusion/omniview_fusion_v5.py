@@ -1268,6 +1268,19 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
             self.simplified_domain_psc_v58 = None
         self._v58_sdpsc_loss: Optional[torch.Tensor] = None
 
+        # Optional v79 canonical-view geometric refinement (identity at init).
+        self.use_v79_canonical_view_refinement = use_v79_canonical_view_refinement
+        if self.use_v79_canonical_view_refinement:
+            self.canonical_view_refinement_v79 = CanonicalViewRefinementV79(
+                j=self.j,
+                hidden=v79_cvr_hidden,
+                n_layers=v79_cvr_n_layers,
+                identity_init=v79_cvr_identity_init,
+                residual_gate_init=v79_cvr_residual_gate_init,
+            )
+        else:
+            self.canonical_view_refinement_v79 = None
+
         # Optional v54 physical-space calibration v2 (identity at init).
         self.use_v54_physical_space_calibration_v2 = use_v54_physical_space_calibration_v2
         self.v54_psc2_loss_weight = v54_psc2_loss_weight
@@ -2310,6 +2323,19 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
             residual_input = torch.cat([feat_pooled, pred_3d_gn], dim=-1)
             delta = self.residual_mlp(residual_input)
             pred_3d = pred_3d_gn + delta
+
+        # Optional v79 canonical-view geometric refinement.
+        if (
+            self.use_v79_canonical_view_refinement
+            and self.canonical_view_refinement_v79 is not None
+        ):
+            pred_3d = self.canonical_view_refinement_v79(
+                pred_3d.view(B, T, self.j, 3),
+                K=K_corrected.view(B, T, V, 3, 3),
+                R=R.view(B, T, V, 3, 3),
+                t=t.view(B, T, V, 3),
+                view_mask=view_mask_flat.view(B, T, V) if view_mask_flat is not None else None,
+            ).view(B * T, self.j, 3)
 
         # Optional v32 temporal trajectory-consistency refiner.
         self._v32_loss = None

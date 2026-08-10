@@ -458,6 +458,18 @@ def build_model_from_args(
             }
         )
 
+    # v79 canonical-view geometric refinement kwargs.
+    if getattr(args, "use_v79_canonical_view_refinement", False):
+        model_kwargs.update(
+            {
+                "use_v79_canonical_view_refinement": True,
+                "v79_cvr_hidden": getattr(args, "v79_cvr_hidden", 64),
+                "v79_cvr_n_layers": getattr(args, "v79_cvr_n_layers", 2),
+                "v79_cvr_identity_init": getattr(args, "v79_cvr_identity_init", True),
+                "v79_cvr_residual_gate_init": getattr(args, "v79_cvr_residual_gate_init", -6.0),
+            }
+        )
+
     # v58 simplified domain-conditional physical-space calibration kwargs.
     if getattr(args, "use_v58_simplified_domain_psc", False):
         model_kwargs.update(
@@ -2275,6 +2287,13 @@ def parse_args() -> Namespace:
     parser.add_argument("--v57_dcpsc_min_visible_views", type=int, default=2, help="Minimum visible views for a joint to contribute to v57 losses")
     parser.add_argument("--v57_dcpsc_stop_grad_to_base", action="store_true", default=False, help="Stop v57 PSC auxiliary loss gradients from reaching the v52/v60 base")
     parser.add_argument("--v57_dcpsc_max_correction", type=float, default=None, help="Clamp the v57 physical-space correction to [-value, value] metres (None = no clamp)")
+    # v79 canonical-view geometric refinement (ARGUS-inspired)
+    parser.add_argument("--use_v79_canonical_view_refinement", action="store_true", default=False, help="Use v79 canonical-view geometric refinement head")
+    parser.add_argument("--v79_cvr_hidden", type=int, default=64, help="Hidden dimension of the v79 canonical-view refinement MLP")
+    parser.add_argument("--v79_cvr_n_layers", type=int, default=2, help="Number of layers in the v79 canonical-view refinement MLP")
+    parser.add_argument("--v79_cvr_identity_init", action="store_true", default=True, help="Zero-initialise the v79 canonical-view refinement final layer")
+    parser.add_argument("--no_v79_cvr_identity_init", dest="v79_cvr_identity_init", action="store_false", help="Disable v79 canonical-view refinement identity initialisation")
+    parser.add_argument("--v79_cvr_residual_gate_init", type=float, default=-6.0, help="Initial logit for the v79 canonical-view refinement residual gate")
     # v58 simplified domain-conditional physical-space calibration
     parser.add_argument("--use_v58_simplified_domain_psc", action="store_true", default=False, help="Use v58 simplified domain-conditional physical-space calibration")
     parser.add_argument("--v58_sdpsc_hidden", type=int, default=64, help="Hidden dimension of the v58 SD-PSC residual MLP")
