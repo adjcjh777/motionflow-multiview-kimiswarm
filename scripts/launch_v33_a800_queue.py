@@ -63,7 +63,7 @@ RUNS = [
         "--use_v50_self_evolution_feedback_head --v50_sefh_hidden 64 --v50_sefh_num_layers 2 --v50_sefh_loss_weight 0.0 --v50_sefh_aleatoric_weight 0.0 "
         "--use_v51_cross_domain_sparse_view_reliability --v51_cdsvr_hidden 64 --v51_cdsvr_num_heads 4 --v51_cdsvr_dropout 0.1 --v51_cdsvr_loss_weight 0.0 "
         "--use_v52_uncertainty_weighted_triangulation --v52_uwt_hidden 64 --v52_uwt_n_layers 2 --v52_uwt_weight_type per_view_joint --v52_uwt_loss_weight 0.01 "
-        "--use_v57_domain_conditional_psc --v57_dcpsc_hidden 64 --v57_dcpsc_n_layers 2 --v57_dcpsc_num_domains 8 --v57_dcpsc_identity_init --v57_dcpsc_residual_gate_init -6.0 --v57_dcpsc_use_floor --v57_dcpsc_use_bone_scale --v57_dcpsc_use_uwt_weights --v57_dcpsc_loss_weight 0.1 --v57_dcpsc_floor_weight 0.01 --v57_dcpsc_bone_weight 0.1 --v57_dcpsc_reproj_weight 0.1 --v57_dcpsc_warmup_epochs 1 --v57_dcpsc_min_visible_views 2 "
+        "--use_v57_domain_conditional_psc --v57_dcpsc_hidden 64 --v57_dcpsc_n_layers 2 --v57_dcpsc_num_domains 8 --v57_dcpsc_identity_init --v57_dcpsc_residual_gate_init -6.0 --v57_dcpsc_use_floor --v57_dcpsc_use_bone_scale --v57_dcpsc_use_uwt_weights --v57_dcpsc_loss_weight 0.01 --v57_dcpsc_floor_weight 0.01 --v57_dcpsc_bone_weight 0.1 --v57_dcpsc_reproj_weight 0.1 --v57_dcpsc_warmup_epochs 1 --v57_dcpsc_min_visible_views 2 --v57_dcpsc_stop_grad_to_base --v57_dcpsc_max_correction 0.5 "
         "--d 128 --residual_hidden 256 --n_st_layers 3 --batch_size 16 --clip_len 13 --train_samples 10000 --epochs 5 --early_stopping_patience 3 --early_stopping_min_delta 0.001 --weight_decay 1e-4",
         "omniview_fusion_v57_domain_conditional_psc_on_v52_a800",
     ),
