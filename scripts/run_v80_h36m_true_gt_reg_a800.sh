@@ -9,10 +9,14 @@
 #   * lr 5e-4 / wd 1e-4 / view-dropout 0.5 / 12 epochs: epoch 2 hit
 #     39.70 mm (new best for this architecture on this protocol, ckpt
 #     saved), then diverged epoch 3 (val 168.32 mm). Killed at epoch 3.
-# This third recipe is more conservative:
-#   * lr 2e-4 (half the divergent run), 1-epoch warmup, cosine to 1e-6
-#   * --weight_decay 5e-5
-#   * --early_stopping_patience 2 on val loss
+#   * lr 2e-4 / wd 5e-5 / patience 2: best 42.60 mm (epoch 2), early-stopped
+#     at epoch 4 (val 104.2 -> 323.6 mm). Pattern: the sharp val-loss minimum
+#     at epoch 2 (~40 mm) is followed by immediate sharp overfit regardless
+#     of lr/wd within this range.
+# This fourth recipe targets the overfit phase directly:
+#   * lr 1e-4 (half the early-stopped run), 1-epoch warmup, cosine to 1e-6
+#   * --weight_decay 2e-4 (2x the previous recipe)
+#   * --early_stopping_patience 3 (more room past the epoch-2 trough)
 #   * view dropout 0.5 kept
 #
 # Sanity anchors: DLT baseline = S9 29.54 / S11 21.81 mm
@@ -65,9 +69,9 @@ $PYTHON -u experiments/train_omniview_fusion_v5_webbridge_multi.py \
     --d 64 --residual_hidden 128 --n_st_layers 2 \
     --graph_num_layers 1 --n_joint_layers 1 --n_heads 4 \
     --epochs 12 --batch_size 16 --train_samples 2048 --val_stride 10 \
-    --lr 2e-4 --lr_cosine --lr_warmup_epochs 1 --lr_min 1e-6 \
-    --weight_decay 5e-5 \
-    --early_stopping_patience 2 \
+    --lr 1e-4 --lr_cosine --lr_warmup_epochs 1 --lr_min 1e-6 \
+    --weight_decay 2e-4 \
+    --early_stopping_patience 3 \
     --max_grad_norm 1.0 --ema_decay 0.999 \
     --use_multiscale_fusion true --use_camera_conditioning true --use_epipolar_bias true \
     --use_context_visibility true --use_skeleton_residual true --use_rotation_correction true \
