@@ -72,7 +72,8 @@ This file captures the current A800-D workflow, tmux conventions, and issue labe
 | v74 v57+v49-Lite temporal | v57 + lightweight causal temporal aggregation | Tiny smoke best **102.50 mm**; worse than v57 alone; see issue #189 |
 | v78 v57 200 samples | v57 alone (no v60) on 200 samples, 3 epochs | **Stopped**; epoch-1 val_MPJPE **51.10 mm**, epoch-2 loss exploded (>2800); 200-sample local run is unstable; see issue #189 |
 | v79 canonical-view refinement | v57 + geometric canonical-view refinement head (ARGUS-inspired, image-free) | **Stopped**; epoch-1 val_MPJPE **105.62 mm** (regress vs v57 47.66 mm); see issue #190 |
-| v80 v57 + WD 5e-4 | v57 DC-PSC with 200 samples, weight_decay=5e-4 | Running on RTX 4090; tests whether regularisation lets v57 scale beyond 50 samples; see issue #189 |
+| v80 v57 + WD 5e-4 | v57 DC-PSC with 200 samples, weight_decay=5e-4 | **Stopped**; diverged at step 100 (loss 740); see issue #189 |
+| v81 v57 stable recipe | v57 DC-PSC 200 samples with `loss_weight=0.01`, `stop_grad_to_base`, `max_correction=0.5`, `weight_decay=1e-4` | Running on RTX 4090; see issue #189 |
 | v66 v57 residual-only + v60 | v60 + v57 DC-PSC with floor/bone disabled; only gated residual + reproj | Script ready; queued after v63; see issue #189 |
 | v54 PSC-v2 smoke | v45/v46/v50/v51/v52/v53 + skeleton-graph joint-level physical refiner | **Dropped**; A800/Local tiny smoke ~103 mm (worse than v52 78.68 mm); not beneficial; see issue #184 |
 | v55 ORR smoke | v53/v54 + outlier-robust Cauchy reliability head before UWT | **Dropped**; local tiny smoke best 98.11 mm, A800 epoch-2 loss exploded; not beneficial; see issue #185 |
