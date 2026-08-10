@@ -48,3 +48,16 @@
   5. 单测 21/21 通过（含新增 5 个 data3d 路径用例）。
 - **产出**：`data/h36m_true_gt/` 下 8 个 canonical npz（S9/S11 全 test + S1/5/6/7/8 全 train）+ 日志 `s_*_gen.log`、`dlt_baseline_h36m*.json`、`diagnose_s9_s11_full.log`。
 - **后续动作**：将 npz 写入训练 manifest；在修正协议上重跑 v25/v80 基线；A800 同步新 npz。
+
+---
+
+## 2026-08-10 · recon-data-foundation-r2（完成，4 agents）
+
+- **目的**：对 P0 三条阻塞线做独立事实核查 + 下一步规划（本地镜像审计、A800 深搜、获取渠道、Iskakov 基线规划）。
+- **结论**：
+  1. **P0-1 已在本地解除**：`data/h36m_true_gt/data_3d_h36m.npz`（182,626,216 B）含全部 7 主体真 mocap 3D（522,774 帧）；`--data3d-npz` 适配器已消费，8 个 canonical npz 过双验收门（本 session 独立重验：S9 MJE 37,319.56 mm / S11 27,762.02 mm）。意外收获：`data/h36m_mirror/SemGCN/h36m.zip`（260 MB）内含相同真 mocap 的 `MyPoses/3D_positions/*.h5`（帧数与 data_3d_h36m.npz 精确一致），可作为全离线后备（需 ~5 行 .h5 adapter）。`h36m_corrected` 仍循环（0.0000 mm）已复核。
+  2. **A800-D 深搜为负**：无 H36M 真 GT、无 MPI imageSequence；/mnt/nvme0n1 只是 nvme0n1p1 的 symlink，98% 已用（剩 73G）。GPU 0-3 被 vLLM 占满，4 当时已被占、5/6 空闲（≤2 GPU 规则内可用 5,6）；无 tmux；docker 容器 motionflow 等勿动。镜像仓库在 main@34d46eb 落后且有脏改动 → 只能 scp 同步，不可 git reset/pull。
+  3. **获取渠道**：H36M 3D 首选保留现有文件；丢失时 MHFormer GDrive（id 1mAHq0YhO75frDkgUgebFQYnnPQOjUcr4，gdown 可无人值守，A800 无法访问 GDrive）；fbaipublicfiles 3D 链接 403、HF 无 3D 镜像。MPI 训练集图像官方站点存活、无需注册：16 个 `vnect_cameras.zip` 全 HTTP 200（共 6.34 GB）+ annot.mat + camera.calibration；test_set.zip 6.46 GB 已本地在。建议下载到本地 D:（178G 空闲）而非 A800。
+  4. **Iskakov 基线已基本完成**：模块/训练器/结果文档/3 次运行均在（mixed 最优 combined direct 128.05 mm，超 conf-DLT +4.24 mm）。剩余：修正错误引用（"Iskakov, D., Kasneci, E." 系杜撰；正确为 Iskakov, Burkov, Lempitsky, Malkov, ICCV 2019, arXiv:1905.05754；另有 "Isakov" 拼写错误）、补单测、同步 leaderboard/issue。
+- **主循环已执行动作**：引用修复已提交推送（c84db17）；MPI detected-2D 从 AVI zip 直接解码的新脚本 `scripts/generate_mpi_detected_2d_from_avi.py`（MediaPipe Tasks API，mediapipe≥1.0；顺序解码 0.2→2.4 frames/s，12× 加速；未映射关节 conf=0）已提交（bb7fb3f, b6d8a56），全量 16 序列生产运行中（4 workers, 384px）。
+- **后续动作**：detected npz 过验收门 → DLT/v25/v57/v80 重跑 MPI 协议 → 更新 issue #191/#192/#193。
