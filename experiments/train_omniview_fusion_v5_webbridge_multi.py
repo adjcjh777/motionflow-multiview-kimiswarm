@@ -44,6 +44,7 @@ from motionflow_mv.data.split_loader import (  # noqa: E402
     load_split_manifest,
 )
 from motionflow_mv.data.webbridge_mixed_dataset import (  # noqa: E402
+    DATASET_IDS,
     build_webbridge_mixed_dataloaders,
     webbridge_mixed_collate_fn,
 )
@@ -1990,6 +1991,14 @@ def build_datasets(args: Namespace) -> Tuple[torch.utils.data.Dataset, torch.uti
         val_names = mixed_cfg["val_names"]
         if not (len(train_paths) == len(train_names) and len(val_paths) == len(val_names)):
             raise ValueError("Mixed manifest: paths and names must have the same length")
+
+        # Ensure the learnable domain embedding can cover every dataset id in the
+        # manifest (shelf=3, campus=4, ...).  Keep the existing default when it
+        # already suffices.
+        all_names = train_names + val_names
+        if all_names:
+            highest_id = max(DATASET_IDS.get(name, 0) for name in all_names)
+            args.num_domains = max(args.num_domains, highest_id + 1)
 
         train_loader, val_loader = build_webbridge_mixed_dataloaders(
             train_paths=train_paths,

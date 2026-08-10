@@ -32,6 +32,19 @@ $PYTHON -u experiments/train_omniview_fusion_v5_webbridge_multi.py \
     --use_v46_sparse_view_generalization \
     --v46_svg_view_dropout_prob 0.3 --v46_svg_min_views 2 \
     --v46_svg_use_curriculum \
+    --use_v50_self_evolution_feedback_head \
+    --v50_sefh_hidden 64 --v50_sefh_num_layers 2 --v50_sefh_dropout 0.1 \
+    --v50_sefh_identity_init_gate \
+    --v50_sefh_loss_weight 0.0 --v50_sefh_aleatoric_weight 0.0 \
+    --use_v51_cross_domain_sparse_view_reliability \
+    --v51_cdsvr_hidden 64 --v51_cdsvr_num_heads 4 --v51_cdsvr_dropout 0.1 \
+    --v51_cdsvr_use_domain_label --v51_cdsvr_identity_init_gate \
+    --v51_cdsvr_loss_weight 0.0 \
+    --use_v52_uncertainty_weighted_triangulation \
+    --v52_uwt_hidden 64 --v52_uwt_n_layers 2 --v52_uwt_weight_type per_view_joint \
+    --v52_uwt_use_geometry_bias --v52_uwt_use_feature_bias \
+    --v52_uwt_identity_init --v52_uwt_min_weight 0.05 --v52_uwt_loss_weight 0.01 \
+    --v52_uwt_damping 0.0001 \
     --use_v80_view_reliability \
     --v80_vrbt_hidden 64 --v80_vrbt_n_layers 2 \
     --v80_vrbt_weight_type per_view_joint \

@@ -7,6 +7,7 @@ PYTHON=${PYTHON:-python}
 $PYTHON -u experiments/train_omniview_fusion_v5_webbridge_multi.py \
     --use_mixed_loader \
     --mixed_manifest configs/splits/mpi_shelf_campus_noncircular_smoke.yaml \
+    --num_domains 8 \
     --use_full_precision_dlt \
     --use_robust_dlt_reweight \
     --use_irls_reweight \
