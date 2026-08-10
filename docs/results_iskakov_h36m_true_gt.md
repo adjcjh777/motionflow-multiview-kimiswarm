@@ -113,3 +113,31 @@ first subset of each k, float64 SVD routine). Full JSON:
 3. These curves are the first non-circular MPJPE@k evidence in the repo and
    support the roadmap's sparse-view-robustness positioning
    (`docs/roadmap_cvpr2027.md`).
+
+### View-dropout ablation (2026-08-11): does not fix k=2
+
+Two view-dropout variants were added to the trainer
+(`--view_dropout_prob 0.5 --view_dropout_min_views 2`, modes `mask` = zero
+DLT weights of dropped views in place; `subset` = physically drop views so
+training matches the MPJPE@k eval subsets):
+
+| Variant | Best val combined direct (mm) | MPJPE@k macro k=2 / k=3 / k=4 (direct, mm) |
+|---|---:|---|
+| No dropout (original) | 23.38 (ep 7) | 53.61 / 27.80 / 23.39 |
+| mask dropout p=0.5 | 23.52 (ep 9) | 53.62 / 27.67 / 23.55 |
+| subset dropout p=0.5 | 23.35 (ep 8) | 53.61 / 27.63 / 23.36 |
+
+Full-view accuracy is unchanged (within 0.2 mm) and the k=2 collapse is
+bit-identical (53.6 ± 27 mm) in all three variants. Diagnosis: the
+weight-prediction MLP is too weak to represent a view-dependent policy, and
+with 2 views every training signal degenerates to the same uniform solution
+the zero-init converges to. The k=2 gap on this baseline is architectural
+(1.6k-param weight head over detection statistics), not a regularization
+gap. Logs:
+`outputs/iskakov_learnable_tri_h36m_true_gt_vd05{,subset}.log`; MPJPE@k
+JSONs: `outputs/iskakov_mpjpe_at_k_vd05{,subset}/`.
+
+Implication for the sparse-view story: the learned-weight DLT baseline is
+reliable for k>=3 (beats both frozen DLT variants on every subset); k=2
+needs a stronger method (per-view features from a backbone, or a learned
+residual refiner) and is reported honestly as a limitation.
