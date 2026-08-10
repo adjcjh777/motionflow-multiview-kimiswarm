@@ -1,0 +1,16 @@
+# MPI-INF-3DHP-only non-circular smoke split.
+# Excludes H36M (circular labels) and Shelf/Campus (fewer views) so the v25
+# epipolar geometry module always sees a homogeneous 14-view rig.
+name: MPI-INF-3DHP Only Non-Circular Smoke
+train_paths:
+  - data/webbridge/mpi_inf_3dhp/s_01_seq_01_v14_multiview_m.npz
+  - data/webbridge/mpi_inf_3dhp/s_01_seq_02_v14_multiview_m.npz
+  - data/webbridge/mpi_inf_3dhp/s_03_seq_01_v14_multiview_m.npz
+train_names:
+  - mpi
+  - mpi
+  - mpi
+val_paths:
+  - data/webbridge/mpi_inf_3dhp/s_02_seq_01_v14_multiview_m.npz
+val_names:
+  - mpi

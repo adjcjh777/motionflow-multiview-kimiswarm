@@ -46,6 +46,22 @@ def compute_epipolar_distance(
     device = K.device
     dtype = K.dtype
 
+    # Sanity check: inputs must be finite and intrinsics must be invertible.
+    # Mixed datasets with padded views can pass identity/zero-translation cameras
+    # that are technically invertible but geometrically degenerate; callers are
+    # responsible for masking padded views before calling this function.
+    if not (torch.isfinite(K).all() and torch.isfinite(R).all() and torch.isfinite(t).all()):
+        raise ValueError("Non-finite values in camera parameters (K, R, t).")
+    if not (torch.isfinite(points_2d).all()):
+        raise ValueError("Non-finite values in 2D points.")
+    det_K = torch.det(K)
+    if (det_K.abs() < eps).any():
+        bad = (det_K.abs() < eps).nonzero(as_tuple=True)
+        raise RuntimeError(
+            f"Singular intrinsic matrices detected for batch/view indices {bad} "
+            f"(abs(det) < {eps}). Check camera calibration and view masking."
+        )
+
     # Inverse intrinsics.
     K_inv = torch.inverse(K)  # (B, V, 3, 3)
 
