@@ -2,7 +2,8 @@
 
 Faithful standalone re-implementation of the weight-prediction branch of:
 
-    Iskakov, D., Kasneci, E., 'Learnable Triangulation of Human Pose', ICCV 2019.
+    Iskakov, K., Burkov, E., Lempitsky, V., Malkov, Y., 'Learnable Triangulation
+    of Human Pose', ICCV 2019, arXiv:1905.05754.
 
 The method keeps the classic DLT triangulation closed-form but learns small
 per-view, per-joint weights with a shared MLP over 2D-detection features, so

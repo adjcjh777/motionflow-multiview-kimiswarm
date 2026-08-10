@@ -5,8 +5,8 @@
 > Shelf/Campus protocol. All numbers below are read verbatim from the run logs
 > listed in the Evidence table. Companion to `docs/results_true_gt_shelf_campus.md`
 > (that file is not modified).
-> **Reference (exact):** Iskakov, D., Kasneci, E., 'Learnable Triangulation of
-> Human Pose', ICCV 2019.
+> **Reference (exact):** Iskakov, K., Burkov, E., Lempitsky, V., Malkov, Y.,
+> 'Learnable Triangulation of Human Pose', ICCV 2019, arXiv:1905.05754.
 
 ## Protocol
 

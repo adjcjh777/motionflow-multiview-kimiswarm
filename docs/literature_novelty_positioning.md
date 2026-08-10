@@ -58,7 +58,7 @@ DLT is exact under perfect calibration and clean 2-D observations, but collapses
 
 ### 2.2 Learnable triangulation
 
-**Isakov et al., *Learnable Triangulation of Human Pose*, ICCV 2019** — the canonical baseline — learns per-view confidence weights for triangulation. It keeps triangulation at the center, which is philosophically close to our approach, but:
+**Iskakov et al., *Learnable Triangulation of Human Pose*, ICCV 2019** — the canonical baseline — learns per-view confidence weights for triangulation. It keeps triangulation at the center, which is philosophically close to our approach, but:
 - It uses isotropic scalar confidence, not anisotropic covariance.
 - It has no explicit occlusion/visibility gating.
 - It has no intrinsic/calibration correction.
@@ -200,7 +200,7 @@ These steps are grounded in the existing code and can be implemented without tou
 
 **Actions:**
 1. Draft a paragraph for each of the following, with explicit contrasts:
-   - vs. Isakov et al. (scalar confidence vs. anisotropic covariance + visibility + calibration).
+   - vs. Iskakov et al. (scalar confidence vs. anisotropic covariance + visibility + calibration).
    - vs. TransFusion / end-to-end transformers (regression vs. geometry-first triangulation).
    - vs. VoxelPose (voxel heatmaps vs. ray-aware feature + DLT).
    - vs. recent epipolar/camera-PE work (geometry as attention bias inside our transformer, not only as a loss or pose encoding).
@@ -248,7 +248,7 @@ Given the above, there are two strong and non-exclusive framing options:
 | v3 multi-scale fusion does not beat v2 single-model | Medium | High | The ablation matrix will tell us quickly; if negative, v2 is still a strong standalone method. |
 | Variable-view MPJPE@k still poor for k < 6 | Medium | Medium | Use visibility gating + uncertainty to down-weight missing views; report both raw numbers and relative improvement over DLT. |
 | Calibration-robustness numbers are not better than Bayesian Tri v2 | Medium | Medium | The v3 epipolar-bias + camera conditioning is designed exactly for this; run the full matrix before deciding. |
-| Literature reviewers say "this is just Isakov + transformers" | Low | High | Emphasize the *systematic combination* and the explicit geometry-first decomposition; cite each contrast. |
+| Literature reviewers say "this is just Iskakov + transformers" | Low | High | Emphasize the *systematic combination* and the explicit geometry-first decomposition; cite each contrast. |
 | Ensemble numbers cannot be reproduced as a single model | Low | Medium | The v2 single-model run is already planned; if it underperforms, use the ensemble as the final result and explain warm-starting. |
 
 ---
@@ -259,7 +259,7 @@ Given the above, there are two strong and non-exclusive framing options:
 2. **Implement and run the v3 ablation matrix** (`experiments/train_omniview_fusion_v3_mpiinf3dhp.py`) with the four configurations (full, no-multiscale, no-camera-cond, no-epipolar-bias), starting from the best v2 checkpoint; evaluate with a new `eval_omniview_fusion_v3_mpiinf3dhp.py`.
 3. **Create a unified calibration-robustness evaluation script** (`experiments/eval_calibration_robustness_v2v3.py`) that produces a paper-ready table and heatmap for rotation, translation, focal, and principal-point perturbations.
 4. **Generalize the variable-view inference protocol** to v2/v3, generate the MPJPE@k plot, and save it to `docs/figures/variable_views_omniv2v3_mpiinf3dhp.png`.
-5. **Draft the related-work section** (`docs/paper_related_work_draft.md`) with explicit contrasts to Isakov et al., TransFusion, VoxelPose, and recent epipolar/camera-PE methods, and update `docs/paper_method_section_draft.md` with the v3 architecture.
+5. **Draft the related-work section** (`docs/paper_related_work_draft.md`) with explicit contrasts to Iskakov et al., TransFusion, VoxelPose, and recent epipolar/camera-PE methods, and update `docs/paper_method_section_draft.md` with the v3 architecture.
 
 ---
 

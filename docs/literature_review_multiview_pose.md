@@ -192,7 +192,7 @@ This review maps these trends, cites concrete papers, and explains how each rela
 
 | Project Component | How the Literature Supports / Challenges It |
 |---|---|
-| **Bayesian Tri v2** (anisotropic covariance, weighted DLT, adaptive Gauss-Newton) | Builds on Isakov et al. (ICCV 2019) and Jiang & Hu (arXiv 2023); UPose3D and DeProPose show that uncertainty-aware fusion is now a mainstream requirement. |
+| **Bayesian Tri v2** (anisotropic covariance, weighted DLT, adaptive Gauss-Newton) | Builds on Iskakov et al. (ICCV 2019) and Jiang & Hu (arXiv 2023); UPose3D and DeProPose show that uncertainty-aware fusion is now a mainstream requirement. |
 | **OmniMultiViewFusion v2 visibility gating** | Direct counterpart to Bragagnolo et al. (ECCVW 2024) and MPL. Our per-joint visibility multiplier is more explicit and can be combined with their feature-level fusion. |
 | **Graph-joint / skeleton attention** | Geometry-Biased Transformer and MVGFormer validate skeleton-aware attention. Our GraphJointAttentionV2 is a concrete instance. |
 | **Epipolar-biased transformer (v3)** | Geometry-biased and ray-based papers (MVGFormer, RUMPL) provide theoretical support for injecting epipolar/ray embeddings into attention. |

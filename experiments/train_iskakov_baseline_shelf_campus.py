@@ -2,8 +2,8 @@
 """Train the Iskakov et al. (ICCV 2019) Learnable Triangulation baseline on the
 non-circular detected Shelf/Campus protocol.
 
-Reference: Iskakov, D., Kasneci, E., 'Learnable Triangulation of Human Pose',
-ICCV 2019. (Re-implementation of the weight-prediction branch on raw detected
+Reference: Iskakov, K., Burkov, E., Lempitsky, V., Malkov, Y., 'Learnable
+Triangulation of Human Pose', ICCV 2019, arXiv:1905.05754. (Re-implementation of the weight-prediction branch on raw detected
 2D features; see motionflow_mv/fusion/iskakov_learnable_triangulation.py.)
 
 Protocol follows docs/results_true_gt_shelf_campus.md:
