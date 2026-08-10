@@ -11,7 +11,8 @@
 |---|---|---|
 | DLT baseline | **23.79** | Geometric lower bound; non-learned triangulation |
 | v25 geometry fusion | **26.15** | Closest to DLT, consistent with old circular-label dominance |
-| v57 DC-PSC | **33.26** | Domain-conditional physical-space calibration |
+| v57 DC-PSC (128 samples, 3 ep) | **33.26** | Domain-conditional physical-space calibration |
+| v57 DC-PSC (512 samples, 5 ep) | **33.96** | More training did not close the gap to DLT/v25 |
 | v46 SVG | **34.94** | Sparse-view generalization |
 | v80 VRBT (new) | **35.22** | Learned view-reliability before triangulation; needs more tuning |
 
