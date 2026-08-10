@@ -128,7 +128,11 @@ training matches the MPJPE@k eval subsets):
 | subset dropout p=0.5 | 23.35 (ep 8) | 53.61 / 27.63 / 23.36 |
 
 Full-view accuracy is unchanged (within 0.2 mm) and the k=2 collapse is
-bit-identical (53.6 ± 27 mm) in all three variants. Diagnosis: the
+bit-identical (53.6 ± 27 mm) in all three variants. The same conclusion holds
+on Shelf/Campus (mixed, subset dropout p=0.5: best full-view 128.75 mm vs
+128.05 without dropout; MPJPE@k macro k=2 direct 162.84 vs 162.81 mm,
+bit-identical collapse; log
+`outputs/iskakov_learnable_tri_detected_vd05subset.log`). Diagnosis: the
 weight-prediction MLP is too weak to represent a view-dependent policy, and
 with 2 views every training signal degenerates to the same uniform solution
 the zero-init converges to. The k=2 gap on this baseline is architectural
