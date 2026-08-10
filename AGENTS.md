@@ -60,6 +60,12 @@ This file captures the current A800-D workflow, tmux conventions, and issue labe
 | v58 SD-PSC smoke | v45/v46/v50/v51/v52 + simplified domain-conditional PSC (per-domain bone lengths + floor offset, shared residual MLP) | Local smoke done; epoch-2 val_MPJPE 102.40 mm (same as v57; tiny smoke insufficient to learn domain-specific calibration); A800 full run not queued pending v57 A800 results; see issue #186 |
 | v59 VCC-SVR smoke | v45/v46/v50/v51/v52 + view-count-conditioned sparse-view reliability offset for v52 UWT | RTX 4090 tiny smoke done; best val_MPJPE 102.89 mm (regress vs v52 ~78 mm); **rejected**; see issue #187 |
 | v60 SEFH→UWT feedback | v45/v46/v50/v51/v52 + feed v50 SEFH reliability into v52 UWT as weights prior | RTX 4090 tiny smoke best **50.93 mm**; medium smoke best **74.30 mm**; A800 full run queued; see issue #188 |
+| v61 v57+v60 | v60 + v57 DC-PSC (`loss_weight=0.1`) | **Diverged** at step ~1900 (train loss >500); see issue #189 |
+| v61b v57+v60 low-weight | v60 + v57 DC-PSC (`loss_weight=0.01`, `warmup=2`) | **Diverged** at step ~1900 (train loss 73.27); see issue #189 |
+| v61c v57+v60 identity-only | v60 + v57 DC-PSC (`loss_weight=0.0`) | **Diverged** at step ~1900 (train loss jumped to 43.5); proves instability is not just the PSC auxiliary loss; see issue #189 |
+| v62 v57 stop-grad + v60 | v60 + v57 DC-PSC with `stop_grad_to_base` and `loss_weight=0.1` | **Stable** 2-epoch tiny smoke; best val_MPJPE **100.55 mm**; needs larger scale / clamp to judge; see issue #189 |
+| v63 v57 clamp + v60 | v60 + v57 DC-PSC with `max_correction=0.5` m + `stop_grad_to_base` + `loss_weight=0.1` | Running on RTX 4090; see issue #189 |
+| v66 v57 residual-only + v60 | v60 + v57 DC-PSC with floor/bone disabled; only gated residual + reproj | Script ready; queued after v63; see issue #189 |
 | v54 PSC-v2 smoke | v45/v46/v50/v51/v52/v53 + skeleton-graph joint-level physical refiner | **Dropped**; A800/Local tiny smoke ~103 mm (worse than v52 78.68 mm); not beneficial; see issue #184 |
 | v55 ORR smoke | v53/v54 + outlier-robust Cauchy reliability head before UWT | **Dropped**; local tiny smoke best 98.11 mm, A800 epoch-2 loss exploded; not beneficial; see issue #185 |
 | v56 APL smoke | v53 + learned per-sample PSC loss weight from uncertainty/pose std | **Dropped**; local tiny smoke best 104.30 mm (worse than v53 78.76 mm); not beneficial |
