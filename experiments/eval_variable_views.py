@@ -585,6 +585,7 @@ def main():
     # ------------------------------------------------------------------
     if args.model_class == "omniview_v5":
         n_joints = next(iter(datasets.values()))[2].shape[1]
+        n_views = next(iter(datasets.values()))[0].shape[1]
 
         if args.v46_checkpoint and args.v47_checkpoint:
             cfg_v46_path = _resolve_config_path(args, args.v46_checkpoint)
@@ -593,8 +594,8 @@ def main():
                 raise ValueError("--config is required for both v46 and v47 checkpoints")
             cfg_v46 = _load_config(cfg_v46_path)
             cfg_v47 = _load_config(cfg_v47_path)
-            model_v46 = _build_omniview_v5_model(cfg_v46, args.v46_checkpoint, n_joints, 0, device)
-            model_v47 = _build_omniview_v5_model(cfg_v47, args.v47_checkpoint, n_joints, 0, device)
+            model_v46 = _build_omniview_v5_model(cfg_v46, args.v46_checkpoint, n_joints, n_views, device)
+            model_v47 = _build_omniview_v5_model(cfg_v47, args.v47_checkpoint, n_joints, n_views, device)
 
             v46_by_dataset = _evaluate_all(model_v46)
             v47_by_dataset = _evaluate_all(model_v47)
@@ -634,7 +635,7 @@ def main():
             if cfg_path is None:
                 raise ValueError("--config is required for model_class=omniview_v5")
             config = _load_config(cfg_path)
-            model = _build_omniview_v5_model(config, args.checkpoint, n_joints, 0, device)
+            model = _build_omniview_v5_model(config, args.checkpoint, n_joints, n_views, device)
 
             if args.compare_v46_v47 and hasattr(model, "use_v47_temporal_aggregation"):
                 # v46 mode: disable v47 temporal head.
