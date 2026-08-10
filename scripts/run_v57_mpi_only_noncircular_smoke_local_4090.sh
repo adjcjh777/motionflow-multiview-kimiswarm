@@ -126,5 +126,5 @@ python -u experiments/train_omniview_fusion_v5_webbridge_multi.py \
     --v29_bone_temporal_weight 0.01 \
     --v29_com_jitter_weight 0.001 \
     --v29_physical_loss_warmup_epochs 1 \
-    --output outputs/omniview_fusion_v57_noncircular_smoke.pth \
-    >> outputs/omniview_fusion_v57_noncircular_smoke.log 2>&1
+    --output outputs/omniview_fusion_v57_mpi_only_noncircular_smoke.pth \
+    > outputs/omniview_fusion_v57_mpi_only_noncircular_smoke.log 2>&1
