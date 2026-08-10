@@ -2,14 +2,19 @@
 # A800-D REGULARIZED v80 run on the non-circular H36M true-GT standard
 # protocol (S1,5,6,7,8 train -> S9/S11 val; issue #194).
 #
-# Motivation: the first long run (run_v80_h36m_true_gt_long_a800.sh,
-# 20 epochs, lr 1e-3, wd 0) overfit from epoch 2 (best val 65.28 mm at
-# epoch 2; 501.42 mm by epoch 9 vs DLT 21.8-29.5 mm). This variant keeps the
-# same architecture but adds the standard anti-overfit levers:
-#   * weight decay 1e-4 (trainer --weight_decay)
-#   * lower peak lr 5e-4 with longer cosine decay
-#   * stronger view dropout (v46 prob 0.5)
-# DLT anchor on these labels: S9 29.54 / S11 21.81 mm.
+# Motivation: the first long run (run_v80_h36m_true_gt_long_a800.sh, lr 1e-3,
+# wd 0, 20 epochs) overfit from epoch 2: best val 65.28 mm (epoch 2), then
+# monotone val degradation to 501.42 mm by epoch 9 while train loss kept
+# falling. DLT anchor on the same labels: S9 29.54 / S11 21.81 mm.
+#
+# Changes vs the overfit run:
+#   * --weight_decay 1e-4 (L2 on the Adam parameters)
+#   * lr 1e-3 -> 5e-4 with 1-epoch warmup
+#   * --early_stopping_patience 3 on val loss (trainer tracks val loss)
+#   * view dropout raised 0.3 -> 0.5 for stronger regularization
+#
+# Sanity anchors: DLT baseline = S9 29.54 / S11 21.81 mm
+# (data/h36m_true_gt/dlt_baseline_h36m.json). Goal: learned model beats DLT.
 #
 # GPU discipline (project rule): at most 2 GPUs, fixed indices via
 # CUDA_VISIBLE_DEVICES. Default 4,5. Check nvidia-smi first.
@@ -55,9 +60,10 @@ $PYTHON -u experiments/train_omniview_fusion_v5_webbridge_multi.py \
     --num_workers 0 \
     --d 64 --residual_hidden 128 --n_st_layers 2 \
     --graph_num_layers 1 --n_joint_layers 1 --n_heads 4 \
-    --epochs 12 --batch_size 16 --train_samples 2048 --val_stride 10 \
+    --epochs 20 --batch_size 16 --train_samples 2048 --val_stride 10 \
     --lr 5e-4 --lr_cosine --lr_warmup_epochs 1 --lr_min 1e-6 \
     --weight_decay 1e-4 \
+    --early_stopping_patience 3 \
     --max_grad_norm 1.0 --ema_decay 0.999 \
     --use_multiscale_fusion true --use_camera_conditioning true --use_epipolar_bias true \
     --use_context_visibility true --use_skeleton_residual true --use_rotation_correction true \
