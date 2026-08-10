@@ -2,19 +2,23 @@
 # A800-D REGULARIZED v80 run on the non-circular H36M true-GT standard
 # protocol (S1,5,6,7,8 train -> S9/S11 val; issue #194).
 #
-# Motivation: the first long run (run_v80_h36m_true_gt_long_a800.sh, lr 1e-3,
-# wd 0, 20 epochs) overfit from epoch 2: best val 65.28 mm (epoch 2), then
-# monotone val degradation to 501.42 mm by epoch 9 while train loss kept
-# falling. DLT anchor on the same labels: S9 29.54 / S11 21.81 mm.
-#
-# Changes vs the overfit run:
-#   * --weight_decay 1e-4 (L2 on the Adam parameters)
-#   * lr 1e-3 -> 5e-4 with 1-epoch warmup
-#   * --early_stopping_patience 3 on val loss (trainer tracks val loss)
-#   * view dropout raised 0.3 -> 0.5 for stronger regularization
+# History on this protocol (all runs nohup'd on GPUs 4,5):
+#   * lr 1e-3 / wd 0 / 20 epochs: overfit from epoch 2 — best val 65.28 mm
+#     (epoch 2), monotone degradation to 501.42 mm by epoch 9. Killed at
+#     epoch 10.
+#   * lr 5e-4 / wd 1e-4 / view-dropout 0.5 / 12 epochs: epoch 2 hit
+#     39.70 mm (new best for this architecture on this protocol, ckpt
+#     saved), then diverged epoch 3 (val 168.32 mm). Killed at epoch 3.
+# This third recipe is more conservative:
+#   * lr 2e-4 (half the divergent run), 1-epoch warmup, cosine to 1e-6
+#   * --weight_decay 5e-5
+#   * --early_stopping_patience 2 on val loss
+#   * view dropout 0.5 kept
 #
 # Sanity anchors: DLT baseline = S9 29.54 / S11 21.81 mm
 # (data/h36m_true_gt/dlt_baseline_h36m.json). Goal: learned model beats DLT.
+# Iskakov-style learned-weight DLT on the same labels: combined direct
+# 23.38 mm (outputs/iskakov_learnable_tri_h36m_true_gt.log).
 #
 # GPU discipline (project rule): at most 2 GPUs, fixed indices via
 # CUDA_VISIBLE_DEVICES. Default 4,5. Check nvidia-smi first.
@@ -60,10 +64,10 @@ $PYTHON -u experiments/train_omniview_fusion_v5_webbridge_multi.py \
     --num_workers 0 \
     --d 64 --residual_hidden 128 --n_st_layers 2 \
     --graph_num_layers 1 --n_joint_layers 1 --n_heads 4 \
-    --epochs 20 --batch_size 16 --train_samples 2048 --val_stride 10 \
-    --lr 5e-4 --lr_cosine --lr_warmup_epochs 1 --lr_min 1e-6 \
-    --weight_decay 1e-4 \
-    --early_stopping_patience 3 \
+    --epochs 12 --batch_size 16 --train_samples 2048 --val_stride 10 \
+    --lr 2e-4 --lr_cosine --lr_warmup_epochs 1 --lr_min 1e-6 \
+    --weight_decay 5e-5 \
+    --early_stopping_patience 2 \
     --max_grad_norm 1.0 --ema_decay 0.999 \
     --use_multiscale_fusion true --use_camera_conditioning true --use_epipolar_bias true \
     --use_context_visibility true --use_skeleton_residual true --use_rotation_correction true \
