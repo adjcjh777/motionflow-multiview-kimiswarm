@@ -1,0 +1,15 @@
+# Non-circular smoke split for MotionFlow-MultiView on detected Shelf/Campus.
+# Uses only Shelf/Campus (detection 2D + true 3D GT, 5 views, 17 joints).
+name: Shelf/Campus Detected Smoke
+train_paths:
+  - data/webbridge/shelf_campus_detected/shelf_seq1_train_detected_m.npz
+  - data/webbridge/shelf_campus_detected/campus_seq1_train_detected_m.npz
+train_names:
+  - shelf
+  - campus
+val_paths:
+  - data/webbridge/shelf_campus_detected/shelf_seq1_val_detected_m.npz
+  - data/webbridge/shelf_campus_detected/campus_seq1_val_detected_m.npz
+val_names:
+  - shelf
+  - campus
