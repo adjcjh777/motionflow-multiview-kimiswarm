@@ -394,6 +394,22 @@ def build_model_from_args(
             }
         )
 
+    # v80 learned view-reliability before triangulation kwargs.
+    if getattr(args, "use_v80_view_reliability", False):
+        model_kwargs.update(
+            {
+                "use_v80_view_reliability": True,
+                "v80_vrbt_hidden": getattr(args, "v80_vrbt_hidden", 64),
+                "v80_vrbt_n_layers": getattr(args, "v80_vrbt_n_layers", 2),
+                "v80_vrbt_weight_type": getattr(args, "v80_vrbt_weight_type", "per_view_joint"),
+                "v80_vrbt_use_geometry_bias": getattr(args, "v80_vrbt_use_geometry_bias", True),
+                "v80_vrbt_use_feature_bias": getattr(args, "v80_vrbt_use_feature_bias", True),
+                "v80_vrbt_identity_init": getattr(args, "v80_vrbt_identity_init", True),
+                "v80_vrbt_min_weight": getattr(args, "v80_vrbt_min_weight", 0.05),
+                "v80_vrbt_use_ttvss": getattr(args, "v80_vrbt_use_ttvss", False),
+            }
+        )
+
     # v60 SEFH -> UWT feedback loop kwargs.
     if getattr(args, "use_v60_sefh_uwt_feedback", False):
         model_kwargs.update(
@@ -2239,6 +2255,19 @@ def parse_args() -> Namespace:
     parser.add_argument("--v52_uwt_loss_weight", type=float, default=0.01, help="Weight for the v52 UWT auxiliary loss")
     parser.add_argument("--v52_uwt_damping", type=float, default=1e-4, help="Ridge damping for v52 weighted DLT")
     parser.add_argument("--v52_uwt_warmup_epochs", type=int, default=0, help="Epochs before v52 UWT loss is active")
+    # v80 learned view-reliability before triangulation
+    parser.add_argument("--use_v80_view_reliability", action="store_true", default=False, help="Use v80 learned view-reliability prior upstream of v52 UWT")
+    parser.add_argument("--v80_vrbt_hidden", type=int, default=64, help="Hidden dimension of the v80 reliability MLP")
+    parser.add_argument("--v80_vrbt_n_layers", type=int, default=2, help="Number of layers in the v80 reliability MLP")
+    parser.add_argument("--v80_vrbt_weight_type", type=str, default="per_view_joint", choices=["per_view_joint", "per_view", "per_joint"], help="v80 reliability weight type")
+    parser.add_argument("--v80_vrbt_use_geometry_bias", action="store_true", default=True, help="Use geometry bias in the v80 reliability MLP")
+    parser.add_argument("--no_v80_vrbt_use_geometry_bias", dest="v80_vrbt_use_geometry_bias", action="store_false", help="Disable geometry bias in the v80 reliability MLP")
+    parser.add_argument("--v80_vrbt_use_feature_bias", action="store_true", default=True, help="Use feature bias in the v80 reliability MLP")
+    parser.add_argument("--no_v80_vrbt_use_feature_bias", dest="v80_vrbt_use_feature_bias", action="store_false", help="Disable feature bias in the v80 reliability MLP")
+    parser.add_argument("--v80_vrbt_identity_init", action="store_true", default=True, help="Zero-initialise the v80 reliability MLP final layer")
+    parser.add_argument("--no_v80_vrbt_identity_init", dest="v80_vrbt_identity_init", action="store_false", help="Disable v80 identity initialisation")
+    parser.add_argument("--v80_vrbt_min_weight", type=float, default=0.05, help="Minimum v80 reliability weight")
+    parser.add_argument("--v80_vrbt_use_ttvss", action="store_true", default=False, help="Enable v80 test-time view-subset search (placeholder)")
     # v60 SEFH -> UWT feedback loop
     parser.add_argument("--use_v60_sefh_uwt_feedback", action="store_true", default=False, help="Feed v50 SEFH reliability into v52 UWT as weights prior")
     # v59 view-count-conditioned sparse-view reliability

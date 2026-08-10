@@ -116,6 +116,9 @@ from motionflow_mv.fusion.domain_conditional_physical_calibration_v57 import (
 from motionflow_mv.fusion.canonical_view_refinement_v79 import (
     CanonicalViewRefinementV79,
 )
+from motionflow_mv.fusion.sparse_view_reliability_v80 import (
+    ViewReliabilityHeadV80,
+)
 from motionflow_mv.fusion.simplified_domain_psc_v58 import (
     SimplifiedDomainPhysicalCalibrationV58,
 )
@@ -382,6 +385,16 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
         v52_uwt_loss_weight: float = 0.01,
         v52_uwt_damping: float = 1e-4,
         v52_uwt_warmup_epochs: int = 0,
+        # v80 learned view-reliability before triangulation (VRBT)
+        use_v80_view_reliability: bool = False,
+        v80_vrbt_hidden: int = 64,
+        v80_vrbt_n_layers: int = 2,
+        v80_vrbt_weight_type: str = "per_view_joint",
+        v80_vrbt_use_geometry_bias: bool = True,
+        v80_vrbt_use_feature_bias: bool = True,
+        v80_vrbt_identity_init: bool = True,
+        v80_vrbt_min_weight: float = 0.05,
+        v80_vrbt_use_ttvss: bool = False,
         # v60 SEFH -> UWT feedback loop
         use_v60_sefh_uwt_feedback: bool = False,
         # v59 view-count-conditioned sparse-view reliability
@@ -1151,6 +1164,30 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
         else:
             self.uncertainty_weighted_triangulation_v52 = None
         self._v52_uwt_loss: Optional[torch.Tensor] = None
+
+        # Optional v80 learned view-reliability before triangulation (VRBT).
+        self.use_v80_view_reliability = use_v80_view_reliability
+        self.v80_vrbt_min_weight = v80_vrbt_min_weight
+        if self.use_v80_view_reliability:
+            if not self.use_v52_uncertainty_weighted_triangulation:
+                raise ValueError(
+                    "use_v80_view_reliability requires use_v52_uncertainty_weighted_triangulation=True"
+                )
+            self.view_reliability_head_v80 = ViewReliabilityHeadV80(
+                d=self.d,
+                n_views=n_views,
+                hidden=v80_vrbt_hidden,
+                n_layers=v80_vrbt_n_layers,
+                weight_type=v80_vrbt_weight_type,
+                use_geometry_bias=v80_vrbt_use_geometry_bias,
+                use_feature_bias=v80_vrbt_use_feature_bias,
+                identity_init=v80_vrbt_identity_init,
+                min_weight=v80_vrbt_min_weight,
+            )
+        else:
+            self.view_reliability_head_v80 = None
+        self.use_v80_ttvss = v80_vrbt_use_ttvss
+        self._v80_vrbt_loss: Optional[torch.Tensor] = None
 
         # Optional v60 SEFH -> UWT feedback loop.
         self.use_v60_sefh_uwt_feedback = use_v60_sefh_uwt_feedback
@@ -2130,6 +2167,34 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
             self.use_v52_uncertainty_weighted_triangulation
             and self.uncertainty_weighted_triangulation_v52 is not None
         ):
+            # Optional v80 learned view-reliability prior upstream of v52 UWT.
+            v80_weights: Optional[torch.Tensor] = None
+            if (
+                self.use_v80_view_reliability
+                and self.view_reliability_head_v80 is not None
+            ):
+                v80_weights = self.view_reliability_head_v80(
+                    features=feat.view(B, T, V, J, self.d),
+                    points_2d=points_2d.view(B, T, V, J, 2),
+                    K=K_corrected.view(B, T, V, 3, 3),
+                    R=R.view(B, T, V, 3, 3),
+                    t=t.view(B, T, V, 3),
+                    pred_3d_init=pred_3d_gn.view(B, T, J, 3),
+                    view_mask=view_mask_flat.view(B, T, V),
+                    domain_id=domain_id,
+                )
+
+            base_weights_prior = weights_sefh_for_v52 if self.use_v60_sefh_uwt_feedback else weights_orr_for_v52
+            if v80_weights is not None and base_weights_prior is not None:
+                weights_prior_for_v52 = base_weights_prior * v80_weights
+                weights_prior_for_v52 = weights_prior_for_v52.clamp(
+                    min=self.v80_vrbt_min_weight, max=1.0
+                )
+            elif v80_weights is not None:
+                weights_prior_for_v52 = v80_weights
+            else:
+                weights_prior_for_v52 = base_weights_prior
+
             # Optional v59 view-count-conditioned reliability offset.
             log_precision_offset = None
             if (
@@ -2150,7 +2215,7 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
                 pred_3d_init=pred_3d_gn.view(B, T, J, 3),
                 view_mask=view_mask_flat.view(B, T, V),
                 domain_id=domain_id,
-                weights_prior=weights_sefh_for_v52 if self.use_v60_sefh_uwt_feedback else weights_orr_for_v52,
+                weights_prior=weights_prior_for_v52,
                 log_precision_offset=log_precision_offset,
             )
             pred_3d_gn = pred_3d_gn_uwt.view(B * T, J, 3)
