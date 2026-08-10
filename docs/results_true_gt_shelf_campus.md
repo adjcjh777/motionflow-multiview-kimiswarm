@@ -68,15 +68,22 @@ stored cameras and compares with the detected 2D (conf > 0.5 joints):
 
 | Rank | Method | Params | Best val MPJPE (mm) | Best epoch | Epoch trajectory (mm) |
 |-----:|--------|---:|---:|:---:|---|
-| 1 | **DLT baseline (root-aligned)** | — | **122.37** | — | — |
-| 2 | **DLT baseline (direct MJE)** | — | **134.43** | — | — |
-| 3 | v80 (view-reliability weighting) | 965 k | **408.58** | 3 | 429.32 → 426.62 → 408.58 |
-| 4 | v57 (domain-conditional PSC) | 1 009 k | **424.63** | 3 | 429.24 → 427.12 → 424.63 |
-| 5 | v25 (geometry fusion, d=128/h=256) | 2 732 k | **430.67** | 1 | 430.67 → 459.58 → 452.26 |
+| 1 | **Iskakov-style learned weights (mixed)** | 1.6 k | **119.32** root / 128.05 direct | 4 | direct: 133.75 → 132.55 → 129.46 → **128.05** → … (early stop 12) |
+| 2 | **DLT baseline (root-aligned)** | — | **122.37** | — | — |
+| 3 | **DLT baseline (direct MJE)** | — | **134.43** | — | — |
+| 4 | v80 (view-reliability weighting) | 965 k | **408.58** | 3 | 429.32 → 426.62 → 408.58 |
+| 5 | v57 (domain-conditional PSC) | 1 009 k | **424.63** | 3 | 429.24 → 427.12 → 424.63 |
+| 6 | v25 (geometry fusion, d=128/h=256) | 2 732 k | **430.67** | 1 | 430.67 → 459.58 → 452.26 |
 
 DLT numbers are the mean of Shelf-val and Campus-val from the diagnostic table
 above: direct MJE (130.77 + 138.08)/2 = 134.43 mm; root-aligned
-(124.13 + 120.61)/2 = 122.37 mm.
+(124.13 + 120.61)/2 = 122.37 mm. The Iskakov-style row is the standalone
+learnable-triangulation baseline of `docs/results_iskakov_baseline.md`
+(Iskakov et al., ICCV 2019, arXiv:1905.05754; algebraic weight-prediction
+branch, 1,569 params): it beats both frozen DLT variants on the macro mean
+(root 119.32 < 122.37; direct 128.05 < 134.43). Caveats: Shelf numbers carry
+the coarse-calibration warning, and training saturates within ~4 epochs on
+this ~1k-frame protocol (data-limited, not an architecture verdict).
 
 Model configs: v80 `d=64, residual_hidden=128, n_st_layers=2`;
 v25 `d=128, residual_hidden=256, n_st_layers=3`; v57 as in
@@ -146,12 +153,18 @@ best checkpoint `..._long.pth` (epoch-7 weights); local script
 
 ## Next steps for this protocol
 
-- [ ] Longer v80/v57 runs (full data, >= 20 epochs) to see if any learned model
-      closes the gap to the ~122 mm root-aligned DLT baseline.
+- [x] Longer v80/v57 runs (full data, >= 20 epochs) to see if any learned model
+      closes the gap to the ~122 mm root-aligned DLT baseline. — **Done
+      (2026-08-10):** v80 best 276.49 mm at epoch 7, then overfits; v57 best
+      306.45 mm at epoch 4, then overfits. Longer training alone does NOT
+      close the gap on ~1k frames (see the long-horizon section below).
 - [ ] Add RANSAC/IRLS robust triangulation baselines under the same manifest.
-- [ ] Add Iskakov et al. (ICCV 2019) learnable-triangulation baseline once the
-      H36M true-GT protocol is available (Shelf/Campus alone is too small for
-      the standard training protocol of that method).
+- [x] Add Iskakov et al. (ICCV 2019) learnable-triangulation baseline — **done
+      on Shelf/Campus** (`docs/results_iskakov_baseline.md`, mixed run 128.05
+      direct / 119.32 root mm) **and on the H36M true-GT protocol**
+      (`docs/results_iskakov_h36m_true_gt.md`, combined direct 23.38 mm vs
+      conf-DLT 25.87 mm). Caveat: Shelf/Campus alone remains too small for
+      the paper's standard (H36M-pretrained) training protocol of that method.
 - [ ] Report per-dataset (Shelf vs Campus) splits in the paper, since Campus
       (3 views) is the harder sparse-view regime.
 
