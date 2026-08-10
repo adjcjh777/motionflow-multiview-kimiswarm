@@ -22,7 +22,7 @@
 
 ---
 
-## 2026-08-10 · recon-data-foundation（运行中）
+## 2026-08-10 · recon-data-foundation（完成，被 r2 复核取代）
 
 - **目的**：为 P0-1/P0-2 解阻塞做侦察。4 个并行 agent：
   1. pkl `joint3d_image` 真实性审计（能否本地恢复 H36M 真 3D）
@@ -31,8 +31,12 @@
   4. 本地环境验证（GPU、单测、循环诊断复现、排行榜日志复核）
 - **规模**：4 agents（medium 守则内）
 - **模型**：子代理与主模型一致（不覆盖 model）
-- **结论**：（待补）
-- **后续动作**：（待补）
+- **结论**：
+  1. pkl 只有 `joint3d_image`（(u,v,z) 图像系），无法一致还原世界系 3D → 本地无法从 pkl 恢复真 GT，必须外部获取。
+  2. A800-D 无 H36M mocap、无 MPI imageSequence；仓库镜像落后且脏，只能 scp 同步。
+  3. 渠道：MHFormer GDrive `data_3d_h36m.npz`（~174 MB，HTTP 200）可用；MPI 官方站点存活、逐序列 zip 可下；fbaipublicfiles 3D 链接已 403。
+  4. 本地环境验证通过（RTX 4090 + torch cu118，16 个 H36M 管线单测通过，循环诊断复现）。
+- **后续动作**：已由主循环执行——下载 data_3d_h36m.npz、接入 `--data3d-npz`、过双验收门（P0-1 关闭）；MPI 训练图像下载 + detected-2D 生成进行中（issue #191）。细节见 r2 条目与 docs/results_true_gt_shelf_campus.md / results_iskakov_h36m_true_gt.md。
 
 ---
 
@@ -61,3 +65,17 @@
   4. **Iskakov 基线已基本完成**：模块/训练器/结果文档/3 次运行均在（mixed 最优 combined direct 128.05 mm，超 conf-DLT +4.24 mm）。剩余：修正错误引用（"Iskakov, D., Kasneci, E." 系杜撰；正确为 Iskakov, Burkov, Lempitsky, Malkov, ICCV 2019, arXiv:1905.05754；另有 "Isakov" 拼写错误）、补单测、同步 leaderboard/issue。
 - **主循环已执行动作**：引用修复已提交推送（c84db17）；MPI detected-2D 从 AVI zip 直接解码的新脚本 `scripts/generate_mpi_detected_2d_from_avi.py`（MediaPipe Tasks API，mediapipe≥1.0；顺序解码 0.2→2.4 frames/s，12× 加速；未映射关节 conf=0）已提交（bb7fb3f, b6d8a56），全量 16 序列生产运行中（4 workers, 384px）。
 - **后续动作**：detected npz 过验收门 → DLT/v25/v57/v80 重跑 MPI 协议 → 更新 issue #191/#192/#193。
+
+---
+
+## 2026-08-10 · 主循环（非 workflow）· Iskakov 基线扩展 + v80 H36M 正则化 + MPI detected-2D 生产
+
+- **目的**：把已解除的 P0-1 真 GT 协议跑通 baseline 与学习模型，同时推进 P0-2。
+- **执行**（全部 GPU 纪律：A800 ≤2 张固定卡，本地 4090 单进程）：
+  1. **Iskakov 基线补全**：修引用（Iskakov, Burkov, Lempitsky, Malkov, ICCV 2019, arXiv:1905.05754），新增 7 项单测全过（tests/test_iskakov_learnable_triangulation.py），trainer 支持 `--protocol h36m`（5 训练主体共享 1569 参数模型，S9/S11 逐主体 + 宏均值，SVD 参照用确定性 stride 采样）。同 seed 复跑：Campus-only 132.34/118.17 mm 与原 run 逐位一致；mixed 128.73 vs 原 128.05（+0.7 mm，源于为 H36M 协议改为逐步采样的 RNG 消耗差异）。
+  2. **Iskakov 在 H36M 真 GT 上**：combined direct **23.38** mm（+2.49 vs conf-DLT 25.87，+5.81 vs unweighted 29.19）；S9 27.13 / S11 19.64 mm，落在 15–30 mm 合理带。docs/results_iskakov_h36m_true_gt.md。
+  3. **v80 在 H36M 真 GT（A800 GPUs 4,5）**：lr1e-3/wd0 → epoch2 后过拟（best 65.28 → 501 mm）；lr5e-4/wd1e-4 → epoch2 新 best 39.70 但 epoch3 发散（168 mm）；已杀进程、保存 epoch-2 最优 ckpt，改 lr2e-4/wd5e-5/patience2 重跑（运行中）。DLT 锚点 S9 29.54 / S11 21.81 mm。
+  4. **Shelf/Campus 长跑结论入库**：v80 best 276.49 mm（epoch7）/v57 best 306.45 mm（epoch4），均随后过拟至 784/834 mm；更长训练不足以在 ~1k 帧上逼近 DLT（122.37 root）。issue #193 置 DONE。
+  5. **P0-2**：新脚本从 AVI zip 直接解码（12× 提速），15 序列生产运行中（4 workers）；测试集 zip 已本地、TS 转换脚本已存在。issue #191 更新中。
+  6. **本地 v25 H36M medium**（4090 单进程）：8 epoch、1024 samples/epoch，验证 v25 在真 GT 上量级合理（无 NaN）——对应 CLAUDE.md 完成标准"DLT 与 v25 得 15–30 mm"。
+- **后续动作**：等 MPI detected npz 完成 → 双验收门 → DLT + Iskakov + v25/v57/v80 重跑 MPI 协议 → 更新 #191；等 A800 v80 reg run 收敛 → 记录并比对 DLT 锚点。
