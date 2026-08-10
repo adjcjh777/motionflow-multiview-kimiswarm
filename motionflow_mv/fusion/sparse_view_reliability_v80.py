@@ -41,7 +41,12 @@ class SparseViewReliabilityV80(nn.Module):
         n_views: int = 4,
         n_joints: int = 17,
         hidden: int = 64,
+        n_layers: int = 2,
         weight_type: str = "per_view",
+        use_geometry_bias: bool = True,
+        use_feature_bias: bool = True,
+        identity_init: bool = True,
+        min_weight: float = 0.05,
     ) -> None:
         super().__init__()
         if weight_type not in ("per_view", "per_view_joint"):
@@ -54,21 +59,25 @@ class SparseViewReliabilityV80(nn.Module):
         self.n_joints = n_joints
         self.hidden = hidden
         self.weight_type = weight_type
+        self.min_weight = min_weight
 
         # Input: pooled/raw features (d) + reprojection error (1) + epipolar residual (1)
-        self.mlp = nn.Sequential(
+        layers: list[nn.Module] = [
             nn.Linear(d + 2, hidden),
             nn.ReLU(inplace=True),
-            nn.Linear(hidden, hidden),
-            nn.ReLU(inplace=True),
-            nn.Linear(hidden, 1),
-        )
+        ]
+        for _ in range(max(0, n_layers - 1)):
+            layers.append(nn.Linear(hidden, hidden))
+            layers.append(nn.ReLU(inplace=True))
+        layers.append(nn.Linear(hidden, 1))
+        self.mlp = nn.Sequential(*layers)
 
-        # Zero-initialise the final layer so reliability starts ~0.5 after sigmoid.
+        # Optionally zero-initialise the final layer so reliability starts ~0.5 after sigmoid.
         final_linear = self.mlp[-1]
         assert isinstance(final_linear, nn.Linear)
-        nn.init.zeros_(final_linear.weight)
-        nn.init.zeros_(final_linear.bias)
+        if identity_init:
+            nn.init.zeros_(final_linear.weight)
+            nn.init.zeros_(final_linear.bias)
 
     def _project(
         self,
@@ -113,11 +122,13 @@ class SparseViewReliabilityV80(nn.Module):
         self,
         features: torch.Tensor,
         points_2d: torch.Tensor,
-        pred_3d: torch.Tensor,
-        K: torch.Tensor,
-        R: torch.Tensor,
-        t: torch.Tensor,
+        pred_3d: Optional[torch.Tensor] = None,
+        K: Optional[torch.Tensor] = None,
+        R: Optional[torch.Tensor] = None,
+        t: Optional[torch.Tensor] = None,
         view_mask: Optional[torch.Tensor] = None,
+        domain_id: Optional[torch.Tensor] = None,
+        pred_3d_init: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         """Predict per-view reliability weights.
 
@@ -145,6 +156,12 @@ class SparseViewReliabilityV80(nn.Module):
         """
         B, T, V, J, d = features.shape
 
+        # Accept either pred_3d or the caller-friendly alias pred_3d_init.
+        if pred_3d is None:
+            pred_3d = pred_3d_init
+        if pred_3d is None:
+            raise ValueError("Either pred_3d or pred_3d_init must be provided.")
+
         reproj_error = self._reprojection_error(pred_3d, points_2d, K, R, t)
         epipolar_res = self._epipolar_residual(reproj_error)
 
@@ -169,4 +186,15 @@ class SparseViewReliabilityV80(nn.Module):
                 logit = logit + (1.0 - mask).unsqueeze(-1) * -1e9
 
         reliability = torch.sigmoid(logit)
+        if self.min_weight > 0.0:
+            reliability = reliability.clamp(min=self.min_weight)
+        if view_mask is not None:
+            if self.weight_type == "per_view":
+                reliability = reliability * view_mask.float()
+            else:
+                reliability = reliability * view_mask.float().unsqueeze(-1)
         return reliability
+
+
+# Alias used by motionflow_mv/fusion/omniview_fusion_v5.py
+ViewReliabilityHeadV80 = SparseViewReliabilityV80
