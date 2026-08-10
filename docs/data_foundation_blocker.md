@@ -65,10 +65,11 @@ The converter triangulates the input 2D detections and stores the result as the 
 
 ## Immediate next steps
 
-- [x] Stop all training/polling.
+- [x] Stop all training/polling, including A800 tmux training sessions.
 - [x] Write and run the DLT diagnostic.
 - [x] Confirm `joint3d_image` is not usable as true world GT.
-- [ ] Decide whether to download/obtain original H36M 3D or pivot to MPI/Shelf/synthetic.
-- [ ] Regenerate affected `.npz` files with corrected labels.
+- [ ] Repair the data foundation for CVPR 2027.
+  - [ ] Decide whether to download/obtain original H36M 3D or pivot to MPI/Shelf/synthetic.
+  - [ ] Regenerate affected `.npz` files with corrected labels.
 - [ ] Re-run the diagnostic and confirm MPJPE between DLT and corrected labels is non-zero.
 - [ ] Re-run v25 baseline on the corrected protocol.

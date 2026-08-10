@@ -1,8 +1,18 @@
 """Build a small multi-view H36M dataset from the preprocessed keypoint subset.
 
+DEPRECATION / REDIRECT NOTE:
+    This script is largely redundant with the canonical converter in
+    ``motionflow_mv.data.webbridge_loader:convert_human36m``. New code should
+    use that converter (or ``experiments/batch_convert_h36m_webbridge.py``).
+
 Uses the camera parameters from:
     https://github.com/karfly/human36m-camera-parameters
-and triangulates per-frame 3D joints via DLT to obtain world-coordinate targets.
+
+By default it triangulates per-frame 3D joints via DLT to obtain
+world-coordinate targets. These labels are CIRCULAR (they are derived from the
+input 2D keypoints). To emit non-circular labels, pass ``--true-gt-path``
+pointing to an ``.npz`` file that already contains the true ``joints_3d`` array
+of shape ``(T, J, 3)`` in the same frame order produced by this script.
 
 Output example:
     data/h36m_hf/s_01_act_02_multiview.npz
@@ -11,8 +21,10 @@ Output example:
 import argparse
 import json
 import pickle
+import warnings
 import zipfile
 from pathlib import Path
+from typing import Optional
 
 import numpy as np
 
@@ -44,7 +56,30 @@ def main():
     parser.add_argument("--actions", type=int, nargs="+", default=[2])
     parser.add_argument("--split", type=str, default="train", choices=["train", "test"])
     parser.add_argument("--out_dir", type=str, default="data/h36m_hf")
+    parser.add_argument(
+        "--true-gt-path",
+        type=Path,
+        default=None,
+        help=(
+            "Optional path to an .npz file containing the true 3D ground-truth "
+            "'joints_3d' array of shape (T, J, 3). When provided, it is used "
+            "as the 3D label instead of triangulating the 2D input."
+        ),
+    )
     args = parser.parse_args()
+
+    true_gt: Optional[np.ndarray] = None
+    if args.true_gt_path is not None:
+        if not args.true_gt_path.exists():
+            raise FileNotFoundError(f"True 3D GT file not found: {args.true_gt_path}")
+        true_gt = np.load(args.true_gt_path)["joints_3d"]
+        print(f"Loaded true 3D GT from {args.true_gt_path}: shape {true_gt.shape}")
+    else:
+        warnings.warn(
+            "No true 3D GT provided. Generated joints_3d labels are CIRCULAR "
+            "(triangulated from the input 2D keypoints) and do not reflect true pose accuracy.",
+            stacklevel=2,
+        )
 
     with open("data/h36m_hf/camera_params.json") as f:
         cam_params = json.load(f)
@@ -106,6 +141,7 @@ def main():
     all_conf = []
     all_j3d = []
 
+    gt_frame_offset = 0
     for target_base in target_bases:
         cams_dict = groups[target_base]
         n_frames = len(cams_dict[cam_names[0]])
@@ -113,14 +149,24 @@ def main():
         for frame in range(n_frames):
             p2d = np.stack([split_data["joint_2d"][cams_dict[cam][frame]] for cam in cam_names], axis=0)
             conf = np.stack([split_data["confidence"][cams_dict[cam][frame]].squeeze(-1) for cam in cam_names], axis=0)
-            j3d = triangulate_joints(p2d, cameras)
+            if true_gt is not None:
+                j3d = true_gt[gt_frame_offset + frame]
+            else:
+                j3d = triangulate_joints(p2d, cameras)
             all_p2d.append(p2d)
             all_conf.append(conf)
             all_j3d.append(j3d)
+        gt_frame_offset += n_frames
 
     points_2d = np.stack(all_p2d, axis=0)
     confidences = np.stack(all_conf, axis=0)
     joints_3d = np.stack(all_j3d, axis=0)
+
+    if true_gt is not None and true_gt.shape[0] != joints_3d.shape[0]:
+        raise ValueError(
+            f"True 3D GT frame count ({true_gt.shape[0]}) does not match "
+            f"the number of frames produced ({joints_3d.shape[0]})."
+        )
 
     print(f"points_2d shape: {points_2d.shape}")
     print(f"joints_3d range: {joints_3d.min():.2f} {joints_3d.max():.2f}")

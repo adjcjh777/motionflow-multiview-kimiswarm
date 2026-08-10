@@ -88,4 +88,4 @@ Use the standard 3D pose metrics below. Report **MPJPE** and **PA-MPJPE** as the
 
 1. Belagiannis et al., "3D Pictorial Structures for Multiple Human Pose Estimation," CVPR 2014. [paper](https://cvn.ecp.fr/person/452/1868.pdf)
 2. Ionescu et al., "Human3.6M: Large Scale Datasets and Predictive Methods for 3D Human Sensing in Natural Environments," TPAMI 2014. [project](http://vision.imar.ro/human3.6m/)
-3. Tu et al., "VoxelPose: Towards Multi-camera 3D Human Pose Estimation in Wild Environment," CVPR 2020. [code](https://github.com/microsoft/voxelpose)
+3. Tu, H. et al., "VoxelPose: Towards Multi-camera 3D Human Pose Estimation in Wild Environment," ECCV 2020. [code](https://github.com/microsoft/voxelpose)

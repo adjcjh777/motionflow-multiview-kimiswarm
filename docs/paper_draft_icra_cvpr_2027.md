@@ -397,9 +397,10 @@ We introduced a residual refinement head on top of temporal ray-attention fusion
 ## References
 
 1. Hartley, R. and Zisserman, A. *Multiple View Geometry in Computer Vision*. Cambridge University Press, 2004.
-2. Iskakov, I., Burkov, E., Lempitsky, V., and Malkov, Y. “Learnable triangulation of human pose.” *ICCV*, 2019.
-4. Ray-attention multi-view pose. *CVPR*, 2022.
-5. Lin, et al. “MotionBERT.” *ICCV*, 2023.
+2. *(Citation needed: classic multi-view triangulation / DLT reference.)*
+3. Iskakov, K., Burkov, E., Lempitsky, V., and Malkov, Y. “Learnable triangulation of human pose.” *ICCV*, 2019.
+4. *(Citation needed: ray-attention / ray-aware multi-view pose method. The previously listed “Ray-attention multi-view pose, CVPR 2022” entry could not be verified and has been removed.)*
+5. Zhu, W., Ma, X., Liu, Z., Liu, L., Wu, W., and Wang, Y. “MotionBERT: A Unified Perspective on Learning Human Motion Representations.” *ICCV*, 2023.
 6. Zeng, et al. “SmoothNet.” *CVPR*, 2022.
 7. Newell, et al. “Stacked hourglass networks.” *CVPR*, 2016.
 

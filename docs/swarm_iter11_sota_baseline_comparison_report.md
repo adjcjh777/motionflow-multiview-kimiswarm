@@ -21,8 +21,8 @@ On Human3.6M, the temporal-residual model reaches 5.74 mm MPJPE and 3.99 mm PA-M
 
 The biggest weakness for an ICRA/CVPR 2027 submission is not the model, but the **baseline comparison table**. The current paper draft (`docs/paper_draft_icra_cvpr_2027.md`) mixes real results with placeholder or incorrect citations:
 
-- “Iskandar, et al. Triangulation learning. CVPR, 2020” — the actual paper is **Iskakov et al., “Learnable Triangulation of Human Pose,” ICCV 2019**.
-- “Ray-attention multi-view pose. CVPR, 2022” — no such canonical paper exists; it appears to reference the project’s own earlier work.
+- Iskakov, K., Burkov, E., Lempitsky, V., Malkov, Y., “Learnable Triangulation of Human Pose,” ICCV, 2019.
+- Ray-attention multi-view pose — this is an internal project variant, not an external CVPR 2022 paper.
 - The related work section lists VoxelPose, EpipolarPose, MeTRAbs, RPSNet/MvMESH, but none are run or compared numerically.
 - There is no comparison with recent SOTA such as MV-SSM (CVPR 2025), RUMPL (arXiv 2025), or COMPOSE (arXiv 2026), despite the literature-gap report identifying them as directly relevant.
 

@@ -29,7 +29,7 @@ For CVPR/ICRA 2027, treating cross-view matching as a first-class research probl
    - Uses reprojection/epipolar consistency to score cross-view correspondences without 3D GT.
    - Useful for weakly-supervised matching objectives.
 
-3. **Zhang et al., “VoxelPose: Towards Multi-Camera 3D Human Pose Estimation in Wild Environment”, ECCV 2020.**
+3. **Tu et al., “VoxelPose: Towards Multi-Camera 3D Human Pose Estimation in Wild Environment”, ECCV 2020.**
    - Aggregates 2D heatmaps into a 3D voxel volume; the voxel grid implicitly resolves cross-view correspondence.
    - Relevant as a baseline but expensive in memory.
 
@@ -37,9 +37,9 @@ For CVPR/ICRA 2027, treating cross-view matching as a first-class research probl
    - Introduces explicit cross-view tracking and identity linking with metrics (IDF1, MOTA).
    - Directly on-topic for publication-quality framing.
 
-5. **Iskandar et al., “MV-P3D: Multi-View 3D Human Pose and Shape Estimation from Sparse Views”, CVPR 2023 / 2024.**
-   - Transformer consuming unordered per-view detections to output a consistent 3D shape.
-   - Implicit matching via attention over view tokens; natural extension of `ViewAttentionFusion`.
+5. **Iskakov, K., Burkov, E., Lempitsky, V., Malkov, Y., “Learnable Triangulation of Human Pose,” ICCV, 2019.**
+   - Learns a confidence-weighted triangulation of 2D joints from multiple calibrated views.
+   - The canonical multi-view baseline for our project; relevant when extending `ViewAttentionFusion` to sparse-view settings.
 
 ## 3. Relation to the current motionflow-multiview codebase
 

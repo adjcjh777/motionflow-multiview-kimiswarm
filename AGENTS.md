@@ -2,7 +2,7 @@
 
 > **Status: DATA FOUNDATION BLOCKER — 2026-08-10**
 >
-> H36M labels are circular (`joints_3d == DLT(points_2d, cameras)`). All new GPU training is paused. See [`docs/data_foundation_blocker.md`](docs/data_foundation_blocker.md).
+> H36M labels are circular (`joints_3d == DLT(points_2d, cameras)`). All GPU training, including A800 tmux sessions, is stopped. Current focus is CVPR 2027 data-foundation repair. See [`docs/data_foundation_blocker.md`](docs/data_foundation_blocker.md).
 >
 > Target: **CVPR 2027** (~2026-11). ICRA 2027 is too tight.
 
@@ -44,8 +44,8 @@
 ## GPU usage rules
 
 - **No new training until the data foundation is fixed.**
+- **A800 tmux training sessions are stopped.** A800-D is read-only / inspection-only until corrected labels are ready.
 - Local WSL + RTX 4090 is reserved for data diagnostics and smoke tests only.
-- A800-D is read-only / inspection-only until corrected labels are ready.
 
 ## Infrastructure
 

@@ -36,7 +36,7 @@ import re
 import zipfile
 from collections import defaultdict
 from pathlib import Path
-from typing import List, Tuple
+from typing import List, Optional, Tuple
 
 import numpy as np
 import scipy.io
@@ -91,6 +91,7 @@ def convert_human36m(
     out_dir: Path = Path("data/h36m_hf"),
     camera_param_file: str = "camera_params.json",
     archive_file: str = "h36m_sh_conf_cam_source_final.pkl.zip",
+    true_gt_path: Optional[Path] = None,
 ) -> Path:
     """Convert the preprocessed Hugging Face Human3.6M subset to canonical ``.npz``.
 
@@ -102,6 +103,9 @@ def convert_human36m(
         out_dir: where to write the output ``.npz``.
         camera_param_file: name of the camera parameter json file.
         archive_file: name of the preprocessed pkl zip archive.
+        true_gt_path: optional path to an existing canonical ``.npz`` that contains
+            a ``joints_3d`` array with the true 3D ground truth. If provided, it is
+            used as the 3D label instead of triangulating from the 2D input.
 
     Returns:
         Path to the generated ``.npz`` file.
@@ -164,6 +168,31 @@ def convert_human36m(
     all_conf = []
     all_joints_3d = []
 
+    if true_gt_path is not None:
+        true_gt_path = Path(true_gt_path)
+        if not true_gt_path.exists():
+            raise FileNotFoundError(f"True GT file not found: {true_gt_path}")
+        gt_data = np.load(true_gt_path)
+        if "joints_3d" not in gt_data:
+            raise KeyError(
+                f"True GT npz must contain 'joints_3d': {true_gt_path}"
+            )
+        true_joints_3d = gt_data["joints_3d"]
+        expected_frames = sum(len(groups[tb]["01"]) for tb in target_bases)
+        if true_joints_3d.shape[0] != expected_frames:
+            raise ValueError(
+                f"True GT joints_3d has {true_joints_3d.shape[0]} frames, "
+                f"expected {expected_frames}."
+            )
+    else:
+        true_joints_3d = None
+        print(
+            "WARNING: No true 3D GT supplied; triangulating 2D keypoints to "
+            "produce joints_3d. The resulting labels are circular: DLT(points_2d, "
+            "cameras) will be stored as ground truth."
+        )
+
+    global_frame = 0
     for target_base in target_bases:
         cams_dict = groups[target_base]
         n_frames = len(cams_dict["01"])
@@ -179,10 +208,14 @@ def convert_human36m(
                 ],
                 axis=0,
             )
-            j3d = _triangulate_joints(p2d, cameras)
+            if true_joints_3d is not None:
+                j3d = true_joints_3d[global_frame]
+            else:
+                j3d = _triangulate_joints(p2d, cameras)
             all_points_2d.append(p2d)
             all_conf.append(conf)
             all_joints_3d.append(j3d)
+            global_frame += 1
 
     points_2d = np.stack(all_points_2d, axis=0)
     confidences = np.stack(all_conf, axis=0)
@@ -652,6 +685,12 @@ def main():
     parser.add_argument("--max_seqs", type=int, default=None, help="AIST++: convert at most N sequences.")
     parser.add_argument("--scale_factor", type=float, default=None, help="AIST++: scale 3D points/cameras by this factor (e.g. 0.01 for meters).")
     parser.add_argument("--meters", action="store_true", help="AIST++: alias for --scale_factor 0.01 (raw AIST++ units are usually centimeters).")
+    parser.add_argument(
+        "--true-gt-path",
+        type=Path,
+        default=None,
+        help="Human3.6M: path to a canonical npz containing the true joints_3d to use instead of triangulating.",
+    )
     args = parser.parse_args()
 
     if args.dataset == "human36m":
@@ -661,6 +700,7 @@ def main():
             actions=args.actions,
             split=args.split,
             out_dir=args.out.parent,
+            true_gt_path=args.true_gt_path,
         )
     elif args.dataset in {"shelf", "campus"}:
         convert_shelf_campus(data_root=args.data_root, out_path=args.out, person_id=args.person_id)
