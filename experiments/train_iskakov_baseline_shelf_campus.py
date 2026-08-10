@@ -1,22 +1,36 @@
 #!/usr/bin/env python3
 """Train the Iskakov et al. (ICCV 2019) Learnable Triangulation baseline on the
-non-circular detected Shelf/Campus protocol.
+non-circular true-GT protocols.
 
 Reference: Iskakov, K., Burkov, E., Lempitsky, V., Malkov, Y., 'Learnable
-Triangulation of Human Pose', ICCV 2019, arXiv:1905.05754. (Re-implementation of the weight-prediction branch on raw detected
-2D features; see motionflow_mv/fusion/iskakov_learnable_triangulation.py.)
+Triangulation of Human Pose', ICCV 2019, arXiv:1905.05754. (Re-implementation
+of the weight-prediction branch on raw detected 2D features; see
+motionflow_mv/fusion/iskakov_learnable_triangulation.py.)
 
-Protocol follows docs/results_true_gt_shelf_campus.md:
-  * manifest: configs/splits/shelf_campus_detected_smoke.yaml
-  * loss: MPJPE in mm on metres (root-aligned/centroid-aligned logged as secondary)
-  * frozen references on val: unweighted DLT and confidence-weighted DLT
-    (same SVD routine as the leaderboard diagnostic)
+Protocols
+---------
+* ``--protocol shelf_campus`` (default): the true-GT detected Shelf/Campus
+  protocol of docs/results_true_gt_shelf_campus.md
+  (manifest configs/splits/shelf_campus_detected_smoke.yaml).
+* ``--protocol h36m``: the H36M true-GT standard protocol
+  (S1,5,6,7,8 train -> S9/S11 test; manifest
+  configs/splits/h36m_true_gt_standard.yaml; issue #194).  Labels come from
+  the official-mocap-derived data_3d_h36m.npz, NOT from DLT triangulation.
+
+Loss is MPJPE in mm on metres; root-aligned (centroid-aligned) MPJPE is logged
+as a secondary metric.  Frozen references on val (unweighted DLT and
+confidence-weighted DLT, same SVD routine as the leaderboard diagnostics) are
+computed on a stride-subsampled val subset for the large H36M protocol
+(--ref_max_frames, deterministic).
 
 Usage:
   python experiments/train_iskakov_baseline_shelf_campus.py \
       --datasets shelf+campus --epochs 30 --log_path outputs/iskakov_learnable_tri_detected.log
   python experiments/train_iskakov_baseline_shelf_campus.py \
       --datasets campus --epochs 30 --log_path outputs/iskakov_learnable_tri_campus_only.log
+  python experiments/train_iskakov_baseline_shelf_campus.py \
+      --protocol h36m --epochs 10 --train_samples_per_epoch 4096 \
+      --log_path outputs/iskakov_learnable_tri_h36m_true_gt.log
 """
 
 from __future__ import annotations
@@ -27,6 +41,7 @@ import math
 import sys
 import time
 from pathlib import Path
+from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 import torch
@@ -41,8 +56,9 @@ from motionflow_mv.fusion.iskakov_learnable_triangulation import (
 )
 from motionflow_mv.fusion.triangulation import triangulate_dlt
 
-DATASET_KEYS = {"shelf", "campus"}
-DATASET_FILES = {
+DATASET_KEYS = {"shelf", "campus", "h36m"}
+
+SHELF_CAMPUS_FILES = {
     "shelf": (
         "data/webbridge/shelf_campus_detected/shelf_seq1_train_detected_m.npz",
         "data/webbridge/shelf_campus_detected/shelf_seq1_val_detected_m.npz",
@@ -53,12 +69,40 @@ DATASET_FILES = {
     ),
 }
 
+H36M_TRAIN = [1, 5, 6, 7, 8]
+H36M_TEST = [9, 11]
+
+
+def h36m_files(subject: int) -> Tuple[str, str]:
+    stem = f"data/h36m_true_gt/s_{subject:02d}_acts_02_03_04_05_06_07_08_09_10_11_12_13_14_15_16_multiview_m.npz"
+    return stem, stem
+
+
+PROTOCOL_MANIFESTS = {
+    "shelf_campus": "configs/splits/shelf_campus_detected_smoke.yaml",
+    "h36m": "configs/splits/h36m_true_gt_standard.yaml",
+}
+
+
+def build_dataset_files(protocol: str) -> Dict[str, Tuple[str, str]]:
+    if protocol == "shelf_campus":
+        return dict(SHELF_CAMPUS_FILES)
+    if protocol == "h36m":
+        out = {}
+        for s in H36M_TRAIN + H36M_TEST:
+            out[f"h36m_s{s}"] = h36m_files(s)
+        return out
+    raise ValueError(f"unknown protocol {protocol!r}")
+
 
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument("--manifest", default="configs/splits/shelf_campus_detected_smoke.yaml")
+    p.add_argument("--protocol", default="shelf_campus", choices=["shelf_campus", "h36m"])
+    p.add_argument("--manifest", default=None,
+                   help="defaults to the protocol's canonical manifest")
     p.add_argument("--datasets", default="shelf+campus",
-                   help="'shelf+campus' (domain-balanced), 'campus', or 'shelf'")
+                   help="'shelf+campus' / 'campus' / 'shelf' for the shelf_campus "
+                        "protocol; ignored for h36m (all 5 train + 2 test subjects)")
     p.add_argument("--epochs", type=int, default=30)
     p.add_argument("--batch_size", type=int, default=8)
     p.add_argument("--lr", type=float, default=1e-3)
@@ -68,18 +112,22 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--seed", type=int, default=20260810)
     p.add_argument("--hidden_dim", type=int, default=32)
     p.add_argument("--per_view", action="store_true", help="disable cross-view feature mode (ablation)")
-    p.add_argument("--log_path", default="outputs/iskakov_learnable_tri_detected.log")
+    p.add_argument("--train_samples_per_epoch", type=int, default=0,
+                   help="if >0, sample this many frames per epoch instead of a full pass")
+    p.add_argument("--ref_max_frames", type=int, default=2000,
+                   help="max val frames used for the frozen DLT references (deterministic stride)")
+    p.add_argument("--log_path", default=None)
     p.add_argument("--ckpt_path", default=None)
     p.add_argument("--device", default="cuda")
     return p.parse_args()
 
 
-def load_manifest(path: str) -> dict:
+def load_manifest(path: str, dataset_files: Dict[str, Tuple[str, str]]) -> dict:
     with open(path, "r", encoding="utf-8") as f:
         m = yaml.safe_load(f)
     # Verify manifest agrees with the canonical npz paths used here.
     want = set()
-    for tr, va in DATASET_FILES.values():
+    for tr, va in dataset_files.values():
         want.add(tr)
         want.add(va)
     listed = set(m.get("train_paths", [])) | set(m.get("val_paths", []))
@@ -89,7 +137,7 @@ def load_manifest(path: str) -> dict:
 
 
 class FrameDataset:
-    """One Shelf or Campus split as GPU-ready tensors."""
+    """One split as GPU-ready tensors."""
 
     def __init__(self, npz_path: str, device: torch.device):
         d = np.load(npz_path)
@@ -123,7 +171,7 @@ def centroid_aligned_mpjpe_mm(pred: torch.Tensor, gt: torch.Tensor) -> torch.Ten
 
 
 @torch.no_grad()
-def evaluate(model, datasets: dict[str, FrameDataset]) -> dict:
+def evaluate(model, datasets: Dict[str, FrameDataset]) -> dict:
     """Eval direct + centroid-aligned MPJPE per dataset and their macro mean."""
     out = {}
     for name, ds in datasets.items():
@@ -136,19 +184,28 @@ def evaluate(model, datasets: dict[str, FrameDataset]) -> dict:
 
 
 @torch.no_grad()
-def frozen_dlt_references(val_datasets: dict[str, FrameDataset]) -> dict:
+def frozen_dlt_references(
+    val_datasets: Dict[str, FrameDataset], ref_max_frames: int = 2000
+) -> dict:
     """Unweighted and confidence-weighted DLT on val using the leaderboard's
-    SVD routine (triangulate_dlt), per dataset + macro mean."""
-    refs: dict[str, dict[str, float]] = {}
+    SVD routine (triangulate_dlt), per dataset + macro mean.
+
+    Large val sets are stride-subsampled to *ref_max_frames* frames
+    (deterministic) because the per-frame SVD loop is O(N*J).
+    """
+    refs: Dict[str, Dict[str, float]] = {}
     for name, ds in val_datasets.items():
         P = build_projection_matrices(ds.K.cpu(), ds.R.cpu(), ds.t.cpu()).double().numpy()
-        p2d = ds.points_2d.double().cpu().numpy()
-        conf = ds.confidences.double().cpu().numpy()
-        gt = ds.joints_3d.double().cpu().numpy()
-        N, V, J, _ = p2d.shape
+        N = ds.points_2d.shape[0]
+        stride = max(1, int(math.ceil(N / ref_max_frames)))
+        idx = np.arange(0, N, stride)
+        p2d = ds.points_2d[idx].double().cpu().numpy()
+        conf = ds.confidences[idx].double().cpu().numpy()
+        gt = ds.joints_3d[idx].double().cpu().numpy()
+        _, V, J, _ = p2d.shape
         re_uw = np.zeros_like(gt)
         re_cw = np.zeros_like(gt)
-        for f in range(N):
+        for f in range(p2d.shape[0]):
             for j in range(J):
                 re_uw[f, j] = triangulate_dlt(p2d[f, :, j], P)
                 re_cw[f, j] = triangulate_dlt(p2d[f, :, j], P, weights=conf[f, :, j])
@@ -163,8 +220,9 @@ def frozen_dlt_references(val_datasets: dict[str, FrameDataset]) -> dict:
         refs[name] = {
             "unweighted_direct_mm": direct(re_uw), "unweighted_root_mm": root(re_uw),
             "conf_direct_mm": direct(re_cw), "conf_root_mm": root(re_cw),
+            "n_ref_frames": int(len(idx)),
         }
-    out: dict[str, float] = {}
+    out: Dict[str, float] = {}
     for key in ("unweighted_direct_mm", "unweighted_root_mm", "conf_direct_mm", "conf_root_mm"):
         out[f"combined_{key}"] = float(np.mean([refs[n][key] for n in val_datasets]))
         for n in val_datasets:
@@ -178,7 +236,14 @@ def main() -> None:
     np.random.seed(args.seed)
     rng = np.random.default_rng(args.seed)
 
-    log_path = Path(args.log_path)
+    protocol = args.protocol
+    dataset_files = build_dataset_files(protocol)
+    manifest_path = args.manifest or PROTOCOL_MANIFESTS[protocol]
+
+    log_path = Path(args.log_path or {
+        "shelf_campus": "outputs/iskakov_learnable_tri_detected.log",
+        "h36m": "outputs/iskakov_learnable_tri_h36m_true_gt.log",
+    }[protocol])
     log_path.parent.mkdir(parents=True, exist_ok=True)
     log_f = open(log_path, "a", encoding="utf-8")
 
@@ -189,23 +254,30 @@ def main() -> None:
         log_f.flush()
 
     device = torch.device(args.device if (args.device == "cpu" or torch.cuda.is_available()) else "cpu")
-    log(f"=== Iskakov Learnable Triangulation baseline (ICCV 2019 re-implementation) ===")
-    log(f"device={device} torch={torch.__version__} seed={args.seed}")
-    log(f"manifest={args.manifest} datasets={args.datasets}")
+    log("=== Iskakov Learnable Triangulation baseline (ICCV 2019 re-implementation) ===")
+    log(f"protocol={protocol} device={device} torch={torch.__version__} seed={args.seed}")
+    log(f"manifest={manifest_path}")
 
-    manifest = load_manifest(args.manifest)
+    manifest = load_manifest(manifest_path, dataset_files)
     log(f"manifest name={manifest.get('name')}")
 
-    wanted = [s.strip() for s in args.datasets.split("+")]
-    for w in wanted:
-        if w not in DATASET_KEYS:
-            raise SystemExit(f"unknown dataset '{w}'")
+    if protocol == "shelf_campus":
+        wanted = [s.strip() for s in args.datasets.split("+")]
+        for w in wanted:
+            if w not in SHELF_CAMPUS_FILES:
+                raise SystemExit(f"unknown dataset '{w}'")
+        train_names = wanted
+        val_names = wanted
+    else:  # h36m
+        train_names = [f"h36m_s{s}" for s in H36M_TRAIN]
+        val_names = [f"h36m_s{s}" for s in H36M_TEST]
 
-    train_ds = {w: FrameDataset(DATASET_FILES[w][0], device) for w in wanted}
-    val_ds = {w: FrameDataset(DATASET_FILES[w][1], device) for w in wanted}
-    for w in wanted:
-        log(f"loaded {w}: train={train_ds[w].n} frames, val={val_ds[w].n} frames, "
-            f"views={train_ds[w].points_2d.shape[1]}")
+    train_ds = {w: FrameDataset(dataset_files[w][0], device) for w in train_names}
+    val_ds = {w: FrameDataset(dataset_files[w][1], device) for w in val_names}
+    for w in train_names:
+        log(f"train {w}: {train_ds[w].n} frames, views={train_ds[w].points_2d.shape[1]}")
+    for w in val_names:
+        log(f"val   {w}: {val_ds[w].n} frames, views={val_ds[w].points_2d.shape[1]}")
 
     cross_view = not args.per_view
     model = IskakovLearnableTriangulation(hidden_dim=args.hidden_dim, cross_view=cross_view).to(device)
@@ -214,14 +286,20 @@ def main() -> None:
         f"cross_view={cross_view} params={n_params}")
 
     # ---- Frozen references (no learning) -----------------------------------
-    log("computing frozen DLT references on val (SVD routine, leaderboard-consistent)...")
-    refs = frozen_dlt_references(val_ds)
+    log(f"computing frozen DLT references on val (SVD routine, "
+        f"ref_max_frames={args.ref_max_frames}, deterministic stride)...")
+    refs = frozen_dlt_references(val_ds, ref_max_frames=args.ref_max_frames)
     for k, v in sorted(refs.items()):
-        log(f"FROZEN {k} = {v:.2f} mm")
+        if not k.endswith("n_ref_frames"):
+            log(f"FROZEN {k} = {v:.2f} mm")
 
     # ---- Training ----------------------------------------------------------
     optim = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
-    total_steps = args.epochs * max(ds.n for ds in train_ds.values()) // args.batch_size
+    if args.train_samples_per_epoch > 0:
+        samples_per_epoch = args.train_samples_per_epoch
+    else:
+        samples_per_epoch = max(ds.n for ds in train_ds.values())
+    total_steps = args.epochs * samples_per_epoch // args.batch_size
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optim, T_max=max(total_steps, 1))
 
     best = {"combined_direct_mm": float("inf"), "epoch": -1, "metrics": None}
@@ -234,21 +312,14 @@ def main() -> None:
         model.train()
         # Domain-balanced: each step picks a domain uniformly, then a random
         # batch from that dataset (keeps view count constant within a batch).
-        order = {w: rng.permutation(train_ds[w].n) for w in wanted}
-        cursors = {w: 0 for w in wanted}
-        n_batches_max = max(math.ceil(ds.n / args.batch_size) for ds in train_ds.values())
         epoch_loss = 0.0
         epoch_root = 0.0
         n_steps = 0
-        for b in range(n_batches_max):
-            w = wanted[int(rng.integers(len(wanted)))]
+        n_batches = max(1, samples_per_epoch // args.batch_size)
+        for b in range(n_batches):
+            w = train_names[int(rng.integers(len(train_names)))]
             ds = train_ds[w]
-            start = cursors[w]
-            if start >= ds.n:  # wrap: domain stays balanced across the wrap
-                order[w] = rng.permutation(ds.n)
-                start = 0
-            idx = torch.from_numpy(order[w][start:start + args.batch_size]).long().to(device)
-            cursors[w] = start + args.batch_size
+            idx = torch.from_numpy(rng.integers(0, ds.n, size=args.batch_size)).long().to(device)
 
             p2d, conf, gt, K, R, t = ds.batch(idx)
             pred = model(p2d, conf, K, R, t)
@@ -272,7 +343,7 @@ def main() -> None:
         lr_now = optim.param_groups[0]["lr"]
         parts = [f"epoch {epoch:03d}/{args.epochs}", f"lr={lr_now:.2e}",
                  f"train_MPJPE={train_mm:.2f} mm", f"train_root={train_root_mm:.2f} mm"]
-        for w in wanted:
+        for w in val_names:
             parts.append(f"val[{w}] direct={val[f'{w}_direct_mm']:.2f} root={val[f'{w}_root_mm']:.2f} mm")
         parts.append(f"val[combined] direct={val['combined_direct_mm']:.2f} root={val['combined_root_mm']:.2f} mm")
         log(" | ".join(parts))
@@ -302,7 +373,8 @@ def main() -> None:
     for k, v in sorted(final_val.items()):
         log(f"FINAL val {k} = {v:.2f} mm")
     for k, v in sorted(refs.items()):
-        log(f"FROZEN ref {k} = {v:.2f} mm")
+        if not k.endswith("n_ref_frames"):
+            log(f"FROZEN ref {k} = {v:.2f} mm")
     gain = refs.get("combined_conf_direct_mm", float("nan")) - final_val["combined_direct_mm"]
     log(f"learned-vs-confDLT gain (combined direct) = {gain:+.2f} mm")
     log(f"learned-vs-unweightedDLT gain (combined direct) = "
