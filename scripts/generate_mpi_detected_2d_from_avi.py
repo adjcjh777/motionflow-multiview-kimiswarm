@@ -93,7 +93,12 @@ def _extract_avi_bytes(zip_path: Path, view: int) -> Optional[bytes]:
 
 
 class AviReader:
-    """Sequential frame decoder for an in-memory AVI (written to a temp file)."""
+    """Sequential frame decoder for an in-memory AVI (written to a temp file).
+
+    Optimised for the canonical use case: frames are read strictly in order,
+    so we never call ``cap.set(POS_FRAMES)`` (re-seeking forces a decode from
+    the previous keyframe and was ~5x slower than sequential reads).
+    """
 
     def __init__(self, avi_bytes: bytes):
         import cv2
@@ -107,12 +112,17 @@ class AviReader:
         if not self.cap.isOpened():
             raise RuntimeError("cv2 cannot open AVI (ffmpeg backend missing?)")
         self.n = int(self.cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        self._next = 0
 
     def frame(self, idx: int) -> Optional[np.ndarray]:
+        """Return frame *idx*. Sequential access is O(1); random access seeks."""
         import cv2
 
-        self.cap.set(cv2.CAP_PROP_POS_FRAMES, idx)
+        if idx != self._next:
+            self.cap.set(cv2.CAP_PROP_POS_FRAMES, idx)
+            self._next = idx
         ok, f = self.cap.read()
+        self._next += 1
         return f if ok else None
 
     def close(self) -> None:
@@ -271,7 +281,7 @@ def main() -> None:
     p.add_argument("--raw_dir", type=Path, default=Path("data/webbridge/mpi_inf_3dhp/raw"))
     p.add_argument("--output_dir", type=Path, default=Path("data/webbridge/mpi_inf_3dhp_detected_2d"))
     p.add_argument("--model", type=str, default="models/mediapipe/pose_landmarker_full.task")
-    p.add_argument("--detect_size", type=int, default=512)
+    p.add_argument("--detect_size", type=int, default=384)
     p.add_argument("--subjects", type=str, default="1,3,4,5,6,7,8,2",
                    help="comma-separated subject ids to process")
     p.add_argument("--seqs", type=str, default="1,2")
