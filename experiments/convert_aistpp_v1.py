@@ -55,6 +55,11 @@ def main():
         action="store_true",
         help="Keep raw AIST++ units instead of scaling to meters.",
     )
+    parser.add_argument(
+        "--no_optim",
+        action="store_true",
+        help="Use raw keypoints3d instead of the optimized clean keypoints3d_optim.",
+    )
     args = parser.parse_args()
 
     out_paths = convert_aistpp(
@@ -62,6 +67,7 @@ def main():
         out_dir=args.out,
         scale_factor=None if args.raw else 0.01,
         max_seqs=args.max_seqs,
+        use_optim=not args.no_optim,
     )
 
     print(f"Converted {len(out_paths)} sequences.")
