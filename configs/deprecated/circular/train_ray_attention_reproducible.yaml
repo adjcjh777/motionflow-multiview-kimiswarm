@@ -1,3 +1,9 @@
+# DEPRECATED — circular / stale non-true-GT data source
+# Reason: references data/h36m_hf/, data/webbridge/h36m_meters/, or data/webbridge/shelf_campus/
+#          which contain circular H36M labels or stale pre-true-GT Shelf/Campus data.
+# Replacement: use configs/splits/h36m_true_gt_standard.yaml,
+#               configs/splits/shelf_campus_detected_smoke.yaml, or similar true-GT splits.
+#
 # Reproducible training config for RayAttentionFusionModelV3
 # Usage: python experiments/train_ray_attention_reproducible.py --config configs/train_ray_attention_reproducible.yaml
 

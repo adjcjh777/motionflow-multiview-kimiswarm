@@ -1,3 +1,9 @@
+# DEPRECATED — circular / stale non-true-GT data source
+# Reason: references data/h36m_hf/, data/webbridge/h36m_meters/, or data/webbridge/shelf_campus/
+#          which contain circular H36M labels or stale pre-true-GT Shelf/Campus data.
+# Replacement: use configs/splits/h36m_true_gt_standard.yaml,
+#               configs/splits/shelf_campus_detected_smoke.yaml, or similar true-GT splits.
+#
 # P18 Cross-Dataset WebBridge Benchmark Manifest
 #
 # This manifest is a sample covering all five target datasets.
@@ -43,9 +49,9 @@ datasets:
   - name: aistpp_gWA_ch01
     path: data/webbridge/aistpp_canonical/gWA_sBM_cAll_d27_mWA2_ch01_multiview.npz
 
-  # Shelf / Campus
+  # Shelf / Campus (detected 2D + true 3D GT)
   - name: shelf_seq1_train
-    path: data/webbridge/shelf_campus/shelf_seq1_train_v5_multiview_m.npz
+    path: data/webbridge/shelf_campus_detected/shelf_seq1_train_detected_m.npz
 
   - name: campus_seq1_train
-    path: data/webbridge/shelf_campus/campus_seq1_train_v3_multiview_m.npz
+    path: data/webbridge/shelf_campus_detected/campus_seq1_train_detected_m.npz
