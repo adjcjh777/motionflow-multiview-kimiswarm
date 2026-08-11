@@ -714,18 +714,24 @@ def convert_aistpp(
         if scale_factor is not None:
             joints_3d = joints_3d * scale_factor
 
-        # Defensive: drop any frame that still contains NaN in 2D, confidence, or 3D.
-        valid = (
-            ~np.isnan(points_2d).any(axis=(1, 2, 3))
-            & ~np.isnan(confidences).any(axis=(1, 2))
-            & ~np.isnan(joints_3d).any(axis=(1, 2))
-        )
-        if not valid.all():
-            dropped = int((~valid).sum())
-            print(f"WARNING [{seq_name}]: dropping {dropped}/{len(valid)} NaN frames")
-            points_2d = points_2d[valid]
-            confidences = confidences[valid]
-            joints_3d = joints_3d[valid]
+        # 2D keypoints can still contain NaNs for occluded joints. Replace them with
+        # zeros and set the corresponding confidence to zero so the loss/MPJPE can
+        # mask them out, while preserving temporal frame count.
+        nan_2d = np.isnan(points_2d)
+        if nan_2d.any():
+            points_2d = np.where(nan_2d, 0.0, points_2d)
+            confidences = np.where(nan_2d[..., 0], 0.0, confidences)
+            print(f"WARNING [{seq_name}]: zeroed {nan_2d.any(axis=(1,2,3)).sum()} frames with NaN 2D keypoints")
+
+        # Defensive: drop any frame that still contains NaN in 3D (should not happen
+        # when using keypoints3d_optim).
+        valid_3d = ~np.isnan(joints_3d).any(axis=(1, 2))
+        if not valid_3d.all():
+            dropped = int((~valid_3d).sum())
+            print(f"WARNING [{seq_name}]: dropping {dropped}/{len(valid_3d)} frames with NaN joints_3d")
+            points_2d = points_2d[valid_3d]
+            confidences = confidences[valid_3d]
+            joints_3d = joints_3d[valid_3d]
 
         setting_name = mapping.get(seq_name)
         if setting_name is None:
