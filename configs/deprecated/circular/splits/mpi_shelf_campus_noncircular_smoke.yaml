@@ -1,3 +1,9 @@
+# DEPRECATED — circular / stale non-true-GT data source
+# Reason: references data/h36m_hf/, data/webbridge/h36m_meters/, or data/webbridge/shelf_campus/
+#          which contain circular H36M labels or stale pre-true-GT Shelf/Campus data.
+# Replacement: use configs/splits/h36m_true_gt_standard.yaml,
+#               configs/splits/shelf_campus_detected_smoke.yaml, or similar true-GT splits.
+#
 # Non-circular smoke split for MotionFlow-MultiView.
 # Excludes H36M (circular labels) and trains only on datasets with true 3D GT:
 #   - MPI-INF-3DHP (true 3D mocap)
@@ -8,8 +14,8 @@ train_paths:
   - data/webbridge/mpi_inf_3dhp/s_01_seq_01_v14_multiview_m.npz
   - data/webbridge/mpi_inf_3dhp/s_01_seq_02_v14_multiview_m.npz
   - data/webbridge/mpi_inf_3dhp/s_03_seq_01_v14_multiview_m.npz
-  - data/webbridge/shelf_campus/shelf_seq1_train_v5_multiview_m.npz
-  - data/webbridge/shelf_campus/campus_seq1_train_v3_multiview_m.npz
+  - data/webbridge/shelf_campus_detected/shelf_seq1_train_detected_m.npz
+  - data/webbridge/shelf_campus_detected/campus_seq1_train_detected_m.npz
 train_names:
   - mpi
   - mpi
@@ -18,7 +24,7 @@ train_names:
   - campus
 val_paths:
   - data/webbridge/mpi_inf_3dhp/s_02_seq_01_v14_multiview_m.npz
-  - data/webbridge/shelf_campus/campus_seq1_val_v3_multiview_m.npz
+  - data/webbridge/shelf_campus_detected/campus_seq1_val_detected_m.npz
 val_names:
   - mpi
   - campus

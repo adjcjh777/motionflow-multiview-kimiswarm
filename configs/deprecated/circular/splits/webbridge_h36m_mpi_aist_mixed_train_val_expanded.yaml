@@ -1,4 +1,10 @@
-name: WebBridge proposed mixed multi-view split (17-joint, meter units)
+# DEPRECATED — circular / stale non-true-GT data source
+# Reason: references data/h36m_hf/, data/webbridge/h36m_meters/, or data/webbridge/shelf_campus/
+#          which contain circular H36M labels or stale pre-true-GT Shelf/Campus data.
+# Replacement: use configs/splits/h36m_true_gt_standard.yaml,
+#               configs/splits/shelf_campus_detected_smoke.yaml, or similar true-GT splits.
+#
+name: WebBridge H36M + MPI-INF-3DHP + AIST++ Expanded (17 joints, 14 views padded)
 train_paths:
 - data/webbridge/aistpp_canonical/gBR_sBM_cAll_d04_mBR0_ch01_multiview.npz
 - data/webbridge/aistpp_canonical/gBR_sBM_cAll_d04_mBR0_ch02_multiview.npz
@@ -1197,7 +1203,6 @@ train_paths:
 - data/webbridge/aistpp_canonical/gWA_sFM_cAll_d27_mWA3_ch18_multiview.npz
 - data/webbridge/aistpp_canonical/gWA_sFM_cAll_d27_mWA4_ch19_multiview.npz
 - data/webbridge/aistpp_canonical/gWA_sFM_cAll_d27_mWA5_ch20_multiview.npz
-- data/webbridge/shelf_campus/campus_seq1_train_v3_multiview_m.npz
 - data/webbridge/h36m_meters/s_01_acts_02_multiview_m.npz
 - data/webbridge/h36m_meters/s_01_acts_03_multiview_m.npz
 - data/webbridge/h36m_meters/s_01_acts_04_multiview_m.npz
@@ -1308,7 +1313,6 @@ train_paths:
 - data/webbridge/mpi_inf_3dhp/s_07_seq_02_v14_multiview_m.npz
 - data/webbridge/mpi_inf_3dhp/s_08_seq_01_v14_multiview_m.npz
 - data/webbridge/mpi_inf_3dhp/s_08_seq_02_v14_multiview_m.npz
-- data/webbridge/shelf_campus/shelf_seq1_train_v5_multiview_m.npz
 train_names:
 - aist
 - aist
@@ -2507,7 +2511,6 @@ train_names:
 - aist
 - aist
 - aist
-- campus
 - h36m
 - h36m
 - h36m
@@ -2618,7 +2621,6 @@ train_names:
 - mpi
 - mpi
 - mpi
-- shelf
 val_paths:
 - data/webbridge/aistpp_canonical/gBR_sBM_cAll_d06_mBR2_ch01_multiview.npz
 - data/webbridge/aistpp_canonical/gBR_sBM_cAll_d06_mBR2_ch02_multiview.npz
@@ -2831,7 +2833,6 @@ val_paths:
 - data/webbridge/aistpp_canonical/gWA_sFM_cAll_d25_mWA4_ch05_multiview.npz
 - data/webbridge/aistpp_canonical/gWA_sFM_cAll_d26_mWA1_ch09_multiview.npz
 - data/webbridge/aistpp_canonical/gWA_sFM_cAll_d27_mWA0_ch15_multiview.npz
-- data/webbridge/shelf_campus/campus_seq1_val_v3_multiview_m.npz
 - data/webbridge/h36m_meters/s_09_acts_02_multiview_m.npz
 - data/webbridge/h36m_meters/s_09_acts_03_multiview_m.npz
 - data/webbridge/h36m_meters/s_09_acts_04_multiview_m.npz
@@ -2848,7 +2849,6 @@ val_paths:
 - data/webbridge/h36m_meters/s_09_acts_15_multiview_m.npz
 - data/webbridge/h36m_meters/s_09_acts_16_multiview_m.npz
 - data/webbridge/mpi_inf_3dhp/s_02_seq_01_v14_multiview_m.npz
-- data/webbridge/shelf_campus/shelf_seq1_val_v5_multiview_m.npz
 val_names:
 - aist
 - aist
@@ -3061,7 +3061,6 @@ val_names:
 - aist
 - aist
 - aist
-- campus
 - h36m
 - h36m
 - h36m
@@ -3078,4 +3077,3 @@ val_names:
 - h36m
 - h36m
 - mpi
-- shelf

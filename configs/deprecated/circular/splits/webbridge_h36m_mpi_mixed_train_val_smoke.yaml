@@ -1,3 +1,9 @@
+# DEPRECATED — circular / stale non-true-GT data source
+# Reason: references data/h36m_hf/, data/webbridge/h36m_meters/, or data/webbridge/shelf_campus/
+#          which contain circular H36M labels or stale pre-true-GT Shelf/Campus data.
+# Replacement: use configs/splits/h36m_true_gt_standard.yaml,
+#               configs/splits/shelf_campus_detected_smoke.yaml, or similar true-GT splits.
+#
 # Fast smoke split: only 5 train files and 2 val files.
 # One epoch with train_samples=500 and batch_size=16 is ~150 steps,
 # so first val_MPJPE appears quickly on A800/4090.

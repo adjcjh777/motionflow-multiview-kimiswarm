@@ -43,6 +43,7 @@
 - **v83/v84 dropped:** v83 A800 medium plateaued at **~100 mm** val and was killed. v84 uncertainty-weighted view dropout smoke produced **107.11 mm** val, also no improvement. Architecture modules on top of v25 ray tokens are deprioritized until cross-dataset training is baselined.
 - **v25 stability variable-view eval:** Running on A800 GPU 4 (PID `4184808`). Outputs will land in `outputs/variable_view_v25_true_gt_stability_a800.csv/.json`.
 - **MPI-INF-3DHP detection:** RTMPose 2D detection is running on GPU 7 (PID `2527668`). Five of 16 `.npz` files are written to `data/webbridge/mpi_inf_3dhp_detected_2d/`.
+- **Stale circular config deprecation:** Moved all configs referencing `data/h36m_hf/`, `data/webbridge/h36m_meters/`, or `data/webbridge/shelf_campus/` into `configs/deprecated/circular/`. They now fail loudly if launched and point to the replacement true-GT splits. See `configs/deprecated/circular/README.md`.
 
 ## Current work in flight
 

@@ -1,7 +1,10 @@
-# v31 mixed-dataset curriculum: stage 3 (full A800 run).
-# 1:1 H36M:MPI mix, warm-started from stage 2 checkpoint.
-name: v31 Stage 3 Full - H36M:MPI 1:1
-
+# DEPRECATED — circular / stale non-true-GT data source
+# Reason: references data/h36m_hf/, data/webbridge/h36m_meters/, or data/webbridge/shelf_campus/
+#          which contain circular H36M labels or stale pre-true-GT Shelf/Campus data.
+# Replacement: use configs/splits/h36m_true_gt_standard.yaml,
+#               configs/splits/shelf_campus_detected_smoke.yaml, or similar true-GT splits.
+#
+name: WebBridge H36M + MPI-INF-3DHP Mixed (17 joints, 14 views padded)
 train_paths:
   - data/webbridge/h36m_meters/s_01_acts_02_multiview_m.npz
   - data/webbridge/h36m_meters/s_01_acts_03_multiview_m.npz
@@ -32,7 +35,6 @@ train_paths:
   - data/webbridge/mpi_inf_3dhp/s_07_seq_02_v14_multiview_m.npz
   - data/webbridge/mpi_inf_3dhp/s_08_seq_01_v14_multiview_m.npz
   - data/webbridge/mpi_inf_3dhp/s_08_seq_02_v14_multiview_m.npz
-  - data/webbridge/mpi_inf_3dhp/s_01_seq_01_v14_multiview_m.npz
 train_names:
   - h36m
   - h36m
@@ -63,9 +65,6 @@ train_names:
   - mpi
   - mpi
   - mpi
-  - mpi
-  - mpi
-
 val_paths:
   - data/webbridge/h36m_meters/s_09_acts_02_multiview_m.npz
   - data/webbridge/h36m_meters/s_09_acts_03_multiview_m.npz

@@ -1,3 +1,9 @@
+# DEPRECATED — circular / stale non-true-GT data source
+# Reason: references data/h36m_hf/, data/webbridge/h36m_meters/, or data/webbridge/shelf_campus/
+#          which contain circular H36M labels or stale pre-true-GT Shelf/Campus data.
+# Replacement: use configs/splits/h36m_true_gt_standard.yaml,
+#               configs/splits/shelf_campus_detected_smoke.yaml, or similar true-GT splits.
+#
 name: WebBridge All Datasets Mixed (17-joint padded)
   is padded to 14 views and mapped to the 17-joint skeleton by the mixed loader.
 train_paths:

@@ -16,6 +16,10 @@ MotionFlow-MultiView is an end-to-end, reproducible multi-view human motion capt
 
 This design follows the principle that the fusion module should be geometry-first and learning-second: triangulate first, then learn only the structured residual error that geometry cannot fix.
 
+\subsection{Honest true-GT framing}
+
+The method is evaluated on non-circular ground truth: the 3D labels are independent mocap coordinates, not triangulations of the input 2D keypoints. On Human3.6M this means true-GT labels from `data/h36m_true_gt/`, not the circular `data/h36m_hf/` or `data/webbridge/h36m_meters/` sets. The method section therefore describes the architecture in terms of how it improves on geometric triangulation; the absolute MPJPE results in Section~5 show that, on honest labels, even our best learned variant still trails a simple confidence-weighted DLT baseline. The empirical contribution of the paper is accordingly framed around sparse-view and cross-domain robustness, not absolute records.
+
 \section{Detailed Method}
 
 \subsection{Notation and Problem Formulation}
@@ -192,10 +196,12 @@ Robot profiles externalize kinematics, retargeting, training, and export convent
 
 \subsection{Datasets}
 
-We train and evaluate on two public benchmarks:
+We train and evaluate on non-circular benchmarks only:
 
-- **MPI-INF-3DHP**: up to 14 views, 28 joints. Train on subjects 1 and 3, validate on subject 2 sequence 1.
-- **Human3.6M**: 4 views, 17 joints. Train on subject 1, validate on subject 5 action 2.
+- **Human3.6M true-GT**: 4 views, 17 joints. Standard protocol trains on subjects S1, S5, S6, S7, S8 and tests on S9 and S11. Labels are true mocap world coordinates from `data/h36m_true_gt/*_multiview_m.npz`. The old circular labels (`data/h36m_hf/`, `data/webbridge/h36m_meters/`) are excluded.
+- **MPI-INF-3DHP**: up to 14 views, 28 joints. Train on subjects 1 and 3, validate on subject 2 sequence 1. The 2D inputs are detector outputs (RTMPose), not GT-projected 2D; detected-2D generation and DLT baseline validation are in progress.
+- **AIST++ cross-domain smoke**: 9 views, 17 joints. Canonical `.npz` from `data/webbridge/aistpp_canonical/`, non-circular (DLT direct MJE $\approx$ 44 mm). Used to stress-test cross-domain transfer.
+- **Shelf / Campus detected**: real 2D detections plus true 3D annotations from `data/webbridge/shelf_campus_detected/`. Campus (3 views) is the primary sparse-view benchmark.
 
 \subsection{Augmentation}
 
@@ -247,7 +253,7 @@ Inference throughput is measured on a single RTX 4090. The compact model runs at
 
 1. **Geometry-first decomposition.** Unlike end-to-end fusion methods that regress 3D joints directly, we keep triangulation at the center and learn only the structured error that geometry cannot fix: intrinsic correction, visibility, precision weights, and a small residual.
 
-2. **Compact, robot-ready models.** The full model has well under 1.1 M parameters. Earlier MPI-INF-3DHP reports of 8.35 mm were obtained under circular or GT-2D protocols; on the honest detected-2D protocol the real numbers are still being validated and are expected to fall in the 20–30 mm range for DLT baselines.
+2. **Compact, robot-ready models.** The full model has well under 1.1 M parameters. Earlier MPI-INF-3DHP reports of 8.35 mm were obtained under circular GT-projected 2D protocols and are no longer valid. On the honest detected-2D protocol (RTMPose), DLT baselines are still being validated; the only available partial measurement on two files is ~150 mm and is not representative.
 
 3. **Bayesian precision weighting.** Anisotropic image-space covariances give principled per-view uncertainty that feeds directly into weighted DLT, rather than using heuristic confidences alone.
 
