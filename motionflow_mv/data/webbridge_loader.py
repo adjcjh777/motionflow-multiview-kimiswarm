@@ -36,7 +36,7 @@ import re
 import zipfile
 from collections import defaultdict
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 import scipy.io
@@ -83,6 +83,76 @@ def _triangulate_joints(points_2d: np.ndarray, cameras: List[Camera]) -> np.ndar
     return X
 
 
+def _find_h36m_true_gt(
+    subject: int,
+    actions: List[int],
+    split: str,
+    true_gt_dir: Path,
+) -> Optional[Tuple[Path, np.ndarray]]:
+    """Discover a true-GT npz in ``true_gt_dir`` covering ``actions``.
+
+    Returns ``(path, stored_actions)`` for the best matching candidate.
+    Exact matches are preferred, followed by the candidate with the fewest
+    extra actions.
+    """
+    true_gt_dir = Path(true_gt_dir)
+    if not true_gt_dir.is_dir():
+        return None
+    requested = set(actions)
+    candidates: List[Tuple[Path, np.ndarray, int]] = []
+    for path in true_gt_dir.glob(f"s_{subject:02d}_*_true_gt.npz"):
+        try:
+            with np.load(path, allow_pickle=True) as data:
+                stored = data["actions"]
+        except Exception:  # pragma: no cover - malformed/locked files skipped
+            continue
+        stored_set = set(stored.tolist())
+        if not requested.issubset(stored_set):
+            continue
+        candidates.append((path, stored, len(stored_set - requested)))
+    if not candidates:
+        return None
+    # Exact match (same number of actions) comes first; then fewest extras.
+    candidates.sort(key=lambda x: (len(x[1]) != len(requested), x[2]))
+    return candidates[0][0], candidates[0][1]
+
+
+def _slice_true_gt_by_actions(
+    true_joints_3d: np.ndarray,
+    true_actions: np.ndarray,
+    requested_actions: List[int],
+    groups: Dict[str, Dict[str, List[int]]],
+    subject: int,
+) -> np.ndarray:
+    """Slice a combined true-GT npz to the requested actions in order.
+
+    Frame counts per action are inferred from the pkl ``groups`` dict.
+    """
+    true_actions_list = [int(a) for a in true_actions.tolist()]
+    action_counts: Dict[int, int] = {}
+    for action in true_actions_list:
+        prefix = f"s_{subject:02d}_act_{action:02d}_"
+        bases = [b for b in groups.keys() if b.startswith(prefix)]
+        action_counts[action] = sum(len(groups[b]["01"]) for b in bases)
+
+    offsets = [0]
+    for action in true_actions_list:
+        offsets.append(offsets[-1] + action_counts[action])
+
+    chunks: List[np.ndarray] = []
+    for action in requested_actions:
+        if action not in true_actions_list:
+            raise ValueError(
+                f"Requested action {action} not available in true GT actions "
+                f"{true_actions_list}"
+            )
+        idx = true_actions_list.index(action)
+        start = offsets[idx]
+        end = offsets[idx + 1]
+        chunks.append(true_joints_3d[start:end])
+    return np.concatenate(chunks, axis=0)
+
+
 def convert_human36m(
     data_root: Path,
     subject: int,
@@ -105,7 +175,10 @@ def convert_human36m(
         archive_file: name of the preprocessed pkl zip archive.
         true_gt_path: optional path to an existing canonical ``.npz`` that contains
             a ``joints_3d`` array with the true 3D ground truth. If provided, it is
-            used as the 3D label instead of triangulating from the 2D input.
+            used as the 3D label instead of triangulating from the 2D input. When
+            omitted, ``convert_human36m`` attempts to auto-discover a matching
+            true-GT npz in ``data/h36m_true_gt/`` and slices it to the requested
+            actions.
 
     Returns:
         Path to the generated ``.npz`` file.
@@ -197,14 +270,36 @@ def convert_human36m(
 
     if true_gt_path is not None:
         true_gt_path = Path(true_gt_path)
+    else:
+        # Auto-discover a true-GT npz for this (subject, actions, split).
+        discovered = _find_h36m_true_gt(
+            subject, actions, split, Path("data/h36m_true_gt")
+        )
+        if discovered is not None:
+            true_gt_path, _ = discovered
+            print(f"NOTE: auto-discovered true 3D GT: {true_gt_path}")
+
+    if true_gt_path is not None:
         if not true_gt_path.exists():
             raise FileNotFoundError(f"True GT file not found: {true_gt_path}")
-        gt_data = np.load(true_gt_path)
+        gt_data = np.load(true_gt_path, allow_pickle=True)
         if "joints_3d" not in gt_data:
             raise KeyError(
                 f"True GT npz must contain 'joints_3d': {true_gt_path}"
             )
-        true_joints_3d = gt_data["joints_3d"]
+        true_joints_3d_all = gt_data["joints_3d"]
+        if "actions" in gt_data:
+            # The discovered npz may cover more actions than requested (e.g. a
+            # combined train/test file). Slice out the requested actions.
+            true_joints_3d = _slice_true_gt_by_actions(
+                true_joints_3d_all,
+                gt_data["actions"],
+                actions,
+                groups,
+                subject,
+            )
+        else:
+            true_joints_3d = true_joints_3d_all
         expected_frames = sum(len(groups[tb]["01"]) for tb in target_bases)
         if true_joints_3d.shape[0] != expected_frames:
             raise ValueError(
@@ -607,6 +702,9 @@ def convert_aistpp(
         points_2d = np.transpose(key2d[..., :2], (1, 0, 2, 3)).astype(np.float32)
         confidences = np.transpose(key2d[..., 2], (1, 0, 2)).astype(np.float32)
 
+        # Prefer the optimized AIST++ 3D keypoints. The raw 'keypoints3d' contains
+        # NaNs for occluded/missing joints on ~20% of sequences, which poisons the
+        # validation loss/MPJPE. keypoints3d_optim is clean across the full release.
         if use_optim and "keypoints3d_optim" in kp3d_data:
             joints_3d = kp3d_data["keypoints3d_optim"]
         else:
@@ -615,6 +713,19 @@ def convert_aistpp(
 
         if scale_factor is not None:
             joints_3d = joints_3d * scale_factor
+
+        # Defensive: drop any frame that still contains NaN in 2D, confidence, or 3D.
+        valid = (
+            ~np.isnan(points_2d).any(axis=(1, 2, 3))
+            & ~np.isnan(confidences).any(axis=(1, 2))
+            & ~np.isnan(joints_3d).any(axis=(1, 2))
+        )
+        if not valid.all():
+            dropped = int((~valid).sum())
+            print(f"WARNING [{seq_name}]: dropping {dropped}/{len(valid)} NaN frames")
+            points_2d = points_2d[valid]
+            confidences = confidences[valid]
+            joints_3d = joints_3d[valid]
 
         setting_name = mapping.get(seq_name)
         if setting_name is None:
