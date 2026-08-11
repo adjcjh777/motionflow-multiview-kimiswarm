@@ -30,6 +30,7 @@
 | v25 mixed | 5 | Diverged @ Epoch 3 | 584.25 mm | **33.42 mm avg** (S9 37.87, S11 28.96) |
 | AIST++ DLT | 6 | Finished | — | **15.93 mm** weighted / 38.11 mm unweighted |
 | v81 var-view | 6 | Done | — | k=4: S9 54.53 mm, S11 47.41 mm |
+| v82 var-view | 6 | Done | — | k=4: S9 47.81 mm, S11 42.36 mm; k=2/k=3 still broken (thousands mm) |
 | v25 var-view | 4 | Running | — | — |
 | MPI RTMPose | 7 | Running | — | 5/16 `.npz` |
 
