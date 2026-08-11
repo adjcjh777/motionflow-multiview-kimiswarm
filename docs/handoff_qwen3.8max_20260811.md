@@ -6,8 +6,8 @@
 
 | Run / Task | GPU | Status | Key numbers | Output files |
 |---|---:|---|---|---|
-| **v25 stability variable-view eval** | 4 | **RUNNING** (PID `4184808`, started 21:07) | k=4 combined 113.78 mm previously | `outputs/variable_view_v25_true_gt_stability_a800.*` |
-| **AIST++-only medium fast v2** | 5 | **STOPPED** (was PID `4021830`) — NaN val blocker | `val_loss=nan, val_MPJPE=nan` at Epoch 1 | `outputs/ablations/aistpp_only_medium_a800_fast_v2.log` |
+| **v25 stability variable-view eval** | 4 | **RUNNING** (PID `4184808`, ~1h10m elapsed) | k=4 combined 113.78 mm previously | `outputs/variable_view_v25_true_gt_stability_a800.*` |
+| **AIST++-only medium fast v2** | 5 | **RUNNING** (new PID `117452`) after 2D NaN zeroing fix | train step 350 loss ~21.3; first val pending | `outputs/ablations/aistpp_only_medium_a800_fast_v2.log` |
 | **MPI-INF-3DHP RTMPose detection** | 7 | **RUNNING** (PID `2527668`) | 5/16 `.npz` complete | `outputs/mpi_rtmpose_detected_2d/generate_20260811_191500.log` |
 | VLLM workers | 0-3 | BUSY (not our project) | — | — |
 | **GPU 6** | 6 | **IDLE** | — | — |
@@ -16,8 +16,8 @@
 
 - **Root cause**: `convert_aistpp` in `motionflow_mv/data/webbridge_loader.py` defaulted to raw `keypoints3d`, which contains NaNs for occluded/missing joints on ~20% of sequences.
 - **Fix applied** (same file): prefer `keypoints3d_optim` when available; zero NaN 2D keypoints and set confidence to 0 to preserve frame count; only drop frames if 3D joints are NaN.
-- **Action in progress**: local WSL is regenerating `data/webbridge/aistpp_canonical/*.npz`.
-- **Next step**: sync clean `.npz` to A800 and relaunch `aistpp_only_medium_a800_fast_v2` on GPU 5.
+- **Action completed**: clean canonical `.npz` regenerated and synced to A800; `aistpp_only_medium_a800_fast_v2` relaunched on GPU 5 and training loss is decreasing.
+- **Next step**: wait for the first validation to report finite `val_loss` and `val_MPJPE`.
 
 ## Key numbers
 
@@ -36,12 +36,9 @@
 
 ## What to do next
 
-1. **Sync clean AIST++ data and restart training**
-   - Wait for local conversion to finish (background task `bash-n9sde7jx`).
-   - Validate no NaN remains in `data/webbridge/aistpp_canonical/*.npz`.
-   - `rsync` the directory to A800 `data/webbridge/aistpp_canonical/`.
-   - Relaunch `scripts/run_aistpp_only_medium_a800_gpu5_fast_v2.sh` on A800 GPU 5.
-   - Verify first validation reports finite `val_loss` and `val_MPJPE`.
+1. **Verify AIST++-only first validation is finite**
+   - Tail `outputs/ablations/aistpp_only_medium_a800_fast_v2.log`.
+   - If the first validation reports finite `val_loss` and `val_MPJPE`, the AIST++ NaN/empty-sequence blocker is fully resolved.
 
 2. **Monitor v25 stability variable-view eval (GPU 4)**
    - Tail `outputs/variable_view_v25_true_gt_stability_a800_nohup.log`.
