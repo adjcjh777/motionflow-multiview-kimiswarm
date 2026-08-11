@@ -10,8 +10,8 @@ assignees: ''
 ## Experiment Summary
 
 - **Round / Run ID:** <!-- e.g. v25_small, v25_full_a800_gpu5 -->
-- **Based on baseline:** v18 (`RayAttentionFusionModelTemporalResidual`) — **20.24 mm val_MPJPE**
-- **Goal:** Validate that `MultiViewGeometryFusionV25` improves cross-view fusion through geometry-aware attention, learned depth triangulation, and confidence-weighted reprojection loss.
+- **Based on baseline:** v18 (`RayAttentionFusionModelTemporalResidual`) — legacy circular-protocol number was 20.24 mm val_MPJPE; **do not use for model selection**. Use true-GT baselines from `docs/results_true_gt_h36m.md` / `docs/results_true_gt_shelf_campus.md` instead.
+- **Goal:** Validate that `MultiViewGeometryFusionV25` improves cross-view fusion through geometry-aware attention, learned depth triangulation, and confidence-weighted reprojection loss on **non-circular** protocols.
 - **Key hypothesis:** Explicit ray-based geometry attention + bounded GeoBA refines 3D pose without the v21-style camera regression.
 
 ## Model Configuration
@@ -44,13 +44,16 @@ assignees: ''
 ## Metrics
 
 - **Primary metric:** `val_MPJPE` (mm)
-- **Baseline to beat / preserve:** v18 — **20.24 mm**
+- **Baseline to beat / preserve (true-GT):**
+  - H36M true GT: Iskakov ICCV 2019 — **23.35 mm** combined direct / **23.10 mm** PA-MPJPE (`docs/results_true_gt_h36m.md`)
+  - Shelf/Campus detected: Iskakov ICCV 2019 — **128.73 mm** val direct (`docs/results_true_gt_shelf_campus.md`)
+  - The old v18 20.24 mm number is from the circular H36M protocol and must not be used.
 - **Secondary metrics:**
   - `val_PA_MPJPE` (mm)
   - Reprojection error (px)
   - Epipolar / cheirality / depth-consistency losses
   - Per-view outlier robustness (outlier_view_prob=0.3)
-- **Success criterion:** `val_MPJPE` ≤ v18 baseline with no regression in PA-MPJPE; GeoBA block is stable (no camera divergence > 5 mm).
+- **Success criterion:** `val_MPJPE` ≤ true-GT baseline on the corresponding non-circular protocol with no regression in PA-MPJPE; GeoBA block is stable (no camera divergence > 5 mm).
 
 ## Checklist
 

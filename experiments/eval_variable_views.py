@@ -594,6 +594,9 @@ def main():
                 raise ValueError("--config is required for both v46 and v47 checkpoints")
             cfg_v46 = _load_config(cfg_v46_path)
             cfg_v47 = _load_config(cfg_v47_path)
+            # Use the checkpoint's view count so the model can be loaded; the
+            # variable-view inference wrapper pads/truncates inputs as needed.
+            n_views = cfg_v46.get("n_views", n_views)
             model_v46 = _build_omniview_v5_model(cfg_v46, args.v46_checkpoint, n_joints, n_views, device)
             model_v47 = _build_omniview_v5_model(cfg_v47, args.v47_checkpoint, n_joints, n_views, device)
 
@@ -635,6 +638,9 @@ def main():
             if cfg_path is None:
                 raise ValueError("--config is required for model_class=omniview_v5")
             config = _load_config(cfg_path)
+            # Use the checkpoint's view count so the model can be loaded; the
+            # variable-view inference wrapper pads/truncates inputs as needed.
+            n_views = config.get("n_views", n_views)
             model = _build_omniview_v5_model(config, args.checkpoint, n_joints, n_views, device)
 
             if args.compare_v46_v47 and hasattr(model, "use_v47_temporal_aggregation"):

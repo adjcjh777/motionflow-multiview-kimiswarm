@@ -45,7 +45,7 @@ def build_projection_matrices(K: np.ndarray, R: np.ndarray, t: np.ndarray) -> np
     return P
 
 
-def triangulate_file(path: Path, device: str = "cpu") -> tuple[np.ndarray, np.ndarray, dict]:
+def triangulate_file(path: Path, device: str = "cpu", weighted: bool = True) -> tuple[np.ndarray, np.ndarray, dict]:
     """Load one .npz and return (predicted, ground_truth, metadata)."""
     data = np.load(path)
 
@@ -64,7 +64,10 @@ def triangulate_file(path: Path, device: str = "cpu") -> tuple[np.ndarray, np.nd
     # torch tensors on requested device
     points_2d_t = torch.from_numpy(points_2d).to(device=device, dtype=torch.float64)
     P_t = torch.from_numpy(P).to(device=device, dtype=torch.float64)
-    conf_t = torch.from_numpy(confidences).to(device=device, dtype=torch.float64)
+    if weighted:
+        conf_t = torch.from_numpy(confidences).to(device=device, dtype=torch.float64)
+    else:
+        conf_t = torch.ones_like(points_2d_t[:, :, :, 0])
 
     # triangulate_dlt_batched_lstsq expects (N, V, J, 2) and (V, 3, 4) or (N, V, 3, 4)
     X_t = triangulate_dlt_batched_lstsq(points_2d_t, P_t, weights=conf_t)
@@ -83,9 +86,9 @@ def _is_metres(path: Path) -> bool:
     return "_m.npz" in path.name or "_m_" in path.name
 
 
-def evaluate_file(path: Path, device: str = "cpu") -> dict:
+def evaluate_file(path: Path, device: str = "cpu", weighted: bool = True) -> dict:
     """Run DLT and compute metrics for one .npz file."""
-    pred, gt, meta = triangulate_file(path, device=device)
+    pred, gt, meta = triangulate_file(path, device=device, weighted=weighted)
 
     report = compute_all_metrics(pred, gt)
     # The _m files are metres; legacy files are millimetres.  Normalise to mm.
@@ -111,6 +114,8 @@ def main() -> None:
                         help="Optional JSON file path to save the results table.")
     parser.add_argument("--device", type=str, default="cpu",
                         help="PyTorch device to use (cpu or cuda).")
+    parser.add_argument("--unweighted", action="store_true",
+                        help="Use uniform weights instead of detection confidences.")
     args = parser.parse_args()
 
     repo_root = Path(__file__).resolve().parents[1]
@@ -120,12 +125,13 @@ def main() -> None:
         print(f"No .npz files found for pattern: {args.glob}")
         return
 
-    print(f"Evaluating DLT baseline on {len(files)} MPI-INF-3DHP file(s)...\n")
+    weight_label = "confidence-weighted" if not args.unweighted else "unweighted"
+    print(f"Evaluating {weight_label} DLT baseline on {len(files)} MPI-INF-3DHP file(s)...\n")
     results = []
     for f in files:
         print(f"  {f.name}", end=" ", flush=True)
         try:
-            res = evaluate_file(f, device=args.device)
+            res = evaluate_file(f, device=args.device, weighted=not args.unweighted)
             results.append(res)
             print(f"MPJPE={res['mpjpe_mm']:.3f}mm  PA-MPJPE={res['pa_mpjpe_mm']:.3f}mm")
         except Exception as exc:
@@ -139,7 +145,7 @@ def main() -> None:
     mean_pa = float(np.mean([r["pa_mpjpe_mm"] for r in results]))
 
     print("\n" + "=" * 70)
-    print("MPI-INF-3DHP DLT baseline summary (GT 2D -> triangulate -> 3D GT)")
+    print(f"MPI-INF-3DHP {weight_label} DLT baseline summary (2D -> triangulate -> 3D GT)")
     print("=" * 70)
     print(f"{'Dataset':<45} {'MPJPE (mm)':>12} {'PA-MPJPE (mm)':>15}")
     print("-" * 70)

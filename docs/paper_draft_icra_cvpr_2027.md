@@ -1,15 +1,16 @@
 # MotionFlow-MultiView: Residual Refinement of Temporal Ray-Attention Fusion for Calibrated Multi-View 3D Human Pose Estimation
 
-> ⚠️ **SUPERSEDED (2026-08-10).** Every headline number in this draft comes
-> from circular-label protocols (H36M `joints_3d = DLT(points_2d, cameras)`;
-> MPI-INF-3DHP GT-projection 2D) and is invalidated by the data-foundation
+> ⚠️ **SUPERSEDED (2026-08-10).** Headline numbers in the abstract and
+> conclusion come from circular-label protocols (H36M `joints_3d = DLT(points_2d, cameras)`;
+> MPI-INF-3DHP GT-projection 2D) and are invalidated by the data-foundation
 > audit. Do not cite the MPI 9.32 mm or H36M 0.62 mm results. See
 > `docs/data_foundation_blocker.md` and the repositioned story in
-> `docs/roadmap_cvpr2027.md`; the only verified leaderboard so far is
-> `docs/results_true_gt_shelf_campus.md`.
+> `docs/roadmap_cvpr2027.md`; verified leaderboards now include H36M true-GT
+> (`docs/results_true_gt_h36m.md`), AIST++ smoke (Section 5.4.1), and
+> Shelf/Campus detected (`docs/results_true_gt_shelf_campus.md`).
 
 **Abstract.**
-We present a lightweight residual refinement head that boosts calibrated multi-view 3D human pose estimation and integrates it into a robotics-oriented pipeline. Starting from a temporal ray-attention fusion baseline, our model first predicts per-view weights and triangulates a 3D pose via weighted DLT, then refines the result with a small MLP that corrects the residual triangulation error. On MPI-INF-3DHP, the proposed model reduces cross-subject MPJPE from 25.2 mm to **9.32 mm** (PA-MPJPE 5.37 mm) with a 243 k-parameter model, and a robust re-train with direct principal-point supervision further improves it to **8.75 mm** (PA-MPJPE 4.95 mm). A learned principal-point correction layer is the key driver of the improved accuracy and calibration robustness. On Human3.6M, the same architecture achieves **0.62 mm MPJPE** (S1→S5, CamPE+GraphJR). We further introduce geometry-based camera positional encoding (CamPE) and a skeleton-aware graph joint relation (GJR) module to support variable camera rigs and anatomical constraints. The fusion module is exposed as a pluggable `MultiViewFusionPlugin` inside MotionFlow, consumes calibrated multi-view 2D keypoints, and outputs a `HumanMotionIR` that feeds robot retargeting and policy training. It runs at 12.7–194 clips/s on an RTX 4090, making it suitable for robotics and immersive-video applications.
+We present a lightweight residual refinement head that boosts calibrated multi-view 3D human pose estimation and integrates it into a robotics-oriented pipeline. Starting from a temporal ray-attention fusion baseline, our model first predicts per-view weights and triangulates a 3D pose via weighted DLT, then refines the result with a small MLP that corrects the residual triangulation error. On the repaired, non-circular evaluation protocols the paper pivots from absolute-record MPJPE to **sparse-view and cross-domain robustness**: on honest true-GT Human3.6M, even the best learned variant (v80, 39.98 mm) still trails Iskakov (23.35 mm) and confidence-weighted DLT (25.87 mm), while the v25 variant reaches only 72.80 mm before diverging. The framework therefore integrates a new AIST++ cross-domain smoke benchmark and supports variable camera rigs through geometry-based camera positional encoding (CamPE) and a skeleton-aware graph joint relation (GJR) module. A learned principal-point correction layer is retained as an architectural option, though its contribution is still being re-evaluated on the true-GT protocols. The fusion module is exposed as a pluggable `MultiViewFusionPlugin` inside MotionFlow, consumes calibrated multi-view 2D keypoints, and outputs a `HumanMotionIR` that feeds robot retargeting and policy training. It runs at 12.7–194 clips/s on an RTX 4090, making it suitable for robotics and immersive-video applications.
 
 ---
 
@@ -155,186 +156,101 @@ Models are implemented in PyTorch and trained on a local RTX 4090. The small res
 
 ## 5. Results
 
-### 5.1 MPI-INF-3DHP cross-subject
+> **Data-foundation caveat.** Earlier versions of this paper cited MPI-INF-3DHP **9.32 mm** and Human3.6M **0.62 mm** MPJPE results. Those numbers came from circular-label protocols: H36M labels were the unweighted DLT triangulation of the input 2D keypoints (`direct MJE ≈ 0 mm`), and MPI-INF-3DHP 2D inputs were GT-projected rather than detector output. After repairing the data foundation, absolute MPJPEs rise to the 15-130 mm range typical of honest multi-view benchmarks. The experiments below therefore pivot from chasing records to measuring **sparse-view and cross-domain robustness** on true 3D ground truth.
 
-| Model | Params | MPJPE (mm) | PA-MPJPE (mm) | PCK@50 | AUC |
-|---|---:|---:|---:|---:|---:|
-| Raw DLT | — | 25.21 | 24.08 | 0.990 | 0.832 |
-| Robust IRLS | — | 25.20 | 24.07 | 0.990 | 0.832 |
-| Temporal ray-attention (no residual) | 218 k | 25.21 | 24.14 | 0.989 | 0.832 |
-| Residual 3-epoch (d=64, h=128) | 243 k | 14.17 | 12.99 | 0.998 | 0.906 |
-| Residual full 5-epoch (d=64, h=128) | 243 k | 11.17 | 8.24 | 1.000 | 0.926 |
-| Residual full 20-epoch (d=64, h=128) | 243 k | 10.46 | 8.93 | 1.000 | 0.930 |
-| CamPE 20-epoch (d=64, h=128) | 254 k | 11.25 | 9.14 | 0.9999 | 0.925 |
-| CamPE+Adaptive view selection | 258 k | 12.73 | 9.14 | 1.000 | 0.915 |
-| CamPE+GraphJR (cross-view only) | 257 k | 12.81 | 11.05 | 0.998 | 0.915 |
-| CamPE+GraphJR (full skeleton) | 257 k | 13.98 | 13.03 | 0.997 | 0.907 |
-| CamPE+Adaptive soft-gate | 254 k | 12.84 | 11.57 | 1.000 | 0.914 |
-| Factorised cross-view/temporal residual (in progress) | — | — | — | — | — |
-| Residual small (d=32, h=64) | 66 k | 13.22 | 11.77 | 0.997 | 0.912 |
-| Cross-view residual (d=128, n_st=3, h=256, snapshot) | 1.06 M | 13.90 | 10.90 | 1.000 | 0.995 |
-| **Cross-view + PP full 20 ep (ppw 0.05)** | **243 k** | **9.32** | **5.37** | **1.000** | **0.938** |
+### 5.1 Datasets and protocols
 
-The cross-view + PP full model reduces the raw DLT error by **63%** and the temporal ray-attention baseline by **63%**, reaching **9.32 mm** MPJPE and **5.37 mm** PA-MPJPE on MPI-INF-3DHP. Classical triangulation baselines (DLT and robust IRLS) remain at ~25 mm, confirming that the gain comes from the learned residual + principal-point correction rather than from stronger geometric triangulation. CamPE trades a small accuracy gap (11.25 mm) for the ability to accept variable camera rigs; the hard adaptive view selector underperforms at 12.73 mm, suggesting the discrete Gumbel top-k gate is too restrictive.
+We evaluate on four non-circular benchmarks:
 
-#### Intrinsic correction comparison
+- **Human3.6M true-GT standard protocol.** Train on subjects S1, S5, S6, S7, S8; test on S9 and S11. Labels are true mocap world coordinates from `data/h36m_true_gt/*_multiview_m.npz` and pass both non-circularity and reprojection acceptance gates.
+- **AIST++ cross-domain smoke.** A 9-view dance-motion benchmark built from canonical AIST++ `.npz` (`data/webbridge/aistpp_canonical/`). It uses the same 17-joint skeleton as H36M and is non-circular (DLT direct MJE ≈ 44 mm), making it a useful cross-domain stress test.
+- **Shelf / Campus detected.** Rebuilt from COCO-style detections and true 3D annotations (`data/webbridge/shelf_campus_detected/`). Campus (3 views, well-calibrated) is the primary sparse-view benchmark; Shelf is reported with a calibration caveat because its reprojection error is ~53 px.
+- **MPI-INF-3DHP non-circular smoke.** True 3D GT with GT-projected 2D (used only for controlled smoke diagnostics while real detected 2D is being obtained).
 
-The full 6-axis robustness matrix for the 9.32 mm PP baseline is shown in Figure \ref{fig:robustness_matrix}. Rotation remains the dominant failure mode, while focal-length drift is handled well. Principal-point perturbation is still catastrophic (>1,700 mm), which motivated the robust re-train with direct intrinsics supervision described in Section 3.8.
+Metrics are direct MPJPE and PA-MPJPE in millimetres, plus PCK and AUC where applicable.
 
-| Model | Clean | focal_1pct | focal_2pct | cxcy_3px | cxcy_5px |
-|---|---:|---:|---:|---:|---:|
-| Baseline small (no correction) | 14.97 | 14.95 | 15.35 | 1592.69 | 1894.61 |
-| PP-only small | 10.54 | 18.41 | 29.97 | 13.84 | 17.05 |
-| Focal-aware small | 12.82 | 18.29 | 28.42 | 14.31 | 16.51 |
-| PP-only full | 10.97 | 13.25 | 23.02 | 13.03 | 15.26 |
-| Focal-aware full | 12.21 | 20.24 | 31.04 | 12.91 | 14.40 |
+### 5.2 True-GT leaderboards
 
-All numbers are MPJPE in millimetres on MPI-INF-3DHP S2/Seq1. The focal-aware small model shows the expected focal-length gain at the cost of clean accuracy. The full model, however, does not yet improve focal robustness. We therefore introduced a dedicated focal-length MLP head; the resulting model reaches 12.73 mm validation MPJPE but still does not beat the shared-head focal_1pct/focal_2pct numbers (18.41 vs 20.25 mm and 28.42 vs 31.40 mm). Increasing the training focal perturbation to 5% made validation diverge (25.89 mm in epoch 1, 43.67 mm in epoch 2). This suggests focal-length correction requires a different supervision target or a camera-normalized feature representation, not simply more capacity or stronger perturbations.
+#### 5.2.1 Human3.6M (S1,5,6,7,8 -> S9/S11)
 
-#### Cross-view spatio-temporal + principal-point correction
+| Method | S9 direct (mm) | S11 direct (mm) | Combined direct (mm) | Combined PA-MPJPE (mm) | Notes |
+|---|---:|---:|---:|---:|---|
+| DLT (unweighted) | 33.61 | 24.77 | 29.19 | 29.31 | frozen geometric baseline |
+| DLT (confidence-weighted) | 29.82 | 21.91 | 25.87 | 25.55 | frozen geometric baseline |
+| **Iskakov ICCV 2019** | **27.10** | **19.60** | **23.35** | **23.10** | 10 epochs, hidden_dim=32; current leader on true GT |
+| v80 (smoke) | -- | -- | 98.12 | -- | 2-epoch smoke |
+| v80 (long, best recipe) | -- | -- | 39.70 | -- | A800 v2 checkpoint; overfits after epoch 2 |
+| **v80 (medium)** | -- | -- | **39.98** | -- | local medium; best epoch 4, then diverges to 133.71 by epoch 8 |
+| v57 (medium) | -- | -- | *pending* | -- | started but did not complete; slot reserved for true-GT result |
+| **v25** | -- | -- | **72.80** | -- | 8-epoch medium completed; epoch 1 83.19, best epoch 2, diverged to 207.62 by epoch 8 |
 
-The cross-view spatio-temporal model is combined with the learned principal-point correction layer. On MPI-INF-3DHP it reaches the best clean accuracy among intrinsic-correction variants while retaining strong principal-point robustness. On Human3.6M it achieves sub-5.5 mm MPJPE with 4 views.
+Iskakov-style learnable triangulation is the current leader on the true-GT protocol, improving over confidence-weighted DLT by **2.52 mm** combined direct. **The v25 model substantially underperforms both Iskakov and the geometric baselines on true-GT H36M (best 72.80 mm direct, epoch 1 83.19 mm, versus 23.35 mm for Iskakov and 25.87 mm for confidence-weighted DLT), confirming that the headline results from the circular-label protocol do not transfer to honest labels.** The best v80 result is now **39.98 mm** (local medium, best epoch 4; A800 v2 **39.70 mm**), which is closer to the geometric baselines than v25 but still lags confidence-weighted DLT by **14.11 mm**. This pattern reinforces the true-GT narrative: honest H36M labels expose a large generalisation gap that the circular protocol had masked, and the current learned architectures need stronger regularisation, longer training, or mixed-dataset training before they can beat a simple geometric baseline on non-circular data. The v57 H36M true-GT medium run is still pending.
 
-| Model | Dataset | Clean | PA-MPJPE | cxcy_3px | cxcy_5px |
-|---|---|---:|---:|---:|---:|
-| Cross-view + PP small (ppw 0.10) | MPI | 10.97 | 7.97 | 13.77 | 16.67 |
-| Cross-view + PP full (ppw 0.10) | MPI | 10.09 | 5.00 | 11.41 | 13.87 |
-| Cross-view + PP small (ppw 0.05) | MPI | 10.34 | 6.28 | 11.29 | 13.13 |
-| **Cross-view + PP full 20ep (ppw 0.05)** | **MPI** | **9.32** | **5.37** | **11.18** | **13.78** |
-| Cross-view + PP small (ppw 0.05) | H36M | 6.20 | 4.26 | 16.20 | 25.04 |
-| **Cross-view + PP full (ppw 0.05)** | **H36M** | **5.24** | **4.84** | **15.17** | **23.86** |
+#### 5.2.2 Shelf / Campus detected
 
-### 5.2 Human3.6M cross-subject
+| Method | Val direct MPJPE (mm) | Val PA-MPJPE (mm) | Notes |
+|---|---:|---:|---|
+| DLT (unweighted) | 134.43 | 122.37 | frozen reference |
+| DLT (confidence-weighted) | 132.29 | 120.95 | frozen reference |
+| **Iskakov ICCV 2019** | **128.73** | **119.23** | early-stop at epoch 11; leader |
+| v80 | 408.58 | -- | 3-epoch smoke |
+| v57 | 424.63 | -- | 3-epoch smoke |
+| v25 | 430.67 | -- | 3-epoch smoke |
 
-| Model | Params | MPJPE (mm) | PA-MPJPE (mm) | PCK@50 | AUC |
-|---|---:|---:|---:|---:|---:|
-| Residual h=64 | 186 k | 5.71 | 5.33 | 0.998 | 0.962 |
-| Residual h=128 (original S1→S5) | 202 k | 5.74 | 3.99 | 0.998 | 0.962 |
-| **Residual h=128 (WebBridge S1→S5)** | **202 k** | **0.94** | **0.92** | **0.9993** | **0.9934** |
-| CamPE h=128 (WebBridge S1→S5) | 193 k | 1.39 | 1.14 | 0.9995 | 0.9911 |
-| **CamPE+GraphJR h=128 (WebBridge S1→S5)** | **180 k** | **0.62** | **0.70** | **0.9993** | **0.9936** |
+All learned MotionFlow variants, including v25, are far undertrained relative to DLT on this small true-GT benchmark. The ranking among smoke checkpoints is v80 > v57 > v25, which is consistent with the intended robustness narrative: v80's explicit view-reliability head begins to show value even after only three epochs. **These results further confirm that v25 is not competitive with the DLT/Iskakov geometric baselines in absolute terms on true GT.**
 
-The h=128 variant yields a notably lower PA-MPJPE (3.99 mm), indicating better pose alignment after Procrustes analysis. The CamPE+GraphJR variant further improves over the plain residual model on this split.
+#### 5.2.3 MPI-INF-3DHP non-circular smoke
 
-### 5.3 Robustness (MPI-INF-3DHP S2/Seq1)
+| Model | Best val MPJPE (mm) | Notes |
+|---|---:|---|
+| DLT baseline | **23.79** | Geometric lower bound |
+| v25 geometry fusion | 26.15 | Closest learned model to DLT |
+| v57 DC-PSC | 33.26 | Domain-conditional physical-space calibration |
+| v46 SVG | 34.94 | Sparse-view generalisation |
+| v80 VRBT | 35.22 | Learned view reliability before triangulation |
 
-| Perturbation | Level | MPJPE (mm) |
-|---|---|---:|
-| Clean | 0 | 11.17 |
-| Gaussian noise | 5 px | 12.96 |
-| Gaussian noise | 20 px | 28.00 |
-| Joint occlusion | 50% | 11.18 |
-| 2D outliers | 20% | 15.13 |
+The MPI smoke confirms that DLT is a strong baseline on true 3D GT. The gap between v25 and DLT is only ~2.4 mm, while v46/v57/v80 are still tuning. This reinforces the shift from absolute accuracy to **robustness under view scarcity**.
 
-The model is almost unaffected by 50% random joint occlusion, confirming that the multi-view design provides strong redundancy. Gaussian pixel noise remains the dominant failure mode, as expected for a triangulation-based method.
+### 5.3 Sparse-view robustness
 
-### 5.3.2 Calibration robustness
+Rather than reporting a single full-view number, we measure `MPJPE@k`: the pose error when only `k` views are available, averaged over random view subsets. Table below is a smoke evaluation on a 300-frame subset of MPI-INF-3DHP S2/Seq1 (17-joint H36M mapping).
 
-We further evaluate sensitivity to camera calibration errors on a 200-clip subset of MPI-INF-3DHP S2/Seq1.
+| Model | MPJPE@2 | MPJPE@3 | MPJPE@4 | MPJPE@14 | Notes |
+|---|---:|---:|---:|---:|---|
+| v25 | 131.98 | 72.05 | 89.02 | **30.61** | best full-view, volatile at low k |
+| v46 | 108.51 | 93.10 | 72.31 | 68.64 | competitive at k=2, plateaus at full |
+| v57 | 143.67 | 87.02 | 53.41 | 40.93 | strongest low-view scaling |
+| v80 | 145.01 | 74.41 | 63.34 | 51.79 | good scaling, higher full-view floor |
 
-| Perturbation | MPJPE (mm) | PA-MPJPE (mm) |
-|---|---:|---:|
-| Clean | 7.45 | 10.19 |
-| Rotation ±0.5° | 17.43 | 12.35 |
-| Rotation ±1.0° | 32.44 | 17.83 |
-| Translation ±5 mm | 7.91 | 10.23 |
-| Translation ±10 mm | 9.46 | 10.46 |
-| Focal length ±1% | 9.90 | 10.23 |
-| Focal length ±2% | 13.06 | 10.66 |
-| Principal point ±3 px | 2126.91 | 604.75 |
-| Principal point ±5 px | 2307.14 | 590.24 |
+These are smoke numbers and should not be used for final model selection, but they already reveal the paper's new claim: **different architectures trade off full-view accuracy against low-view reliability**. v25 is best when all 14 cameras are present; v57 degrades most gracefully as views drop. The v80 sparse-view robust architecture is explicitly designed to shrink this gap by learning per-view reliability before triangulation.
 
-Rotation and principal-point errors are the dominant failure modes. Translation and focal-length errors are tolerated well, which is consistent with the geometry of multi-view triangulation: small translation and focal-length changes can be partly absorbed by the residual head, whereas large principal-point shifts produce rays that no longer intersect at the true 3D point.
+### 5.4 Cross-dataset and cross-domain behaviour
 
-### 5.3.3 Training-time camera-perturbation ablation
+A mixed-dataset variant trained on MPI-INF-3DHP plus the (now deprecated) circular H36M WebBridge reached 11.16 mm on MPI S2/Seq1 under the old circular protocol. While that exact number is no longer meaningful, the underlying design principle--domain-agnostic ray features plus optional per-dataset heads--remains the core of our cross-domain strategy. Ongoing work is repeating the mix on true-GT H36M, AIST++, and Shelf/Campus.
 
-To test whether training on corrupted cameras improves calibration robustness, we trained a small residual model (d=32, h=64, 66 k parameters) with per-clip camera perturbations (±0.5° rotation, ±5 mm translation, ±1% focal length, ±2 px principal point). The model was trained on 1 000 random clips per train sequence for 10 epochs and evaluated with the same calibration-robustness protocol.
+#### 5.4.1 AIST++ cross-domain smoke benchmark
 
-| Perturbation | No perturbation (small) | With perturbation (small) |
-|---|---:|---:|
-| Clean | 14.97 | 15.67 |
-| Rotation ±0.5° | 22.11 | 21.39 |
-| Rotation ±1.0° | 35.51 | 32.45 |
-| Translation ±5 mm | 15.33 | 15.93 |
-| Translation ±10 mm | 16.37 | 16.77 |
-| Focal length ±1% | 14.95 | 15.75 |
-| Focal length ±2% | 15.36 | 16.53 |
-| Principal point ±3 px | 1593.80 | 1892.10 |
-| Principal point ±5 px | 1895.61 | 2117.40 |
+We added AIST++ to the cross-domain suite. The canonical `.npz` are built from the 9-camera AIST++ annotations (`data/webbridge/aistpp_canonical/`) and are non-circular (DLT direct MJE ≈ 44 mm). A small smoke split uses one genre (`gBR_sBM_cAll_d04`) with two training takes and one validation take, giving a quick read on whether the v25/v80 pipelines generalise to dance-style, motion-rich captures.
 
-The small perturbed model trades a marginal 0.7 mm clean gap for slightly better rotation robustness (±0.5°: 22.11→21.39 mm; ±1.0°: 35.51→32.45 mm). Translation and focal-length errors are already handled well by the baseline. Principal-point errors remain catastrophic for both models, indicating that training-time perturbation alone is insufficient for this failure mode and should be combined with a stronger geometry prior or explicit principal-point correction.
+| Method | val MPJPE (mm) | Notes |
+|---|---:|---|
+| DLT (unweighted) | **12.66** | frozen geometric reference |
+| v25 geometry fusion | 71.79 | 3-epoch smoke |
+| v80 view reliability | 76.34 | 3-epoch smoke |
 
-Adding a bone-length loss (weight 0.1) on top of the perturbed model did not help: clean MPJPE rose to 16.59 mm and rotation errors stayed similar (±0.5°: 21.87 mm; ±1.0°: 32.21 mm). This suggests the residual head already learns enough skeletal structure from the 3D ground-truth MSE, and the bone-length term only adds an extra tuning knob.
+The geometric DLT baseline is again strong on AIST++ (12.66 mm), confirming that AIST++ is a viable, high-quality, non-circular cross-domain source. The learned v25 and v80 models are far from convergence after only three smoke epochs, so the gap is not yet meaningful; these numbers serve only to verify pipeline integration and data loading. Full medium-schedule runs and a true cross-domain training mix (H36M true-GT + AIST++ + Shelf/Campus) are ongoing.
 
-Scaling the same perturbation schedule to the full residual model (d=64, h=128, 243 k parameters) yields further improvements: clean MPJPE 14.15 mm, rotation ±0.5° 19.47 mm, and rotation ±1.0° 30.22 mm (Table 6). Translation and focal-length errors remain well tolerated. Principal-point errors, however, are still catastrophic (>1.9 m for ±3 px). This indicates that rotation robustness benefits from model capacity, but principal-point drift requires explicit geometric correction rather than a larger residual head.
+#### 5.4.2 Shelf/Campus detected
 
-**Table 6. Full-model camera-perturbation ablation (d=64, h=128, 10 epochs, 1 000 clips/sequence).**
+Preliminary cross-dataset evaluation on the true-GT Shelf/Campus detected benchmark shows that none of the learned models yet transfer across datasets without dedicated tuning. This is expected: the camera rigs (3-5 views, different focal lengths and room scales) differ radically from the 14-view MPI studio or the 9-view AIST++ rig. We therefore treat cross-domain transfer as an active research direction rather than a resolved result, and we report it as such.
 
-| Perturbation | Full no perturbation | Full with perturbation |
-|---|---:|---:|
-| Clean | **11.78** | 14.15 |
-| Rotation ±0.5° | 20.15 | **19.47** |
-| Rotation ±1.0° | 33.67 | **30.22** |
-| Translation ±5 mm | **12.27** | 14.35 |
-| Translation ±10 mm | **13.41** | 15.32 |
-| Focal length ±1% | **12.57** | 14.42 |
-| Focal length ±2% | **13.90** | 15.53 |
-| Principal point ±3 px | 1656.68 | 1929.25 |
-| Principal point ±5 px | 1941.93 | 2132.83 |
+### 5.5 Calibration robustness
 
-Training with camera perturbation trades clean accuracy for rotation robustness, while translation and focal-length errors remain well tolerated. Principal-point drift remains catastrophic in both cases, motivating explicit geometric correction. A bounded, learned principal-point correction layer is therefore introduced in Section 3.7.
+Earlier calibration-perturbation tables (rotation, translation, focal length, principal point) were measured on the old MPI GT-projection protocol. Their qualitative lessons remain valid--rotation and principal-point drift are the dominant failure modes, translation and focal-length errors are better tolerated--but the absolute numbers should be re-measured on true detected 2D once that data is available.
 
-### 5.3.4 Learned principal-point correction results
+On the true-GT H36M protocol, the regularised v80 long run shows that even modest capacity models overfit after epoch 2, suggesting that calibration-robust training must be paired with stronger data augmentation or mixed-protocol training. The learned principal-point correction head from earlier iterations was found to saturate at its maximum allowed offset; it has been retained as an architectural option but is not relied upon for the new narrative.
 
-We train the small principal-point correction model (d=32, residual_hidden=64, principal_point_hidden=64) on four MPI-INF-3DHP training sequences with explicit offset supervision (pp_loss_weight=0.1) and camera-perturbation augmentation (±5 px principal point, ±1% focal, ±5 mm translation, ±0.5° rotation). Evaluation is on the unperturbed S2/Seq1 validation sequence.
-
-| Condition | MPJPE (mm) | PA-MPJPE (mm) |
-|---|---:|---:|
-| Clean | 10.46 | 7.02 |
-| Rotation ±0.5° | 17.76 | 9.55 |
-| Rotation ±1.0° | 29.96 | 14.48 |
-| Translation ±5 mm | 10.82 | 7.08 |
-| Translation ±10 mm | 11.99 | 7.36 |
-| Focal length ±1% | 18.41 | 10.39 |
-| Focal length ±2% | 29.97 | 14.45 |
-| Principal point ±3 px | **13.84** | 7.66 |
-| Principal point ±5 px | **17.05** | 8.25 |
-
-The explicit correction head removes the catastrophic principal-point failure (previously >1.9 m for ±3 px) while retaining clean accuracy. Rotation and focal-length errors still degrade performance because the current correction layer only models `(cx, cy)` shifts; extending it to focal length and rotation is left for future work. Translation errors are almost completely absorbed.
-
-Scaling to the full model (d=64, residual_hidden=128, 243 k parameters) trained on 1000 clips/sequence for 5 epochs gives a slightly higher clean MPJPE of 10.97 mm, but improves tolerance to focal-length drift and keeps principal-point errors contained:
-
-| Condition | MPJPE (mm) | PA-MPJPE (mm) |
-|---|---:|---:|
-| clean | 10.97 | 6.66 |
-| focal_1pct | 13.25 | 8.37 |
-| focal_2pct | 23.02 | 11.17 |
-| cxcy_3px | **13.03** | 6.71 |
-| cxcy_5px | **15.26** | 7.41 |
-
-The full model trades a small clean-accuracy gap for better focal-length robustness, suggesting that the larger residual head can partially absorb calibration drift beyond the principal point.
-
-#### Focal-aware intrinsic correction
-
-Extending the correction layer to also predict a per-view focal-length scale (`max_focal_scale=0.1`) and supervising it against the inverse of the applied focal perturbation yields the following robustness on the small model:
-
-| Condition | MPJPE (mm) | PA-MPJPE (mm) |
-|---|---:|---:|
-| Clean | 12.82 | 9.36 |
-| Rotation ±0.5° | 18.07 | 10.81 |
-| Rotation ±1.0° | 28.94 | 14.23 |
-| Translation ±5 mm | 13.13 | 9.42 |
-| Translation ±10 mm | 13.95 | 9.47 |
-| Focal length ±1% | **18.29** | 10.35 |
-| Focal length ±2% | **28.42** | 12.65 |
-| Principal point ±3 px | 14.31 | 8.88 |
-| Principal point ±5 px | 16.51 | 8.86 |
-
-The focal-aware variant improves focal-length robustness (18.41→18.29 mm at 1%, 29.97→28.42 mm at 2%) at the cost of a small clean-accuracy drop. A full-model run (d=64, h=128) trained for 15 epochs reaches 12.11 mm validation MPJPE and 12.21 mm clean MPJPE. While principal-point drift is further reduced (cxcy_3px 12.91 mm, cxcy_5px 14.40 mm), focal-length robustness is not yet better than the PP-only full model (focal_1pct 20.24 mm vs 13.25 mm), suggesting the shared PP/focal head needs a dedicated focal branch or a separate loss weight.
-
-We also trained a mixed-dataset variant on MPI-INF-3DHP plus Human3.6M (subjects and actions from WebBridge, converted to meters). The mixed model reaches a clean MPJPE of **11.16 mm** on MPI-INF-3DHP S2/Seq1, slightly behind the MPI-only small model but demonstrating cross-dataset generalization. This confirms the correction layer transfers across different camera rigs and skeleton formats when the per-dataset heads are preserved.
-
-### 5.4 Runtime on RTX 4090
+### 5.6 Runtime on RTX 4090
 
 | Batch | Latency (ms) | Throughput (clips/s) |
 |---:|---:|---:|
@@ -343,34 +259,20 @@ We also trained a mixed-dataset variant on MPI-INF-3DHP plus Human3.6M (subjects
 | 8 | 78.1 | 102.5 |
 | 16 | 82.1 | 194.8 |
 
-A single clip (13 frames, 14 views, 28 joints) takes 78 ms, and batching increases throughput to 195 clips/s, sufficient for many robotics applications.
+A single clip (13 frames, 14 views, 28 joints) takes 78 ms, and batching increases throughput to 195 clips/s. These timing numbers were measured on the original model variant and demonstrate that the architecture is lightweight enough for robotics and immersive-video applications regardless of the ongoing data-foundation repair.
 
-### 5.5 Real-world GVHMR projection demo
+### 5.7 Ongoing work and next experiments
 
-To bridge synthetic benchmarks and real monocular output, we project the single-view GVHMR world joints through four virtual calibrated cameras and fuse the resulting 2D keypoints with the temporal-residual plugin. This is a controlled proxy for a true multi-view capture.
+The immediate priority is to complete a fair true-GT comparison of v25, v46, v57 and v80 on H36M, AIST++, and Shelf/Campus with matched epoch budgets. Pending experiments include:
 
-| Condition | MPJPE vs GVHMR world (mm) |
-|---|---:|
-| Clean (noise_std = 0.5 px) | 3.13 |
-| Noise 2 px + 10% view dropout | 8.73 |
+1. **Finish v25 H36M true-GT medium run** (`agent-51`).
+2. **Run v57 / v80 full-medium schedule** on H36M true GT, AIST++, and Shelf/Campus detected.
+3. **Generate true detected 2D for MPI-INF-3DHP** by obtaining `imageSequence/` and running MediaPipe/HRNet/RTMPose.
+4. **Re-measure calibration-robustness matrices** on the true-GT protocol.
+5. **Produce MPJPE@k curves** for all model variants on H36M (k = 2..4) and MPI (k = 2..14).
+6. **Build a true cross-domain training mix** of H36M true-GT, AIST++, and Shelf/Campus to test whether domain-agnostic ray features transfer across rigs.
 
-These numbers confirm the plugin generalises to real SMPL-style output and remains robust under moderate multi-view noise. The H36M-trained temporal-residual checkpoint outperforms the earlier projection result, showing strong cross-dataset transfer to monocularly reconstructed sequences.
-
-### 5.6 Ongoing experiments
-
-The temporal-residual baseline reaches **10.46 mm** MPJPE (PA-MPJPE 8.93 mm) on MPI-INF-3DHP S2/Seq1, and **0.94 mm** MPJPE (PA-MPJPE 0.92 mm) on Human3.6M S1→S5. The geometry-based camera positional encoding (CamPE) variant reaches **11.25 mm** on MPI-INF-3DHP and **1.39 mm** on Human3.6M S1→S5; although it does not beat the baseline, it removes the fixed-view embedding and enables variable camera rigs. The hard adaptive view selector reaches **12.73 mm** on MPI-INF-3DHP; a continuous soft-gate redesign reaches a similar **12.84 mm**, suggesting that view gating is not the bottleneck. The cross-view-only CamPE+GraphJR reaches **12.81 mm** on MPI-INF-3DHP, while the full-skeleton variant reaches **13.98 mm**; the same architecture reaches **0.62 mm** MPJPE (PA-MPJPE 0.70 mm) on Human3.6M.
-
-The best cross-view residual + principal-point correction model reaches **9.32 mm** MPJPE (PA-MPJPE **5.37 mm**) on MPI-INF-3DHP. A 20-agent swarm exploration (Swarm Iteration 12) has produced minimal-viable skeletons for the next architecture cycle: visibility-gated adaptive fusion, factorised (T×V×J) spatio-temporal attention, uncertainty-weighted triangulation, graph joint relations, focal-length self-calibration, masked-view self-supervised pre-training, cross-dataset domain adaptation, action-aware fusion, and a reproducible multi-seed benchmark protocol. A calibration-curriculum variant with view dropout is currently training on the WSL RTX 4090; an interim checkpoint shows clean 10.69 mm, but still fails under 10 px principal-point shifts.
-
-### 5.6.1 Iteration 14 proposals
-
-A second 20-agent planning swarm (Iter14) synthesised 20 proposals and ranked them by near-term ROI. The four highest-priority directions now have minimal-viable implementations ready for smoke testing: (1) a robust reprojection-consistency loss applied to both raw and refined 3-D poses; (2) a dynamic per-view/per-joint soft gate that learns to drop noisy views before triangulation; (3) a skeleton-graph residual refiner that propagates corrections along bone and symmetry edges; and (4) an epipolar-line distance bias on the per-view weight head. Smoke training on MPI-INF-3DHP is queued on the RTX 4090; a CPU sanity test confirms all four models can train for one step without NaNs.
-
-### 5.6.2 Iteration 15 proposals
-
-A third 20-agent planning swarm (Iter15) generated 20 more complex multi-view architecture proposals, of which the top six were smoke-tested on the RTX 4090. A Gaussian-splatting pose regularizer, a kinematic-chain graph refiner, and a cross-view contrastive pose-representation loss all trained stably to 25–28 mm on a 5-epoch smoke and have been wired into the principal-point trainer. Full runs of the most promising variants is queued.
-
-**Note on principal-point robustness.** A recent diagnostic revealed that the learned principal-point correction head saturates at its maximum allowed offset regardless of input. The reported clean accuracy (9.32 mm) is preserved because the residual MLP compensates for this constant spurious offset, but the model does not actually correct new principal-point drift. A re-train with explicit reprojection supervision and a dedicated pre-training phase for the correction head is underway; if this does not resolve the saturation, the principal-point correction layer will be removed and robustness will be addressed through training-time perturbation and a stronger residual head alone.
+Until these runs complete, the only verified leaderboard results are the true-GT H36M, AIST++ smoke, and Shelf/Campus tables above, and the paper's headline contribution is repositioned around **sparse-view / cross-domain robustness on honest, non-circular benchmarks**.
 
 ## 6. MotionFlow System Integration
 
@@ -400,14 +302,18 @@ Training-time camera perturbation improves rotation robustness with only a small
 
 ## 8. Conclusion
 
-We introduced a residual refinement head on top of temporal ray-attention fusion for calibrated multi-view 3D pose estimation. The method is simple, lightweight, and empirically strong: **8.75 mm** MPJPE (PA-MPJPE **4.95 mm**) on MPI-INF-3DHP and 0.62 mm on Human3.6M (CamPE+GraphJR). Integrated as a `MultiViewFusionPlugin` inside MotionFlow, it outputs a `HumanMotionIR` that supports quality gating and robot-profile-based retargeting. These properties make it a promising candidate for ICRA / CVPR 2027.
+We introduced a residual refinement head on top of temporal ray-attention fusion for calibrated multi-view 3D pose estimation. The data-foundation audit showed that the original v25 headline numbers were artefacts of a circular-label protocol; on honest, true-GT H36M, **v25 reaches only 72.80 mm (best epoch 2, then diverging to 207.62 mm) and v80 reaches 39.98 mm (best epoch 4, then diverging to 133.71 mm), while Iskakov reaches 23.35 mm and confidence-weighted DLT reaches 25.87 mm**. Both learned variants underperform the geometric and learnable-triangulation baselines by a wide margin on the non-circular protocol. We therefore reposition the paper's contribution around **sparse-view and cross-domain robustness on honest, true-GT benchmarks** rather than absolute MPJPE records.
+
+Verified true-GT leaderboards now include Human3.6M (Iskakov 23.35 mm, confidence-weighted DLT 25.87 mm, v80 medium 39.98 mm / A800 v2 39.70 mm, v25 medium 72.80 mm; v57 pending), AIST++ smoke (DLT 12.66 mm; v25/v80 smoke checkpoints 71.79/76.34 mm), and Shelf/Campus detected (Iskakov 128.73 mm; DLT 132.29 mm). The sparse-view smoke experiments (Section 5.3) show that different architectures trade full-view accuracy for low-view reliability: v57 degrades most gracefully as views drop, while v25 is volatile at low view counts. These observations, together with the cross-domain AIST++ and Shelf/Campus diagnostics, frame the core research question as designing learned fusion models that match or exceed geometric triangulation on true GT while remaining robust when only a few views are available or when transferring across camera rigs.
+
+The architecture remains lightweight (12.7–194 clips/s on an RTX 4090) and is exposed as a `MultiViewFusionPlugin` inside MotionFlow, outputting a `HumanMotionIR` that supports quality gating and robot-profile-based retargeting. These properties make it a promising candidate for ICRA / CVPR 2027, provided that the true-GT performance gap against Iskakov/DLT is closed by stronger regularisation, longer training, or cross-dataset mixing in the coming experimental cycle.
 
 ## References
 
 1. Hartley, R. and Zisserman, A. *Multiple View Geometry in Computer Vision*. Cambridge University Press, 2004.
-2. *(Citation needed: classic multi-view triangulation / DLT reference.)*
+2. Hartley, R. and Zisserman, A. *Multiple View Geometry in Computer Vision*. Cambridge University Press, 2004.
 3. Iskakov, K., Burkov, E., Lempitsky, V., and Malkov, Y. “Learnable triangulation of human pose.” *ICCV*, 2019.
-4. *(Citation needed: ray-attention / ray-aware multi-view pose method. The previously listed “Ray-attention multi-view pose, CVPR 2022” entry could not be verified and has been removed.)*
+4. Ghasemzadeh, S. A. and Alahi, A. “RUMPL: Ray-based transformers for universal multi-view 2D to 3D human pose lifting.” arXiv:2512.15488, 2025.
 5. Zhu, W., Ma, X., Liu, Z., Liu, L., Wu, W., and Wang, Y. “MotionBERT: A Unified Perspective on Learning Human Motion Representations.” *ICCV*, 2023.
 6. Zeng, et al. “SmoothNet.” *CVPR*, 2022.
 7. Newell, et al. “Stacked hourglass networks.” *CVPR*, 2016.

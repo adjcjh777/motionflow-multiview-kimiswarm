@@ -1,0 +1,5 @@
+# H36M true-GT validation manifest for variable-view evaluation.
+# Standard protocol: S1, S5, S6, S7, S8 train -> S9, S11 test.
+# These are the metre-convention, non-circular npz files in data/h36m_true_gt/.
+S9 data/h36m_true_gt/s_09_acts_02_03_04_05_06_07_08_09_10_11_12_13_14_15_16_multiview_m.npz
+S11 data/h36m_true_gt/s_11_acts_02_03_04_05_06_07_08_09_10_11_12_13_14_15_16_multiview_m.npz

@@ -31,6 +31,9 @@ Usage:
   python experiments/train_iskakov_baseline_shelf_campus.py \
       --protocol h36m --epochs 10 --train_samples_per_epoch 4096 \
       --log_path outputs/iskakov_learnable_tri_h36m_true_gt.log
+  python experiments/train_iskakov_baseline_shelf_campus.py \
+      --protocol aist_smoke --epochs 30 --batch_size 4 --train_samples_per_epoch 128 \
+      --log_path outputs/iskakov_learnable_tri_aist_only_smoke.log
 """
 
 from __future__ import annotations
@@ -56,7 +59,7 @@ from motionflow_mv.fusion.iskakov_learnable_triangulation import (
 )
 from motionflow_mv.fusion.triangulation import triangulate_dlt
 
-DATASET_KEYS = {"shelf", "campus", "h36m"}
+DATASET_KEYS = {"shelf", "campus", "h36m", "aist"}
 
 SHELF_CAMPUS_FILES = {
     "shelf": (
@@ -72,6 +75,18 @@ SHELF_CAMPUS_FILES = {
 H36M_TRAIN = [1, 5, 6, 7, 8]
 H36M_TEST = [9, 11]
 
+# AIST++ smoke split: ch01 + ch02 train, ch03 val (9 views, 17 joints, H36M skeleton).
+AIST_SMOKE_FILES = {
+    "aist_ch01": (
+        "data/webbridge/aistpp_canonical/gBR_sBM_cAll_d04_mBR0_ch01_multiview.npz",
+        "data/webbridge/aistpp_canonical/gBR_sBM_cAll_d04_mBR0_ch03_multiview.npz",
+    ),
+    "aist_ch02": (
+        "data/webbridge/aistpp_canonical/gBR_sBM_cAll_d04_mBR0_ch02_multiview.npz",
+        "data/webbridge/aistpp_canonical/gBR_sBM_cAll_d04_mBR0_ch03_multiview.npz",
+    ),
+}
+
 
 def h36m_files(subject: int) -> Tuple[str, str]:
     stem = f"data/h36m_true_gt/s_{subject:02d}_acts_02_03_04_05_06_07_08_09_10_11_12_13_14_15_16_multiview_m.npz"
@@ -81,6 +96,7 @@ def h36m_files(subject: int) -> Tuple[str, str]:
 PROTOCOL_MANIFESTS = {
     "shelf_campus": "configs/splits/shelf_campus_detected_smoke.yaml",
     "h36m": "configs/splits/h36m_true_gt_standard.yaml",
+    "aist_smoke": "configs/splits/aist_only_smoke.yaml",
 }
 
 
@@ -92,12 +108,14 @@ def build_dataset_files(protocol: str) -> Dict[str, Tuple[str, str]]:
         for s in H36M_TRAIN + H36M_TEST:
             out[f"h36m_s{s}"] = h36m_files(s)
         return out
+    if protocol == "aist_smoke":
+        return dict(AIST_SMOKE_FILES)
     raise ValueError(f"unknown protocol {protocol!r}")
 
 
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument("--protocol", default="shelf_campus", choices=["shelf_campus", "h36m"])
+    p.add_argument("--protocol", default="shelf_campus", choices=["shelf_campus", "h36m", "aist_smoke"])
     p.add_argument("--manifest", default=None,
                    help="defaults to the protocol's canonical manifest")
     p.add_argument("--datasets", default="shelf+campus",
@@ -251,6 +269,7 @@ def main() -> None:
     log_path = Path(args.log_path or {
         "shelf_campus": "outputs/iskakov_learnable_tri_detected.log",
         "h36m": "outputs/iskakov_learnable_tri_h36m_true_gt.log",
+        "aist_smoke": "outputs/iskakov_learnable_tri_aist_only_smoke.log",
     }[protocol])
     log_path.parent.mkdir(parents=True, exist_ok=True)
     log_f = open(log_path, "a", encoding="utf-8")
@@ -276,9 +295,14 @@ def main() -> None:
                 raise SystemExit(f"unknown dataset '{w}'")
         train_names = wanted
         val_names = wanted
-    else:  # h36m
+    elif protocol == "h36m":
         train_names = [f"h36m_s{s}" for s in H36M_TRAIN]
         val_names = [f"h36m_s{s}" for s in H36M_TEST]
+    else:  # aist_smoke
+        # Train on ch01 + ch02; val on ch03. Evaluate ch03 only once to avoid
+        # double-counting in the combined metric.
+        train_names = ["aist_ch01", "aist_ch02"]
+        val_names = ["aist_ch01"]
 
     train_ds = {w: FrameDataset(dataset_files[w][0], device) for w in train_names}
     val_ds = {w: FrameDataset(dataset_files[w][1], device) for w in val_names}

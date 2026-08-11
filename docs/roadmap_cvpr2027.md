@@ -12,6 +12,9 @@ The H36M labels in `data/h36m_hf/*_multiview.npz` are circular: they are the unw
 
 Current ground truth outside the circular H36M pipeline:
 
+- **Human3.6M true GT** is now available in `data/h36m_true_gt/`. The standard
+  protocol is S1,S5,S6,S7,S8 → S9/S11; DLT (conf-weighted) is 25.87 mm and
+  Iskakov ICCV 2019 reaches 23.35 mm combined direct (`docs/results_true_gt_h36m.md`).
 - **MPI-INF-3DHP** has true 3D (`univ_annot3`).  A non-circular DLT baseline on the standard protocol is **~23.8 mm MPJPE**.
 - **Shelf / Campus** have true 3D.  On the rebuilt detected-2D `.npz`
   (`data/webbridge/shelf_campus_detected/`, verified non-circular on
@@ -24,7 +27,7 @@ Current ground truth outside the circular H36M pipeline:
 
 **Pivot.**  We abandon the "lowest MPJPE record" narrative and position the paper around **sparse-view and cross-domain robustness**: a calibrated, geometry-first fusion module that works when cameras are few, noisy, or from another domain.  CVPR 2027 is reachable only if the data foundation is fixed or cleanly pivoted within the next two weeks.
 
-### Status update (2026-08-10)
+### Status update (2026-08-11)
 
 - **True-GT Shelf/Campus leaderboard complete**
   (`docs/results_true_gt_shelf_campus.md`): DLT 122.37/134.43 mm vs
@@ -35,12 +38,14 @@ Current ground truth outside the circular H36M pipeline:
   camera/2D/3D-consistent (~7.7 px RMSE) but Shelf is systematically
   misaligned (~53.7 px RMSE, 87/87 val frames), so **Campus (3 views) is the
   primary sparse-view benchmark**; Shelf numbers need a calibration caveat.
-- **H36M true-GT pipeline staged**: `experiments/prepare_h36m_true_gt.py`
-  (official `PosesD3_Positions` -> pkl-frame-aligned `joints_3d`) +
-  acceptance gates (`scripts/diagnose_circular_labels.py`,
-  `scripts/check_true_gt_reprojection.py`), with 16 passing unit tests
-  (`tests/test_h36m_true_gt_pipeline.py`). Remaining blocker is external:
-  the mocap files are not present locally or on A800-D.
+- **H36M true-GT leaderboard live** (`docs/results_true_gt_h36m.md`):
+  true mocap world coordinates are in `data/h36m_true_gt/`, the standard
+  protocol is S1,S5,S6,S7,S8 → S9/S11, DLT (conf-weighted) = 25.87 mm,
+  Iskakov ICCV 2019 = 23.35 mm (current leader), v80 best converged =
+  42.60 mm (local v3, 2 epochs; A800 v2 best 39.70 mm; local medium
+  39.98 mm at epoch 4), and v25 medium
+  finished at 72.80 mm best epoch 2 before diverging to 207.62 mm. The
+  old circular-label 0.62 mm result is superseded.
 - **`data/webbridge/h36m_corrected/` verified circular as well**
   (direct MJE 0.0000 mm); the "corrected" suffix refers to cameras, not labels.
 - **MPI-INF-3DHP detected-2D still blocked**: local `raw/S*/Seq*/` contains
@@ -92,7 +97,7 @@ The leaderboard question is no longer "who has the smallest MPJPE?" but "who deg
 
 | Dataset | True 3D? | 2D input | Current status | Protocol |
 |---|---|---|---|---|
-| **Human3.6M** | Pending original mocap world coordinates | Detected 2D (to be obtained) | Labels in `data/h36m_hf` and `data/webbridge/h36m_corrected` are circular DLT(p2d, cams); true-GT extraction pipeline staged and unit-tested | S1,S5,S6,S7,S8 train → S9,S11 test; 17 joints, 4 views |
+| **Human3.6M** | Yes (`data/h36m_true_gt/`) | Detected 2D supplied with true-GT release | True mocap world coordinates available and non-circular; old `data/h36m_hf` and `data/webbridge/h36m*.npz` are circular DLT(p2d, cams) and must not be used | S1,S5,S6,S7,S8 train → S9,S11 test; 17 joints, 4 views |
 | **MPI-INF-3DHP** | Yes (`univ_annot3`) | Current: GT-projected 2D; Future: detected 2D (blocked on missing `imageSequence`) | Non-circular DLT baseline ~23.8 mm | Train S1/S3, validate S2/Seq1; 28 joints, 14 views |
 | **Shelf** | Yes | Detection 2D | Non-circular `.npz` rebuilt; DLT val 130.77 mm direct / 124.13 mm root-aligned; calibration coarse (53.7 px reproj RMSE) — report with caveat | Standard Shelf protocol, 5 views |
 | **Campus** | Yes | Detection 2D | Non-circular `.npz` rebuilt; DLT val 138.08 mm direct / 120.61 mm root-aligned; cameras consistent (7.7 px reproj RMSE) — primary sparse-view benchmark | Standard Campus protocol, 3 views |
@@ -105,7 +110,7 @@ The leaderboard question is no longer "who has the smallest MPJPE?" but "who deg
 
 | Risk | Impact | Mitigation |
 |---|---|---|
-| **True H36M 3D GT unavailable** | Cannot use H36M for model selection | Pivot fully to MPI-INF-3DHP + Shelf/Campus; use H36M only as a cross-domain test if labels ever arrive |
+| **v25 diverges after epoch 2 on true GT** | Learned models cannot yet beat geometric baselines | Diagnose overfitting (LR, auxiliary losses, augmentation); add regularisation / mixed-dataset training; run v80/v57 medium |
 | **v25 still below DLT on true GT** | Loses the accuracy anchor | Make robustness the primary claim; treat v25 as a strong-but-not-record baseline |
 | **SOTA comparisons too slow to run** | Related-work table weak | Use published numbers on identical splits when possible; run only the two most relevant baselines |
 | **Cross-dataset transfer fails** | Cross-domain contribution collapses | Add a small domain-adaptation wrapper or per-dataset batch-normalization; keep the core model domain-agnostic |
@@ -115,14 +120,11 @@ The leaderboard question is no longer "who has the smallest MPJPE?" but "who deg
 
 ## 7. Immediate next actions
 
-1. **Obtain H36M true-GT mocap (external).** Local and A800-D storage were
-   searched (re-confirmed 2026-08-10): no `PosesD3_Positions` present. The
-   official Human3.6M release requires account/license access — file the
-   request or pivot fully to MPI + Shelf/Campus. Once files land in
-   `data/h36m_true_gt/`, run the staged pipeline:
-   `experiments/prepare_h36m_true_gt.py` -> regenerate npz with
-   `--true-gt-path` -> pass both acceptance gates (non-zero circularity
-   diagnostic, reprojection RMSE within ~15 px).
+1. **Diagnose v25 divergence on H36M true GT and run v80/v57 medium.** The
+   true mocap `.npz` are already in `data/h36m_true_gt/`. v25 completed
+   8 epochs but diverged after epoch 2 (72.80 → 207.62 mm). Debug
+   overfitting, then run v80 and v57 medium to fill
+   `docs/results_true_gt_h36m.md`.
 2. **Obtain MPI `imageSequence` (external).** Then run
    `scripts/generate_mpi_detected_2d.py --detector auto` (MediaPipe/OpenPose
    wrappers are already implemented) to replace the GT+noise fallback.

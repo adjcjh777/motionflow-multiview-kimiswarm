@@ -1,6 +1,6 @@
 # MotionFlow-MultiView — Claude 项目指南
 
-> **当前状态：DATA FOUNDATION REPAIR → CVPR 2027（~2026-11）**
+> **当前状态：H36M TRUE GT 已就位，BASELINE 重跑中 → CVPR 2027（~2026-11）**
 > 本文件由 `AGENTS.md` + `docs/handoff_qwen3.8max.md` + `docs/roadmap_cvpr2027.md` 汇总而成，是所有 agent 的第一阅读入口。
 
 ## 1. 项目一句话
@@ -14,22 +14,35 @@
 3. **可信的 true-GT 数据**：
   - Shelf/Campus：`data/webbridge/shelf_campus_detected/`（真实检测 2D + 真实标注 3D，已验证非循环）。**Campus（3 视角）是主稀疏视角基准**；Shelf 标定粗糙（reproj RMSE ~53.7 px），引用时必须带 caveat。
   - MPI-INF-3DHP：3D 标签是真的（`univ_annot3`），但当前 2D 输入是 GT 投影；标准协议需要真实检测 2D（`imageSequence/` 在训练集上缺失，只有 `annot.mat` + `camera.calibration`；测试集 TS1 有 imageSequence）。
-4. **H36M 真 GT 缺失**：官方 `PosesD3_Positions` 在本地与 A800-D 上均未找到。转换管线已就绪并单测通过：`experiments/prepare_h36m_true_gt.py` + `tests/test_h36m_true_gt_pipeline.py` + `scripts/fetch_h36m_true_gt.py`，等数据落到 `data/h36m_true_gt/`。
+4. **H36M 真 GT 已就位**：`data/h36m_true_gt/` 包含标准协议（S1,S5,S6,S7,S8 → S9,S11）的真 mocap 世界坐标 `.npz`，通过 reprojection / circularity 双重验收。转换管线已就绪并单测通过：`experiments/prepare_h36m_true_gt.py` + `tests/test_h36m_true_gt_pipeline.py` + `scripts/fetch_h36m_true_gt.py`。当前 H36M 真 GT 排行榜：Iskakov ICCV 2019 为 23.35 mm combined direct，v25 medium 训练中。
 5. **不要引用已作废的数字**：如 "~17 mm H36M v25"、"~10.2/10.9 mm Shelf/Campus PA-MPJPE" 都是循环协议产物。
 
 
 
-## 3. 当前排行榜（true-GT Shelf/Campus，2026-08-10，3-epoch smoke）
+## 3. 当前排行榜
 
+### 3.1 H36M true GT（S1,S5,S6,S7,S8 → S9/S11，2026-08-11）
+
+| 方法                                | Combined direct (mm) | Combined PA-MPJPE (mm) |
+| --------------------------------- | ------------------- | ------------------- |
+| DLT (unweighted)                  | 29.19               | 29.31               |
+| DLT (confidence-weighted)         | 25.87               | 25.55               |
+| **Iskakov ICCV 2019**             | **23.35**           | **23.10**           |
+| v80 (2-epoch smoke)               | 98.12               | —                   |
+| v25 (8-epoch medium, in progress) | —                   | —                   |
+
+详见 `docs/results_true_gt_h36m.md`。
+
+### 3.2 true-GT Shelf/Campus（2026-08-10，3-epoch smoke）
 
 | 方法                                | Best val MPJPE (mm) |
 | --------------------------------- | ------------------- |
-| DLT root-aligned                  | **122.37**          |
-| DLT direct MJE                    | **134.43**          |
+| Iskakov ICCV 2019                 | **128.73**          |
+| DLT (confidence-weighted)         | 132.29              |
+| DLT direct MJE                    | 134.43              |
 | v80（视图可靠性加权，965k 参数）              | 408.58              |
 | v57（domain-conditional PSC，1009k） | 424.63              |
 | v25（geometry fusion，2732k）        | 430.67              |
-
 
 学习模型排序：v80 > v57 > v25；全部远未收敛。详见 `docs/results_true_gt_shelf_campus.md`。
 
@@ -38,9 +51,9 @@
 
 | ID   | 阻塞              | 状态                                                             | 解除步骤                                                                                           |
 | ---- | --------------- | -------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
-| P0-1 | H36M 真 3D GT 缺失 | 管线就绪，缺数据                                                       | 获取 `PosesD3_Positions` → `data/h36m_true_gt/` → `experiments/prepare_h36m_true_gt.py` → 通过双验收门 |
+| P0-1 | H36M 真 3D GT 缺失 | ✅ 已解决。真 GT 在 `data/h36m_true_gt/`，Iskakov 已跑出 23.35 mm，v25 medium 训练中 | 等 v25/v80/v57 medium 跑完，补齐完整排行榜 |
 | P0-2 | MPI 真实检测 2D 缺失  | 脚本就绪（`scripts/generate_mpi_detected_2d.py`），缺 `imageSequence/` | 获取训练集图像 → 跑真实检测器 → 重跑 DLT/v25/v57/v80                                                          |
-| P0-3 | 标准 SOTA 基线未复现   | 未开始                                                            | 统一协议下复现 Iskakov ICCV 2019 / RANSAC-DLT                                                         |
+| P0-3 | 标准 SOTA 基线未复现   | Iskakov 已复现；VoxelPose/MVPose 等未开始                            | 统一协议下复现 VoxelPose / MVPose / RANSAC-DLT                                                         |
 
 
 **验收门（任何新 true-GT npz 必须双过）**：

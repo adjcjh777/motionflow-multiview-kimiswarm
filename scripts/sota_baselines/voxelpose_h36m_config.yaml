@@ -1,0 +1,50 @@
+# VoxelPose H36M true-GT baseline configuration.
+#
+# This YAML is read by scripts/sota_baselines/prepare_voxelpose_h36m.sh and
+# describes how to prepare and run VoxelPose on the corrected H36M true-GT
+# protocol (S1,5,6,7,8 -> S9/S11).
+
+name: voxelpose_h36m_true_gt
+
+# External repository settings.
+repo:
+  url: https://github.com/susuhustle/VoxelPose.git
+  ref: main
+  dir: tmp/sota_baselines/VoxelPose
+
+# Data produced by common_export_h36m_true_gt.py.
+input_pkl: tmp/sota_baselines/h36m_true_gt_baseline_format.pkl
+
+# Where VoxelPose-specific converted data lives.
+data_dir: tmp/sota_baselines/voxelpose_data
+
+# Training / evaluation parameters.
+# These are method-specific and mirror the VoxelPose defaults where possible.
+training:
+  # Backbone: resnet50 or resnet152 (VoxelPose default is resnet50).
+  backbone: resnet50
+  # Batch size that fits the local RTX 4090.
+  batch_size: 8
+  epochs: 10
+  lr: 1.0e-3
+  lr_decay: 0.9
+  lr_decay_epoch: 1
+  # Number of cameras for H36M.
+  num_cameras: 4
+  # Voxel grid parameters used by VoxelPose.
+  voxel_size: 20.0
+  cube_size: [2000.0, 2000.0, 6000.0]
+  # Joint count for H36M true-GT.
+  num_joints: 17
+
+# Paths for outputs.
+output:
+  checkpoint_dir: tmp/sota_baselines/VoxelPose/output/h36m_true_gt
+  log: outputs/sota_baselines/voxelpose_h36m_true_gt.log
+  metrics_json: outputs/sota_baselines/voxelpose_h36m_true_gt_metrics.json
+
+# Evaluation protocol.
+eval:
+  protocol: h36m_standard
+  subjects_test: [9, 11]
+  actions: all

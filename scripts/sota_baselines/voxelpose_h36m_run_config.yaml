@@ -1,0 +1,30 @@
+# VoxelPose runtime config for H36M true-GT.
+# This config is passed to the upstream VoxelPose train/test scripts.
+
+DATASET:
+  NAME: h36m_true_gt
+  ROOT: tmp/sota_baselines/voxelpose_data
+  ANNOTATION: tmp/sota_baselines/voxelpose_data/h36m_true_gt_annotations.pkl
+  IMAGE_LIST: tmp/sota_baselines/voxelpose_data/h36m_true_gt_images.txt
+  NUM_VIEWS: 4
+  NUM_JOINTS: 17
+
+MODEL:
+  NAME: voxelpose
+  BACKBONE: resnet50
+  NUM_JOINTS: 17
+  INPUT_SHAPE: [1024, 1024]
+
+TRAIN:
+  BATCH_SIZE: 8
+  EPOCHS: 10
+  LR: 0.001
+  LR_DECAY: 0.9
+  LR_DECAY_EPOCH: 1
+
+TEST:
+  SUBJECTS: [9, 11]
+  ACTIONS: all
+
+OUTPUT:
+  DIR: tmp/sota_baselines/VoxelPose/output/h36m_true_gt

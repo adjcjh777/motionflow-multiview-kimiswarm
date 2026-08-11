@@ -1,0 +1,43 @@
+# MVPose H36M true-GT baseline configuration.
+#
+# This YAML is read by scripts/sota_baselines/prepare_mvpose_h36m.sh and
+# describes how to prepare and run MVPose on the corrected H36M true-GT
+# protocol (S1,5,6,7,8 -> S9/S11).
+
+name: mvpose_h36m_true_gt
+
+# External repository settings.
+# Note: the canonical MVPose repository is a third-party implementation;
+# update the URL if the project uses a fork.
+repo:
+  url: https://github.com/jiajunhua/MvPose.git
+  ref: master
+  dir: tmp/sota_baselines/MVPose
+
+# Data produced by common_export_h36m_true_gt.py.
+input_pkl: tmp/sota_baselines/h36m_true_gt_baseline_format.pkl
+
+# Where MVPose-specific converted data lives.
+data_dir: tmp/sota_baselines/mvpose_data
+
+# Training / evaluation parameters.
+training:
+  # 2D detector: cpn or gt (use ground-truth 2D projections for a fair
+  # comparison with our true-GT 3D labels).
+  detector: gt
+  # Batch size that fits the local RTX 4090.
+  batch_size: 8
+  epochs: 10
+  lr: 1.0e-3
+
+# Paths for outputs.
+output:
+  checkpoint_dir: tmp/sota_baselines/MVPose/output/h36m_true_gt
+  log: outputs/sota_baselines/mvpose_h36m_true_gt.log
+  metrics_json: outputs/sota_baselines/mvpose_h36m_true_gt_metrics.json
+
+# Evaluation protocol.
+eval:
+  protocol: h36m_standard
+  subjects_test: [9, 11]
+  actions: all
