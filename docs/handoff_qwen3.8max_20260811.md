@@ -15,7 +15,7 @@
 ## Critical blocker resolved: AIST++ NaN
 
 - **Root cause**: `convert_aistpp` in `motionflow_mv/data/webbridge_loader.py` defaulted to raw `keypoints3d`, which contains NaNs for occluded/missing joints on ~20% of sequences.
-- **Fix applied** (same file): prefer `keypoints3d_optim` when available; drop any remaining NaN frames before saving canonical `.npz`.
+- **Fix applied** (same file): prefer `keypoints3d_optim` when available; zero NaN 2D keypoints and set confidence to 0 to preserve frame count; only drop frames if 3D joints are NaN.
 - **Action in progress**: local WSL is regenerating `data/webbridge/aistpp_canonical/*.npz`.
 - **Next step**: sync clean `.npz` to A800 and relaunch `aistpp_only_medium_a800_fast_v2` on GPU 5.
 
