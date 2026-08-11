@@ -15,23 +15,19 @@ from pathlib import Path
 
 
 REQUIRED_SECTIONS = [
-    "One-sentence thesis",
     "Abstract",
     "Introduction",
     "Related Work",
-    "Method: Multi-View Geometry Fusion v25",
-    "Experiments",
-    "Figures and Tables to Prepare",
-    "Discussion",
-    "Conclusion",
-    "Running experiments and next steps",
-    "Submission checklist",
+    "Method",
+    "Experiments and Results",
+    "Discussion and Conclusion",
+    "References",
 ]
 
 
 def main() -> int:
     repo_root = Path(__file__).resolve().parents[1]
-    outline_path = repo_root / "docs" / "paper_outline_v25_icra_cvpr_2027.md"
+    outline_path = repo_root / "docs" / "paper_corrected_outline_cvpr2027.md"
 
     if not outline_path.exists():
         print(f"ERROR: {outline_path} does not exist.", file=sys.stderr)

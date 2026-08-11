@@ -247,7 +247,7 @@ Inference throughput is measured on a single RTX 4090. The compact model runs at
 
 1. **Geometry-first decomposition.** Unlike end-to-end fusion methods that regress 3D joints directly, we keep triangulation at the center and learn only the structured error that geometry cannot fix: intrinsic correction, visibility, precision weights, and a small residual.
 
-2. **Compact, robot-ready models.** The full model has well under 1.1 M parameters, yet reaches 8.35 mm MPJPE on MPI-INF-3DHP via a Bayesian Tri v2 ensemble, with the unified OmniMultiViewFusionV2 targeting single-model performance below this threshold.
+2. **Compact, robot-ready models.** The full model has well under 1.1 M parameters. Earlier MPI-INF-3DHP reports of 8.35 mm were obtained under circular or GT-2D protocols; on the honest detected-2D protocol the real numbers are still being validated and are expected to fall in the 20–30 mm range for DLT baselines.
 
 3. **Bayesian precision weighting.** Anisotropic image-space covariances give principled per-view uncertainty that feeds directly into weighted DLT, rather than using heuristic confidences alone.
 
