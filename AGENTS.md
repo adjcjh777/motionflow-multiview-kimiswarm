@@ -2,7 +2,7 @@
 
 > **Executive Summary — 2026-08-12 ~12:56 UTC**
 >
-> **A800 status (do not touch running jobs):** GPU 7 trains v85 random-view-dropout (PID `2058225`, Epoch 3 in progress, loss falling; Epoch 2 val_MPJPE 36.48 mm). GPU 6 runs v85 split-k no-fallback variable-view eval (PID `2148510`/`2148515`, currently k=2). **Only GPUs 6/7 are used by this project.** A800 disk is **99% full (~58 GB free)**.
+> **A800 status (do not touch running jobs):** GPU 7 trains v85 random-view-dropout (PID `2058225`, Epoch 5 in progress, loss falling; Epoch 4 val_MPJPE 36.97 mm). GPU 6 v85 split-k no-fallback variable-view eval was restarted after k=2 completed (k=2 no-fallback result: S9 2310.27 mm, S11 2308.80 mm); now running k=3/4. **Only GPUs 6/7 are used by this project.** A800 disk is **99% full (~58 GB free)**.
 >
 > **Data foundation — in flight:** The legacy `data/h36m_hf/*.npz` are circular (direct MJE ≈ 0 mm). The `data/h36m_true_gt/*.npz` files used by v85 and earlier runs are misaligned with their stored cameras/2D (direct MJE ≈ 16,668 mm). A corrected converter `scripts/convert_h36m_true_gt_v2.py` now produces physically consistent true-mocap labels (test file direct MJE ≈ 14.5 mm). Full regeneration is queued for after v85 finishes. MPI-INF-3DHP detected-2D (16/16 `.npz`) and DLT baseline (MPJPE 115.09 mm) done. AIST++ canonical `.npz` and H36M cross-eval (93.94 mm) done.
 >
@@ -55,7 +55,7 @@
 ## Data foundation status
 
 1. **True H36M 3D GT** — obtained, but the `data/h36m_true_gt/*.npz` labels are misaligned with the stored cameras/2D (direct MJE ≈ 16,668 mm). A corrected converter is in `scripts/convert_h36m_true_gt_v2.py`; output will go to `data/h36m_true_gt_v2/`.
-2. **Regenerate canonical `.npz`** with non-circular labels — in progress; a corrected H36M converter exists. Test file and S1 combined train file verified (`direct MJE ≈ 16 mm`). Full regeneration to `data/h36m_true_gt_v2/` is queued for after v85 finishes so the running training is not disturbed. Regeneration script: `scripts/convert_all_h36m_true_gt_v2.sh`.
+2. **Regenerate canonical `.npz`** with non-circular labels — in progress; a corrected H36M converter exists. Test file and S1 combined train file verified (`direct MJE ≈ 16 mm`). Full regeneration to `data/h36m_true_gt_v2/` is running locally; a new manifest `configs/splits/h36m_true_gt_v2_standard.yaml` is ready. Full regeneration and leaderboard rerun are queued for after v85 finishes so the running training is not disturbed. Regeneration script: `scripts/convert_all_h36m_true_gt_v2.sh`.
 3. **Re-run baselines** (DLT, Iskakov, v25, v46, v52, v57, v80) on the corrected protocol — in progress.
    - DLT H36M true-GT: **25.67 mm** (conf-weighted), 28.77 mm (unweighted).
    - RANSAC/conf-DLT H36M true-GT: **26.47 mm** (reproducible; see `scripts/run_h36m_true_gt_ransac_baseline.py`).
