@@ -11,13 +11,13 @@
 
 ## 1. 核心结论
 
-- **v85 random view dropout 正在 GPU 7 上运行**：PID `2058225`，日志 `outputs/ablations/v85_random_view_dropout_medium_a800.log`。已完成 Epoch 2（train_loss 14.91，val_MPJPE **36.48 mm**），当前 **Epoch 3 进行中**，loss 持续下降（step 1250 约 8.58）。**不要触碰。**
-- **v85 无 fallback 可变视角评估正在 GPU 6 上运行**：采用 split-k 模式，当前 **k=2 进行中**；主 launcher PID `2148510`，Python 进程 PID `2148515`。**不要 kill、重启或干扰。** 该 eval 日志输出被缓冲，当前主日志 0 bytes，k2 日志也是 0 bytes，这是预期行为（按 k 批量输出）。
+- **v85 random view dropout 正在 GPU 7 上运行**：PID `2058225`，日志 `outputs/ablations/v85_random_view_dropout_medium_a800.log`。已完成 Epoch 4（val_MPJPE **36.97 mm**），当前 **Epoch 5 进行中**，loss 持续下降。**不要触碰。**
+- **v85 无 fallback 可变视角评估正在 GPU 6 上运行**：split-k 模式；k=2 已完成（no-fallback 结果：S9 **2310.27 mm**，S11 **2308.80 mm**，模型在 k=2 下失效，符合预期）。已重启继续跑 k=3/4。**不要 kill、重启或干扰。**
 - **GPU 6 约 80 GB 空闲显存**，因此可以接受轻量级只读或短时 smoke 测试，**但不得影响正在运行的 eval**。
 - **v85 post-training eval suite monitor**（PID `2072251`）和 **VoxelPose auto-launch monitor**（PID `2146696`）正在等待：eval suite monitor 等 v85 训练结束；VoxelPose monitor 等 eval suite monitor 完成。
 - **A800 磁盘仍紧张**：`/mnt/nvme0n1p1` **99% 满**，约 **58 GB** 空闲。
 - **v82/v81/v25 可变视角 DLT-fallback 评估已完成**；MPI 检测与 DLT baseline、AIST++ → H36M 交叉评估均已完成。
-- **数据地基发现关键问题**：`data/h36m_hf/*.npz` 确认循环（direct MJE ≈ 0 mm）；`data/h36m_true_gt/*.npz` 与存储的相机/2D 坐标系不匹配（direct MJE ≈ 16,668 mm）。已准备修正版 converter `scripts/convert_h36m_true_gt_v2.py`，测试文件 `data/h36m_true_gt_v2/s_01_act_02_multiview.npz` 的 direct MJE ≈ 14.5 mm。待 v85 结束后重新生成全部 `.npz` 并重跑排行榜。
+- **数据地基发现关键问题**：`data/h36m_hf/*.npz` 确认循环（direct MJE ≈ 0 mm）；`data/h36m_true_gt/*.npz` 与存储的相机/2D 坐标系不匹配（direct MJE ≈ 16,668 mm）。已准备修正版 converter `scripts/convert_h36m_true_gt_v2.py` 与一键脚本 `scripts/convert_all_h36m_true_gt_v2.sh`；S1 train 联合文件已验证（direct MJE ≈ 16 mm）；新 manifest `configs/splits/h36m_true_gt_v2_standard.yaml` 已就绪。全量 `.npz` 生成正在本地后台运行，待 v85 结束后可同步到 A800 并重跑排行榜。
 
 ---
 
