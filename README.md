@@ -1,214 +1,108 @@
-# MotionFlow Multi-View: From Monocular Video to Multi-View Human Motion Fusion
+# MotionFlow Multi-View
 
-> 从单目视频到多视角人体动作融合的轻量级探索
+> CVPR 2027 direction: **reliable multi-view human pose under the true-GT H36M protocol**, with emphasis on sparse-view and cross-domain robustness.
 
-> **CVPR 2027 pivot in progress.** The project has moved from absolute-MPJPE chasing to a **data-foundation rebuild** after discovering circular H36M labels. New collaborators should start with `docs/cvpr2027_pivot_for_new_collaborators.md` before using any smoke/medium numbers.
+## Quick orientation
 
-## Project status
+This repository trains and evaluates multi-view 3D human pose estimators.
+The previous leaderboards were contaminated by **circular H36M labels** (the stored 3D target was a DLT triangulation of the input 2D).
+We are rebuilding the evaluation foundation on non-circular, true mocap-ground-truth data.
 
-| Status item | Value |
-|---|---|
-| Phase | Data-foundation rebuild → CVPR 2027 pivot |
-| H36M true GT | ✅ Ready; best Iskakov **23.35 mm**; v80 **39.98 mm**; v57 **75.16 mm** observed (saved ckpt **81.47 mm**); v25 **72.80 mm** |
-| GPU |  **BUSY**: `v25_true_gt_baseline_fix` ablation running on local RTX 4090. Do **not** start another GPU task. |
-| MPI real detected 2D | ⚠️ 16 `_m.npz` files ready in `data/webbridge/mpi_inf_3dhp_detected_2d/`, but DLT baseline is ~326–400 mm due to camera/label alignment issue; `s_02_seq_02` removed |
+- **Standard protocol:** H36M train on S1, S5, S6, S7, S8; test on S9 and S11.
+- **True-GT manifest:** `configs/splits/h36m_true_gt_standard.yaml`
+- **Trusted labels:** `data/h36m_true_gt/` (H36M), `data/webbridge/shelf_campus_detected/` (Shelf/Campus)
+- **Deprecated (circular):** any config or script still pointing to `data/h36m_hf/` or `data/webbridge/h36m*.npz` will fail loudly.
 
-**Key docs**
-- `docs/cvpr2027_status.md` — CVPR 2027 overall status, leaderboards, blockers, and next steps.
-- `docs/handoff_qwen3.8max.md` — qwen3.8max handoff (true-GT H36M results, v25 ablation queue, execution constraints, quick commands).
-- `docs/results_true_gt_h36m.md` — H36M true-GT standard protocol leaderboard and per-method details.
+## Current H36M true-GT leaderboard (S9 / S11)
 
-## Core Idea
+| Method | Combined direct (mm) | Combined PA-MPJPE (mm) | Notes |
+|---|---:|---:|---|
+| **Iskakov ICCV 2019** | **23.40** | **23.15** | learnable triangulation baseline |
+| DLT (confidence-weighted) | 25.67 | 28.05 | frozen geometric baseline |
+| MVPose (geometry-only) | 26.06 | 28.32 | COCO17 native skeleton |
+| RANSAC/conf-DLT | 26.47 | 28.98 | reproducible 3-view random subset |
+| **v25 stability** | **30.83** | **33.59** | best learned result so far |
+| v25 mixed H36M+AIST++ | 33.42 | 34.60 | early-stopped Epoch 1 |
+| v81 temporal-pose-attention | 37.83 | 37.75 | — |
+| v82 multi-scale temporal-pose-attention | 39.46 | 39.94 | — |
+| v80 regularization | 53.98 | 32.47 | — |
+| v52 UWT | 54.01 | 42.22 | — |
+| v57 | 57.10 | 37.30 | re-run with MPJPE checkpoint monitor |
 
-Extend the existing MotionFlow pipeline (monocular video → human motion) to accept **multi-view videos** of the same action, fuse per-view 2D/3D pose estimates, and calibrate them into a **common physical space**. The goal is a minimal, reproducible baseline that demonstrates improved robustness/accuracy over single-view inference, and serves as a paper-worthy direction.
+- Full table: `docs/results_true_gt_h36m.md`
+- Source JSONs: `outputs/eval_*_true_gt_h36m_test*.json`
 
-## Principles
+## Sparse-view (variable-view) robustness
 
-- **No over-engineering**: start with the simplest fusion model that can validate the idea.
-- **Iterative evolution**: design → train → validate → feedback → next round.
-- **Open by default**: track everything via GitHub Issues / PRs.
+Learned models trained on the full 4-view rig currently fail catastrophically when fewer than 4 views are active.
+Direct confidence-weighted DLT on the same active views gives reasonable numbers, confirming the 2D observations themselves are sound.
 
-## Design docs
+| Subject | k=2 (mm) | k=3 (mm) | k=4 (mm) |
+|---|---:|---:|---:|
+| S9 | 58.18 | 33.32 | 116.98 |
+| S11 | 49.35 | 25.28 | 110.58 |
 
-- `docs/design_v1.md`: initial multi-view fusion design.
-- `docs/design_v2.md`: paper direction v2 — why DLT is hard to beat and how to frame the contribution.
-- `docs/phase0_literature_audit.md`: audit of ScoreHMR, EasyMocap, and candidate multi-view methods.
+- Source: `outputs/variable_view_fix/variable_view_v25_true_gt_stability_a800_dlt_fallback.json`
+- v85 random-view dropout is in progress to train a model that natively handles k=2/3/4.
 
-## Roadmap (next iteration)
+## Cross-dataset status
 
-**Goal:** push MotionFlow-MultiView to ICRA/CVPR 2027 publishable quality on MPI-INF-3DHP. Current best: **8.35 mm** MPJPE / **5.29 mm** PA-MPJPE on S2/Seq1 (ensemble of `bayesian_tri_v2` variants). Next target: a single model at **≤ 8.0 mm** and a reproducible ensemble at **≤ 7.8 mm**, with robustness under ≥30% view dropout and ≥0.5° camera rotation perturbation.
+| Dataset | Status | Key number |
+|---|---|---|
+| AIST++ | Non-circular `.npz` ready; full DLT baseline **15.93 mm** / PA-MPJPE **21.12 mm** | AIST++-only → H36M cross-eval **93.94 mm** |
+| MPI-INF-3DHP | RTMPose detected-2D regenerated (16/16 `.npz`); DLT baseline **115.09 mm** / PA-MPJPE **132.68 mm** | `outputs/mpi_rtmpose_detected_2d/dlt_baseline_detected_2d.json` |
+| Shelf/Campus detected | Non-circular `.npz` ready | Iskakov **128.73 mm** val direct |
 
-**Plan docs:** `docs/swarm_iter18/P02_omniview_arch.md` (architecture), `docs/swarm_iter18/P11_paper_story.md` (paper narrative), and `docs/iter_next_action_plan.md` (action plan).
-
-### Current anchor
-
-- Ensemble: `bayesian_tri_v2_stabilized` + `bayesian_tri_v2_aug` (d=128)
-- Checkpoints: `outputs/bayesian_tri_v2_stabilized_mpiinf3dhp.pth`, `outputs/bayesian_tri_v2_aug_mpiinf3dhp.pth`
-- MPI-INF-3DHP S2/Seq1 clean: **8.35 mm** MPJPE, **5.29 mm** PA-MPJPE, **0.9444** PCK-AUC
-- Eval script: `scripts/eval_bayesian_tri_v2_large_scale_wsl.sh`
-
-### Parallel tracks (swarm-iter18 "OmniMultiViewFusion")
-
-1. **Unified architecture**
-   Integrate visibility gating, skeleton-graph joint attention, uncertainty-weighted triangulation, and spatiotemporal view attention into a single `OmniMultiViewFusion` module. See `docs/swarm_iter18/P02_omniview_arch.md`.
-2. **Visibility & occlusion robustness**
-   Learned per-view/per-joint soft visibility, synthetic joint occlusion augmentation, and a fallback guard for <2 visible views.
-3. **Graph-joint & skeleton constraints**
-   Skeleton-graph attention and kinematic-chain refiner to improve limb joints without trunk regression.
-4. **Uncertainty & calibration**
-   Anisotropic covariance/precision head, adaptive Gauss-Newton refinement, and an intrinsic self-calibration head; extend the camera-perturbation curriculum.
-5. **Robustness evaluation**
-   Run the extended robustness matrix on every candidate; produce MPJPE@k variable-view curves for k=2..14.
-6. **Reproducibility & test-set**
-   Repeated-seed runs (≥3 seeds), `manifest.json` per run, and evaluation on MPI-INF-3DHP official test subjects TS1–TS6.
-7. **Cross-dataset & paper package**
-   WebBridge benchmark on H36M, MPI-INF-3DHP, and AIST; ablation CSV template + plotting; figures; runtime benchmark on RTX 4090; update `docs/icra_cvpr_2027_paper_story.md`.
-
-### Success gates (all must pass to replace the anchor)
-
-| Gate | Threshold |
-|------|-----------|
-| Clean MPJPE (S2/Seq1) | < current best; target single-model ≤ 8.0 mm |
-| Robustness — view_dropout_30 | ≤ 12 mm |
-| Robustness — rot_0.5° | ≤ 12 mm |
-| Robustness — joint_occlusion_30 | ≤ 12 mm |
-| Repeated seeds | n ≥ 3, mean ≤ 8.0 mm, no seed >10% worse |
-| Variable views | k=14 within 0.5 mm of full views; k=4 < 20 mm |
-
-## Repo structure
+## Repository structure
 
 ```
 motionflow-multiview-kimiswarm/
-├── docs/                  # design notes and experiment logs
-│   ├── design_v1.md       # current architecture decision
-│   └── swarm_iter1/       # 20 parallel research notes
-├── motionflow_mv/         # core package
-│   ├── baseline/          # BasePoseEstimator interface
-│   ├── calibration/       # Camera model
-│   ├── fusion/            # triangulation / fusion modules
-│   ├── eval/              # metrics (MPJPE, PA-MPJPE, PCK)
-│   └── pipeline.py        # end-to-end pipeline
-├── experiments/           # scripts and configs
-├── tests/                 # unit tests
-├── requirements.txt
-└── README.md
+├── configs/          # experiment configs and dataset splits
+├── docs/             # status, results, paper draft
+├── experiments/      # training / evaluation scripts
+├── motionflow_mv/    # core package (data, fusion, models, eval, losses, training)
+├── outputs/          # checkpoints, logs, evaluation JSONs
+├── scripts/          # shell runners and utilities
+├── tests/            # unit tests
+└── requirements.txt
 ```
 
 ## Quick start (WSL + RTX 4090)
 
 ```bash
-cd /path/to/repo
 python3 -m venv .venv
-.venv/bin/pip install -r requirements.txt      # installs torch 2.4.0+cu121
-.venv/bin/python scripts/check_gpu.py          # verify 4090 is visible
+.venv/bin/pip install -r requirements.txt
 .venv/bin/python -m pytest tests/ -v
 ```
 
-If you only need CPU, install the CPU wheel manually:
-```bash
-.venv/bin/pip install torch==2.4.0+cpu --index-url https://download.pytorch.org/whl/cpu
-```
-
-## Current status
-
-- ✅ Iteration 1 closed (#1): 20 parallel research notes, v1 design doc, minimal DLT skeleton.
-- ✅ Iteration 2 closed (#2): end-to-end DLT on real Shelf/VoxelPose data + AttentionFusion sanity training.
-  - Tests: 4/4 passed.
-  - Shelf 300–600: 301 frames triangulated; reprojection error mean 199 px (median 115 px) — mismatch indicates cross-view person-ID alignment is the next bottleneck.
-- 🔄 Iteration 3 open (#3): cross-view person matching + DLT/Attention comparison.
-  - Cross-view person matching implemented; reprojection error dropped to mean 9.88 px / median 5.52 px.
-  - GPU-aware training scripts added for synthetic and real Shelf data.
-  - ✅ WSL RTX 4090 PyTorch verification passed; pytest 4/4 passed.
-  - ✅ Synthetic GPU training converges (val_MPJPE 1.54 after 50 epochs, checkpoint at `outputs/attention_fusion_synthetic.pth`).
-  - ✅ Synthetic comparison: AttentionFusion (MPJPE 2.31) outperforms DLT (MPJPE 7.93) on noisy synthetic data, showing learned fusion is more robust to noise.
-  - ✅ Real Shelf data training/eval run on RTX 4090 (data found at `tmp/voxelpose-pytorch/data/Shelf`).
-  - ✅ 真实 Shelf 重投影误差对比（300-600 帧，5 视图）：
-    - DLT: mean 9.88 px / median 5.52 px
-    - AttentionFusionV1（MSE on DLT pseudo-GT）: mean 81.70 px / median 62.42 px
-    - AttentionFusionV1（combined MSE+MPJPE loss, d=64）: mean 80.42 px / median 58.90 px
-    - AttentionFusionV2（camera params input, normalized）: mean 184.29 px / median 173.01 px
-    - Fine-tune from synthetic: mean 125.87 px / median 103.80 px
-    - Residual/refine + reprojection loss: failed
-  - 当前结论：DLT 在该真实数据集上非常强，最小可学习融合模型还无法超越；单纯增大模型、加入相机参数、或微调合成模型均未能追平 DLT，需要更深度架构或 3D 监督。
-- ✅ Iteration 5 closed: learned confidence-weighted DLT (`RobustTriangulationModel`).
-  - 真实 Shelf 重投影误差对比（300–600 帧，5 视图）：
-    - DLT: mean 9.88 px / median 5.52 px
-    - RobustTriangulationModel（学习每视角权重 + 可微分 DLT，reprojection loss）：mean 11.64 px / median 5.98 px
-  - 结论：可学习权重能接近 DLT（median 仅高 0.46 px），但 mean 因少量离群帧而更高，未能超过 DLT。这说明仅依赖重投影 loss 的自适应权重在缺少 3D 监督时难以超越几何 DLT。
-- ✅ Iteration 6 closed: residual refinement on top of DLT (`ResidualRefinerModel`).
-  - 真实 Shelf 重投影误差对比（300–600 帧，5 视图）：
-    - DLT: mean 9.88 px / median 5.52 px / max 1044.68 px
-    - ResidualRefinerModel（DLT + 可学习残差，L1 reprojection loss）：mean 9.90 px / median 5.52 px / max 1038.20 px
-  - 结论：残差校正基本复现了 DLT 的性能，mean/median 与 DLT 持平，max 略有下降，但**仍未统计意义上击败 DLT**。简单的单帧残差网络无法克服 DLT 的强几何先验。
-- ✅ Iteration 7 closed: temporal refinement over a 5-frame window (`TemporalRefinerModel`).
-  - 真实 Shelf 重投影误差对比（300–600 帧，5 视图）：
-    - DLT: mean 9.88 px / median 5.52 px / max 1044.68 px
-    - TemporalRefinerModel（Bi-GRU over 5 frames, per-joint features）：mean 9.89 px / median 5.49 px / max 1044.45 px
-  - 结论：时序模型在 median 上略有提升（5.49 vs 5.52），mean 与 DLT 持平，max 几乎不变。**仍未显著击败 DLT**。说明当前 2D 检测噪声和重投影 loss 下，时序信息只能带来边际收益。
-- ✅ Iteration 8 closed: synthetic pre-training + fine-tuning of `TemporalRefinerModel`.
-  - 先用 500 组合成 9 帧序列训练 Bi-GRU（3D MSE loss，收敛到 ~0）。
-  - 再用 Shelf 真实数据微调（reprojection loss, window=9, lr=1e-4）。
-  - 真实 Shelf 重投影误差对比（300–600 帧，5 视图）：
-    - DLT: mean 9.94 px / median 5.53 px / max 1044.68 px
-    - TemporalRefinerModel (fine-tuned): mean 9.94 px / median 5.53 px / max 1044.67 px
-  - 结论：合成预训练也无法让模型在真实 Shelf 上超越 DLT。纯重投影 loss + 合成数据无法提供足够强的 3D 监督来克服 DLT 的几何先验。
-- ✅ Iteration 9 closed: scale temporal model on A800-D (larger hidden=256, d=128, window=15).
-  - 真实 Shelf 重投影误差对比（300–600 帧，5 视图）：
-    - DLT: mean 9.98 px / median 5.52 px / max 1044.68 px
-    - TemporalRefinerModel (A800-D): mean 9.97 px / median 5.49 px / max 1044.66 px
-  - 结论：继续扩大模型容量和时序窗口只能带来边际收益，**仍未显著击败 DLT**。这进一步确认瓶颈不在算力/容量，而在缺少 3D 监督和强运动先验。
-  - 下一步（Iteration 10 待探索）：接入带 3D GT 的真实数据集，或完成与 MotionFlow 单目模块的工程集成。
-- ✅ Iteration 10 open (#16): temporal ray-attention residual fusion for multi-view pose.
-  - Branch: `multiview-residual-exploration`
-  - PR: #17
-  - Key result on MPI-INF-3DHP cross-subject: MPJPE **11.17 mm**, PA-MPJPE **8.24 mm**, AUC 0.9256.
-  - Key result on Human3.6M: MPJPE **5.74 mm**, PA-MPJPE **3.99 mm**.
-
-Recent additions:
-  - `motionflow_mv/pipeline_utils.py::select_best_person_group`: match the same person across views by minimal reprojection error.
-  - `motionflow_mv/data/voxelpose_loader.py`: load VoxelPose Shelf calibration and 2D predictions.
-  - `experiments/run_shelf_voxelpose_baseline.py`: real-data DLT pipeline.
-  - `experiments/eval_shelf_voxelpose.py`: reprojection-error evaluation for DLT.
-  - `experiments/train_attention_fusion.py`: GPU-aware synthetic training.
-  - `experiments/train_attention_fusion_shelf.py`: train AttentionFusion on real matched Shelf data (DLT as pseudo-GT).
-  - `experiments/eval_attention_fusion_shelf.py`: evaluate trained AttentionFusion on Shelf via reprojection error.
-  - `experiments/compare_dlt_attention_synthetic.py`: compare DLT vs trained AttentionFusion on synthetic noisy data.
-  - `motionflow_mv/fusion/robust_triangulation.py`: differentiable confidence-weighted DLT triangulation.
-  - `experiments/train_robust_triangulation_shelf.py`: train learned per-view weights for triangulation on Shelf.
-  - `experiments/eval_robust_triangulation_shelf.py`: evaluate learned triangulation vs DLT.
-  - `motionflow_mv/fusion/residual_refiner.py`: per-frame residual refinement on top of DLT output.
-  - `experiments/train_residual_refiner_shelf.py`: train the residual refiner with reprojection loss.
-  - `experiments/eval_residual_refiner_shelf.py`: evaluate the residual refiner vs DLT.
-  - `motionflow_mv/fusion/temporal_refiner.py`: Bi-GRU temporal refiner over a window of frames.
-  - `experiments/train_temporal_refiner_shelf.py`: train the temporal refiner.
-  - `experiments/eval_temporal_refiner_shelf.py`: evaluate the temporal refiner vs DLT.
-  - `experiments/train_temporal_synthetic.py`: pre-train the temporal refiner on synthetic 3D sequences.
-  - `experiments/run_multiview_pipeline_shelf.py`: end-to-end multi-view pipeline demo on Shelf.
-  - `experiments/prototypes/swarm_iter18/convert_mpiinf3dhp_test_set.py`: convert the MPI-INF-3DHP test set (TS1-TS6) to canonical multi-view `.npz`. See `docs/mpiinf3dhp_test_set_conversion.md`.
-  - `scripts/convert_mpiinf3dhp_test_set_wsl.sh`: WSL runner for the above converter.
-
-## MPI-INF-3DHP test-set conversion
-
-The official MPI-INF-3DHP test set (TS1-TS6) can be converted to the project's canonical multi-view `.npz` format for inference-only evaluation.  Because public 3D GT is reserved for the official evaluation server, the resulting `.npz` files contain 2D keypoints and 14-camera calibration only; `joints_3d` is stored as an empty placeholder.
+Run a true-GT baseline:
 
 ```bash
-bash scripts/convert_mpiinf3dhp_test_set_wsl.sh
+# Confidence-weighted DLT baseline
+python scripts/run_h36m_true_gt_dlt_baseline.py
+
+# Iskakov learnable-triangulation baseline
+python experiments/train_iskakov_baseline_shelf_campus.py \
+    --protocol h36m --epochs 10 --batch_size 8 --lr 1e-3 --hidden_dim 32 \
+    --train_samples_per_epoch 4096 \
+    --log_path outputs/iskakov_h36m_true_gt.log \
+    --ckpt_path outputs/iskakov_h36m_true_gt.pth
 ```
 
-Output: `data/webbridge/mpi_inf_3dhp/test_set/TS{i}_v14_multiview.npz`. See `docs/mpiinf3dhp_test_set_conversion.md` for the full format.
+## Key documents
 
-## Iteration workflow
+- `docs/cvpr2027_status.md` — latest overall status, blockers, and next steps.
+- `docs/results_true_gt_h36m.md` — full H36M true-GT leaderboard and per-method details.
+- `docs/results_true_gt_shelf_campus.md` — Shelf/Campus detected leaderboard.
+- `docs/cvpr2027_pivot_for_new_collaborators.md` — onboarding for new collaborators.
+- `AGENTS.md` — active run status, GPU policy, and handoff notes.
 
-1. Open / update a GitHub Issue describing the round’s goal.
-2. Run a parallel research / implementation swarm.
-3. Synthesize findings into a design doc and a PR.
-4. Validate on the target hardware (RTX 4090 / A800-D).
-5. Collect feedback and start the next round.
+## Hardware and GPU rules
 
-## Hardware
-
-- Local WSL: NVIDIA RTX 4090
-- Remote: A800-D via SSH
+- **Local WSL:** NVIDIA RTX 4090 (one training task at a time).
+- **A800:** MotionFlow-MultiView uses **only GPU 6 and GPU 7**. Never use GPUs 0–5.
+- `/mnt/nvme0n1p1/zhangzy/projects` and the A800 Docker `motionflow` service are **read-only**.
+- Do not stop, kill, or interfere with running A800 jobs.
 
 ## License
 

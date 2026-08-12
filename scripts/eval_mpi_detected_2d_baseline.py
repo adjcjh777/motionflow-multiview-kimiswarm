@@ -1,17 +1,18 @@
-"""H36M true-GT DLT baseline under the standard protocol.
+"""MPI-INF-3DHP detected-2D DLT baseline.
 
-Runs confidence-weighted and unweighted DLT triangulation on the canonical
-non-circular H36M true-GT split (S1, S5, S6, S7, S8 train -> S9, S11 test)
-and reports per-subject, train-combined, test-combined, and overall metrics.
+Triangulates the stored 2D keypoints (from an off-the-shelf 2D detector such as
+RTMPose) using the calibrated cameras and compares the result to the true 3D
+mocap ground truth.  Reports MPJPE and PA-MPJPE in millimetres.
 
 Usage
 -----
-    python scripts/run_h36m_true_gt_dlt_baseline.py
-    python scripts/run_h36m_true_gt_dlt_baseline.py --device cuda
+    python scripts/eval_mpi_detected_2d_baseline.py
+    python scripts/eval_mpi_detected_2d_baseline.py --config configs/splits/mpi_inf_3dhp_detected_2d_baseline_smoke.yaml
+    python scripts/eval_mpi_detected_2d_baseline.py --device cuda --unweighted
 
 Output
 ------
-    data/h36m_true_gt/dlt_baseline_h36m.json
+    outputs/mpi_rtmpose_detected_2d/dlt_baseline_detected_2d.json
 """
 
 from __future__ import annotations
@@ -59,7 +60,6 @@ def evaluate_file(path: Path, device: str, weighted: bool, chunk_size: int = 819
     P = build_projection_matrices(K, R, t)
     P_t = torch.from_numpy(P).to(device=device, dtype=torch.float64)
 
-    # Process in chunks to keep GPU memory usage modest and improve throughput.
     pred_chunks = []
     for start in range(0, T, chunk_size):
         end = min(start + chunk_size, T)
@@ -86,6 +86,16 @@ def evaluate_file(path: Path, device: str, weighted: bool, chunk_size: int = 819
     }
 
 
+def _load_paths_from_config(split: dict, key: str) -> list[str]:
+    """Load a list of paths from either ``*_paths`` or ``*`` style YAML keys."""
+    paths_key = f"{key}_paths"
+    if paths_key in split:
+        return list(split[paths_key])
+    if key in split:
+        return list(split[key])
+    return []
+
+
 def _weighted_mean(values: list[float], weights: list[int]) -> float:
     if not values:
         return 0.0
@@ -94,36 +104,67 @@ def _weighted_mean(values: list[float], weights: list[int]) -> float:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="H36M true-GT DLT baseline under the standard protocol.")
-    parser.add_argument("--config", type=str, default="configs/splits/h36m_true_gt_standard.yaml",
-                        help="YAML split file defining train/val paths.")
-    parser.add_argument("--output", type=str, default="data/h36m_true_gt/dlt_baseline_h36m.json",
-                        help="JSON output path.")
-    parser.add_argument("--device", type=str, default="cpu",
-                        help="PyTorch device (cpu or cuda).")
-    parser.add_argument("--unweighted", action="store_true",
-                        help="Also compute unweighted DLT (slower; default: confidence-weighted only).")
+    parser = argparse.ArgumentParser(
+        description="MPI-INF-3DHP detected-2D DLT baseline."
+    )
+    parser.add_argument(
+        "--config",
+        type=str,
+        default="configs/splits/mpi_inf_3dhp_detected_2d_baseline.yaml",
+        help="YAML split file defining train/val/test paths.",
+    )
+    parser.add_argument(
+        "--output",
+        type=str,
+        default="outputs/mpi_rtmpose_detected_2d/dlt_baseline_detected_2d.json",
+        help="JSON output path.",
+    )
+    parser.add_argument(
+        "--device",
+        type=str,
+        default="cpu",
+        help="PyTorch device (cpu or cuda).",
+    )
+    parser.add_argument(
+        "--unweighted",
+        action="store_true",
+        help="Also compute unweighted DLT (slower; default: confidence-weighted only).",
+    )
     args = parser.parse_args()
 
     repo_root = Path(__file__).resolve().parents[1]
     with open(repo_root / args.config) as fh:
         split = yaml.safe_load(fh)
 
-    train_paths = [repo_root / p for p in split.get("train_paths", [])]
-    val_paths = [repo_root / p for p in split.get("val_paths", [])]
+    train_paths = [repo_root / p for p in _load_paths_from_config(split, "train")]
+    val_paths = [repo_root / p for p in _load_paths_from_config(split, "val")]
+    test_paths = [repo_root / p for p in _load_paths_from_config(split, "test")]
 
-    all_items = []
-    for label, paths in [("train", train_paths), ("test", val_paths)]:
+    all_items: list[tuple[str, Path]] = []
+    for label, paths in [
+        ("train", train_paths),
+        ("val", val_paths),
+        ("test", test_paths),
+    ]:
         for p in paths:
             all_items.append((label, p))
 
-    print(f"H36M true-GT DLT baseline ({len(train_paths)} train, {len(val_paths)} test files)")
+    if not all_items:
+        print("No paths found in config.")
+        return
+
+    print(f"MPI-INF-3DHP detected-2D DLT baseline ({len(train_paths)} train, "
+          f"{len(val_paths)} val, {len(test_paths)} test files)")
     print(f"Device: {args.device}\n")
 
-    per_file_weighted = []
-    per_file_unweighted = []
+    per_file_weighted: list[dict] = []
+    per_file_unweighted: list[dict] = []
 
     for split_label, path in all_items:
+        if not path.exists():
+            print(f"[{split_label}] {path.name}: MISSING, skipping")
+            continue
+
         print(f"[{split_label}] {path.name}", end=" ", flush=True)
         res_weighted = evaluate_file(path, args.device, weighted=True)
         out_line = f"conf-DLT={res_weighted['mpjpe_mm']:.3f}mm"
@@ -137,22 +178,26 @@ def main() -> None:
         if res_unweighted is not None:
             per_file_unweighted.append({"split": split_label, **res_unweighted})
 
+    if not per_file_weighted:
+        print("No successful evaluations.")
+        return
+
     def _summarise(entries: list[dict]) -> dict:
-        # Simple mean (per-file average).
         simple = float(np.mean([e["mpjpe_mm"] for e in entries])) if entries else 0.0
-        # Weighted mean by frame count.
         weights = [max(e["shape"]["T"], 1) for e in entries]
         weighted = _weighted_mean([e["mpjpe_mm"] for e in entries], weights) if entries else 0.0
-        # Per split.
+
         split_means = {}
-        for split_name in ["train", "test"]:
+        for split_name in ["train", "val", "test"]:
             split_entries = [e for e in entries if e["split"] == split_name]
             if split_entries:
                 split_weights = [max(e["shape"]["T"], 1) for e in split_entries]
                 split_means[split_name] = {
                     "simple_mean_mm": float(np.mean([e["mpjpe_mm"] for e in split_entries])),
-                    "weighted_mean_mm": _weighted_mean([e["mpjpe_mm"] for e in split_entries], split_weights),
-                    "per_subject_mm": {e["dataset"]: e["mpjpe_mm"] for e in split_entries},
+                    "weighted_mean_mm": _weighted_mean(
+                        [e["mpjpe_mm"] for e in split_entries], split_weights
+                    ),
+                    "per_file_mm": {e["dataset"]: e["mpjpe_mm"] for e in split_entries},
                 }
         return {
             "simple_mean_mm": simple,
@@ -165,7 +210,7 @@ def main() -> None:
 
     payload: dict = {
         "unit": "mm",
-        "protocol": "S1,S5,S6,S7,S8 train -> S9,S11 test",
+        "protocol": "MPI-INF-3DHP detected-2D DLT baseline",
         "confidence_weighted": {
             "mean_mpjpe_mm": summary_weighted["simple_mean_mm"],
             "weighted_mean_mpjpe_mm": summary_weighted["weighted_mean_mm"],
@@ -186,20 +231,15 @@ def main() -> None:
     with open(out_path, "w") as fh:
         json.dump(payload, fh, indent=2)
 
-    def _print_summary(label: str, summary: dict) -> None:
-        print(f"\n{label}")
-        test = summary.get("per_split", {}).get("test", {})
-        train = summary.get("per_split", {}).get("train", {})
-        print(f"  train simple mean: {train.get('simple_mean_mm', 0):.3f} mm")
-        print(f"  test  simple mean: {test.get('simple_mean_mm', 0):.3f} mm")
-        print(f"  test  weighted:    {test.get('weighted_mean_mm', 0):.3f} mm")
-
     print("\n" + "=" * 70)
-    print("H36M true-GT DLT baseline summary (standard protocol)")
+    print("MPI-INF-3DHP detected-2D DLT baseline summary")
     print("=" * 70)
-    _print_summary("Confidence-weighted DLT", summary_weighted)
+    print(f"Conf-weighted DLT mean MPJPE: {summary_weighted['simple_mean_mm']:.3f} mm")
     if summary_unweighted is not None:
-        _print_summary("Unweighted DLT", summary_unweighted)
+        print(f"Unweighted DLT mean MPJPE:    {summary_unweighted['simple_mean_mm']:.3f} mm")
+    for split_name, split_summary in summary_weighted["per_split"].items():
+        print(f"  {split_name}: {split_summary['simple_mean_mm']:.3f} mm "
+              f"(weighted {split_summary['weighted_mean_mm']:.3f} mm)")
     print(f"\nSaved results to {out_path}")
 
 

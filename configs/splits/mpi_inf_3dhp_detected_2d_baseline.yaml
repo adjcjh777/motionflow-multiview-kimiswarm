@@ -1,0 +1,33 @@
+# MPI-INF-3DHP detected-2D DLT baseline split.
+# Uses the RTMPose detected-2D .npz files in metres.
+# Train: S1, S3-S8 (all sequences)
+# Val:   S2/Seq1
+# Test:  TS1-TS6 (official test set detected-2D)
+name: MPI-INF-3DHP Detected-2D DLT Baseline
+
+train_paths:
+  - data/webbridge/mpi_inf_3dhp_detected_2d/s_01_seq_01_v14_multiview_m.npz
+  - data/webbridge/mpi_inf_3dhp_detected_2d/s_01_seq_02_v14_multiview_m.npz
+  - data/webbridge/mpi_inf_3dhp_detected_2d/s_03_seq_01_v14_multiview_m.npz
+  - data/webbridge/mpi_inf_3dhp_detected_2d/s_03_seq_02_v14_multiview_m.npz
+  - data/webbridge/mpi_inf_3dhp_detected_2d/s_04_seq_01_v14_multiview_m.npz
+  - data/webbridge/mpi_inf_3dhp_detected_2d/s_04_seq_02_v14_multiview_m.npz
+  - data/webbridge/mpi_inf_3dhp_detected_2d/s_05_seq_01_v14_multiview_m.npz
+  - data/webbridge/mpi_inf_3dhp_detected_2d/s_05_seq_02_v14_multiview_m.npz
+  - data/webbridge/mpi_inf_3dhp_detected_2d/s_06_seq_01_v14_multiview_m.npz
+  - data/webbridge/mpi_inf_3dhp_detected_2d/s_06_seq_02_v14_multiview_m.npz
+  - data/webbridge/mpi_inf_3dhp_detected_2d/s_07_seq_01_v14_multiview_m.npz
+  - data/webbridge/mpi_inf_3dhp_detected_2d/s_07_seq_02_v14_multiview_m.npz
+  - data/webbridge/mpi_inf_3dhp_detected_2d/s_08_seq_01_v14_multiview_m.npz
+  - data/webbridge/mpi_inf_3dhp_detected_2d/s_08_seq_02_v14_multiview_m.npz
+
+val_paths:
+  - data/webbridge/mpi_inf_3dhp_detected_2d/s_02_seq_01_v14_multiview_m.npz
+
+test_paths:
+  - data/webbridge/mpi_inf_3dhp_detected_2d/test_set/TS1_v14_multiview.npz
+  - data/webbridge/mpi_inf_3dhp_detected_2d/test_set/TS2_v14_multiview.npz
+  - data/webbridge/mpi_inf_3dhp_detected_2d/test_set/TS3_v14_multiview.npz
+  - data/webbridge/mpi_inf_3dhp_detected_2d/test_set/TS4_v14_multiview.npz
+  - data/webbridge/mpi_inf_3dhp_detected_2d/test_set/TS5_v14_multiview.npz
+  - data/webbridge/mpi_inf_3dhp_detected_2d/test_set/TS6_v14_multiview.npz

@@ -88,14 +88,15 @@ AIST_SMOKE_FILES = {
 }
 
 
-def h36m_files(subject: int) -> Tuple[str, str]:
-    stem = f"data/h36m_true_gt/s_{subject:02d}_acts_02_03_04_05_06_07_08_09_10_11_12_13_14_15_16_multiview_m.npz"
+def h36m_files(subject: int, data_root: str = "data/h36m_true_gt") -> Tuple[str, str]:
+    stem = f"{data_root}/s_{subject:02d}_acts_02_03_04_05_06_07_08_09_10_11_12_13_14_15_16_multiview_m.npz"
     return stem, stem
 
 
 PROTOCOL_MANIFESTS = {
     "shelf_campus": "configs/splits/shelf_campus_detected_smoke.yaml",
     "h36m": "configs/splits/h36m_true_gt_standard.yaml",
+    "h36m_true_gt_v2": "configs/splits/h36m_true_gt_v2_standard.yaml",
     "aist_smoke": "configs/splits/aist_only_smoke.yaml",
 }
 
@@ -108,6 +109,11 @@ def build_dataset_files(protocol: str) -> Dict[str, Tuple[str, str]]:
         for s in H36M_TRAIN + H36M_TEST:
             out[f"h36m_s{s}"] = h36m_files(s)
         return out
+    if protocol == "h36m_true_gt_v2":
+        out = {}
+        for s in H36M_TRAIN + H36M_TEST:
+            out[f"h36m_s{s}"] = h36m_files(s, data_root="data/h36m_true_gt_v2")
+        return out
     if protocol == "aist_smoke":
         return dict(AIST_SMOKE_FILES)
     raise ValueError(f"unknown protocol {protocol!r}")
@@ -115,7 +121,8 @@ def build_dataset_files(protocol: str) -> Dict[str, Tuple[str, str]]:
 
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument("--protocol", default="shelf_campus", choices=["shelf_campus", "h36m", "aist_smoke"])
+    p.add_argument("--protocol", default="shelf_campus",
+                   choices=["shelf_campus", "h36m", "h36m_true_gt_v2", "aist_smoke"])
     p.add_argument("--manifest", default=None,
                    help="defaults to the protocol's canonical manifest")
     p.add_argument("--datasets", default="shelf+campus",
@@ -269,6 +276,7 @@ def main() -> None:
     log_path = Path(args.log_path or {
         "shelf_campus": "outputs/iskakov_learnable_tri_detected.log",
         "h36m": "outputs/iskakov_learnable_tri_h36m_true_gt.log",
+        "h36m_true_gt_v2": "outputs/iskakov_learnable_tri_h36m_true_gt_v2.log",
         "aist_smoke": "outputs/iskakov_learnable_tri_aist_only_smoke.log",
     }[protocol])
     log_path.parent.mkdir(parents=True, exist_ok=True)
@@ -295,7 +303,7 @@ def main() -> None:
                 raise SystemExit(f"unknown dataset '{w}'")
         train_names = wanted
         val_names = wanted
-    elif protocol == "h36m":
+    elif protocol in ("h36m", "h36m_true_gt_v2"):
         train_names = [f"h36m_s{s}" for s in H36M_TRAIN]
         val_names = [f"h36m_s{s}" for s in H36M_TEST]
     else:  # aist_smoke

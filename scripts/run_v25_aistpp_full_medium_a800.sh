@@ -3,11 +3,12 @@
 #
 # Uses configs/splits/aistpp_train_val_test_mixed.yaml (9 views, 17 joints).
 # Full-medium: 20 epochs, 4096 samples/epoch, batch size 16.
-# Targets A800 GPU 4 by default; override with CUDA_VISIBLE_DEVICES.
+# Targets A800 GPU 7 by default; override with CUDA_VISIBLE_DEVICES.
+# MotionFlow-MultiView GPU policy: only GPUs 6 and 7 are allowed.
 #
 # Usage
 # -----
-#   # Default: run on GPU 4
+#   # Default: run on GPU 7
 #   bash scripts/run_v25_aistpp_full_medium_a800.sh
 #
 #   # Run on a different GPU
@@ -17,7 +18,7 @@ set -euo pipefail
 # Pin to the A800-D repo root so the script can be launched from anywhere.
 cd /mnt/nvme0n1p1/zhangzy/motionflow-multiview-kimiswarm-iter20
 
-CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-4}
+CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-7}
 export CUDA_VISIBLE_DEVICES
 
 PYTHON=${PYTHON:-/mnt/nvme0n1p1/zhangzy/motionflow-multiview-kimiswarm/.venv/bin/python}

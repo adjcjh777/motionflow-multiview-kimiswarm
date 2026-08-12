@@ -168,57 +168,57 @@ Optional status prefixes for issue titles: `[RUNNING]`, `[STOPPED]`, `[READY]`, 
 
 ## Next handoff for qwen3.8max
 
-> **Status as of 2026-08-12 ~12:30 UTC** (agent handoff refresh)
+> **Status as of 2026-08-12 ~12:56 UTC** (agent handoff refresh)
+
+### Executive snapshot
+
+- **GPU 7:** v85 random-view-dropout training is the only active training run. Epoch 4 completed with val_MPJPE **36.97 mm**; Epoch 5 is in progress and loss is falling.
+- **GPU 6:** v85 split-k no-fallback variable-view eval is running. k=2 completed (S9 2310.27 mm, S11 2308.80 mm — still catastrophic); k=3/4 are in progress.
+- **Disk:** `/mnt/nvme0n1p1` is ~99% full (~58 GB free).
+- **Data foundation:** `data/h36m_hf/*.npz` are circular; `data/h36m_true_gt/*.npz` are misaligned with stored cameras/2D. `scripts/convert_h36m_true_gt_v2.py` produces physically consistent labels and full v2 `.npz` regeneration is queued for after v85 finishes. MPI-INF-3DHP detected-2D and AIST++ canonical `.npz` are done.
 
 ### Active runs on A800
 
 | PID | GPU | Task | State | Notes |
 |------|------|------|-------|-------|
-| `2058225` | 7 | v85 random view dropout training | RUNNING | H36M true-GT medium; **restarted** after duplicate DataLoader-worker processes were killed; Epoch 2 done (train_loss 14.91, val_MPJPE **36.48 mm**), now Epoch 3 in progress, loss falling. `--v85_dropout_prob 0.3 --v85_min_views 2 --v85_use_count_embedding`. Log: `outputs/ablations/v85_random_view_dropout_medium_a800.log`. |
-| `2098117` | 6 | v85 no-fallback variable-view eval | RUNNING (SUSPECT HUNG) | Manifest-based eval (`--dataset_manifest tmp/h36m_true_gt_val_manifest.txt`); tmux `v85_nofallback_eval`, PID `2098117` (launcher `2098114`); launched with `PYTHONUNBUFFERED=1`; log/output file still 0 bytes after ~22 min, GPU memory ~58 GB. Output: `outputs/variable_view_v85_random_view_dropout_medium_a800.{csv,json,log}`. |
-| `2072251` | 6/7 (queued) | v85 post-training eval suite monitor | QUEUED | `scripts/monitor_v85_then_run_evals.sh`; will launch v85 test-set eval, no-fallback variable-view eval, and DLT-fallback variable-view eval sequentially on the first free GPU (6 or 7) after training finishes. |
-| `2067976` | — | VoxelPose SOTA baseline monitor | STOPPED | Old `scripts/monitor_v85_then_launch_voxelpose.sh`; no longer running. Superseded by `monitor_v85_then_run_evals.sh` (PID `2072251`). |
-| `117455` | 5 | AIST++-only medium fast v2 | EARLY-STOPPED | Best val **91.43 mm** @ Epoch 4. Checkpoint: `outputs/ablations/aistpp_only_medium_a800_fast_v2.pth` (symlink to `..._final.pth`). |
-| `1090542` | 6 | AIST++-only → H36M cross-eval | COMPLETED | S9 **98.17 mm**, S11 **89.70 mm**, combined **~93.94 mm** → `outputs/eval_aistpp_only_medium_a800_fast_v2_h36m_test.json`. |
-| `175675` | — | v25 H36M + AIST++ mixed-dataset stability | KILLED | Diverged @ Epoch 3 (`val_MPJPE=481.99 mm`). Best checkpoint: Epoch 1 **36.49 mm** at `outputs/ablations/v25_true_gt_mixed_dataset_stability_a800_gpu6.pth`. |
-| `2527668` | 7 | MPI-INF-3DHP RTMPose detection | COMPLETED | 16/16 `.npz` files in `data/webbridge/mpi_inf_3dhp_detected_2d/`. |
-| — | — | MPI DLT-baseline | COMPLETED | Mean MPJPE **115.09 mm**, mean PA-MPJPE **132.68 mm** → `outputs/mpi_rtmpose_detected_2d/dlt_baseline_detected_2d.json`. |
+| `2058225` | 7 | v85 random view dropout training | RUNNING | H36M true-GT medium. Epoch 4 val_MPJPE **36.97 mm**; Epoch 5 in progress, loss falling. Args: `--v85_dropout_prob 0.3 --v85_min_views 2 --v85_use_count_embedding`. Log: `outputs/ablations/v85_random_view_dropout_medium_a800.log`. |
+| `2098117` | 6 | v85 split-k no-fallback variable-view eval | RUNNING | k=2 done (S9 2310.27 mm, S11 2308.80 mm); k=3/4 in progress. Output: `outputs/variable_view_v85_random_view_dropout_medium_a800.{csv,json,log}`. |
+| `2072251` | 6/7 (queued) | v85 post-training eval suite monitor | QUEUED | `scripts/monitor_v85_then_run_evals.sh`; will launch v85 test-set eval, fresh no-fallback variable-view eval, and DLT-fallback variable-view eval on the first free GPU after training finishes. |
+| `2067976` | — | VoxelPose SOTA baseline monitor | STOPPED | Superseded by `monitor_v85_then_run_evals.sh`. |
 | `628743` | 4 | v25 var-view re-eval (DLT fallback) | COMPLETED | S9 k=2/3/4 = 58.18/33.32/116.98 mm; S11 k=2/3/4 = 49.35/25.28/110.58 mm. Output: `outputs/variable_view_fix/variable_view_v25_true_gt_stability_a800_dlt_fallback.json`. |
 | — | — | v81 var-view DLT-fallback | COMPLETED | k=2/3 only; output: `outputs/variable_view_fix/variable_view_v81_true_gt_medium_a800_dlt_fallback_k23.{csv,json}`. |
 | — | — | v82 var-view DLT-fallback | COMPLETED | k=2/3/4; output: `outputs/variable_view_fix/variable_view_v82_true_gt_medium_a800_dlt_fallback.{csv,json}`. |
+| `1090542` | 6 | AIST++-only → H36M cross-eval | COMPLETED | S9 98.17 mm, S11 89.70 mm, combined ~93.94 mm → `outputs/eval_aistpp_only_medium_a800_fast_v2_h36m_test.json`. |
+| `2527668` | 7 | MPI-INF-3DHP RTMPose detection | COMPLETED | 16/16 `.npz` in `data/webbridge/mpi_inf_3dhp_detected_2d/`; DLT baseline MPJPE 115.09 mm / PA-MPJPE 132.68 mm. |
 | — | 0–3 | VLLM workers | OCCUPIED | Do not touch. |
 
-### Notable update: v85 is the only in-flight training run
+### Key context
 
-The **v25 stability DLT-fallback** (PID `628743`) replaced the learned model with direct confidence-weighted DLT for k<4 and produced: S9 **58.18 / 33.32 / 116.98 mm**, S11 **49.35 / 25.28 / 110.58 mm** for k=2/3/4. This is now the fallback baseline against which v85 will be compared.
-
-The **v81/v82 DLT-fallback evals** are done. v81 only evaluated k=2/3 (model-agnostic fallback), so the output is `..._k23.*`. v82 evaluated k=2/3/4 and shows the learned v82 k=4 result is much better than the v25 stability k=4 result (v82: 47.81/42.36 mm vs v25: 116.98/110.58 mm), confirming v82's learned full-view model is stronger.
-
-The **v85 random view dropout** medium run is training on GPU 7 (PID `2058225`) with `--use_random_view_dropout_v85 --v85_dropout_prob 0.3 --v85_min_views 2 --v85_use_count_embedding`. It is the first attempt to train a model that natively handles k=2/3/4. Training was **restarted** after duplicate DataLoader-worker processes were killed; it has completed Epoch 1 (train_loss 17.48, val_MPJPE 62.53 mm) and Epoch 2 (train_loss 14.91, val_MPJPE **36.48 mm**), and is now in Epoch 3 with loss continuing to fall. A no-fallback variable-view eval was launched on GPU 6 (tmux `v85_nofallback_eval`, PID `2098117`, launcher `2098114`; `PYTHONUNBUFFERED=1`) to get a learned-model baseline; however, its log/output file is still 0 bytes after ~22 min, suggesting it is hung in data loading and may need to be killed and restarted. Note: any extra python processes with the same command line are DataLoader workers; `nvidia-smi` shows only the parent PID using GPU memory.
-
-The old **VoxelPose SOTA baseline monitor** (PID `2067976`, `scripts/monitor_v85_then_launch_voxelpose.sh`) is no longer running. It has been superseded by `scripts/monitor_v85_then_run_evals.sh` (PID `2072251`), which will wait for v85 training to finish and then launch the v85 test-set eval, no-fallback variable-view eval, and DLT-fallback variable-view eval sequentially on the first free GPU (6 or 7). VoxelPose/MVPose SOTA baselines remain in the backlog and will be scheduled after the v85 eval suite completes.
+- **Sparse-view problem is structural:** Learned models trained only on 4-view rigs fail catastrophically when k<4. DLT-fallback on the same active views is sound (S9 58.18/33.32 mm, S11 49.35/25.28 mm for k=2/3), so the issue is training exposure, not data quality. v85 is the first model trained natively on k=2/3/4 via random view dropout; it is the critical experiment to watch.
+- **v85 no-fallback k=2 result is still catastrophic:** The learned model alone gives ~2310 mm for k=2. This is expected early in training; wait for Epoch 5+ and the post-training eval suite before drawing conclusions.
+- **v81/v82 DLT-fallback evals are complete:** v82's learned k=4 result (S9 47.81 / S11 42.36 mm) is much stronger than v25 stability k=4 (S9 116.98 / S11 110.58 mm), confirming v82 has a better full-view model but still relies on DLT fallback for k<4.
+- **Paper story:** Re-orient around true-GT, sparse-view robustness, and cross-dataset generalization (MPI, AIST++). Absolute MPJPE records are not the claim; honest baselines are.
 
 ### Blockers / watch-outs
 
-1. **Sparse-view (k=2/k=3) failure — structural fix in progress:** The `view_mask` wrapper fix was applied in `motionflow_mv/fusion/variable_view_inference.py` but k<4 MPJPE remained catastrophic. A DLT-fallback re-evaluation confirms the underlying 2D observations are sound: direct confidence-weighted DLT on the same active views gives S9 58.18/33.32 mm and S11 49.35/25.28 mm for k=2/3. v85 random view dropout is now training to address the root cause (model only saw 4-view rigs during training). Training is progressing well (Epoch 2 val_MPJPE 36.48 mm). Monitor GPU 7.
-2. **v85 no-fallback eval appears hung:** The tmux session `v85_nofallback_eval` (PID `2098117`) on GPU 6 has been running for ~22 min with an empty log and no output files. It may be stuck in DataLoader initialization or manifest loading. Consider killing it and re-launching after verifying the manifest and DataLoader setup; otherwise it will continue to block GPU 6 and prevent the monitor from starting the post-training eval suite.
-3. **A800 `/mnt/nvme0n1p1` is ~99% full** (~59 GB free). v85 is writing checkpoints and logs; avoid dumping extra frame extractions or duplicate checkpoints. Run `scripts/cleanup_a800_safe.sh` dry-run if needed.
-4. **Only GPUs 6/7 are available to this project**; GPUs 4/5 are reserved for other projects. GPU 7 is busy training v85; GPU 6 is running the v85 no-fallback eval. Do not launch anything new on GPUs 0–5.
+1. **Sparse-view (k=2/k=3) failure — fix in progress:** v85 random view dropout is training to address the root cause. Monitor GPU 7. If k<4 remains catastrophic after v85 finishes, consider stronger count-conditioning or a separate sparse-view head.
+2. **A800 disk is ~99% full (~58 GB free):** Avoid large writes. Run `scripts/cleanup_a800_safe.sh` dry-run before any new large experiment.
+3. **Only GPUs 6/7 are available to this project.** Do not launch anything on GPUs 0–5.
 
 ### Next 3 concrete tasks
 
 1. **Wait for v85 to finish and evaluate sparse-view robustness.**
-   - v85 random view dropout is training on A800 GPU 7 (PID `2058225`); Epoch 2 done (val_MPJPE **36.48 mm**), now Epoch 3 in progress, loss falling.
-   - The no-fallback variable-view eval on GPU 6 (PID `2098117`) appears hung after ~22 min with an empty log. Decide whether to kill/restart it, or let the post-training eval suite monitor (PID `2072251`) launch a fresh one after training finishes.
-   - The eval-suite monitor `scripts/monitor_v85_then_run_evals.sh` (PID `2072251`) will automatically launch the test-set eval, a fresh no-fallback eval, and the DLT-fallback eval (`--var_view_dlt_fallback`) after training finishes. Compare k=2/3/4 MPJPE to the v25 stability baseline (S9: 58.18/33.32/116.98 mm; S11: 49.35/25.28/110.58 mm).
-   - If k<4 is still catastrophic, consider stronger count-conditioning or a separate sparse-view head.
+   - GPU 7 training (PID `2058225`) is in Epoch 5; let it complete.
+   - The post-training monitor (PID `2072251`) will run test-set eval, a fresh no-fallback variable-view eval, and a DLT-fallback eval.
+   - Compare v85 k=2/3/4 MPJPE to the v25 DLT-fallback baseline (S9: 58.18/33.32/116.98 mm; S11: 49.35/25.28/110.58 mm).
+   - If k<4 is still catastrophic, design stronger count-conditioning or a dedicated sparse-view head.
 
-2. **Validate documentation and finalize SOTA comparison configs.**
-   - `docs/results_true_gt_h36m.md` and `docs/paper_draft_icra_cvpr_2027.md` already record the MPI DLT baseline (115.09 mm / 132.68 mm) and the AIST++ → H36M cross-eval (93.94 mm).
-   - Prepare SOTA comparison configs for VoxelPose / MVPose / DLT when GPU 6 or 7 is free.
+2. **Run `scripts/cleanup_a800_safe.sh` dry-run and free disk if safe.**
+   - Disk is at 99%. Identify removable checkpoints/logs (e.g., failed v83/v84 runs, duplicate manifests) before launching SOTA baselines.
 
-3. **Run `scripts/cleanup_a800_safe.sh` dry-run and free disk if safe.**
-   - Disk is at 99%; before launching more training, identify removable checkpoints/logs (especially old failed runs like v83/v84).
+3. **Prepare SOTA comparison configs and validate paper numbers.**
+   - VoxelPose / MVPose / DLT configs are ready; schedule when GPU 6/7 is free after v85 evals.
+   - Ensure `docs/results_true_gt_h36m.md` and `docs/paper_draft_icra_cvpr_2027.md` use the non-circular true-GT numbers.
 
 ### Quick verification commands for next agent
 

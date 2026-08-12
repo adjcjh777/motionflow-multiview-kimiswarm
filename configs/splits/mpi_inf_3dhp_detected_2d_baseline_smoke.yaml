@@ -1,0 +1,11 @@
+# Smoke split for the MPI-INF-3DHP detected-2D DLT baseline.
+# Uses the small detected-2D smoke directory for fast local validation.
+name: MPI-INF-3DHP Detected-2D DLT Baseline Smoke
+
+train_paths:
+  - data/webbridge/mpi_inf_3dhp_detected_2d_smoke/s_01_seq_01_v14_multiview_m.npz
+  - data/webbridge/mpi_inf_3dhp_detected_2d_smoke/s_01_seq_02_v14_multiview_m.npz
+  - data/webbridge/mpi_inf_3dhp_detected_2d_smoke/s_03_seq_01_v14_multiview_m.npz
+
+val_paths:
+  - data/webbridge/mpi_inf_3dhp_detected_2d_smoke/s_02_seq_01_v14_multiview_m.npz

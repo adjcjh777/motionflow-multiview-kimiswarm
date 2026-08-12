@@ -10,7 +10,9 @@
 - **Data:** `data/webbridge/shelf_campus_detected/` built from
   `detection.json` (real 2D detections) + `annotation_3d.json` (real 3D).
   Labels are **not** a function of the input 2D.
-- **Split manifest:** `configs/splits/shelf_campus_detected_smoke.yaml`
+- **Split manifests:**
+  - `configs/splits/shelf_campus_detected_true_gt.yaml` (canonical true-GT baseline/eval split)
+  - `configs/splits/shelf_campus_detected_smoke.yaml` (smoke-run alias, same paths)
   - train: Shelf seq1 train (346 frames, 5 views) + Campus seq1 train (652 frames, 3 views)
   - val: Shelf seq1 val (87 frames, 5 views) + Campus seq1 val (164 frames, 3 views)
   - 17 joints, units in metres.
@@ -22,8 +24,8 @@
 | Method | Val direct MPJPE | Val PA-MPJPE | Notes |
 |--------|------------------|--------------|-------|
 | Iskakov ICCV 2019 learnable triangulation | **128.73** | **119.23** | early-stop at epoch 11 |
-| DLT (confidence-weighted) | 132.29 | 120.95 | frozen reference in script |
-| DLT (unweighted) | 134.43 | 122.37 | `scripts/diagnose_circular_labels.py` style |
+| DLT (confidence-weighted) | **132.21** | 129.41 | `scripts/run_shelf_campus_true_gt_baseline.py` |
+| DLT (unweighted) | 133.97 | 130.66 | `scripts/run_shelf_campus_true_gt_baseline.py --unweighted` |
 | v80 long run (25 epochs, best epoch 7) | 276.49 | — | long-run best, then overfits |
 | v57 long run (25 epochs, best epoch 4) | 306.45 | — | long-run best, then overfits |
 | v80 (view reliability before triangulation) | 408.58 | — | 3-epoch smoke |
@@ -67,6 +69,9 @@
 ## How to reproduce
 
 ```bash
+# DLT baseline (confidence-weighted + unweighted)
+python scripts/run_shelf_campus_true_gt_baseline.py --unweighted
+
 # Iskakov baseline
 python experiments/train_iskakov_baseline_shelf_campus.py \
     --protocol shelf_campus --datasets shelf+campus \
@@ -90,8 +95,9 @@ bash scripts/run_v57_shelf_campus_detected_long_a800.sh
 
 ## Evidence / artifacts
 
-| Method | Log | Checkpoint | Config |
-|--------|-----|------------|--------|
+| Method | Log/Output | Checkpoint | Config |
+|--------|------------|------------|--------|
+| DLT baseline | `outputs/shelf_campus_detected_dlt_baseline.json` | — | `configs/splits/shelf_campus_detected_true_gt.yaml` |
 | Iskakov | `outputs/iskakov_shelf_campus_detected.log` | `..._detected.pth` | `..._detected.config.json` |
 | v25 smoke | `outputs/omniview_fusion_v25_shelf_campus_detected_smoke.log` | `..._smoke.pth` | `..._smoke.config.json` |
 | v57 smoke | `outputs/omniview_fusion_v57_shelf_campus_detected_smoke.log` | `..._smoke.pth` | `..._smoke.config.json` |

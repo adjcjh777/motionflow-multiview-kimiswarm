@@ -17,7 +17,17 @@
 set -euo pipefail
 
 VARIANT=${1:-v25}
-CKPT=${CKPT:-outputs/ablations/${VARIANT}_aistpp_full_medium_a800.pth}
+CKPT_BASE="outputs/ablations/${VARIANT}_aistpp_full_medium_a800"
+# Prefer an explicit CKPT override, then the symlink/regular .pth, then the final checkpoint.
+if [[ -n "${CKPT:-}" ]]; then
+    :
+elif [[ -f "${CKPT_BASE}.pth" ]]; then
+    CKPT="${CKPT_BASE}.pth"
+elif [[ -f "${CKPT_BASE}_final.pth" ]]; then
+    CKPT="${CKPT_BASE}_final.pth"
+else
+    CKPT="${CKPT_BASE}.pth"
+fi
 SPLIT=${SPLIT:-configs/splits/aistpp_train_val_test.yaml}
 
 CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-6}

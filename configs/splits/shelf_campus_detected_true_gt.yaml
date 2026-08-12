@@ -1,0 +1,17 @@
+# Non-circular true-GT split for MotionFlow-MultiView on detected Shelf/Campus.
+# 2D input = COCO detections; 3D target = true annotation (annotation_3d.json).
+# Labels are NOT a function of the input 2D (verified by circularity diagnostic).
+# Built by experiments/build_shelf_campus_canonical_from_detection.py.
+name: Shelf/Campus Detected True GT
+train_paths:
+  - data/webbridge/shelf_campus_detected/shelf_seq1_train_detected_m.npz
+  - data/webbridge/shelf_campus_detected/campus_seq1_train_detected_m.npz
+train_names:
+  - shelf
+  - campus
+val_paths:
+  - data/webbridge/shelf_campus_detected/shelf_seq1_val_detected_m.npz
+  - data/webbridge/shelf_campus_detected/campus_seq1_val_detected_m.npz
+val_names:
+  - shelf
+  - campus

@@ -173,7 +173,7 @@ The catastrophic sparse-view failure in Section 3.10 shows that the learned mode
 
 Formally, for a clip with `V` views we sample a random view mask `m ∈ {0,1}^V` such that `m^T 1 ≥ min_views` and `P(m_v = 0) = p_drop` for each view. The masked observations are passed to the v25 geometry-fusion module, and the scalar count embedding `c = embed(sum(m))` is broadcast to the ray tokens before the temporal transformer. The loss is computed only on the active views, so the model is forced to produce a sensible 3D pose even when only two or three views are available. At inference time the same model can be evaluated at any `k ≥ min_views` by simply masking out the missing views.
 
-This module is our structural candidate for fixing the k<4 failure. A medium-schedule run on true-GT H36M is in progress on **A800 GPU 7** (`v85_random_view_dropout_medium_a800`, PID `2058225`, restarted after duplicate DataLoader-worker processes were killed) with `--use_random_view_dropout_v85 --v85_dropout_prob 0.3 --v85_min_views 2 --v85_use_count_embedding`. As of the latest check the run has completed Epoch 1 (train_loss 17.48, val_MPJPE 62.53 mm) and is now in Epoch 5+, with loss falling (train step 850 loss  16.26). A no-fallback variable-view evaluation is running in parallel on **A800 GPU 6** (PID `2098117`, launcher `2062178`; earlier PID `2062181` was killed after hanging; launched with `PYTHONUNBUFFERED=1`) to establish a learned-model sparse-view baseline while training continues.
+This module is our structural candidate for fixing the k<4 failure. A medium-schedule run on true-GT H36M is in progress on **A800 GPU 7** (`v85_random_view_dropout_medium_a800`, PID `2058225`, restarted after duplicate DataLoader-worker processes were killed) with `--use_random_view_dropout_v85 --v85_dropout_prob 0.3 --v85_min_views 2 --v85_use_count_embedding`. As of 2026-08-12 the run has completed Epoch 4 (val_MPJPE **36.97 mm**) and is now in Epoch 5, with loss continuing to fall. A no-fallback variable-view eval was launched on **A800 GPU 6** (PID `2098117`) to track sparse-view progress, but it appears to have stalled (empty output after ~22 min); a post-training eval suite monitor (PID `2072251`) is queued to run the full test-set, no-fallback, and DLT-fallback evaluations once v85 training finishes.
 
 ## 4. Experiments
 
@@ -305,6 +305,7 @@ Rather than reporting a single full-view number, we measure `MPJPE@k`: the pose 
 | DLT (conf-weighted) | 36.42 | 33.68 | 25.94 | frozen geometric baseline |
 | Iskakov ICCV 2019 | 53.62 (±27) | **27.84** | **23.42** | current true-GT leader; full-view 23.40 mm test |
 | v25 stability (DLT fallback, k<4) | 53.76 | 29.30 | 113.78 | direct conf-weighted DLT for k<4; learned model for k=4; per-subject S9/S11: k=2 58.18/49.35, k=3 33.32/25.28, k=4 116.98/110.58 mm |
+| v82 multi-scale temporal-pose-attention (DLT fallback, k<4) | 53.77 | 29.30 | **45.09** | direct conf-weighted DLT for k<4; learned model for k=4; per-subject S9/S11: k=2 58.18/49.35, k=3 33.32/25.28, k=4 47.81/42.36 mm |
 
 Iskakov does not beat DLT at `k=2` because it was trained on full-view batches, but for `k ≥ 3` it dominates both DLT variants, with the largest margin at `k=4`. This confirms that the true-GT H36M protocol cleanly separates the baselines and that a learned view-weighting can improve over triangulation once enough views are present.
 
@@ -315,7 +316,14 @@ Iskakov does not beat DLT at `k=2` because it was trained on full-view batches, 
 | S9 | 58.18 | 33.32 | 116.98 |
 | S11 | 49.35 | 25.28 | 110.58 |
 
-k=4 still runs the learned v25 stability model and matches the full 4-view subset benchmark; k=2 and k=3 now report the direct DLT baseline on the active views, because the learned model itself continues to fail catastrophically when views are dropped. This confirms that the v25 architecture has not learned sparse-view robustness and must rely on a geometric fallback for k<4. v81/v82/v57 variable-view curves show the same learned-model failure, and v80 true-GT regularization also degrades under view dropout (k=4 ~103–106 mm vs. its full 4-view test of 53.98 mm; see `docs/results_true_gt_h36m.md`). We therefore retain the earlier MPI-INF-3DHP smoke comparison only as preliminary cross-architecture evidence.
+**v82 multi-scale temporal-pose-attention variable-view MPJPE@k (S9/S11).**
+
+| Subject | MPJPE@2 (mm) | MPJPE@3 (mm) | MPJPE@4 (mm) |
+|---|---:|---:|---:|
+| S9 | 58.18 | 33.32 | 47.81 |
+| S11 | 49.35 | 25.28 | 42.36 |
+
+k=4 still runs the learned model and matches the full 4-view subset benchmark; k=2 and k=3 now report the direct DLT baseline on the active views, because the learned model itself continues to fail catastrophically when views are dropped. This confirms that the current architectures have not learned sparse-view robustness and must rely on a geometric fallback for k<4. v81/v82/v57 variable-view curves show the same learned-model failure, and v80 true-GT regularization also degrades under view dropout (k=4 ~103–106 mm vs. its full 4-view test of 53.98 mm; see `docs/results_true_gt_h36m.md`). The v82 k=4 result (**45.09 mm** macro) is substantially better than v25 stability k=4 (**113.78 mm**), confirming that the multi-scale temporal-pose-attention module improves the full-view estimate even though it does not yet solve the k<4 problem. We therefore retain the earlier MPI-INF-3DHP smoke comparison only as preliminary cross-architecture evidence.
 
 ![True-GT H36M sparse-view robustness](docs/figures/h36m_true_gt_mpjpe_at_k.png)
 **Figure 2.** True-GT H36M sparse-view robustness (S9/S11 macro mean). DLT and Iskakov baselines are model-agnostic; v25/v82 use direct DLT for k<4 and the learned model at k=4. The learned k=4 estimate is improved in v82, but all learned variants still rely on geometric fallback for fewer than four views.
@@ -388,7 +396,7 @@ Current experiment queue (updated 2026-08-12, v85 added) includes:
 4. **Iskakov ICCV 2019 baseline** is **completed** on the standard H36M true-GT protocol; best val **23.40 mm** @ Epoch 9, test **23.40 mm**.
 5. **MPI-INF-3DHP RTMPose detected-2D DLT baseline** is completed: 16/16 `.npz` files processed; confidence-weighted DLT mean **115.09 mm**, PA-MPJPE **132.68 mm**.
 6. **Sparse-view (MPJPE@k) failure triaged and fixed.** The `variable_view_inference.py` wrapper did not pass `view_mask` to `OmniMultiViewFusionV5`, causing catastrophic k=2/k=3 results. A re-evaluation with the fixed wrapper still produced catastrophic k<4 errors, so a `--var_view_dlt_fallback` re-evaluation was run and is now **completed**. The DLT-fallback MPJPE@k on S9/S11 are: k=2 **58.18 / 49.35 mm**, k=3 **33.32 / 25.28 mm**, and k=4 **116.98 / 110.58 mm** (k=4 still uses the learned model). Source: `outputs/variable_view_fix/variable_view_v25_true_gt_stability_a800_dlt_fallback.json`. This confirms the sparse-view failure is in the learned model, not the observations.
-7. **v85 random view dropout** is running on **A800 GPU 7** (`v85_random_view_dropout_medium_a800`, PID `2058225`, restarted after DataLoader-worker duplicates were killed) to address the k<4 structural failure. Configuration: `--use_random_view_dropout_v85 --v85_dropout_prob 0.3 --v85_min_views 2 --v85_use_count_embedding`, combined with the variable-view training curriculum. As of the latest check the run has completed Epoch 1 (train_loss 17.48, val_MPJPE 62.53 mm) and is now in Epoch 5+ with loss falling (train step 850 loss  16.26). A no-fallback variable-view eval is running on **A800 GPU 6** (PID `2098117`, launcher `2062178`; earlier PID `2062181` was killed after hanging) to track sparse-view progress.
+7. **v85 random view dropout** is running on **A800 GPU 7** (`v85_random_view_dropout_medium_a800`, PID `2058225`, restarted after DataLoader-worker duplicates were killed) to address the k<4 structural failure. Configuration: `--use_random_view_dropout_v85 --v85_dropout_prob 0.3 --v85_min_views 2 --v85_use_count_embedding`, combined with the variable-view training curriculum. As of 2026-08-12 the run has completed Epoch 4 (val_MPJPE **36.97 mm**) and is now in Epoch 5, with loss continuing to fall. A no-fallback variable-view eval launched on **A800 GPU 6** (PID `2098117`) appears to have stalled (empty output after ~22 min); a post-training eval suite monitor (PID `2072251`) is queued to run the full test-set, no-fallback, and DLT-fallback evaluations once v85 training finishes.
 8. **Re-measure calibration-robustness matrices** on the true-GT protocol once GPU capacity frees up.
 
 Verified leaderboard results now include the true-GT H36M, AIST++ smoke / AIST++-only cross-domain, MPI-INF-3DHP detected-2D DLT, and Shelf/Campus tables above. The paper's headline contribution remains repositioned around **sparse-view / cross-domain robustness on honest, non-circular benchmarks**.
@@ -438,6 +446,8 @@ The honest leaderboards reset expectations: on true-GT H36M, geometric and learn
 5. Zhu, W., Ma, X., Liu, Z., Liu, L., Wu, W., and Wang, Y. “MotionBERT: A Unified Perspective on Learning Human Motion Representations.” *ICCV*, 2023.
 6. Zeng, A., Yang, L., Ju, X., Li, J., Wang, J., and Xu, Q. “SmoothNet: A Plug-and-Play Network for Refining Human Poses in Videos.” *European Conference on Computer Vision (ECCV)*, 2022.
 7. Newell, A., Yang, K., and Deng, J. “Stacked hourglass networks for human pose estimation.” *ECCV*, 2016.
+
+> **Citation verification note.** All numbered references above were independently verified against their official publication records (arXiv, publisher pages, or Google Scholar) in `docs/citation_verification.md`. Two earlier venue typos (SmoothNet and Stacked Hourglass both listed as *CVPR* instead of *ECCV*) were corrected, and the reference list was confirmed to contain no fabricated citations.
 
 ---
 

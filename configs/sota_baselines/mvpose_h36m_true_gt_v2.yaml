@@ -1,0 +1,98 @@
+# MVPose H36M true-GT v2 baseline configuration.
+#
+# This YAML is used by the v2 launch script and by the converter
+# (convert_to_mvpose_format.py). It targets the corrected, non-circular
+# data/h36m_true_gt_v2/ protocol (S1,5,6,7,8 -> S9/S11).
+
+name: mvpose_h36m_true_gt_v2
+
+# Public upstream repository.
+repo:
+  url: "https://github.com/zju3dv/mvpose.git"
+  ref: master
+  dir: tmp/sota_baselines/mvpose
+
+# Common baseline pickle produced by common_export_h36m_true_gt.py.
+input_pkl: tmp/sota_baselines/h36m_true_gt_v2_baseline_format.pkl
+
+# Where MVPose-specific converted data lives.
+data_dir: tmp/sota_baselines/mvpose_data_v2
+
+# Inference settings (MVPose has no training phase for 3D pose).
+inference:
+  # Use ground-truth 2D projections for a fair comparison against true-GT 3D.
+  detector: gt
+  num_views: 4
+  output_joint_format: coco17
+
+# Paths for outputs.
+output:
+  # Directory where the upstream repo will write any model/dumped data.
+  work_dir: tmp/sota_baselines/mvpose_work_v2
+  log: outputs/sota_baselines/mvpose_h36m_true_gt_v2.log
+  metrics_json: outputs/sota_baselines/mvpose_h36m_true_gt_v2_metrics.json
+
+# Evaluation protocol.
+eval:
+  protocol: h36m_standard
+  subjects_test: [9, 11]
+  actions: all
+
+# Joint mapping: H36M true-GT (17 joints) -> COCO17 (17 joints).
+# The five COCO17 facial keypoints are approximated from the Head joint and
+# marked with zero confidence.
+joint_mapping:
+  source: h36m
+  target: coco17
+  names:
+    - nose
+    - left_eye
+    - right_eye
+    - left_ear
+    - right_ear
+    - left_shoulder
+    - right_shoulder
+    - left_elbow
+    - right_elbow
+    - left_wrist
+    - right_wrist
+    - left_hip
+    - right_hip
+    - left_knee
+    - right_knee
+    - left_ankle
+    - right_ankle
+  map_by_name:
+    nose: Head
+    left_eye: Head
+    right_eye: Head
+    left_ear: Head
+    right_ear: Head
+    left_shoulder: LShoulder
+    right_shoulder: RShoulder
+    left_elbow: LElbow
+    right_elbow: RElbow
+    left_wrist: LWrist
+    right_wrist: RWrist
+    left_hip: LHip
+    right_hip: RHip
+    left_knee: LKnee
+    right_knee: RKnee
+    left_ankle: LFoot
+    right_ankle: RFoot
+  map_by_index: [10, 10, 10, 10, 10, 11, 14, 12, 15, 13, 16, 4, 1, 5, 2, 6, 3]
+  face_indices: [0, 1, 2, 3, 4]
+
+# Notes on upstream requirements and known blockers.
+upstream_requirements:
+  needs_images: true
+  needs_2d_detector: true
+  manifest_format: per_split_pickle
+  # zju3dv/mvpose expects per-frame per-camera dictionaries with heatmaps,
+  # cropped images, and camera parameters. The current converter only writes
+  # a simple per-split pickle; a custom adapter is still required.
+  #
+  # The upstream requirements.txt pins Python 2/3.5-era packages, including
+  # tensorflow_gpu==1.9.0 and torch==1.0.1.post2, which are incompatible with
+  # modern Ampere GPUs. The geometry-only adapter bypasses the 2D detector and
+  # Re-ID backend, so the baseline can run on current PyTorch.

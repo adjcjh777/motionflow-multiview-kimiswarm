@@ -14,9 +14,9 @@ Usage
     # CPU smoke (1 epoch, synthetic data, no external files)
     python experiments/train_omniview_fusion_v4_webbridge_multi.py --smoke
 
-    # Full training on a WebBridge manifest
+    # Full training on the true-GT H36M manifest
     python experiments/train_omniview_fusion_v4_webbridge_multi.py \
-        --manifest configs/deprecated/circular/splits/webbridge_h36m_train_val.yaml \
+        --manifest configs/splits/h36m_true_gt_standard.yaml \
         --d 128 --residual_hidden 128 --epochs 30
 """
 

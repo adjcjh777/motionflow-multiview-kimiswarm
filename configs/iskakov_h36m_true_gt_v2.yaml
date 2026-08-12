@@ -1,0 +1,43 @@
+# Iskakov et al. (ICCV 2019) learnable triangulation baseline on the
+# corrected H36M true-GT v2 protocol (S1,5,6,7,8 -> S9/S11).
+#
+# Run on A800 (uses GPU 6 by default; pass --gpu 7 to override):
+#   python scripts/run_iskakov_baseline.py --config configs/iskakov_h36m_true_gt_v2.yaml
+#
+# Run a local smoke test on the RTX 4090:
+#   python scripts/run_iskakov_baseline.py --config configs/iskakov_h36m_true_gt_v2.yaml \
+#       --gpu 0 --epochs 1 --train_samples_per_epoch 128 --batch_size 8
+
+name: Iskakov ICCV 2019 H36M true-GT v2 baseline
+protocol: h36m_true_gt_v2
+manifest: configs/splits/h36m_true_gt_v2_standard.yaml
+
+# Training hyperparameters (same as the v1 true-GT run that produced 23.40 mm).
+epochs: 10
+batch_size: 32
+lr: 0.001
+weight_decay: 0.0001
+patience: 8
+grad_clip: 1.0
+seed: 20260810
+hidden_dim: 32
+
+# Sampling
+# Number of training samples per epoch (deterministic batches; set to 0 for a
+# full pass over the training data). 4096 is the standard value used on A800.
+train_samples_per_epoch: 4096
+ref_max_frames: 2000
+
+# Outputs
+log_path: outputs/baselines/iskakov_learnable_tri_h36m_true_gt_v2.log
+ckpt_path: outputs/baselines/iskakov_learnable_tri_h36m_true_gt_v2.pth
+
+# MPJPE@k sparse-view evaluation run after the best checkpoint is saved.
+eval:
+  enabled: true
+  output_dir: outputs/iskakov_mpjpe_at_k_h36m_true_gt_v2
+  num_subsets: 50
+  max_frames: 4000
+
+# Device: 'cuda' on A800, 'cpu' or 'cuda' locally.
+device: cuda

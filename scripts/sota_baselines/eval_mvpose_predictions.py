@@ -62,6 +62,14 @@ def main() -> None:
                         help="Directory containing per-sequence prediction .npz files.")
     parser.add_argument("--out_json", type=Path, default=None,
                         help="Optional JSON output path.")
+    parser.add_argument(
+        "--unit",
+        type=str,
+        default="auto",
+        choices=["auto", "m", "mm"],
+        help="Unit of the input arrays. 'auto' tries to infer from the max value, "
+             "'m' assumes both pred and gt are in metres, 'mm' assumes millimetres.",
+    )
     args = parser.parse_args()
 
     with open(args.input_pkl, "rb") as f:
@@ -86,10 +94,16 @@ def main() -> None:
         pred = np.load(pred_path)["joints_3d"]
         gt = seq["joints_3d"]
 
-        if np.abs(gt).max() > 10 and np.abs(pred).max() < 10:
-            pred = pred * 1000.0
-        elif np.abs(gt).max() < 10 and np.abs(pred).max() > 10:
+        if args.unit == "m":
+            pass
+        elif args.unit == "mm":
             pred = pred / 1000.0
+            gt = gt / 1000.0
+        else:  # auto
+            if np.abs(gt).max() > 10 and np.abs(pred).max() < 10:
+                pred = pred * 1000.0
+            elif np.abs(gt).max() < 10 and np.abs(pred).max() > 10:
+                pred = pred / 1000.0
 
         all_metrics = _evaluate_subset(pred, gt, None)
         body_metrics = _evaluate_subset(pred, gt, body_indices)

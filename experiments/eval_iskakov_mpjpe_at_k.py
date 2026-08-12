@@ -42,13 +42,17 @@ H36M_VAL = [
     "data/h36m_true_gt/s_09_acts_02_03_04_05_06_07_08_09_10_11_12_13_14_15_16_multiview_m.npz",
     "data/h36m_true_gt/s_11_acts_02_03_04_05_06_07_08_09_10_11_12_13_14_15_16_multiview_m.npz",
 ]
+H36M_TRUE_GT_V2_VAL = [
+    "data/h36m_true_gt_v2/s_09_acts_02_03_04_05_06_07_08_09_10_11_12_13_14_15_16_multiview_m.npz",
+    "data/h36m_true_gt_v2/s_11_acts_02_03_04_05_06_07_08_09_10_11_12_13_14_15_16_multiview_m.npz",
+]
 CAMPUS_VAL = "data/webbridge/shelf_campus_detected/campus_seq1_val_detected_m.npz"
 SHELF_VAL = "data/webbridge/shelf_campus_detected/shelf_seq1_val_detected_m.npz"
 
 
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument("--protocol", choices=["h36m", "shelf_campus"], default="h36m")
+    p.add_argument("--protocol", choices=["h36m", "h36m_true_gt_v2", "shelf_campus"], default="h36m")
     p.add_argument("--checkpoint", required=True)
     p.add_argument("--hidden_dim", type=int, default=32)
     p.add_argument("--per_view", action="store_true")
@@ -116,6 +120,9 @@ def main() -> None:
 
     if args.protocol == "h36m":
         files = [(Path(p).stem.split("_acts_")[0], p) for p in H36M_VAL]
+        k_values = [2, 3, 4]
+    elif args.protocol == "h36m_true_gt_v2":
+        files = [(Path(p).stem.split("_acts_")[0], p) for p in H36M_TRUE_GT_V2_VAL]
         k_values = [2, 3, 4]
     else:
         files = [("campus", CAMPUS_VAL), ("shelf", SHELF_VAL)]

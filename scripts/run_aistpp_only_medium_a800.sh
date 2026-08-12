@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # A800 launch script for AIST++-only medium training.
 #
-# Target GPU 4 (next expected free GPU after v52/v81 test work finishes).
-# Do not launch until GPU 4 is free.
+# Targets A800 GPU 7 by default (override with CUDA_VISIBLE_DEVICES).
+# MotionFlow-MultiView GPU policy: only GPUs 6 and 7 are allowed.
 #
 # Usage:
 #   nohup bash scripts/run_aistpp_only_medium_a800.sh > outputs/ablations/aistpp_only_medium_a800.log 2>&1 &
@@ -12,8 +12,9 @@ set -euo pipefail
 # Pin to the A800-D repo root so the script can be launched from anywhere.
 cd /mnt/nvme0n1p1/zhangzy/motionflow-multiview-kimiswarm-iter20
 
-# GPU discipline: pin to GPU 4 explicitly.
-export CUDA_VISIBLE_DEVICES=4
+# GPU discipline: only GPUs 6/7 are allowed.
+CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-7}
+export CUDA_VISIBLE_DEVICES
 
 # Use the project venv Python by default; allow override.
 PYTHON=${PYTHON:-/mnt/nvme0n1p1/zhangzy/motionflow-multiview-kimiswarm/.venv/bin/python}

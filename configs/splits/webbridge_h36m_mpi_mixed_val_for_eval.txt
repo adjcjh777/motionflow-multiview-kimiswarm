@@ -1,16 +1,7 @@
-s_09_acts_02_multiview_m	data/webbridge/h36m_meters/s_09_acts_02_multiview_m.npz
-s_09_acts_03_multiview_m	data/webbridge/h36m_meters/s_09_acts_03_multiview_m.npz
-s_09_acts_04_multiview_m	data/webbridge/h36m_meters/s_09_acts_04_multiview_m.npz
-s_09_acts_05_multiview_m	data/webbridge/h36m_meters/s_09_acts_05_multiview_m.npz
-s_09_acts_06_multiview_m	data/webbridge/h36m_meters/s_09_acts_06_multiview_m.npz
-s_09_acts_07_multiview_m	data/webbridge/h36m_meters/s_09_acts_07_multiview_m.npz
-s_09_acts_08_multiview_m	data/webbridge/h36m_meters/s_09_acts_08_multiview_m.npz
-s_09_acts_09_multiview_m	data/webbridge/h36m_meters/s_09_acts_09_multiview_m.npz
-s_09_acts_10_multiview_m	data/webbridge/h36m_meters/s_09_acts_10_multiview_m.npz
-s_09_acts_11_multiview_m	data/webbridge/h36m_meters/s_09_acts_11_multiview_m.npz
-s_09_acts_12_multiview_m	data/webbridge/h36m_meters/s_09_acts_12_multiview_m.npz
-s_09_acts_13_multiview_m	data/webbridge/h36m_meters/s_09_acts_13_multiview_m.npz
-s_09_acts_14_multiview_m	data/webbridge/h36m_meters/s_09_acts_14_multiview_m.npz
-s_09_acts_15_multiview_m	data/webbridge/h36m_meters/s_09_acts_15_multiview_m.npz
-s_09_acts_16_multiview_m	data/webbridge/h36m_meters/s_09_acts_16_multiview_m.npz
-s_02_seq_01_v14_multiview_m	data/webbridge/mpi_inf_3dhp/s_02_seq_01_v14_multiview_m.npz
+# Non-circular H36M true-GT v2 + MPI-INF-3DHP evaluation manifest.
+# Replaces the circular WebBridge H36M manifest that previously lived here.
+# Format: <dataset_name> <path_to_npz>
+
+h36m_s09	data/h36m_true_gt_v2/s_09_acts_02_03_04_05_06_07_08_09_10_11_12_13_14_15_16_multiview_m.npz
+h36m_s11	data/h36m_true_gt_v2/s_11_acts_02_03_04_05_06_07_08_09_10_11_12_13_14_15_16_multiview_m.npz
+mpi_s02_seq01	data/webbridge/mpi_inf_3dhp/s_02_seq_01_v14_multiview_m.npz

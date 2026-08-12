@@ -1,0 +1,50 @@
+# VoxelPose true-GT v2 prep configuration.
+#
+# This YAML is consumed by scripts/sota_baselines/convert_to_voxelpose_format.py.
+# It points at the corrected H36M true-GT v2 split and produces the method-
+# specific input files used by the upstream Microsoft VoxelPose repo.
+
+name: voxelpose_h36m_true_gt_v2
+
+# Upstream repository. The A800 launcher clones into models/voxelpose-pytorch.
+repo:
+  url: "https://github.com/microsoft/voxelpose-pytorch.git"
+  ref: main
+  dir: models/voxelpose-pytorch
+
+# Common baseline pickle produced by common_export_h36m_true_gt.py.
+input_pkl: tmp/sota_baselines/h36m_true_gt_v2_baseline_format.pkl
+
+# Where VoxelPose-specific converted data lives.
+data_dir: tmp/sota_baselines/voxelpose_data_v2
+
+# Training / evaluation parameters (informational; passed to the runtime config).
+training:
+  backbone: resnet50
+  batch_size: 4
+  epochs: 10
+  lr: 1.0e-3
+  lr_decay: 0.9
+  lr_decay_epoch: 1
+  num_cameras: 4
+  voxel_size: 20.0
+  cube_size: [2000.0, 2000.0, 6000.0]
+  num_joints: 17
+
+# Paths for outputs.
+output:
+  checkpoint_dir: tmp/sota_baselines/VoxelPose/output/h36m_true_gt_v2
+  log: outputs/sota_baselines/voxelpose_h36m_true_gt_v2.log
+  metrics_json: outputs/sota_baselines/voxelpose_h36m_true_gt_v2_metrics.json
+
+# Evaluation protocol.
+eval:
+  protocol: h36m_standard
+  subjects_test: [9, 11]
+  actions: all
+
+# VoxelPose-specific data expectations.
+upstream_requirements:
+  needs_images: true
+  needs_2d_detector: true
+  dataset_adapter_status: provided

@@ -37,8 +37,8 @@ OUTPUT_DIR="${MF_OUTPUT_DIR:-${ROOT}/outputs}"
 LOCK_DIR="${MF_LOCK_DIR:-${ROOT}/tmp}"
 TRAINER="${MF_TRAINER:-${ROOT}/experiments/train_omniview_fusion_v4_webbridge_multi.py}"
 EXPERIMENT_NAME="${MF_EXPERIMENT_NAME:-omniview_fusion_v4}"
-ALLOWED_GPUS="${MF_ALLOWED_GPUS:-0,1,2,3,6}"
-BUSY_GPUS="${MF_BUSY_GPUS:-4,5,7}"
+ALLOWED_GPUS="${MF_ALLOWED_GPUS:-6,7}"
+BUSY_GPUS="${MF_BUSY_GPUS:-}"
 MAX_RESTARTS="${MF_MAX_RESTARTS:-3}"
 
 # Training hyperparameters (overridable via environment)
@@ -265,8 +265,8 @@ while true; do
     # nohup + unbuffered Python so the process can outlive the ssh/tmux client.
     # shellcheck disable=SC2068
     nohup "${VENV}/bin/python" -u "$TRAINER" \
-        --manifest "${ROOT}/configs/deprecated/circular/splits/webbridge_h36m_train_val.yaml" \
-        --manifest "${ROOT}/configs/splits/webbridge_mpi_train_val.yaml" \
+        --manifest "${ROOT}/configs/splits/h36m_true_gt_standard.yaml" \
+        --manifest "${ROOT}/configs/splits/mpiinf3dhp_train_val_test.yaml" \
         --d "$D" \
         --residual_hidden "$RESIDUAL_HIDDEN" \
         --n_st_layers "$N_ST_LAYERS" \

@@ -1,17 +1,18 @@
-"""H36M true-GT DLT baseline under the standard protocol.
+"""Shelf/Campus detected true-GT DLT baseline.
 
-Runs confidence-weighted and unweighted DLT triangulation on the canonical
-non-circular H36M true-GT split (S1, S5, S6, S7, S8 train -> S9, S11 test)
-and reports per-subject, train-combined, test-combined, and overall metrics.
+Runs confidence-weighted and (optionally) unweighted DLT triangulation on the
+non-circular detected Shelf/Campus protocol and reports per-dataset and
+combined metrics.
 
 Usage
 -----
-    python scripts/run_h36m_true_gt_dlt_baseline.py
-    python scripts/run_h36m_true_gt_dlt_baseline.py --device cuda
+    python scripts/run_shelf_campus_true_gt_baseline.py
+    python scripts/run_shelf_campus_true_gt_baseline.py --device cuda
+    python scripts/run_shelf_campus_true_gt_baseline.py --unweighted
 
 Output
 ------
-    data/h36m_true_gt/dlt_baseline_h36m.json
+    outputs/shelf_campus_detected_dlt_baseline.json
 """
 
 from __future__ import annotations
@@ -59,7 +60,6 @@ def evaluate_file(path: Path, device: str, weighted: bool, chunk_size: int = 819
     P = build_projection_matrices(K, R, t)
     P_t = torch.from_numpy(P).to(device=device, dtype=torch.float64)
 
-    # Process in chunks to keep GPU memory usage modest and improve throughput.
     pred_chunks = []
     for start in range(0, T, chunk_size):
         end = min(start + chunk_size, T)
@@ -94,15 +94,15 @@ def _weighted_mean(values: list[float], weights: list[int]) -> float:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="H36M true-GT DLT baseline under the standard protocol.")
-    parser.add_argument("--config", type=str, default="configs/splits/h36m_true_gt_standard.yaml",
+    parser = argparse.ArgumentParser(description="Shelf/Campus detected true-GT DLT baseline.")
+    parser.add_argument("--config", type=str, default="configs/splits/shelf_campus_detected_true_gt.yaml",
                         help="YAML split file defining train/val paths.")
-    parser.add_argument("--output", type=str, default="data/h36m_true_gt/dlt_baseline_h36m.json",
+    parser.add_argument("--output", type=str, default="outputs/shelf_campus_detected_dlt_baseline.json",
                         help="JSON output path.")
     parser.add_argument("--device", type=str, default="cpu",
                         help="PyTorch device (cpu or cuda).")
     parser.add_argument("--unweighted", action="store_true",
-                        help="Also compute unweighted DLT (slower; default: confidence-weighted only).")
+                        help="Also compute unweighted DLT (default: confidence-weighted only).")
     args = parser.parse_args()
 
     repo_root = Path(__file__).resolve().parents[1]
@@ -117,7 +117,7 @@ def main() -> None:
         for p in paths:
             all_items.append((label, p))
 
-    print(f"H36M true-GT DLT baseline ({len(train_paths)} train, {len(val_paths)} test files)")
+    print(f"Shelf/Campus detected true-GT DLT baseline ({len(train_paths)} train, {len(val_paths)} test files)")
     print(f"Device: {args.device}\n")
 
     per_file_weighted = []
@@ -138,12 +138,9 @@ def main() -> None:
             per_file_unweighted.append({"split": split_label, **res_unweighted})
 
     def _summarise(entries: list[dict]) -> dict:
-        # Simple mean (per-file average).
         simple = float(np.mean([e["mpjpe_mm"] for e in entries])) if entries else 0.0
-        # Weighted mean by frame count.
         weights = [max(e["shape"]["T"], 1) for e in entries]
         weighted = _weighted_mean([e["mpjpe_mm"] for e in entries], weights) if entries else 0.0
-        # Per split.
         split_means = {}
         for split_name in ["train", "test"]:
             split_entries = [e for e in entries if e["split"] == split_name]
@@ -165,7 +162,7 @@ def main() -> None:
 
     payload: dict = {
         "unit": "mm",
-        "protocol": "S1,S5,S6,S7,S8 train -> S9,S11 test",
+        "protocol": split.get("name", "Shelf/Campus detected true-GT"),
         "confidence_weighted": {
             "mean_mpjpe_mm": summary_weighted["simple_mean_mm"],
             "weighted_mean_mpjpe_mm": summary_weighted["weighted_mean_mm"],
@@ -186,20 +183,12 @@ def main() -> None:
     with open(out_path, "w") as fh:
         json.dump(payload, fh, indent=2)
 
-    def _print_summary(label: str, summary: dict) -> None:
-        print(f"\n{label}")
-        test = summary.get("per_split", {}).get("test", {})
-        train = summary.get("per_split", {}).get("train", {})
-        print(f"  train simple mean: {train.get('simple_mean_mm', 0):.3f} mm")
-        print(f"  test  simple mean: {test.get('simple_mean_mm', 0):.3f} mm")
-        print(f"  test  weighted:    {test.get('weighted_mean_mm', 0):.3f} mm")
-
     print("\n" + "=" * 70)
-    print("H36M true-GT DLT baseline summary (standard protocol)")
+    print("Shelf/Campus detected true-GT DLT baseline summary")
     print("=" * 70)
-    _print_summary("Confidence-weighted DLT", summary_weighted)
+    print(f"Conf-weighted DLT mean MPJPE: {summary_weighted['simple_mean_mm']:.3f} mm")
     if summary_unweighted is not None:
-        _print_summary("Unweighted DLT", summary_unweighted)
+        print(f"Unweighted DLT mean MPJPE:    {summary_unweighted['simple_mean_mm']:.3f} mm")
     print(f"\nSaved results to {out_path}")
 
 

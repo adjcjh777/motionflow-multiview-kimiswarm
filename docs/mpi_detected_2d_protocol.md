@@ -35,10 +35,37 @@ python scripts/generate_mpi_detected_2d.py \
     --image_dir data/webbridge/mpi_inf_3dhp/raw
 ```
 
-## Split file
+## Split files
 
-`configs/splits/mpiinf3dhp_detected_2d.yaml` points to the generated directory.
-Update it if you change `output_dir`.
+- `configs/splits/mpiinf3dhp_detected_2d.yaml` points to the generated directory.
+  Update it if you change `output_dir`.
+- `configs/splits/mpi_inf_3dhp_detected_2d_baseline.yaml` is a DLT-baseline split
+  that follows the same train/val/test protocol and is consumed by
+  `scripts/eval_mpi_detected_2d_baseline.py`.
+- `configs/splits/mpi_inf_3dhp_detected_2d_baseline_smoke.yaml` is a small
+  smoke split for quick local validation.
+
+## DLT baseline
+
+After generating (or downloading) the detected-2D `.npz` files, run the
+confidence-weighted DLT baseline:
+
+```bash
+python scripts/eval_mpi_detected_2d_baseline.py
+```
+
+Options:
+
+```bash
+python scripts/eval_mpi_detected_2d_baseline.py \
+    --config configs/splits/mpi_inf_3dhp_detected_2d_baseline.yaml \
+    --output outputs/mpi_rtmpose_detected_2d/dlt_baseline_detected_2d.json \
+    --device cpu
+```
+
+The script triangulates the stored 2D keypoints using the calibrated cameras,
+compares the result to the true 3D ground truth, and writes per-file and
+aggregate MPJPE/PA-MPJPE to JSON.
 
 ## Why this matters
 

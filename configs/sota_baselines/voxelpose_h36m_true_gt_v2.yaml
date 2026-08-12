@@ -1,0 +1,108 @@
+# VoxelPose runtime config for H36M true-GT v2 (S1,5,6,7,8 -> S9/S11).
+#
+# This YAML is read directly by the upstream VoxelPose run/train_3d.py. It must
+# only contain keys that VoxelPose understands; prep-only metadata lives in
+# voxelpose_h36m_true_gt_v2_prep.yaml.
+
+CUDNN:
+  BENCHMARK: true
+  DETERMINISTIC: false
+  ENABLED: true
+
+BACKBONE_MODEL: ''
+MODEL: 'multi_person_posenet'
+
+OUTPUT_DIR: 'output/h36m_true_gt_v2_a800'
+LOG_DIR: 'log/h36m_true_gt_v2_a800'
+
+WORKERS: 4
+PRINT_FREQ: 100
+
+DATASET:
+  COLOR_RGB: true
+  TRAIN_DATASET: 'h36m_true_gt_v2'
+  TEST_DATASET: 'h36m_true_gt_v2'
+  DATA_FORMAT: 'jpg'
+  DATA_AUGMENTATION: false
+  FLIP: false
+  # Absolute path on A800 to the VoxelPose-format data directory.
+  ROOT: '/mnt/nvme0n1p1/zhangzy/motionflow-multiview-kimiswarm-iter20/tmp/sota_baselines/voxelpose_data_v2'
+  ROT_FACTOR: 0
+  SCALE_FACTOR: 0
+  TRAIN_SUBSET: 'train'
+  TEST_SUBSET: 'validation'
+  ROOTIDX: 0
+  CAMERA_NUM: 4
+  BBOX: 2000
+  CROP: true
+
+NETWORK:
+  PRETRAINED_BACKBONE: ''
+  PRETRAINED: ''
+  TARGET_TYPE: 'gaussian'
+  IMAGE_SIZE:
+    - 1024
+    - 1024
+  HEATMAP_SIZE:
+    - 128
+    - 128
+  SIGMA: 3
+  NUM_JOINTS: 17
+  USE_GT: false
+
+POSE_RESNET:
+  FINAL_CONV_KERNEL: 1
+  DECONV_WITH_BIAS: false
+  NUM_DECONV_LAYERS: 3
+  NUM_DECONV_FILTERS:
+    - 256
+    - 256
+    - 256
+  NUM_DECONV_KERNELS:
+    - 4
+    - 4
+    - 4
+  NUM_LAYERS: 50
+
+LOSS:
+  USE_TARGET_WEIGHT: true
+
+TRAIN:
+  BATCH_SIZE: 4
+  SHUFFLE: true
+  BEGIN_EPOCH: 0
+  END_EPOCH: 10
+  RESUME: false
+  OPTIMIZER: 'adam'
+  LR: 0.001
+
+TEST:
+  MODEL_FILE: 'model_best.pth.tar'
+  BATCH_SIZE: 4
+  FLIP_TEST: false
+
+MULTI_PERSON:
+  SPACE_SIZE:
+    - 4.0
+    - 4.0
+    - 2.4
+  SPACE_CENTER:
+    - 0.0
+    - 0.0
+    - 1.0
+  INITIAL_CUBE_SIZE:
+    - 40
+    - 40
+    - 24
+  MAX_PEOPLE_NUM: 1
+  THRESHOLD: 0.1
+
+PICT_STRUCT:
+  GRID_SIZE:
+    - 2.0
+    - 2.0
+    - 2.0
+  CUBE_SIZE:
+    - 32
+    - 32
+    - 32

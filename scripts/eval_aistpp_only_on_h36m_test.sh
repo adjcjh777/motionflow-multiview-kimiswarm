@@ -24,12 +24,17 @@ export CUDA_VISIBLE_DEVICES
 
 PYTHON=${PYTHON:-/mnt/nvme0n1p1/zhangzy/motionflow-multiview-kimiswarm/.venv/bin/python}
 
-CKPT="outputs/ablations/aistpp_only_medium_a800_fast_v2.pth"
-CONFIG="outputs/ablations/aistpp_only_medium_a800_fast_v2.config.json"
+CKPT_BASE="outputs/ablations/aistpp_only_medium_a800_fast_v2"
+if [[ ! -f "${CKPT_BASE}.pth" && -f "${CKPT_BASE}_final.pth" ]]; then
+    CKPT="${CKPT_BASE}_final.pth"
+else
+    CKPT="${CKPT_BASE}.pth"
+fi
+CONFIG="${CKPT_BASE}.config.json"
 OUT_JSON="outputs/eval_aistpp_only_medium_a800_fast_v2_h36m_test.json"
 
 if [[ ! -f "$CKPT" ]]; then
-    echo "ERROR: Checkpoint not found: $CKPT" >&2
+    echo "ERROR: Checkpoint not found: ${CKPT_BASE}.pth or ${CKPT_BASE}_final.pth" >&2
     echo "       Wait for AIST++-only training to finish, then re-run." >&2
     exit 1
 fi

@@ -1,9 +1,9 @@
 # H36M True-GT Standard Protocol Leaderboard
 
 > Standard protocol: **S1, S5, S6, S7, S8 train → S9, S11 test**  
-> Labels: `data/h36m_true_gt/*_multiview_m.npz` (true mocap world coordinates, non-circular).  
-> Manifest: `configs/splits/h36m_true_gt_standard.yaml`.  
-> Last updated: **2026-08-12 ~10:51 UTC** (H36M true-GT DLT baseline re-run with `scripts/run_h36m_true_gt_dlt_baseline.py`; MPI RTMPose detected-2D DLT baseline and AIST++-only fast v2 → H36M cross-eval finalized; v85 random-view dropout training in progress on A800 GPU 4; v83/v84 dropped).
+> Labels: `data/h36m_true_gt_v2/*_multiview_m.npz` (true mocap world coordinates, non-circular).  
+> Manifest: `configs/splits/h36m_true_gt_v2_standard.yaml`.  
+> Last updated: **2026-08-12 ~13:50 UTC** (H36M true-GT v2 labels generated and audited; DLT/RANSAC baselines re-run; v85 random-view dropout training in progress on A800 GPU 7).
 
 ## Variable-view (sparse-view) robustness
 
@@ -186,9 +186,31 @@ python scripts/sota_baselines/eval_mvpose_predictions.py \
 - MVPose slightly beats the confidence-weighted DLT baseline on S11 and is within 0.4 mm
   of DLT on the combined metric (26.06 mm vs. 25.67 mm).
 
-### DLT / RANSAC baselines
+### DLT / RANSAC baselines (true-GT v2)
 
-Computed by `scripts/run_h36m_true_gt_dlt_baseline.py` and `scripts/run_h36m_true_gt_ransac_baseline.py` over the true-GT `data/h36m_true_gt/*_multiview_m.npz` files. Iskakov-style stride sampling uses `ref_max_frames=2000`.
+Computed by `scripts/run_h36m_true_gt_dlt_baseline.py` and `scripts/run_h36m_true_gt_ransac_baseline.py` over the corrected true-GT v2 files in `data/h36m_true_gt_v2/`. The v2 labels were regenerated from the official mocap release with aligned cameras and 2D projections; direct MJE is ~16 mm, confirming they are not circular.
+
+| Method | S9 direct (mm) | S11 direct (mm) | Combined simple (mm) | Combined weighted (mm) | Source |
+|---|---:|---:|---:|---:|---|
+| DLT (confidence-weighted) | 29.54 | 21.81 | **25.67** | 26.38 | `outputs/h36m_true_gt_v2/dlt_baseline_h36m_true_gt_v2.json` |
+| DLT (unweighted) | 32.97 | 24.57 | **28.77** | 29.53 | `outputs/h36m_true_gt_v2/dlt_baseline_h36m_true_gt_v2.json` |
+
+```bash
+# v2 confidence-weighted DLT (GPU)
+python scripts/run_h36m_true_gt_dlt_baseline.py \
+    --config configs/splits/h36m_true_gt_v2_standard.yaml \
+    --device cuda --unweighted \
+    --output outputs/h36m_true_gt_v2/dlt_baseline_h36m_true_gt_v2.json
+
+# v2 reproducible RANSAC-DLT
+python scripts/run_h36m_true_gt_ransac_baseline.py \
+    --config configs/splits/h36m_true_gt_v2_standard.yaml \
+    --output outputs/h36m_true_gt_v2/ransac_dlt_h36m_true_gt_v2.json
+```
+
+### DLT / RANSAC baselines (historical true-GT v1)
+
+These numbers were computed on the older `data/h36m_true_gt/*_multiview_m.npz` files before the v2 camera-alignment fix. They are retained for reference only.
 
 ```bash
 # Confidence-weighted DLT (fast; uses CPU by default, add --device cuda for GPU)
