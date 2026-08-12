@@ -2,7 +2,7 @@
 # Post-training evaluation suite for the v85 random view dropout medium run.
 #
 # This script:
-#   1. Waits until the v85 training job is no longer running.
+#   1. Waits until both the v85 and v86 training jobs are no longer running.
 #   2. Waits for the first free A800 project GPU (6 or 7).
 #   3. Runs the standard H36M true-GT test-set evaluation.
 #   4. Waits for another free GPU, then runs the no-fallback variable-view eval.
@@ -11,8 +11,8 @@
 # GPU policy: MotionFlow-MultiView only uses GPUs 6 and 7 on A800.  GPUs 0-5 are
 # reserved for other projects and must NOT be touched.
 #
-# Intended to be launched after v85 training finishes; it does not start any
-# eval until the training process exits.
+# Intended to be launched after v85 and v86 training finish; it does not start
+# any eval until both training processes have exited.
 #
 # Usage:
 #   bash scripts/run_v85_post_training_eval_suite.sh
@@ -39,6 +39,17 @@ CHECKPOINT="outputs/ablations/v85_random_view_dropout_medium_a800.pth"
 is_v85_training_running() {
     local pids
     pids=$(pgrep -f 'train_omniview_fusion_v5_webbridge_multi.py.*v85_dropout_prob' || true)
+    [[ -n "${pids}" ]]
+}
+
+# ---------------------------------------------------------------------------
+# Helper: return 0 if the v86 no-count-embedding training process is still
+# running.  We identify it by the v85 dropout flags plus the explicit
+# --no_v85_use_count_embedding flag.
+# ---------------------------------------------------------------------------
+is_v86_training_running() {
+    local pids
+    pids=$(pgrep -f 'train_omniview_fusion_v5_webbridge_multi.py.*no_v85_use_count_embedding' || true)
     [[ -n "${pids}" ]]
 }
 
@@ -93,13 +104,29 @@ run_eval_stage() {
 # ---------------------------------------------------------------------------
 echo "[$(date -Iseconds)] v85 post-training eval suite started"
 
-# 1. Wait for v85 training to finish.
-echo "[$(date -Iseconds)] Waiting for v85 training to finish..."
-while is_v85_training_running; do
-    echo "[$(date -Iseconds)] v85 training still running, waiting..."
+# 1. Wait for both v85 and v86 training to finish.
+echo "[$(date -Iseconds)] Waiting for v85 and v86 training to finish..."
+while true; do
+    v85_done=true
+    v86_done=true
+
+    if is_v85_training_running; then
+        v85_done=false
+        echo "[$(date -Iseconds)] v85 training still running, waiting..."
+    fi
+
+    if is_v86_training_running; then
+        v86_done=false
+        echo "[$(date -Iseconds)] v86 training still running, waiting..."
+    fi
+
+    if ${v85_done} && ${v86_done}; then
+        echo "[$(date -Iseconds)] v85 and v86 training are no longer running"
+        break
+    fi
+
     sleep 60
 done
-echo "[$(date -Iseconds)] v85 training is no longer running"
 
 # Sanity check: the final checkpoint should exist.  If not, warn but continue;
 # the individual eval scripts will error out explicitly if the checkpoint is missing.

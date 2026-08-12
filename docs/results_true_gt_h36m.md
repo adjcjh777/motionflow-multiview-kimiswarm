@@ -3,7 +3,22 @@
 > Standard protocol: **S1, S5, S6, S7, S8 train → S9, S11 test**  
 > Labels: `data/h36m_true_gt_v2/*_multiview_m.npz` (true mocap world coordinates, non-circular).  
 > Manifest: `configs/splits/h36m_true_gt_v2_standard.yaml`.  
-> Last updated: **2026-08-12 ~13:50 UTC** (H36M true-GT v2 labels generated and audited; DLT/RANSAC baselines re-run; v85 random-view dropout training in progress on A800 GPU 7).
+> Last updated: **2026-08-12 ~14:30 UTC** (all 7 v2 files audited; DLT/RANSAC baselines re-run; v85 training finished, post-training eval in progress on A800 GPU 6).
+
+## Label audit (non-circularity check)
+
+| Subject | Direct MJE (mm) | Status |
+|---:|---:|---|
+| S1 train | 16.11 | non-circular |
+| S5 train | 16.12 | non-circular |
+| S6 train | 16.47 | non-circular |
+| S7 train | 16.55 | non-circular |
+| S8 train | 13.66 | non-circular |
+| S9 test | 33.83 | non-circular |
+| S11 test | 24.75 | non-circular |
+
+- Source: `outputs/h36m_true_gt_v2/audit_all_h36m_true_gt_v2.log`
+- All values are **>> 0 mm**, confirming the v2 labels are independent 3D mocap GT rather than DLT triangulations of the input 2D.
 
 ## Variable-view (sparse-view) robustness
 

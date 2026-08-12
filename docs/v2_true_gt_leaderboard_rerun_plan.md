@@ -19,7 +19,7 @@ Consequences:
 - **A800 GPUs:** only GPU 6 and GPU 7 may be used.  `CUDA_VISIBLE_DEVICES` must be `6` or `7`.
 - **Do not stop or interfere** with currently running jobs:
   - GPU 7: `v85_random_view_dropout_medium_a800` (training)
-  - GPU 6: `v85` split-k no-fallback variable-view evaluation
+  - GPU 6: `v86_no_count_embedding_medium_a800` (training)
 - `/mnt/nvme0n1p1/zhangzy/projects` and the A800 Docker `motionflow` service are **read-only**.
 - A800 disk is ~99 % full; run the safe cleanup dry-run before any large write.
 - WSL/local RTX 4090 is for smoke tests only; full medium/long runs stay on A800.
@@ -73,11 +73,24 @@ python experiments/train_iskakov_baseline_shelf_campus.py \
 
 - [ ] Iskakov v2 result recorded.
 
-### 3.4 Free disk and queue resources
+### 3.4 Create the v2 variable-view manifest
+
+Variable-view eval scripts need a manifest that points at the v2 test files:
+
+```bash
+cat > tmp/h36m_true_gt_v2_val_manifest.txt <<'EOF'
+S9 data/h36m_true_gt_v2/s_09_acts_02_03_04_05_06_07_08_09_10_11_12_13_14_15_16_multiview_m.npz
+S11 data/h36m_true_gt_v2/s_11_acts_02_03_04_05_06_07_08_09_10_11_12_13_14_15_16_multiview_m.npz
+EOF
+```
+
+- [ ] `tmp/h36m_true_gt_v2_val_manifest.txt` exists and points to v2 test files.
+
+### 3.5 Free disk and queue resources
 
 - [ ] Run `scripts/cleanup_a800_safe.sh` dry-run and inspect output.
-- [ ] Confirm GPU 6 and GPU 7 are free (do not disturb the running v85 jobs).
-- [ ] Decide serial vs. queue order: v85 finishes first, then schedule the other models.
+- [ ] Confirm GPU 6 and GPU 7 are free (do not disturb the running v85/v86 jobs).
+- [ ] Decide serial vs. queue order: v85/v86 finish first, then schedule the other models.
 
 ## 4. Common adaptation for every learned model
 
@@ -111,23 +124,55 @@ Evaluation scripts also need the v2 paths.  Each `eval_v*.py` defaults to `data/
 
 ## 5. Per-model re-run checklist
 
+The sections below give the **exact A800 command** for each model.  All commands are written for GPU 7; swap to GPU 6 when GPU 7 is busy.  All commands assume the A800 working directory `/mnt/nvme0n1p1/zhangzy/motionflow-multiview-kimiswarm-iter20` and the project venv at `/mnt/nvme0n1p1/zhangzy/motionflow-multiview-kimiswarm/.venv/bin/python`.
+
 ### 5.1 v25 stability (baseline)
 
 **Source script:** `scripts/run_v25_ablation_true_gt_stability_a800.sh`
 
-**Changes for v2:**
-- `--mixed_manifest configs/splits/h36m_true_gt_v2_standard.yaml`
-- `--output outputs/ablations/v25_true_gt_v2_stability_a800.pth`
-- Log: `outputs/ablations/v25_true_gt_v2_stability_a800.log`
-- GPU: use `CUDA_VISIBLE_DEVICES=6` or `7` when free.
-
 **Train:**
 ```bash
-CUDA_VISIBLE_DEVICES=7 bash scripts/run_v25_ablation_true_gt_stability_a800.sh
+CUDA_VISIBLE_DEVICES=7 \
+/mnt/nvme0n1p1/zhangzy/motionflow-multiview-kimiswarm/.venv/bin/python -u experiments/train_omniview_fusion_v5_webbridge_multi.py \
+    --use_mixed_loader \
+    --mixed_manifest configs/splits/h36m_true_gt_v2_standard.yaml \
+    --use_full_precision_dlt \
+    --use_robust_dlt_reweight \
+    --use_irls_reweight \
+    --use_domain_embedding \
+    --use_deformable_cross_view_attention_v18 \
+    --use_multiview_geometry_fusion_v25 \
+    --v25_geom_loss_weight 0.05 \
+    --v25_dropout 0.2 \
+    --v25_use_geometry_attention \
+    --v25_use_learned_depth_triangulation \
+    --v25_use_geometry_bundle_adjustment \
+    --num_workers 4 \
+    --d 128 --residual_hidden 256 --n_st_layers 3 \
+    --graph_num_layers 1 --n_joint_layers 1 --n_heads 4 \
+    --epochs 20 --batch_size 16 --train_samples 4096 --val_stride 20 \
+    --lr 1e-4 --lr_cosine --lr_warmup_epochs 4 --lr_min 1e-6 \
+    --max_grad_norm 1.0 --ema_decay 0.999 \
+    --weight_decay 1e-4 \
+    --early_stopping_patience 3 --early_stopping_min_delta 0.001 \
+    --use_multiscale_fusion true --use_camera_conditioning true --use_epipolar_bias true \
+    --use_context_visibility true --use_skeleton_residual true --use_rotation_correction true \
+    --use_entropy_regularization true --attention_entropy_weight 0.01 \
+    --use_camera_view_embedding --use_set_view_aggregator \
+    --use_variable_view_training --variable_view_min_views 2 --variable_view_max_views 4 \
+    --variable_view_max_views_start 4 --variable_view_curriculum_alpha 2.0 \
+    --pa_loss_weight 0.5 --monotonic_loss_weight 0.1 --monotonic_margin 5.0 \
+    --reproj_loss_weight 0.1 --reproj_warmup_epochs 1 \
+    --aleatoric_reproj_loss_weight 0.1 \
+    --outlier_view_prob 0.15 --outlier_view_max_views 1 \
+    --outlier_view_offset_std 10.0 --outlier_view_noise_std 15.0 \
+    --output outputs/ablations/v25_true_gt_v2_stability_a800.pth \
+    > outputs/ablations/v25_true_gt_v2_stability_a800.log 2>&1
 ```
 
 **Test eval:**
 ```bash
+CUDA_VISIBLE_DEVICES=7 \
 python scripts/eval_v25_true_gt_h36m_test.py \
     --checkpoint outputs/ablations/v25_true_gt_v2_stability_a800.pth \
     --config_json outputs/ablations/v25_true_gt_v2_stability_a800.config.json \
@@ -137,10 +182,31 @@ python scripts/eval_v25_true_gt_h36m_test.py \
     --out_json outputs/eval_v25_true_gt_v2_stability_h36m_test.json
 ```
 
-**Sparse-view eval:**
+**Sparse-view no-fallback eval:**
 ```bash
-bash scripts/run_eval_variable_views_v25_true_gt_stability_a800.sh  # adapt to v2 paths
-# OR use the variable-view wrapper with --var_view_dlt_fallback on v2 S9/S11
+CUDA_VISIBLE_DEVICES=7 \
+/mnt/nvme0n1p1/zhangzy/motionflow-multiview-kimiswarm/.venv/bin/python experiments/eval_variable_views.py \
+    --model_class omniview_v5 \
+    --checkpoint outputs/ablations/v25_true_gt_v2_stability_a800.pth \
+    --config outputs/ablations/v25_true_gt_v2_stability_a800.config.json \
+    --dataset_manifest tmp/h36m_true_gt_v2_val_manifest.txt \
+    --clip_len 13 --min_views 2 --max_views 4 --num_subsets_per_k 50 --seed 42 \
+    --output_csv outputs/variable_view_v25_true_gt_v2_stability_a800.csv \
+    --output_json outputs/variable_view_v25_true_gt_v2_stability_a800.json
+```
+
+**Sparse-view DLT-fallback eval:**
+```bash
+CUDA_VISIBLE_DEVICES=7 \
+/mnt/nvme0n1p1/zhangzy/motionflow-multiview-kimiswarm/.venv/bin/python experiments/eval_variable_views.py \
+    --model_class omniview_v5 \
+    --checkpoint outputs/ablations/v25_true_gt_v2_stability_a800.pth \
+    --config outputs/ablations/v25_true_gt_v2_stability_a800.config.json \
+    --dataset_manifest tmp/h36m_true_gt_v2_val_manifest.txt \
+    --clip_len 13 --min_views 2 --max_views 4 --num_subsets_per_k 50 --seed 42 \
+    --var_view_dlt_fallback \
+    --output_csv outputs/variable_view_fix/variable_view_v25_true_gt_v2_stability_a800_dlt_fallback.csv \
+    --output_json outputs/variable_view_fix/variable_view_v25_true_gt_v2_stability_a800_dlt_fallback.json
 ```
 
 - [ ] v25 v2 training finished.
@@ -151,18 +217,93 @@ bash scripts/run_eval_variable_views_v25_true_gt_stability_a800.sh  # adapt to v
 
 **Source script:** `scripts/run_v46_true_gt_h36m_a800.sh`
 
-**Changes for v2:**
-- `--mixed_manifest configs/splits/h36m_true_gt_v2_standard.yaml`
-- `--output outputs/ablations/v46_true_gt_v2_h36m_a800.pth`
-- Log: `outputs/ablations/v46_true_gt_v2_h36m_a800.log`
-
 **Train:**
 ```bash
-CUDA_VISIBLE_DEVICES=7 bash scripts/run_v46_true_gt_h36m_a800.sh
+CUDA_VISIBLE_DEVICES=7 \
+/mnt/nvme0n1p1/zhangzy/motionflow-multiview-kimiswarm/.venv/bin/python -u experiments/train_omniview_fusion_v5_webbridge_multi.py \
+    --use_mixed_loader \
+    --mixed_manifest configs/splits/h36m_true_gt_v2_standard.yaml \
+    --use_full_precision_dlt \
+    --use_robust_dlt_reweight \
+    --use_irls_reweight \
+    --use_domain_embedding \
+    --use_deformable_cross_view_attention_v18 \
+    --use_multiview_geometry_fusion_v25 \
+    --v25_geom_loss_weight 0.1 \
+    --v25_dropout 0.2 \
+    --v25_use_geometry_attention \
+    --v25_use_learned_depth_triangulation \
+    --v25_use_geometry_bundle_adjustment \
+    --use_v45_adaptive_geometry_fusion \
+    --v45_adaptive_weight_type per_view_joint \
+    --v45_adaptive_weight_hidden 32 \
+    --v45_adaptive_weight_n_layers 1 \
+    --use_v46_sparse_view_generalization \
+    --v46_svg_view_dropout_prob 0.3 \
+    --v46_svg_min_views 2 \
+    --v46_svg_hidden 64 \
+    --v46_svg_use_curriculum \
+    --use_hierarchical_multiview_v30 \
+    --v30_n_part_layers 2 \
+    --v30_stochastic_depth_prob 0.1 \
+    --use_physical_space_temporal_loss_v29 \
+    --v29_floor_loss_weight 0.01 \
+    --v29_bone_temporal_weight 0.01 \
+    --v29_com_jitter_weight 0.001 \
+    --v29_physical_loss_warmup_epochs 1 \
+    --num_workers 0 \
+    --d 128 \
+    --residual_hidden 256 \
+    --n_st_layers 3 \
+    --graph_num_layers 1 \
+    --n_joint_layers 1 \
+    --n_heads 4 \
+    --clip_len 13 \
+    --epochs 8 \
+    --batch_size 16 \
+    --train_samples 1024 \
+    --val_stride 20 \
+    --lr 1e-3 \
+    --lr_cosine \
+    --lr_warmup_epochs 1 \
+    --lr_min 1e-6 \
+    --max_grad_norm 1.0 \
+    --ema_decay 0.999 \
+    --early_stopping_patience 3 \
+    --early_stopping_min_delta 0.001 \
+    --use_multiscale_fusion true \
+    --use_camera_conditioning true \
+    --use_epipolar_bias true \
+    --use_context_visibility true \
+    --use_skeleton_residual true \
+    --use_rotation_correction true \
+    --use_entropy_regularization true \
+    --attention_entropy_weight 0.01 \
+    --use_camera_view_embedding \
+    --use_set_view_aggregator \
+    --use_variable_view_training \
+    --variable_view_min_views 2 \
+    --variable_view_max_views 4 \
+    --variable_view_max_views_start 4 \
+    --variable_view_curriculum_alpha 2.0 \
+    --variable_view_permute \
+    --pa_loss_weight 0.5 \
+    --monotonic_loss_weight 0.1 \
+    --monotonic_margin 5.0 \
+    --reproj_loss_weight 0.1 \
+    --reproj_warmup_epochs 1 \
+    --aleatoric_reproj_loss_weight 0.1 \
+    --outlier_view_prob 0.3 \
+    --outlier_view_max_views 1 \
+    --outlier_view_offset_std 10.0 \
+    --outlier_view_noise_std 15.0 \
+    --output outputs/ablations/v46_true_gt_v2_h36m_a800.pth \
+    > outputs/ablations/v46_true_gt_v2_h36m_a800.log 2>&1
 ```
 
 **Test eval:**
 ```bash
+CUDA_VISIBLE_DEVICES=7 \
 python scripts/eval_v46_true_gt_h36m_test.py \
     --checkpoint outputs/ablations/v46_true_gt_v2_h36m_a800.pth \
     --config_json outputs/ablations/v46_true_gt_v2_h36m_a800.config.json \
@@ -177,23 +318,127 @@ python scripts/eval_v46_true_gt_h36m_test.py \
 
 ### 5.3 v52 uncertainty-weighted triangulation (UWT)
 
-**Source script:** `scripts/run_v57_h36m_true_gt_medium.sh` (v52 is the full stack in that script minus DC-PSC; v52 also has `scripts/run_eval_v52_true_gt_h36m_test_a800.sh` for evaluation only)
+**Source script:** `scripts/run_v52_true_gt_h36m_a800.sh`
 
-**Training changes for v2:**
-- `--mixed_manifest configs/splits/h36m_true_gt_v2_standard.yaml`
-- `--output outputs/ablations/v52_true_gt_v2_h36m_a800.pth`
-- Log: `outputs/ablations/v52_true_gt_v2_h36m_a800.log`
+**Train:**
+```bash
+CUDA_VISIBLE_DEVICES=7 \
+/mnt/nvme0n1p1/zhangzy/motionflow-multiview-kimiswarm/.venv/bin/python -u experiments/train_omniview_fusion_v5_webbridge_multi.py \
+    --use_mixed_loader \
+    --mixed_manifest configs/splits/h36m_true_gt_v2_standard.yaml \
+    --use_full_precision_dlt \
+    --use_robust_dlt_reweight \
+    --use_irls_reweight \
+    --use_domain_embedding \
+    --use_deformable_cross_view_attention_v18 \
+    --use_multiview_geometry_fusion_v25 \
+    --v25_geom_loss_weight 0.1 \
+    --v25_dropout 0.2 \
+    --v25_use_geometry_attention \
+    --v25_use_learned_depth_triangulation \
+    --v25_use_geometry_bundle_adjustment \
+    --use_v45_adaptive_geometry_fusion \
+    --v45_adaptive_weight_type per_view_joint \
+    --v45_adaptive_weight_hidden 32 \
+    --v45_adaptive_weight_n_layers 1 \
+    --use_v46_sparse_view_generalization \
+    --v46_svg_view_dropout_prob 0.3 \
+    --v46_svg_min_views 2 \
+    --v46_svg_hidden 64 \
+    --v46_svg_use_curriculum \
+    --use_v50_self_evolution_feedback_head \
+    --v50_sefh_hidden 64 \
+    --v50_sefh_num_layers 2 \
+    --v50_sefh_dropout 0.1 \
+    --v50_sefh_loss_weight 0.0 \
+    --v50_sefh_aleatoric_weight 0.0 \
+    --v50_sefh_identity_init_gate \
+    --use_v51_cross_domain_sparse_view_reliability \
+    --v51_cdsvr_hidden 64 \
+    --v51_cdsvr_num_heads 4 \
+    --v51_cdsvr_dropout 0.1 \
+    --v51_cdsvr_offset_min 0.05 \
+    --v51_cdsvr_use_domain_label \
+    --v51_cdsvr_uncertainty_temperature 1.0 \
+    --v51_cdsvr_identity_init_gate \
+    --v51_cdsvr_loss_weight 0.0 \
+    --use_v52_uncertainty_weighted_triangulation \
+    --v52_uwt_hidden 64 \
+    --v52_uwt_n_layers 2 \
+    --v52_uwt_weight_type per_view_joint \
+    --v52_uwt_temperature 1.0 \
+    --v52_uwt_use_geometry_bias \
+    --v52_uwt_use_feature_bias \
+    --v52_uwt_identity_init \
+    --v52_uwt_min_weight 0.05 \
+    --v52_uwt_loss_weight 0.01 \
+    --v52_uwt_damping 1e-4 \
+    --num_workers 4 \
+    --d 128 \
+    --residual_hidden 256 \
+    --n_st_layers 3 \
+    --graph_num_layers 1 \
+    --n_joint_layers 1 \
+    --n_heads 4 \
+    --clip_len 13 \
+    --epochs 8 \
+    --batch_size 16 \
+    --train_samples 1024 \
+    --val_stride 20 \
+    --lr 1e-3 \
+    --lr_cosine \
+    --lr_warmup_epochs 1 \
+    --lr_min 1e-6 \
+    --max_grad_norm 1.0 \
+    --ema_decay 0.999 \
+    --early_stopping_patience 3 \
+    --early_stopping_min_delta 0.001 \
+    --use_multiscale_fusion true \
+    --use_camera_conditioning true \
+    --use_epipolar_bias true \
+    --use_context_visibility true \
+    --use_skeleton_residual true \
+    --use_rotation_correction true \
+    --use_entropy_regularization true \
+    --attention_entropy_weight 0.01 \
+    --use_camera_view_embedding \
+    --use_set_view_aggregator \
+    --use_hierarchical_multiview_v30 \
+    --v30_n_part_layers 2 \
+    --v30_stochastic_depth_prob 0.1 \
+    --use_physical_space_temporal_loss_v29 \
+    --v29_floor_loss_weight 0.01 \
+    --v29_bone_temporal_weight 0.01 \
+    --v29_com_jitter_weight 0.001 \
+    --v29_physical_loss_warmup_epochs 1 \
+    --use_variable_view_training \
+    --variable_view_min_views 2 \
+    --variable_view_max_views 4 \
+    --variable_view_max_views_start 4 \
+    --variable_view_curriculum_alpha 2.0 \
+    --variable_view_permute \
+    --pa_loss_weight 0.5 \
+    --monotonic_loss_weight 0.1 \
+    --monotonic_margin 5.0 \
+    --reproj_loss_weight 0.1 \
+    --reproj_warmup_epochs 1 \
+    --aleatoric_reproj_loss_weight 0.1 \
+    --outlier_view_prob 0.3 \
+    --outlier_view_max_views 1 \
+    --outlier_view_offset_std 10.0 \
+    --outlier_view_noise_std 15.0 \
+    --output outputs/ablations/v52_true_gt_v2_h36m_a800.pth \
+    > outputs/ablations/v52_true_gt_v2_h36m_a800.log 2>&1
+```
 
 **Test eval:**
 ```bash
-bash scripts/run_eval_v52_true_gt_h36m_test_a800.sh  # after editing paths/config inside to v2
-```
-
-Or directly:
-```bash
+CUDA_VISIBLE_DEVICES=7 \
 python scripts/eval_v52_true_gt_h36m_test.py \
     --checkpoint outputs/ablations/v52_true_gt_v2_h36m_a800.pth \
     --config_json outputs/ablations/v52_true_gt_v2_h36m_a800.config.json \
+    --s9  data/h36m_true_gt_v2/s_09_acts_02_03_04_05_06_07_08_09_10_11_12_13_14_15_16_multiview_m.npz \
+    --s11 data/h36m_true_gt_v2/s_11_acts_02_03_04_05_06_07_08_09_10_11_12_13_14_15_16_multiview_m.npz \
     --val_stride 13 \
     --out_json outputs/eval_v52_true_gt_v2_h36m_test_a800.json
 ```
@@ -205,18 +450,135 @@ python scripts/eval_v52_true_gt_h36m_test.py \
 
 **Source script:** `scripts/run_v57_true_gt_medium_a800.sh`
 
-**Changes for v2:**
-- `--mixed_manifest configs/splits/h36m_true_gt_v2_standard.yaml`
-- `--output outputs/ablations/v57_true_gt_v2_medium_a800.pth`
-- Log: `outputs/ablations/v57_true_gt_v2_medium_a800.log`
-
 **Train:**
 ```bash
-CUDA_VISIBLE_DEVICES=7 bash scripts/run_v57_true_gt_medium_a800.sh
+CUDA_VISIBLE_DEVICES=7 \
+/mnt/nvme0n1p1/zhangzy/motionflow-multiview-kimiswarm/.venv/bin/python -u experiments/train_omniview_fusion_v5_webbridge_multi.py \
+    --use_mixed_loader \
+    --mixed_manifest configs/splits/h36m_true_gt_v2_standard.yaml \
+    --use_full_precision_dlt \
+    --use_robust_dlt_reweight \
+    --use_irls_reweight \
+    --use_domain_embedding \
+    --use_deformable_cross_view_attention_v18 \
+    --use_multiview_geometry_fusion_v25 \
+    --v25_geom_loss_weight 0.1 \
+    --v25_dropout 0.2 \
+    --v25_use_geometry_attention \
+    --v25_use_learned_depth_triangulation \
+    --v25_use_geometry_bundle_adjustment \
+    --use_v45_adaptive_geometry_fusion \
+    --v45_adaptive_weight_type per_view_joint \
+    --v45_adaptive_weight_hidden 32 \
+    --v45_adaptive_weight_n_layers 1 \
+    --use_v46_sparse_view_generalization \
+    --v46_svg_view_dropout_prob 0.3 \
+    --v46_svg_min_views 2 \
+    --v46_svg_hidden 64 \
+    --v46_svg_use_curriculum \
+    --use_v50_self_evolution_feedback_head \
+    --v50_sefh_hidden 64 \
+    --v50_sefh_num_layers 2 \
+    --v50_sefh_dropout 0.1 \
+    --v50_sefh_loss_weight 0.0 \
+    --v50_sefh_aleatoric_weight 0.0 \
+    --v50_sefh_identity_init_gate \
+    --use_v51_cross_domain_sparse_view_reliability \
+    --v51_cdsvr_hidden 64 \
+    --v51_cdsvr_num_heads 4 \
+    --v51_cdsvr_dropout 0.1 \
+    --v51_cdsvr_offset_min 0.05 \
+    --v51_cdsvr_use_domain_label \
+    --v51_cdsvr_uncertainty_temperature 1.0 \
+    --v51_cdsvr_identity_init_gate \
+    --v51_cdsvr_loss_weight 0.0 \
+    --use_v52_uncertainty_weighted_triangulation \
+    --v52_uwt_hidden 64 \
+    --v52_uwt_n_layers 2 \
+    --v52_uwt_weight_type per_view_joint \
+    --v52_uwt_temperature 1.0 \
+    --v52_uwt_use_geometry_bias \
+    --v52_uwt_use_feature_bias \
+    --v52_uwt_identity_init \
+    --v52_uwt_min_weight 0.05 \
+    --v52_uwt_loss_weight 0.01 \
+    --v52_uwt_damping 1e-4 \
+    --use_v57_domain_conditional_psc \
+    --v57_dcpsc_hidden 64 \
+    --v57_dcpsc_n_layers 2 \
+    --v57_dcpsc_num_domains 8 \
+    --v57_dcpsc_use_floor \
+    --v57_dcpsc_use_bone_scale \
+    --v57_dcpsc_use_uwt_weights \
+    --v57_dcpsc_identity_init \
+    --v57_dcpsc_residual_gate_init -6.0 \
+    --v57_dcpsc_loss_weight 0.1 \
+    --v57_dcpsc_floor_weight 0.01 \
+    --v57_dcpsc_bone_weight 0.1 \
+    --v57_dcpsc_reproj_weight 0.1 \
+    --v57_dcpsc_warmup_epochs 1 \
+    --v57_dcpsc_min_visible_views 2 \
+    --num_workers 0 \
+    --d 128 \
+    --residual_hidden 256 \
+    --n_st_layers 3 \
+    --graph_num_layers 1 \
+    --n_joint_layers 1 \
+    --n_heads 4 \
+    --clip_len 13 \
+    --epochs 8 \
+    --batch_size 16 \
+    --train_samples 1024 \
+    --val_stride 20 \
+    --lr 1e-3 \
+    --lr_cosine \
+    --lr_warmup_epochs 1 \
+    --lr_min 1e-6 \
+    --max_grad_norm 1.0 \
+    --ema_decay 0.999 \
+    --early_stopping_patience 3 \
+    --early_stopping_min_delta 0.001 \
+    --use_multiscale_fusion true \
+    --use_camera_conditioning true \
+    --use_epipolar_bias true \
+    --use_context_visibility true \
+    --use_skeleton_residual true \
+    --use_rotation_correction true \
+    --use_entropy_regularization true \
+    --attention_entropy_weight 0.01 \
+    --use_camera_view_embedding \
+    --use_set_view_aggregator \
+    --use_hierarchical_multiview_v30 \
+    --v30_n_part_layers 2 \
+    --v30_stochastic_depth_prob 0.1 \
+    --use_physical_space_temporal_loss_v29 \
+    --v29_floor_loss_weight 0.01 \
+    --v29_bone_temporal_weight 0.01 \
+    --v29_com_jitter_weight 0.001 \
+    --v29_physical_loss_warmup_epochs 1 \
+    --use_variable_view_training \
+    --variable_view_min_views 2 \
+    --variable_view_max_views 4 \
+    --variable_view_max_views_start 4 \
+    --variable_view_curriculum_alpha 2.0 \
+    --variable_view_permute \
+    --pa_loss_weight 0.5 \
+    --monotonic_loss_weight 0.1 \
+    --monotonic_margin 5.0 \
+    --reproj_loss_weight 0.1 \
+    --reproj_warmup_epochs 1 \
+    --aleatoric_reproj_loss_weight 0.1 \
+    --outlier_view_prob 0.3 \
+    --outlier_view_max_views 1 \
+    --outlier_view_offset_std 10.0 \
+    --outlier_view_noise_std 15.0 \
+    --output outputs/ablations/v57_true_gt_v2_medium_a800.pth \
+    > outputs/ablations/v57_true_gt_v2_medium_a800.log 2>&1
 ```
 
 **Test eval:**
 ```bash
+CUDA_VISIBLE_DEVICES=7 \
 python scripts/eval_v57_true_gt_h36m_test.py \
     --checkpoint outputs/ablations/v57_true_gt_v2_medium_a800.pth \
     --config_json outputs/ablations/v57_true_gt_v2_medium_a800.config.json \
@@ -233,18 +595,72 @@ python scripts/eval_v57_true_gt_h36m_test.py \
 
 **Source script:** `scripts/run_v80_ablation_true_gt_regularization_a800.sh`
 
-**Changes for v2:**
-- `--mixed_manifest configs/splits/h36m_true_gt_v2_standard.yaml`
-- `--output outputs/ablations/v80_true_gt_v2_regularization_a800.pth`
-- Log: `outputs/ablations/v80_true_gt_v2_regularization_a800.log`
-
 **Train:**
 ```bash
-CUDA_VISIBLE_DEVICES=7 bash scripts/run_v80_ablation_true_gt_regularization_a800.sh
+CUDA_VISIBLE_DEVICES=7 \
+/mnt/nvme0n1p1/zhangzy/motionflow-multiview-kimiswarm/.venv/bin/python -u experiments/train_omniview_fusion_v5_webbridge_multi.py \
+    --use_mixed_loader \
+    --mixed_manifest configs/splits/h36m_true_gt_v2_standard.yaml \
+    --use_domain_embedding \
+    --use_deformable_cross_view_attention_v18 \
+    --use_multiview_geometry_fusion_v25 \
+    --v25_geom_loss_weight 0.05 \
+    --v25_dropout 0.2 \
+    --v25_use_geometry_attention \
+    --v25_use_learned_depth_triangulation \
+    --v25_use_geometry_bundle_adjustment \
+    --use_v45_adaptive_geometry_fusion \
+    --v45_adaptive_weight_type per_view_joint \
+    --use_v46_sparse_view_generalization \
+    --v46_svg_view_dropout_prob 0.3 --v46_svg_min_views 2 \
+    --v46_svg_use_curriculum \
+    --use_v50_self_evolution_feedback_head \
+    --v50_sefh_hidden 64 --v50_sefh_num_layers 2 --v50_sefh_dropout 0.1 \
+    --v50_sefh_identity_init_gate \
+    --v50_sefh_loss_weight 0.0 --v50_sefh_aleatoric_weight 0.0 \
+    --use_v51_cross_domain_sparse_view_reliability \
+    --v51_cdsvr_hidden 64 --v51_cdsvr_num_heads 4 --v51_cdsvr_dropout 0.1 \
+    --v51_cdsvr_use_domain_label --v51_cdsvr_identity_init_gate \
+    --v51_cdsvr_loss_weight 0.0 \
+    --use_v52_uncertainty_weighted_triangulation \
+    --v52_uwt_hidden 64 --v52_uwt_n_layers 2 --v52_uwt_weight_type per_view_joint \
+    --v52_uwt_use_geometry_bias --v52_uwt_use_feature_bias \
+    --v52_uwt_identity_init --v52_uwt_min_weight 0.05 --v52_uwt_loss_weight 0.01 \
+    --v52_uwt_damping 0.0001 \
+    --use_v80_view_reliability \
+    --v80_vrbt_hidden 64 --v80_vrbt_n_layers 2 \
+    --v80_vrbt_weight_type per_view_joint \
+    --v80_vrbt_use_geometry_bias --v80_vrbt_use_feature_bias \
+    --v80_vrbt_identity_init --v80_vrbt_min_weight 0.05 \
+    --bone_loss_weight 0.05 \
+    --joint_limit_weight 0.01 \
+    --temporal_bone_weight 0.005 \
+    --num_workers 4 \
+    --d 64 --residual_hidden 128 --n_st_layers 2 \
+    --graph_num_layers 1 --n_joint_layers 1 --n_heads 4 \
+    --epochs 20 --batch_size 16 --train_samples 4096 --val_stride 20 \
+    --lr 5e-4 --lr_cosine --lr_warmup_epochs 2 --lr_min 1e-6 \
+    --max_grad_norm 1.0 --ema_decay 0.999 \
+    --weight_decay 2e-4 \
+    --early_stopping_patience 3 --early_stopping_min_delta 0.001 \
+    --use_multiscale_fusion true --use_camera_conditioning true --use_epipolar_bias true \
+    --use_context_visibility true --use_skeleton_residual true --use_rotation_correction true \
+    --use_entropy_regularization true --attention_entropy_weight 0.01 \
+    --use_camera_view_embedding --use_set_view_aggregator \
+    --use_variable_view_training --variable_view_min_views 2 --variable_view_max_views 4 \
+    --variable_view_max_views_start 4 --variable_view_curriculum_alpha 2.0 --variable_view_permute \
+    --pa_loss_weight 0.5 --monotonic_loss_weight 0.1 --monotonic_margin 5.0 \
+    --reproj_loss_weight 0.1 --reproj_warmup_epochs 1 \
+    --aleatoric_reproj_loss_weight 0.1 \
+    --outlier_view_prob 0.15 --outlier_view_max_views 1 \
+    --outlier_view_offset_std 10.0 --outlier_view_noise_std 15.0 \
+    --output outputs/ablations/v80_true_gt_v2_regularization_a800.pth \
+    > outputs/ablations/v80_true_gt_v2_regularization_a800.log 2>&1
 ```
 
 **Test eval:**
 ```bash
+CUDA_VISIBLE_DEVICES=7 \
 python scripts/eval_v80_true_gt_h36m_test.py \
     --checkpoint outputs/ablations/v80_true_gt_v2_regularization_a800.pth \
     --config_json outputs/ablations/v80_true_gt_v2_regularization_a800.config.json \
@@ -261,18 +677,81 @@ python scripts/eval_v80_true_gt_h36m_test.py \
 
 **Source script:** `scripts/run_v81_true_gt_h36m_medium_a800.sh`
 
-**Changes for v2:**
-- `--mixed_manifest configs/splits/h36m_true_gt_v2_standard.yaml`
-- `--output outputs/ablations/v81_true_gt_v2_h36m_medium_a800.pth`
-- Log: `outputs/ablations/v81_true_gt_v2_h36m_medium_a800.log`
-
 **Train:**
 ```bash
-CUDA_VISIBLE_DEVICES=7 bash scripts/run_v81_true_gt_h36m_medium_a800.sh
+CUDA_VISIBLE_DEVICES=7 \
+/mnt/nvme0n1p1/zhangzy/motionflow-multiview-kimiswarm/.venv/bin/python -u experiments/train_omniview_fusion_v5_webbridge_multi.py \
+    --use_mixed_loader \
+    --mixed_manifest configs/splits/h36m_true_gt_v2_standard.yaml \
+    --num_domains 1 \
+    --use_full_precision_dlt \
+    --use_robust_dlt_reweight \
+    --use_irls_reweight \
+    --use_domain_embedding \
+    --use_deformable_cross_view_attention_v18 \
+    --use_multiview_geometry_fusion_v25 \
+    --v25_geom_loss_weight 0.1 \
+    --v25_dropout 0.2 \
+    --v25_use_geometry_attention \
+    --v25_use_learned_depth_triangulation \
+    --v25_use_geometry_bundle_adjustment \
+    --use_temporal_pose_attention_v81 \
+    --v81_temporal_window 9 \
+    --v81_temporal_residual_gate_init -6.0 \
+    --v81_temporal_dropout 0.1 \
+    --num_workers 4 \
+    --d 128 \
+    --residual_hidden 256 \
+    --n_st_layers 3 \
+    --graph_num_layers 1 \
+    --n_joint_layers 1 \
+    --n_heads 4 \
+    --clip_len 13 \
+    --epochs 8 \
+    --batch_size 16 \
+    --train_samples 1024 \
+    --val_stride 20 \
+    --lr 1e-3 \
+    --lr_cosine \
+    --lr_warmup_epochs 1 \
+    --lr_min 1e-6 \
+    --max_grad_norm 1.0 \
+    --ema_decay 0.999 \
+    --early_stopping_patience 3 \
+    --early_stopping_min_delta 0.001 \
+    --use_multiscale_fusion true \
+    --use_camera_conditioning true \
+    --use_epipolar_bias true \
+    --use_context_visibility true \
+    --use_skeleton_residual true \
+    --use_rotation_correction true \
+    --use_entropy_regularization true \
+    --attention_entropy_weight 0.01 \
+    --use_camera_view_embedding \
+    --use_set_view_aggregator \
+    --use_variable_view_training \
+    --variable_view_min_views 2 \
+    --variable_view_max_views 4 \
+    --variable_view_max_views_start 4 \
+    --variable_view_curriculum_alpha 2.0 \
+    --variable_view_permute \
+    --pa_loss_weight 0.5 \
+    --monotonic_loss_weight 0.1 \
+    --monotonic_margin 5.0 \
+    --reproj_loss_weight 0.1 \
+    --reproj_warmup_epochs 1 \
+    --aleatoric_reproj_loss_weight 0.1 \
+    --outlier_view_prob 0.3 \
+    --outlier_view_max_views 1 \
+    --outlier_view_offset_std 10.0 \
+    --outlier_view_noise_std 15.0 \
+    --output outputs/ablations/v81_true_gt_v2_h36m_medium_a800.pth \
+    > outputs/ablations/v81_true_gt_v2_h36m_medium_a800.log 2>&1
 ```
 
 **Test eval:**
 ```bash
+CUDA_VISIBLE_DEVICES=7 \
 python scripts/eval_v81_true_gt_h36m_test.py \
     --checkpoint outputs/ablations/v81_true_gt_v2_h36m_medium_a800.pth \
     --config_json outputs/ablations/v81_true_gt_v2_h36m_medium_a800.config.json \
@@ -282,66 +761,247 @@ python scripts/eval_v81_true_gt_h36m_test.py \
     --out_json outputs/eval_v81_true_gt_v2_h36m_test_a800.json
 ```
 
+**Sparse-view DLT-fallback eval:**
+```bash
+CUDA_VISIBLE_DEVICES=7 \
+/mnt/nvme0n1p1/zhangzy/motionflow-multiview-kimiswarm/.venv/bin/python experiments/eval_variable_views.py \
+    --model_class omniview_v5 \
+    --checkpoint outputs/ablations/v81_true_gt_v2_h36m_medium_a800.pth \
+    --config outputs/ablations/v81_true_gt_v2_h36m_medium_a800.config.json \
+    --dataset_manifest tmp/h36m_true_gt_v2_val_manifest.txt \
+    --clip_len 13 --min_views 2 --max_views 4 --num_subsets_per_k 50 --seed 42 \
+    --var_view_dlt_fallback \
+    --output_csv outputs/variable_view_fix/variable_view_v81_true_gt_v2_medium_a800_dlt_fallback.csv \
+    --output_json outputs/variable_view_fix/variable_view_v81_true_gt_v2_medium_a800_dlt_fallback.json
+```
+
 - [ ] v81 v2 training finished.
 - [ ] v81 v2 S9/S11 test MPJPE/PA-MPJPE recorded.
+- [ ] v81 v2 DLT-fallback variable-view k=2/3 MPJPE recorded.
 
 ### 5.7 v82 multi-scale temporal-pose-attention
 
-v82 does not have a dedicated A800 training script in the current tree.  Create it by copying `scripts/run_v81_true_gt_h36m_medium_a800.sh` and adding the v82 flags (`--use_multiscale_temporal_pose_attention_v82` and its parameters).
-
-**Source script:** create `scripts/run_v82_true_gt_h36m_medium_a800.sh` from v81 script.
-
-**Changes for v2:**
-- `--mixed_manifest configs/splits/h36m_true_gt_v2_standard.yaml`
-- `--output outputs/ablations/v82_true_gt_v2_h36m_medium_a800.pth`
-- Log: `outputs/ablations/v82_true_gt_v2_h36m_medium_a800.log`
+v82 does not have a dedicated A800 training script.  Use the v81 A800 recipe and replace the v81 temporal module with the v82 multi-scale variant (`--use_temporal_pose_attention_v82`, `--v82_temporal_windows`).
 
 **Train:**
 ```bash
-CUDA_VISIBLE_DEVICES=7 bash scripts/run_v82_true_gt_h36m_medium_a800.sh
+CUDA_VISIBLE_DEVICES=7 \
+/mnt/nvme0n1p1/zhangzy/motionflow-multiview-kimiswarm/.venv/bin/python -u experiments/train_omniview_fusion_v5_webbridge_multi.py \
+    --use_mixed_loader \
+    --mixed_manifest configs/splits/h36m_true_gt_v2_standard.yaml \
+    --num_domains 1 \
+    --use_full_precision_dlt \
+    --use_robust_dlt_reweight \
+    --use_irls_reweight \
+    --use_domain_embedding \
+    --use_deformable_cross_view_attention_v18 \
+    --use_multiview_geometry_fusion_v25 \
+    --v25_geom_loss_weight 0.1 \
+    --v25_dropout 0.2 \
+    --v25_use_geometry_attention \
+    --v25_use_learned_depth_triangulation \
+    --v25_use_geometry_bundle_adjustment \
+    --use_temporal_pose_attention_v82 \
+    --v82_temporal_windows 5 13 -1 \
+    --v82_hidden_dim 16 \
+    --v82_temporal_residual_gate_init -6.0 \
+    --v82_temporal_dropout 0.1 \
+    --num_workers 4 \
+    --d 128 \
+    --residual_hidden 256 \
+    --n_st_layers 3 \
+    --graph_num_layers 1 \
+    --n_joint_layers 1 \
+    --n_heads 4 \
+    --clip_len 13 \
+    --epochs 8 \
+    --batch_size 16 \
+    --train_samples 1024 \
+    --val_stride 20 \
+    --lr 1e-3 \
+    --lr_cosine \
+    --lr_warmup_epochs 1 \
+    --lr_min 1e-6 \
+    --max_grad_norm 1.0 \
+    --ema_decay 0.999 \
+    --early_stopping_patience 3 \
+    --early_stopping_min_delta 0.001 \
+    --use_multiscale_fusion true \
+    --use_camera_conditioning true \
+    --use_epipolar_bias true \
+    --use_context_visibility true \
+    --use_skeleton_residual true \
+    --use_rotation_correction true \
+    --use_entropy_regularization true \
+    --attention_entropy_weight 0.01 \
+    --use_camera_view_embedding \
+    --use_set_view_aggregator \
+    --use_variable_view_training \
+    --variable_view_min_views 2 \
+    --variable_view_max_views 4 \
+    --variable_view_max_views_start 4 \
+    --variable_view_curriculum_alpha 2.0 \
+    --variable_view_permute \
+    --pa_loss_weight 0.5 \
+    --monotonic_loss_weight 0.1 \
+    --monotonic_margin 5.0 \
+    --reproj_loss_weight 0.1 \
+    --reproj_warmup_epochs 1 \
+    --aleatoric_reproj_loss_weight 0.1 \
+    --outlier_view_prob 0.3 \
+    --outlier_view_max_views 1 \
+    --outlier_view_offset_std 10.0 \
+    --outlier_view_noise_std 15.0 \
+    --output outputs/ablations/v82_true_gt_v2_h36m_medium_a800.pth \
+    > outputs/ablations/v82_true_gt_v2_h36m_medium_a800.log 2>&1
 ```
 
 **Test eval:**
 ```bash
-bash scripts/run_eval_v82_true_gt_h36m_test_a800.sh  # after editing paths to v2
+CUDA_VISIBLE_DEVICES=7 \
+python scripts/eval_v81_true_gt_h36m_test.py \
+    --checkpoint outputs/ablations/v82_true_gt_v2_h36m_medium_a800.pth \
+    --config_json outputs/ablations/v82_true_gt_v2_h36m_medium_a800.config.json \
+    --s9  data/h36m_true_gt_v2/s_09_acts_02_03_04_05_06_07_08_09_10_11_12_13_14_15_16_multiview_m.npz \
+    --s11 data/h36m_true_gt_v2/s_11_acts_02_03_04_05_06_07_08_09_10_11_12_13_14_15_16_multiview_m.npz \
+    --val_stride 13 \
+    --out_json outputs/eval_v82_true_gt_v2_h36m_test_a800.json
 ```
 
-- [ ] v82 v2 training script created.
+**Sparse-view DLT-fallback eval:**
+```bash
+CUDA_VISIBLE_DEVICES=7 \
+/mnt/nvme0n1p1/zhangzy/motionflow-multiview-kimiswarm/.venv/bin/python experiments/eval_variable_views.py \
+    --model_class omniview_v5 \
+    --checkpoint outputs/ablations/v82_true_gt_v2_h36m_medium_a800.pth \
+    --config outputs/ablations/v82_true_gt_v2_h36m_medium_a800.config.json \
+    --dataset_manifest tmp/h36m_true_gt_v2_val_manifest.txt \
+    --clip_len 13 --min_views 2 --max_views 4 --num_subsets_per_k 50 --seed 42 \
+    --var_view_dlt_fallback \
+    --output_csv outputs/variable_view_fix/variable_view_v82_true_gt_v2_medium_a800_dlt_fallback.csv \
+    --output_json outputs/variable_view_fix/variable_view_v82_true_gt_v2_medium_a800_dlt_fallback.json
+```
+
+- [ ] v82 v2 training script created / command recorded.
 - [ ] v82 v2 training finished.
 - [ ] v82 v2 S9/S11 test MPJPE/PA-MPJPE recorded.
+- [ ] v82 v2 DLT-fallback variable-view k=2/3/4 MPJPE recorded.
 
 ### 5.8 v85 random view dropout (sparse-view robustness)
 
 **Source script:** `scripts/run_v85_random_view_dropout_medium_a800.sh`
 
-v85 is already running on GPU 7.  When it finishes, the same script must be re-launched on the v2 split.
-
-**Changes for v2:**
-- `--mixed_manifest configs/splits/h36m_true_gt_v2_standard.yaml`
-- `--output outputs/ablations/v85_random_view_dropout_v2_medium_a800.pth`
-- Log: `outputs/ablations/v85_random_view_dropout_v2_medium_a800.log`
+v85 is currently training on GPU 7 against the v1 manifest.  Do not touch that job.  Once it finishes, launch the identical recipe against the v2 split.
 
 **Train:**
 ```bash
-CUDA_VISIBLE_DEVICES=7 bash scripts/run_v85_random_view_dropout_medium_a800.sh
+CUDA_VISIBLE_DEVICES=7 \
+/mnt/nvme0n1p1/zhangzy/motionflow-multiview-kimiswarm/.venv/bin/python -u experiments/train_omniview_fusion_v5_webbridge_multi.py \
+    --use_mixed_loader \
+    --mixed_manifest configs/splits/h36m_true_gt_v2_standard.yaml \
+    --num_domains 1 \
+    --use_full_precision_dlt \
+    --use_robust_dlt_reweight \
+    --use_irls_reweight \
+    --use_domain_embedding \
+    --use_deformable_cross_view_attention_v18 \
+    --use_multiview_geometry_fusion_v25 \
+    --v25_geom_loss_weight 0.05 \
+    --v25_dropout 0.2 \
+    --v25_use_geometry_attention \
+    --v25_use_learned_depth_triangulation \
+    --v25_use_geometry_bundle_adjustment \
+    --use_random_view_dropout_v85 \
+    --v85_dropout_prob 0.3 \
+    --v85_min_views 2 \
+    --v85_use_count_embedding \
+    --num_workers 4 \
+    --d 128 \
+    --residual_hidden 256 \
+    --n_st_layers 3 \
+    --graph_num_layers 1 \
+    --n_joint_layers 1 \
+    --n_heads 4 \
+    --clip_len 13 \
+    --epochs 20 \
+    --batch_size 16 \
+    --train_samples 4096 \
+    --val_stride 20 \
+    --lr 1e-4 \
+    --lr_cosine \
+    --lr_warmup_epochs 4 \
+    --lr_min 1e-6 \
+    --max_grad_norm 1.0 \
+    --ema_decay 0.999 \
+    --weight_decay 1e-4 \
+    --early_stopping_patience 3 \
+    --early_stopping_min_delta 0.001 \
+    --use_multiscale_fusion true \
+    --use_camera_conditioning true \
+    --use_epipolar_bias true \
+    --use_context_visibility true \
+    --use_skeleton_residual true \
+    --use_rotation_correction true \
+    --use_entropy_regularization true \
+    --attention_entropy_weight 0.01 \
+    --use_camera_view_embedding \
+    --use_set_view_aggregator \
+    --use_variable_view_training \
+    --variable_view_min_views 2 \
+    --variable_view_max_views 4 \
+    --variable_view_max_views_start 4 \
+    --variable_view_curriculum_alpha 2.0 \
+    --pa_loss_weight 0.5 \
+    --monotonic_loss_weight 0.1 \
+    --monotonic_margin 5.0 \
+    --reproj_loss_weight 0.1 \
+    --reproj_warmup_epochs 1 \
+    --aleatoric_reproj_loss_weight 0.1 \
+    --outlier_view_prob 0.15 \
+    --outlier_view_max_views 1 \
+    --outlier_view_offset_std 10.0 \
+    --outlier_view_noise_std 15.0 \
+    --output outputs/ablations/v85_random_view_dropout_v2_medium_a800.pth \
+    > outputs/ablations/v85_random_view_dropout_v2_medium_a800.log 2>&1
 ```
 
 **Test eval:**
 ```bash
-# Full 4-view S9/S11 test
-python scripts/eval_v85_true_gt_h36m_test.py \
+CUDA_VISIBLE_DEVICES=7 \
+python scripts/eval_v85_random_view_dropout_h36m_test.py \
     --checkpoint outputs/ablations/v85_random_view_dropout_v2_medium_a800.pth \
     --config_json outputs/ablations/v85_random_view_dropout_v2_medium_a800.config.json \
     --s9  data/h36m_true_gt_v2/s_09_acts_02_03_04_05_06_07_08_09_10_11_12_13_14_15_16_multiview_m.npz \
     --s11 data/h36m_true_gt_v2/s_11_acts_02_03_04_05_06_07_08_09_10_11_12_13_14_15_16_multiview_m.npz \
     --val_stride 13 \
     --out_json outputs/eval_v85_true_gt_v2_h36m_test_a800.json
+```
 
-# Sparse-view no-fallback eval
-bash scripts/run_eval_variable_views_v85_true_gt_stability_a800.sh  # adapt to v2
+**Sparse-view no-fallback eval:**
+```bash
+CUDA_VISIBLE_DEVICES=7 \
+/mnt/nvme0n1p1/zhangzy/motionflow-multiview-kimiswarm/.venv/bin/python experiments/eval_variable_views.py \
+    --model_class omniview_v5 \
+    --checkpoint outputs/ablations/v85_random_view_dropout_v2_medium_a800.pth \
+    --config outputs/ablations/v85_random_view_dropout_v2_medium_a800.config.json \
+    --dataset_manifest tmp/h36m_true_gt_v2_val_manifest.txt \
+    --clip_len 13 --min_views 2 --max_views 4 --num_subsets_per_k 50 --seed 42 \
+    --output_csv outputs/variable_view_v85_random_view_dropout_v2_medium_a800.csv \
+    --output_json outputs/variable_view_v85_random_view_dropout_v2_medium_a800.json
+```
 
-# Sparse-view DLT-fallback eval
-bash scripts/eval_variable_views_v85_dlt_fallback_a800.sh  # adapt to v2
+**Sparse-view DLT-fallback eval:**
+```bash
+CUDA_VISIBLE_DEVICES=7 \
+/mnt/nvme0n1p1/zhangzy/motionflow-multiview-kimiswarm/.venv/bin/python experiments/eval_variable_views.py \
+    --model_class omniview_v5 \
+    --checkpoint outputs/ablations/v85_random_view_dropout_v2_medium_a800.pth \
+    --config outputs/ablations/v85_random_view_dropout_v2_medium_a800.config.json \
+    --dataset_manifest tmp/h36m_true_gt_v2_val_manifest.txt \
+    --clip_len 13 --min_views 2 --max_views 4 --num_subsets_per_k 50 --seed 42 \
+    --var_view_dlt_fallback \
+    --output_csv outputs/variable_view_fix/variable_view_v85_random_view_dropout_v2_medium_a800_dlt_fallback.csv \
+    --output_json outputs/variable_view_fix/variable_view_v85_random_view_dropout_v2_medium_a800_dlt_fallback.json
 ```
 
 - [ ] v85 v2 training launched **after** the current v85 v1 job finishes.
@@ -380,11 +1040,12 @@ Suggested table columns:
 
 | Risk | Mitigation |
 |---|---|
-| v85 currently occupies GPU 7 and its eval occupies GPU 6. | Queue the v2 re-runs; do not stop the current jobs. |
+| v85 currently occupies GPU 7 and v86 occupies GPU 6. | Queue the v2 re-runs; do not stop the current jobs. |
 | A800 disk is ~99 % full. | Run `scripts/cleanup_a800_safe.sh` dry-run before each new run; delete failed/abandoned runs first. |
-| v82 has no A800 training script. | Create it from the v81 script before training. |
+| v82 has no A800 training script. | Use the exact v82 command in Section 5.7. |
 | Eval scripts default to v1 `.npz` paths. | Always pass the explicit `--s9` / `--s11` v2 paths or edit the script defaults. |
 | Training scripts default to v1 manifest. | Always swap to `configs/splits/h36m_true_gt_v2_standard.yaml`. |
+| Variable-view manifest defaults to v1 paths. | Create and use `tmp/h36m_true_gt_v2_val_manifest.txt`. |
 | Re-running 8 medium A800 jobs is a long queue. | Prioritise v25, v85, v81, v82 (best current models); v46/v52/v57/v80 can follow. |
 
 ## 8. Quick command summary
@@ -394,28 +1055,61 @@ Suggested table columns:
 bash scripts/convert_all_h36m_true_gt_v2.sh
 bash scripts/sync_h36m_true_gt_v2_to_a800.sh
 
-# 2. Baselines
+# 2. Create v2 variable-view manifest
+cat > tmp/h36m_true_gt_v2_val_manifest.txt <<'EOF'
+S9 data/h36m_true_gt_v2/s_09_acts_02_03_04_05_06_07_08_09_10_11_12_13_14_15_16_multiview_m.npz
+S11 data/h36m_true_gt_v2/s_11_acts_02_03_04_05_06_07_08_09_10_11_12_13_14_15_16_multiview_m.npz
+EOF
+
+# 3. Baselines
 bash scripts/run_h36m_true_gt_v2_baselines.sh
 
-# 3. Training (queue on free GPU 6/7)
-CUDA_VISIBLE_DEVICES=7 bash scripts/run_v25_ablation_true_gt_stability_a800.sh
-CUDA_VISIBLE_DEVICES=7 bash scripts/run_v46_true_gt_h36m_a800.sh
-CUDA_VISIBLE_DEVICES=7 bash scripts/run_v57_true_gt_medium_a800.sh
-CUDA_VISIBLE_DEVICES=7 bash scripts/run_v80_ablation_true_gt_regularization_a800.sh
-CUDA_VISIBLE_DEVICES=7 bash scripts/run_v81_true_gt_h36m_medium_a800.sh
-CUDA_VISIBLE_DEVICES=7 bash scripts/run_v82_true_gt_h36m_medium_a800.sh  # create first
-CUDA_VISIBLE_DEVICES=7 bash scripts/run_v85_random_view_dropout_medium_a800.sh
+# 4. Training (queue on free GPU 6/7; full commands in Section 5)
+# v25
+CUDA_VISIBLE_DEVICES=7 /mnt/nvme0n1p1/zhangzy/motionflow-multiview-kimiswarm/.venv/bin/python -u experiments/train_omniview_fusion_v5_webbridge_multi.py \
+    --use_mixed_loader --mixed_manifest configs/splits/h36m_true_gt_v2_standard.yaml \
+    --use_full_precision_dlt --use_robust_dlt_reweight --use_irls_reweight --use_domain_embedding \
+    --use_deformable_cross_view_attention_v18 --use_multiview_geometry_fusion_v25 \
+    --v25_geom_loss_weight 0.05 --v25_dropout 0.2 --v25_use_geometry_attention \
+    --v25_use_learned_depth_triangulation --v25_use_geometry_bundle_adjustment \
+    --num_workers 4 --d 128 --residual_hidden 256 --n_st_layers 3 --graph_num_layers 1 --n_joint_layers 1 --n_heads 4 \
+    --epochs 20 --batch_size 16 --train_samples 4096 --val_stride 20 \
+    --lr 1e-4 --lr_cosine --lr_warmup_epochs 4 --lr_min 1e-6 --max_grad_norm 1.0 --ema_decay 0.999 --weight_decay 1e-4 \
+    --early_stopping_patience 3 --early_stopping_min_delta 0.001 \
+    --use_multiscale_fusion true --use_camera_conditioning true --use_epipolar_bias true \
+    --use_context_visibility true --use_skeleton_residual true --use_rotation_correction true \
+    --use_entropy_regularization true --attention_entropy_weight 0.01 \
+    --use_camera_view_embedding --use_set_view_aggregator \
+    --use_variable_view_training --variable_view_min_views 2 --variable_view_max_views 4 \
+    --variable_view_max_views_start 4 --variable_view_curriculum_alpha 2.0 \
+    --pa_loss_weight 0.5 --monotonic_loss_weight 0.1 --monotonic_margin 5.0 \
+    --reproj_loss_weight 0.1 --reproj_warmup_epochs 1 --aleatoric_reproj_loss_weight 0.1 \
+    --outlier_view_prob 0.15 --outlier_view_max_views 1 \
+    --outlier_view_offset_std 10.0 --outlier_view_noise_std 15.0 \
+    --output outputs/ablations/v25_true_gt_v2_stability_a800.pth \
+    > outputs/ablations/v25_true_gt_v2_stability_a800.log 2>&1
 
-# 4. Test eval (replace checkpoint/config paths with v2 variants)
-python scripts/eval_v25_true_gt_h36m_test.py --checkpoint ... --s9 ... --s11 ... --out_json ...
-python scripts/eval_v46_true_gt_h36m_test.py --checkpoint ... --s9 ... --s11 ... --out_json ...
-python scripts/eval_v57_true_gt_h36m_test.py --checkpoint ... --s9 ... --s11 ... --out_json ...
-python scripts/eval_v80_true_gt_h36m_test.py --checkpoint ... --s9 ... --s11 ... --out_json ...
-python scripts/eval_v81_true_gt_h36m_test.py --checkpoint ... --s9 ... --s11 ... --out_json ...
-python scripts/eval_v82_true_gt_h36m_test.py --checkpoint ... --s9 ... --s11 ... --out_json ...
-python scripts/eval_v85_true_gt_h36m_test.py --checkpoint ... --s9 ... --s11 ... --out_json ...
+# v46 / v52 / v57 / v80 / v81 / v82 / v85: see Section 5 for full exact commands.
 
-# 5. Update docs/results_true_gt_h36m.md with v2 numbers
+# 5. Test eval (replace checkpoint/config paths with v2 variants)
+python scripts/eval_v25_true_gt_h36m_test.py --checkpoint outputs/ablations/v25_true_gt_v2_stability_a800.pth --config_json outputs/ablations/v25_true_gt_v2_stability_a800.config.json --s9 data/h36m_true_gt_v2/s_09_acts_02_03_04_05_06_07_08_09_10_11_12_13_14_15_16_multiview_m.npz --s11 data/h36m_true_gt_v2/s_11_acts_02_03_04_05_06_07_08_09_10_11_12_13_14_15_16_multiview_m.npz --val_stride 1 --out_json outputs/eval_v25_true_gt_v2_stability_h36m_test.json
+
+python scripts/eval_v46_true_gt_h36m_test.py --checkpoint outputs/ablations/v46_true_gt_v2_h36m_a800.pth --config_json outputs/ablations/v46_true_gt_v2_h36m_a800.config.json --s9 data/h36m_true_gt_v2/s_09_acts_02_03_04_05_06_07_08_09_10_11_12_13_14_15_16_multiview_m.npz --s11 data/h36m_true_gt_v2/s_11_acts_02_03_04_05_06_07_08_09_10_11_12_13_14_15_16_multiview_m.npz --val_stride 13 --out_json outputs/eval_v46_true_gt_v2_h36m_test_a800.json
+
+python scripts/eval_v52_true_gt_h36m_test.py --checkpoint outputs/ablations/v52_true_gt_v2_h36m_a800.pth --config_json outputs/ablations/v52_true_gt_v2_h36m_a800.config.json --s9 data/h36m_true_gt_v2/s_09_acts_02_03_04_05_06_07_08_09_10_11_12_13_14_15_16_multiview_m.npz --s11 data/h36m_true_gt_v2/s_11_acts_02_03_04_05_06_07_08_09_10_11_12_13_14_15_16_multiview_m.npz --val_stride 13 --out_json outputs/eval_v52_true_gt_v2_h36m_test_a800.json
+
+python scripts/eval_v57_true_gt_h36m_test.py --checkpoint outputs/ablations/v57_true_gt_v2_medium_a800.pth --config_json outputs/ablations/v57_true_gt_v2_medium_a800.config.json --s9 data/h36m_true_gt_v2/s_09_acts_02_03_04_05_06_07_08_09_10_11_12_13_14_15_16_multiview_m.npz --s11 data/h36m_true_gt_v2/s_11_acts_02_03_04_05_06_07_08_09_10_11_12_13_14_15_16_multiview_m.npz --val_stride 13 --out_json outputs/eval_v57_true_gt_v2_h36m_test_a800.json
+
+python scripts/eval_v80_true_gt_h36m_test.py --checkpoint outputs/ablations/v80_true_gt_v2_regularization_a800.pth --config_json outputs/ablations/v80_true_gt_v2_regularization_a800.config.json --s9 data/h36m_true_gt_v2/s_09_acts_02_03_04_05_06_07_08_09_10_11_12_13_14_15_16_multiview_m.npz --s11 data/h36m_true_gt_v2/s_11_acts_02_03_04_05_06_07_08_09_10_11_12_13_14_15_16_multiview_m.npz --val_stride 13 --out_json outputs/eval_v80_true_gt_v2_h36m_test_a800.json
+
+python scripts/eval_v81_true_gt_h36m_test.py --checkpoint outputs/ablations/v81_true_gt_v2_h36m_medium_a800.pth --config_json outputs/ablations/v81_true_gt_v2_h36m_medium_a800.config.json --s9 data/h36m_true_gt_v2/s_09_acts_02_03_04_05_06_07_08_09_10_11_12_13_14_15_16_multiview_m.npz --s11 data/h36m_true_gt_v2/s_11_acts_02_03_04_05_06_07_08_09_10_11_12_13_14_15_16_multiview_m.npz --val_stride 13 --out_json outputs/eval_v81_true_gt_v2_h36m_test_a800.json
+
+# v82 uses the v81 eval helper (same architecture family)
+python scripts/eval_v81_true_gt_h36m_test.py --checkpoint outputs/ablations/v82_true_gt_v2_h36m_medium_a800.pth --config_json outputs/ablations/v82_true_gt_v2_h36m_medium_a800.config.json --s9 data/h36m_true_gt_v2/s_09_acts_02_03_04_05_06_07_08_09_10_11_12_13_14_15_16_multiview_m.npz --s11 data/h36m_true_gt_v2/s_11_acts_02_03_04_05_06_07_08_09_10_11_12_13_14_15_16_multiview_m.npz --val_stride 13 --out_json outputs/eval_v82_true_gt_v2_h36m_test_a800.json
+
+python scripts/eval_v85_random_view_dropout_h36m_test.py --checkpoint outputs/ablations/v85_random_view_dropout_v2_medium_a800.pth --config_json outputs/ablations/v85_random_view_dropout_v2_medium_a800.config.json --s9 data/h36m_true_gt_v2/s_09_acts_02_03_04_05_06_07_08_09_10_11_12_13_14_15_16_multiview_m.npz --s11 data/h36m_true_gt_v2/s_11_acts_02_03_04_05_06_07_08_09_10_11_12_13_14_15_16_multiview_m.npz --val_stride 13 --out_json outputs/eval_v85_true_gt_v2_h36m_test_a800.json
+
+# 6. Update docs/results_true_gt_h36m.md with v2 numbers
 ```
 
 ## 9. Definition of done
