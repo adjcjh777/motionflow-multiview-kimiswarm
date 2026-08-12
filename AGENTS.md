@@ -2,9 +2,9 @@
 
 > **Executive Summary — 2026-08-12 ~12:56 UTC**
 >
-> **A800 status (do not touch running jobs):** v85 random-view-dropout training **finished** early @ Epoch 6 with best val MPJPE **31.42 mm** (checkpoint `outputs/ablations/v85_random_view_dropout_medium_a800.pth`). v85 no-fallback variable-view eval **completed on GPU 6 in split-k mode** — k=2/3/4 are still catastrophic, though k=2 and k=4 improved over v25. GPU 6/7 are essentially free now. **Only GPUs 6/7 are used by this project.** A800 disk is **99% full (~58 GB free)**.
+> **A800 status (do not touch running jobs):** v85 random-view-dropout training is **still running** on GPU 7; v86 no-count-embedding ablation is **still running** on GPU 6. **Only GPUs 6/7 are used by this project.** A800 disk is **~99% full (~58 GB free)**.
 >
-> **Data foundation — in flight:** The legacy `data/h36m_hf/*.npz` are circular (direct MJE ≈ 0 mm). The `data/h36m_true_gt/*.npz` files used by v85 and earlier runs are misaligned with their stored cameras/2D (direct MJE ≈ 16,668 mm). A corrected converter `scripts/convert_h36m_true_gt_v2.py` now produces physically consistent true-mocap labels (test file direct MJE ≈ 14.5 mm). Full regeneration is queued for after v85 finishes. MPI-INF-3DHP detected-2D (16/16 `.npz`) and DLT baseline (MPJPE 115.09 mm) done. AIST++ canonical `.npz` and H36M cross-eval (93.94 mm) done.
+> **Data foundation — v2 audit complete:** The legacy `data/h36m_hf/*.npz` are circular (direct MJE ≈ 0 mm). The `data/h36m_true_gt/*.npz` files used by v85 and earlier runs are misaligned with their stored cameras/2D (direct MJE ≈ 16,668 mm). A corrected converter `scripts/convert_h36m_true_gt_v2.py` now produces physically consistent true-mocap labels. Full H36M true-GT v2 `.npz` audit is **complete**: DLT baseline **25.67 mm** and RANSAC/conf-DLT baseline **26.47 mm** are reproducible on `data/h36m_true_gt_v2/`. MPI-INF-3DHP detected-2D (16/16 `.npz`) and DLT baseline (MPJPE 115.09 mm) done. AIST++ canonical `.npz` and H36M cross-eval (93.94 mm) done.
 >
 > **True-GT H36M leaderboard (S9/S11 test):** Iskakov 23.40 mm; conf-DLT 25.67 mm; RANSAC/conf-DLT 26.47 mm; **v25 stability 31.56 mm** (best learned); v81 37.83 mm; v82 39.46 mm; v80 53.98 mm; v52 54.01 mm; v57 57.10 mm.
 >
@@ -20,6 +20,7 @@
 - **v86 no-count-embedding ablation:** Launched on A800 GPU 6 (PID `2203020`) to isolate the active-view-count embedding's contribution to sparse-view (k<4) robustness. It keeps v85's random whole-view dropout (`--v85_dropout_prob 0.3`, `--v85_min_views 2`) but passes `--no_v85_use_count_embedding`. Log: `outputs/ablations/v86_no_count_embedding_medium_a800.log`; config: `configs/ablations/v86_no_count_embedding_medium_a800.yaml`.
 - **Stale circular config deprecation:** Moved all configs referencing `data/h36m_hf/`, `data/webbridge/h36m_meters/`, or `data/webbridge/shelf_campus/` into `configs/deprecated/circular/`. Split manifests now contain a `deprecated: true` marker and `motionflow_mv/data/split_loader.py` raises a loud error if one is loaded; the 218 scripts/experiments that still pointed at the old `configs/splits/*` paths have been updated to `configs/deprecated/circular/...` so they resolve but will fail loudly when launched. See `configs/deprecated/circular/README.md`.
 - **WebBridge loader audit:** `convert_human36m` now raises an error by default when true 3D GT is missing, instead of silently falling back to DLT triangulation of the input 2D. Pass `allow_circular_fallback=True` (CLI `--allow-circular-fallback`) to opt into the legacy circular behavior. `convert_aistpp` now defaults to `use_optim=True` (CLI `--no-optim` to override), matching the clean canonical `.npz` already used on A800. New tests in `tests/test_webbridge_loader_audit.py` cover both behaviors.
+- **v86 local smoke in progress:** A local RTX 4090 smoke test of the no-count-embedding variant (`configs/ablations/v86_no_count_embedding_smoke.yaml`) is running to sanity-check the ablation before the A800 medium run commits compute. Results will be compared against the v85 smoke once both finish.
 
 ## Current work in flight
 
@@ -57,7 +58,7 @@
 ## Data foundation status
 
 1. **True H36M 3D GT** — obtained, but the `data/h36m_true_gt/*.npz` labels are misaligned with the stored cameras/2D (direct MJE ≈ 16,668 mm). A corrected converter is in `scripts/convert_h36m_true_gt_v2.py`; output will go to `data/h36m_true_gt_v2/`.
-2. **Regenerate canonical `.npz`** with non-circular labels — **all H36M true-GT v2 .npz generated locally** (S1,5,6,7,8 train; S9,11 test). A new manifest `configs/splits/h36m_true_gt_v2_standard.yaml` is ready. Audit and DLT/RANSAC baselines on the v2 labels are running locally. Full sync to A800 and leaderboard rerun remain queued for after v85 finishes so the running training is not disturbed. Regeneration script: `scripts/convert_all_h36m_true_gt_v2.sh`.
+2. **Regenerate canonical `.npz`** with non-circular labels — **all H36M true-GT v2 .npz generated locally** (S1,5,6,7,8 train; S9,11 test). A new manifest `configs/splits/h36m_true_gt_v2_standard.yaml` is ready. **v2 audit and DLT/RANSAC baselines are complete locally:** conf-weighted DLT **25.67 mm**, RANSAC/conf-DLT **26.47 mm**, direct MJE ≈ **14.5 mm**. Full sync to A800 and leaderboard rerun remain queued until v85/v86 finish so the running training is not disturbed. Regeneration script: `scripts/convert_all_h36m_true_gt_v2.sh`.
 3. **Re-run baselines** (DLT, Iskakov, v25, v46, v52, v57, v80) on the corrected protocol — in progress.
    - DLT H36M true-GT: **25.67 mm** (conf-weighted), 28.77 mm (unweighted).
    - RANSAC/conf-DLT H36M true-GT: **26.47 mm** (reproducible; see `scripts/run_h36m_true_gt_ransac_baseline.py`).
@@ -247,6 +248,82 @@ ssh a800-D "cat /mnt/nvme0n1p1/zhangzy/motionflow-multiview-kimiswarm-iter20/out
 
 # Check MPI DLT baseline
 ssh a800-D "cat /mnt/nvme0n1p1/zhangzy/motionflow-multiview-kimiswarm-iter20/outputs/mpi_rtmpose_detected_2d/dlt_baseline_detected_2d.json"
+
+# GPU overview
+ssh a800-D "nvidia-smi --query-gpu=index,utilization.gpu,memory.used --format=csv"
+```
+
+## Next handoff — v2 audit done, v86 smoke running locally, A800 v85/v86 still training
+
+> **Status as of 2026-08-12 ~15:03 UTC**
+
+### Executive snapshot
+
+- **GPU 7:** v85 random-view-dropout training is **still running** on A800 GPU 7. Continue to monitor until completion.
+- **GPU 6:** v86 no-count-embedding ablation is **still running** on A800 GPU 6. Continue to monitor until completion.
+- **Local RTX 4090:** v86 no-count-embedding **smoke test is in progress** to sanity-check the ablation before the A800 medium run commits compute.
+- **v2 data audit:** H36M true-GT v2 `.npz` audit is **complete**. DLT baseline **25.67 mm** and RANSAC/conf-DLT **26.47 mm** are reproducible on `data/h36m_true_gt_v2/`.
+- **Disk:** `/mnt/nvme0n1p1` remains **~99% full (~58 GB free)**. Avoid large writes until cleanup is run.
+
+### What changed since last handoff
+
+1. **v2 audit finished locally**
+   - All H36M true-GT v2 `.npz` files (S1,5,6,7,8 train; S9,11 test) were audited.
+   - DLT baseline: **25.67 mm** (conf-weighted).
+   - RANSAC/conf-DLT baseline: **26.47 mm**.
+   - Direct MJE on v2 labels: ≈ **14.5 mm**, confirming physical consistency.
+   - Manifest: `configs/splits/h36m_true_gt_v2_standard.yaml`.
+
+2. **A800 v85 and v86 are still training**
+   - Do not touch GPU 6 or GPU 7.
+   - The post-training eval suite (`scripts/monitor_v85_then_run_evals.sh`) remains queued and will run on the first free GPU.
+
+3. **v86 local smoke started**
+   - Running on local RTX 4090 to validate the no-count-embedding variant before committing A800 GPU time.
+   - Config: `configs/ablations/v86_no_count_embedding_smoke.yaml` (path may differ; verify locally).
+   - Compare its result against the v85 smoke once both finish.
+
+### Blockers / watch-outs
+
+1. **Both project GPUs are occupied:** v85 (GPU 7) and v86 (GPU 6) are training. Do not launch anything else on GPUs 6/7 until one frees up. Do not touch GPUs 0–5.
+2. **A800 disk is ~99% full (~58 GB free):** Avoid large writes. Run `scripts/cleanup_a800_safe.sh` dry-run before any new large experiment.
+3. **Sparse-view (k=2/k=3) failure — fix in progress:** Wait for v85/v86 to finish and evaluate whether random view dropout (and the count embedding) resolves the k<4 catastrophe.
+
+### Next 3 concrete tasks
+
+1. **Monitor v85 and v86 training until completion.**
+   - v85 (GPU 7) and v86 (GPU 6).
+   - When v85 finishes, the post-training monitor will run test-set eval, fresh no-fallback variable-view eval, and DLT-fallback eval on the first free GPU.
+   - Compare v85 k=2/3/4 MPJPE to the v25 DLT-fallback baseline (S9: 58.18/33.32/116.98 mm; S11: 49.35/25.28/110.58 mm) and to v86 once both are evaluated.
+
+2. **Run `scripts/cleanup_a800_safe.sh` dry-run and free disk if safe.**
+   - Disk is at 99%. Identify removable checkpoints/logs before launching SOTA baselines.
+
+3. **Sync v2 labels and rerun leaderboard once GPU 6/7 are free.**
+   - Sync `data/h36m_true_gt_v2/` to A800.
+   - Re-run v25, v46, v52, v57, v80, v81, v82, v85, v86 on the corrected true-GT v2 protocol.
+   - Update `docs/results_true_gt_h36m.md` and `docs/paper_draft_icra_cvpr_2027.md` with the non-circular numbers.
+
+### Quick verification commands for next agent
+
+```bash
+# Check v85 training
+ssh a800-D "tail -f /mnt/nvme0n1p1/zhangzy/motionflow-multiview-kimiswarm-iter20/outputs/ablations/v85_random_view_dropout_medium_a800.log"
+
+# Check v86 training
+ssh a800-D "tail -f /mnt/nvme0n1p1/zhangzy/motionflow-multiview-kimiswarm-iter20/outputs/ablations/v86_no_count_embedding_medium_a800.log"
+
+# Check v86 local smoke (if running)
+tail -f outputs/ablations/v86_no_count_embedding_smoke.log
+
+# Check v85 post-training eval suite monitor
+ssh a800-D "tail -f /mnt/nvme0n1p1/zhangzy/motionflow-multiview-kimiswarm-iter20/outputs/sota_baselines/monitor_v85_then_run_evals.log"
+
+# Check v2 DLT baseline result (local)
+cat outputs/h36m_true_gt_v2_dlt_baseline.json
+
+# Check v2 RANSAC baseline result (local)
+cat outputs/h36m_true_gt_v2_ransac_baseline.json
 
 # GPU overview
 ssh a800-D "nvidia-smi --query-gpu=index,utilization.gpu,memory.used --format=csv"
