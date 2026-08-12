@@ -265,7 +265,7 @@ while true; do
     # nohup + unbuffered Python so the process can outlive the ssh/tmux client.
     # shellcheck disable=SC2068
     nohup "${VENV}/bin/python" -u "$TRAINER" \
-        --manifest "${ROOT}/configs/splits/webbridge_h36m_train_val.yaml" \
+        --manifest "${ROOT}/configs/deprecated/circular/splits/webbridge_h36m_train_val.yaml" \
         --manifest "${ROOT}/configs/splits/webbridge_mpi_train_val.yaml" \
         --d "$D" \
         --residual_hidden "$RESIDUAL_HIDDEN" \

@@ -9,7 +9,7 @@ tmux has-session -t "$SESSION" 2>/dev/null && { echo "Session $SESSION already e
 
 tmux new-session -d -s "$SESSION"
 tmux send-keys -t "$SESSION" "CUDA_VISIBLE_DEVICES=4 python -u experiments/train_omniview_fusion_v5_webbridge_multi.py \\
-    --use_mixed_loader --mixed_manifest configs/splits/webbridge_h36m_mpi_mixed_train_val.yaml \\
+    --use_mixed_loader --mixed_manifest configs/deprecated/circular/splits/webbridge_h36m_mpi_mixed_train_val.yaml \\
     --use_full_precision_dlt --use_robust_dlt_reweight --use_irls_reweight --use_domain_embedding \\
     --use_deformable_cross_view_attention_v18 --deformable_attention_use_topk_st \\
     --use_multiview_geometry_fusion_v25 --use_uncertainty_depth_proposals_v27 --v27_udp_n_mixtures 1 \\

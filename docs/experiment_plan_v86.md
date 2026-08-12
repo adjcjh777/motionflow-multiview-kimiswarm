@@ -68,11 +68,13 @@ Identical to the v85 medium run except for the disabled count embedding.  Builds
 
 ### 3.2 A800 medium run
 
-**Script:** `scripts/run_v86_no_count_embedding_medium_a800_gpuX.sh`
+**Scripts:**
+- `scripts/run_v86_no_count_embedding_medium_a800_gpuX.sh` (default GPU 7)
+- `scripts/run_v86_no_count_embedding_medium_a800_gpu6.sh` (default GPU 6)
 
 | Setting | Value |
 |---|---|
-| GPU | 4 (default, override with `CUDA_VISIBLE_DEVICES`) |
+| GPU | 6/7 (default GPU 6 or 7, override with `CUDA_VISIBLE_DEVICES`) |
 | Epochs | 20 |
 | Batch size | 16 |
 | Train samples | 4096 |
@@ -86,6 +88,8 @@ Identical to the v85 medium run except for the disabled count embedding.  Builds
 | v85 min views | 2 |
 | Count embedding | **disabled** |
 
+**GPU policy note:** Project policy restricts MotionFlow to GPU 6 and GPU 7 only; GPUs 0–5 are reserved. The launch scripts default to GPU 6/7 accordingly.
+
 Output files:
 
 | File | Path |
@@ -97,12 +101,17 @@ Output files:
 ### 3.3 Launch command
 
 ```bash
-# Default: GPU 5 (v85 currently occupies GPU 4)
+# Default: GPU 7 (only GPU 6/7 may be used by this project)
 bash scripts/run_v86_no_count_embedding_medium_a800_gpuX.sh
 
-# Run on a different free GPU
-CUDA_VISIBLE_DEVICES=4 bash scripts/run_v86_no_count_embedding_medium_a800_gpuX.sh
+# Default: GPU 6
+bash scripts/run_v86_no_count_embedding_medium_a800_gpu6.sh
+
+# Run on a different free GPU (must be 6 or 7)
+CUDA_VISIBLE_DEVICES=6 bash scripts/run_v86_no_count_embedding_medium_a800_gpuX.sh
 ```
+
+**Scheduling status (2026-08-12):** v85 random-view-dropout training is currently running on GPU 7 and a no-fallback variable-view eval is running on GPU 6. v86 must wait for one of those GPUs to become free before launching.
 
 ---
 
@@ -154,7 +163,7 @@ Expected comparison matrix:
 
 ## 6. Next steps after v86
 
-1. Launch v86 on a free A800 GPU (see script above) once GPU 4/5/6 is available.
+1. Launch v86 on a free A800 GPU (GPU 6 or 7 only) once v85 training/eval finishes.
 2. After training, run full-view S9/S11 test and variable-view k=2/3/4 evaluation with DLT fallback.
 3. Compare v86 directly with v85 and v25 stability:
    - If v86 ≈ v85, the count embedding is redundant and can be removed to save parameters.

@@ -3,7 +3,7 @@
 
 Scans the canonical ``.npz`` files under ``data/webbridge`` (or a custom root),
 validates the canonical multi-view layout, and writes a YAML split manifest
-(``configs/splits/webbridge_proposed_mixed.yaml`` by default) together with a
+(``configs/deprecated/circular/splits/webbridge_proposed_mixed.yaml`` by default) together with a
 short Markdown report explaining which files were selected and why.
 
 The script is read-only with respect to the dataset; it only inspects file
@@ -12,7 +12,7 @@ names, shapes, and canonical keys.
 Example
 -------
     python scripts/propose_webbridge_multiview_usage.py
-    python scripts/propose_webbridge_multiview_usage.py --root data/webbridge --out-yaml configs/splits/webbridge_proposed_mixed.yaml
+    python scripts/propose_webbridge_multiview_usage.py --root data/webbridge --out-yaml configs/deprecated/circular/splits/webbridge_proposed_mixed.yaml
 """
 
 from __future__ import annotations
@@ -30,7 +30,7 @@ import yaml
 
 
 DEFAULT_ROOT = Path("data/webbridge")
-DEFAULT_YAML = Path("configs/splits/webbridge_proposed_mixed.yaml")
+DEFAULT_YAML = Path("configs/deprecated/circular/splits/webbridge_proposed_mixed.yaml")
 DEFAULT_REPORT = Path("docs/swarm_iter_next/webbridge_multiview_usage_proposal.md")
 
 CANONICAL_KEYS = {

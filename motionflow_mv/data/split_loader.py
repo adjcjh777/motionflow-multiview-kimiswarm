@@ -6,15 +6,42 @@ from typing import Dict, List
 import yaml
 
 
+def _raise_if_deprecated(data: dict, path: str) -> None:
+    """Fail loudly if a manifest/config has been marked as deprecated."""
+    if data and data.get("deprecated"):
+        msg = data.get(
+            "deprecated_message",
+            "This manifest/config is deprecated because it references circular "
+            "or stale non-true-GT data sources.",
+        )
+        raise RuntimeError(
+            f"{path}: {msg}\n"
+            "Use a true-GT replacement such as "
+            "configs/splits/h36m_true_gt_standard.yaml."
+        )
+
+
 def load_split_manifest(path: str) -> Dict[str, List[str]]:
     """Return {'train': [...], 'val': [...], 'test': [...]} from a YAML file."""
-    with open(path, "r") as f:
+    with open(path, "r", encoding="utf-8") as f:
         data = yaml.safe_load(f)
+    _raise_if_deprecated(data, path)
     return {
         "train": data.get("train", []),
         "val": data.get("val", []),
         "test": data.get("test", []),
     }
+
+
+def check_manifest_deprecated(path: str) -> None:
+    """Check whether a YAML manifest is deprecated; raise if so.
+
+    Useful for loaders (e.g. the mixed WebBridge loader) that parse the YAML
+    directly rather than going through load_split_manifest.
+    """
+    with open(path, "r", encoding="utf-8") as f:
+        data = yaml.safe_load(f)
+    _raise_if_deprecated(data, path)
 
 
 def load_multi_dataset_manifest(manifest_paths: List[str]) -> Dict[str, List[str]]:

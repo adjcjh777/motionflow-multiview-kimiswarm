@@ -9,6 +9,7 @@
 ## 1. Executive summary
 
 - **No fabricated citations were found.** All seven numbered references in the draft are real publications and are correctly formatted.
+- The 22 arXiv IDs in `docs/literature_review_multiview_pose.md` were also checked and all resolve to real arXiv entries.
 - One citation (RUMPL, [4]) was independently re-verified via arXiv and confirmed real.
 - Two previously corrected venue typos (SmoothNet and Stacked Hourglass listed as CVPR instead of ECCV) are already fixed in the draft.
 - Several **accuracy / narrative issues** were found in the claims around runtime, AIST++ non-circularity, and experimental status. These are detailed below with line numbers and suggested rewrites.
@@ -175,7 +176,41 @@ All seven references are accurate. For completeness, the verified list is repeat
 
 ---
 
-## 7. Blockers / next steps
+## 7. Literature-review arXiv citation sweep
+
+We also audited the 22 recent arXiv IDs cited in `docs/literature_review_multiview_pose.md`. All 22 IDs resolve to real arXiv entries.
+
+| arXiv ID | Year | Title (verified) | First authors | Status |
+|---|---|---|---|---|
+| 2309.04756 | 2023 | Probabilistic Triangulation for Uncalibrated Multi-View 3D Human Pose Estimation | Boyuan Jiang, Lei Hu, Shihong Xia | ✅ OK |
+| 2309.07910 | 2023 | TEMPO: Efficient Multi-View Pose Estimation, Tracking, and Forecasting | Rohan Choudhury, Kris Kitani, Laszlo A. Jeni | ✅ OK |
+| 2311.10983 | 2023 | Multiple View Geometry Transformers for 3D Human Pose Estimation | Ziwei Liao, Jialiang Zhu, Chunyu Wang… | ✅ OK |
+| 2312.01561 | 2023 | Multi-View Person Matching and 3D Pose Estimation with Arbitrary Uncalibrated Camera Networks | Yan Xu, Kris Kitani | ✅ OK |
+| 2312.17106 | 2023 | Geometry-Biased Transformer for Robust Multi-View 3D Human Pose Reconstruction | Olivier Moliner, Sangxia Huang, Kalle Åström | ✅ OK |
+| 2403.12440 | 2024 | Self-learning Canonical Space for Multi-view 3D Human Pose Estimation | Xiaoben Li, Mancheng Meng, Ziyan Wu… | ✅ OK |
+| 2403.18080 | 2024 | EgoPoseFormer: A Simple Baseline for Stereo Egocentric 3D Human Pose Estimation | Chenhongyi Yang, Anastasia Tkach, Shreyas Hampali… | ✅ OK |
+| 2404.02041 | 2024 | SelfPose3d: Self-Supervised Multi-Person Multi-View 3d Pose Estimation | Vinkle Srivastav, Keqi Chen, Nicolas Padoy | ✅ OK |
+| 2404.14634 | 2024 | UPose3D: Uncertainty-Aware 3D Human Pose Estimation with Cross-View and Temporal Cues | Vandad Davoodnia, Saeed Ghorbani, Marc-André Carbonneau… | ✅ OK |
+| 2405.06845 | 2024 | CasCalib: Cascaded Calibration for Motion Capture from Sparse Unsynchronized Cameras | James Tang, Shashwat Suri, Daniel Ajisafe… | ✅ OK |
+| 2408.10805 | 2024 | MPL: Lifting 3D Human Pose from Multi-view 2D Poses | Seyed Abolfazl Ghasemzadeh, Alexandre Alahi, Christophe De Vleeschouwer | ✅ OK |
+| 2408.15810 | 2024 | Multi-view Pose Fusion for Occlusion-Aware 3D Human Pose Estimation | Laura Bragagnolo, Matteo Terreran, Davide Allegro… | ✅ OK |
+| 2411.10582 | 2024 | Motion Diffusion-Guided 3D Global HMR from a Dynamic Camera | Jaewoo Heo, Kuan-Chieh Wang, Karen Liu… | ✅ OK |
+| 2502.16419 | 2025 | DeProPose: Deficiency-Proof 3D Human Pose Estimation via Adaptive Multi-View Fusion | Jianbin Jiao, Xina Cheng, Kailun Yang… | ✅ OK |
+| 2503.11652 | 2025 | Bring Your Rear Cameras for Egocentric 3D Human Pose Estimation | Hiroyasu Akada, Jian Wang, Vladislav Golyanik… | ✅ OK |
+| 2509.00649 | 2025 | MV-SSM: Multi-View State Space Modeling for 3D Human Pose Estimation | Aviral Chharia, Wenbo Gou, Haoye Dong | ✅ OK |
+| 2511.08294 | 2025 | SkelSplat: Robust Multi-view 3D Human Pose Estimation with Differentiable Gaussian Rendering | Laura Bragagnolo, Leonardo Barcellona, Stefano Ghidoni | ✅ OK |
+| 2512.15488 | 2025 | RUMPL: Ray-Based Transformers for Universal Multi-View 2D to 3D Human Pose Lifting | Seyed Abolfazl Ghasemzadeh, Alexandre Alahi, Christophe De Vleeschouwer | ✅ OK |
+| 2601.09698 | 2026 | COMPOSE: Hypergraph Cover Optimization for Multi-view 3D Human Pose Estimation | Tony Danjun Wang, Tolga Birdal, Nassir Navab… | ✅ OK |
+| 2602.13901 | 2026 | RPGD: RANSAC-P3P Gradient Descent for Extrinsic Calibration in 3D Human Pose Estimation | Zhanyu Tuo | ✅ OK |
+| 2605.14525 | 2026 | From Sparse to Dense: Spatio-Temporal Fusion for Multi-View 3D Human Pose Estimation with DenseWarper | Ling Li, Changjie Chen, Yuyan Wang… | ✅ OK (HTML; API 429) |
+| 2606.07419 | 2026 | DisPOSE: Projected Polystochastic Diffusion for Self-Supervised Multi-View 3D Human Pose Estimation | Tony Danjun Wang, Tolga Birdal, Nassir Navab, Lennart Bastian | ✅ OK (HTML; API 429) |
+
+**Notes:**
+- 20/22 entries were verified via the arXiv API (`export.arxiv.org/api/query`).
+- `2605.14525` and `2606.07419` hit a 429 rate-limit during the bulk API pass; they were independently confirmed by fetching their arXiv HTML pages and checking the `<title>` and `Authors:` fields.
+- We did **not** independently verify the final conference/workshop venues claimed in the literature review (e.g., “ECCV 2024”, “CVPR 2025”, “WACV 2026”). Only arXiv existence and title/author metadata were checked.
+
+## 8. Blockers / next steps
 
 - **None for the audit itself.** The deliverable is complete.
 - **For the paper:** apply the suggested rewrites, replace the AIST++ 44 mm claim with the verified baseline numbers, and align the runtime range. Before any camera-ready submission, re-run a fresh citation pass after any new related-work references are added.

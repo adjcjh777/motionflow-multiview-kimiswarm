@@ -46,7 +46,7 @@ mkdir -p "${OUT_DIR}"
 echo "[v31 curriculum] Stage 1: H36M-only full run on GPU ${GPU}..."
 CUDA_VISIBLE_DEVICES="${GPU}" $PYTHON -u experiments/train_omniview_fusion_v5_webbridge_multi.py \
     "${COMMON_FLAGS[@]}" \
-    --mixed_manifest configs/v31_mixed_dataset_curriculum/stage1_h36m_only.yaml \
+    --mixed_manifest configs/deprecated/circular/v31_mixed_dataset_curriculum/stage1_h36m_only.yaml \
     --epochs 10 \
     --output "${STAGE1_PTH}" \
     > "${OUT_DIR}/stage1_h36m_only.log" 2>&1
@@ -54,7 +54,7 @@ CUDA_VISIBLE_DEVICES="${GPU}" $PYTHON -u experiments/train_omniview_fusion_v5_we
 echo "[v31 curriculum] Stage 2: 3:1 H36M:MPI, warm-started from stage 1..."
 CUDA_VISIBLE_DEVICES="${GPU}" $PYTHON -u experiments/train_omniview_fusion_v5_webbridge_multi.py \
     "${COMMON_FLAGS[@]}" \
-    --mixed_manifest configs/v31_mixed_dataset_curriculum/stage2_h36m_mpi_3_1.yaml \
+    --mixed_manifest configs/deprecated/circular/v31_mixed_dataset_curriculum/stage2_h36m_mpi_3_1.yaml \
     --warm_start "${STAGE1_PTH}" \
     --epochs 10 \
     --output "${STAGE2_PTH}" \
@@ -63,7 +63,7 @@ CUDA_VISIBLE_DEVICES="${GPU}" $PYTHON -u experiments/train_omniview_fusion_v5_we
 echo "[v31 curriculum] Stage 3: 1:1 H36M:MPI, warm-started from stage 2..."
 CUDA_VISIBLE_DEVICES="${GPU}" $PYTHON -u experiments/train_omniview_fusion_v5_webbridge_multi.py \
     "${COMMON_FLAGS[@]}" \
-    --mixed_manifest configs/v31_mixed_dataset_curriculum/stage3_h36m_mpi_1_1.yaml \
+    --mixed_manifest configs/deprecated/circular/v31_mixed_dataset_curriculum/stage3_h36m_mpi_1_1.yaml \
     --warm_start "${STAGE2_PTH}" \
     --epochs 20 \
     --output "${STAGE3_PTH}" \

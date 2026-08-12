@@ -4,7 +4,7 @@ set -euo pipefail
 
 python -u experiments/train_omniview_fusion_v5_webbridge_multi.py \
     --use_mixed_loader \
-    --mixed_manifest configs/splits/webbridge_h36m_mpi_mixed_train_val.yaml \
+    --mixed_manifest configs/deprecated/circular/splits/webbridge_h36m_mpi_mixed_train_val.yaml \
     --use_full_precision_dlt \
     --use_robust_dlt_reweight \
     --use_irls_reweight \

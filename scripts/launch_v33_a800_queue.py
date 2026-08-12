@@ -27,7 +27,7 @@ SYNC_EVERY = 5  # sync repo every N polling iterations
 
 COMMON_FLAGS = (
     "--use_mixed_loader "
-    "--mixed_manifest configs/splits/webbridge_h36m_mpi_mixed_train_val.yaml "
+    "--mixed_manifest configs/deprecated/circular/splits/webbridge_h36m_mpi_mixed_train_val.yaml "
     "--use_full_precision_dlt --use_domain_embedding "
     "--use_deformable_cross_view_attention_v18 "
     "--use_multiview_geometry_fusion_v25 --v25_geom_loss_weight 0.1 --v25_dropout 0.2 "
@@ -56,7 +56,7 @@ RUNS = [
     # v57 domain-conditional physical-space calibration on top of v45/v46/v50/v51/v52.
     (
         "v57_domain_conditional_psc_on_v52",
-        "--mixed_manifest configs/splits/webbridge_h36m_mpi_mixed_train_val_expanded.yaml "
+        "--mixed_manifest configs/deprecated/circular/splits/webbridge_h36m_mpi_mixed_train_val_expanded.yaml "
         "--use_multiview_geometry_fusion_v25 --v25_use_geometry_attention --v25_use_learned_depth_triangulation --v25_use_geometry_bundle_adjustment "
         "--use_v45_adaptive_geometry_fusion --v45_adaptive_weight_type per_view_joint --v45_adaptive_weight_hidden 32 --v45_adaptive_weight_n_layers 1 "
         "--use_v46_sparse_view_generalization --v46_svg_view_dropout_prob 0.3 --v46_svg_min_views 2 --v46_svg_hidden 64 --v46_svg_use_curriculum "
@@ -70,7 +70,7 @@ RUNS = [
     # v52 scaling run: proven v45-AGF + v46-SVG stack at full capacity and data.
     (
         "v52_scale_v45_v46",
-        "--mixed_manifest configs/splits/webbridge_h36m_mpi_aist_mixed_train_val_expanded.yaml "
+        "--mixed_manifest configs/deprecated/circular/splits/webbridge_h36m_mpi_aist_mixed_train_val_expanded.yaml "
         "--use_multiview_geometry_fusion_v25 --v25_use_geometry_attention --v25_use_learned_depth_triangulation --v25_use_geometry_bundle_adjustment "
         "--use_v45_adaptive_geometry_fusion --v45_adaptive_weight_type per_view_joint --v45_adaptive_weight_hidden 32 --v45_adaptive_weight_n_layers 1 "
         "--use_v46_sparse_view_generalization --v46_svg_view_dropout_prob 0.3 --v46_svg_min_views 2 --v46_svg_hidden 64 --v46_svg_use_curriculum "
@@ -80,7 +80,7 @@ RUNS = [
     # v46/v47/v48 new-model stack (run first after the v25 baseline failed to converge).
     (
         "v46_sparse_view_generalization_on_v45",
-        "--mixed_manifest configs/splits/webbridge_h36m_mpi_mixed_train_val.yaml "
+        "--mixed_manifest configs/deprecated/circular/splits/webbridge_h36m_mpi_mixed_train_val.yaml "
         "--use_multiview_geometry_fusion_v25 --v25_use_geometry_attention --v25_use_learned_depth_triangulation --v25_use_geometry_bundle_adjustment "
         "--use_v45_adaptive_geometry_fusion --v45_adaptive_weight_type per_view_joint --v45_adaptive_weight_hidden 32 --v45_adaptive_weight_n_layers 1 "
         "--use_v46_sparse_view_generalization --v46_svg_view_dropout_prob 0.3 --v46_svg_min_views 2 --v46_svg_hidden 64 --v46_svg_use_curriculum "
@@ -89,7 +89,7 @@ RUNS = [
     ),
     (
         "v47_temporal_aggregation_on_v46",
-        "--mixed_manifest configs/splits/webbridge_h36m_mpi_mixed_train_val.yaml "
+        "--mixed_manifest configs/deprecated/circular/splits/webbridge_h36m_mpi_mixed_train_val.yaml "
         "--use_multiview_geometry_fusion_v25 --v25_use_geometry_attention --v25_use_learned_depth_triangulation --v25_use_geometry_bundle_adjustment "
         "--use_v45_adaptive_geometry_fusion --v45_adaptive_weight_type per_view_joint --v45_adaptive_weight_hidden 32 --v45_adaptive_weight_n_layers 1 "
         "--use_v46_sparse_view_generalization --v46_svg_view_dropout_prob 0.3 --v46_svg_min_views 2 --v46_svg_hidden 64 --v46_svg_use_curriculum "
@@ -99,7 +99,7 @@ RUNS = [
     ),
     (
         "v48_domain_generalization_on_v47",
-        "--mixed_manifest configs/splits/webbridge_h36m_mpi_mixed_train_val_expanded.yaml "
+        "--mixed_manifest configs/deprecated/circular/splits/webbridge_h36m_mpi_mixed_train_val_expanded.yaml "
         "--use_multiview_geometry_fusion_v25 --v25_use_geometry_attention --v25_use_learned_depth_triangulation --v25_use_geometry_bundle_adjustment "
         "--use_v45_adaptive_geometry_fusion --v45_adaptive_weight_type per_view_joint --v45_adaptive_weight_hidden 32 --v45_adaptive_weight_n_layers 1 "
         "--use_v46_sparse_view_generalization --v46_svg_view_dropout_prob 0.3 --v46_svg_min_views 2 --v46_svg_hidden 64 --v46_svg_use_curriculum "
@@ -111,7 +111,7 @@ RUNS = [
     # v49-Lite: causal Conv1D temporal aggregation instead of the v47 transformer.
     (
         "v49_lite_temporal_on_v46",
-        "--mixed_manifest configs/splits/webbridge_h36m_mpi_mixed_train_val_expanded.yaml "
+        "--mixed_manifest configs/deprecated/circular/splits/webbridge_h36m_mpi_mixed_train_val_expanded.yaml "
         "--use_multiview_geometry_fusion_v25 --v25_use_geometry_attention --v25_use_learned_depth_triangulation --v25_use_geometry_bundle_adjustment "
         "--use_v45_adaptive_geometry_fusion --v45_adaptive_weight_type per_view_joint --v45_adaptive_weight_hidden 32 --v45_adaptive_weight_n_layers 1 "
         "--use_v46_sparse_view_generalization --v46_svg_view_dropout_prob 0.3 --v46_svg_min_views 2 --v46_svg_hidden 64 --v46_svg_use_curriculum "
@@ -122,7 +122,7 @@ RUNS = [
     # v49-Lite scaled: larger model + 10k samples to stress-test temporal aggregation.
     (
         "v49_lite_temporal_on_v46_scaled",
-        "--mixed_manifest configs/splits/webbridge_h36m_mpi_mixed_train_val_expanded.yaml "
+        "--mixed_manifest configs/deprecated/circular/splits/webbridge_h36m_mpi_mixed_train_val_expanded.yaml "
         "--use_multiview_geometry_fusion_v25 --v25_use_geometry_attention --v25_use_learned_depth_triangulation --v25_use_geometry_bundle_adjustment "
         "--use_v45_adaptive_geometry_fusion --v45_adaptive_weight_type per_view_joint --v45_adaptive_weight_hidden 32 --v45_adaptive_weight_n_layers 1 "
         "--use_v46_sparse_view_generalization --v46_svg_view_dropout_prob 0.3 --v46_svg_min_views 2 --v46_svg_hidden 64 --v46_svg_use_curriculum "
@@ -133,7 +133,7 @@ RUNS = [
     # v50 self-evolution feedback head on top of v46 sparse-view generalization.
     (
         "v50_self_evolution_feedback_head_on_v46",
-        "--mixed_manifest configs/splits/webbridge_h36m_mpi_mixed_train_val_expanded.yaml "
+        "--mixed_manifest configs/deprecated/circular/splits/webbridge_h36m_mpi_mixed_train_val_expanded.yaml "
         "--use_multiview_geometry_fusion_v25 --v25_use_geometry_attention --v25_use_learned_depth_triangulation --v25_use_geometry_bundle_adjustment "
         "--use_v45_adaptive_geometry_fusion --v45_adaptive_weight_type per_view_joint --v45_adaptive_weight_hidden 32 --v45_adaptive_weight_n_layers 1 "
         "--use_v46_sparse_view_generalization --v46_svg_view_dropout_prob 0.3 --v46_svg_min_views 2 --v46_svg_hidden 64 --v46_svg_use_curriculum "
@@ -144,7 +144,7 @@ RUNS = [
     # v50 ablations: domain coupling, v49-Lite temporal coupling, and loss-weight sweep.
     (
         "v50_self_evolution_feedback_head_on_v48",
-        "--mixed_manifest configs/splits/webbridge_h36m_mpi_mixed_train_val_expanded.yaml "
+        "--mixed_manifest configs/deprecated/circular/splits/webbridge_h36m_mpi_mixed_train_val_expanded.yaml "
         "--use_multiview_geometry_fusion_v25 --v25_use_geometry_attention --v25_use_learned_depth_triangulation --v25_use_geometry_bundle_adjustment "
         "--use_v45_adaptive_geometry_fusion --v45_adaptive_weight_type per_view_joint --v45_adaptive_weight_hidden 32 --v45_adaptive_weight_n_layers 1 "
         "--use_v46_sparse_view_generalization --v46_svg_view_dropout_prob 0.3 --v46_svg_min_views 2 --v46_svg_hidden 64 --v46_svg_use_curriculum "
@@ -156,7 +156,7 @@ RUNS = [
     ),
     (
         "v50_self_evolution_feedback_head_on_v49_lite",
-        "--mixed_manifest configs/splits/webbridge_h36m_mpi_mixed_train_val_expanded.yaml "
+        "--mixed_manifest configs/deprecated/circular/splits/webbridge_h36m_mpi_mixed_train_val_expanded.yaml "
         "--use_multiview_geometry_fusion_v25 --v25_use_geometry_attention --v25_use_learned_depth_triangulation --v25_use_geometry_bundle_adjustment "
         "--use_v45_adaptive_geometry_fusion --v45_adaptive_weight_type per_view_joint --v45_adaptive_weight_hidden 32 --v45_adaptive_weight_n_layers 1 "
         "--use_v46_sparse_view_generalization --v46_svg_view_dropout_prob 0.3 --v46_svg_min_views 2 --v46_svg_hidden 64 --v46_svg_use_curriculum "
@@ -167,7 +167,7 @@ RUNS = [
     ),
     (
         "v50_self_evolution_feedback_head_low_loss",
-        "--mixed_manifest configs/splits/webbridge_h36m_mpi_mixed_train_val_expanded.yaml "
+        "--mixed_manifest configs/deprecated/circular/splits/webbridge_h36m_mpi_mixed_train_val_expanded.yaml "
         "--use_multiview_geometry_fusion_v25 --v25_use_geometry_attention --v25_use_learned_depth_triangulation --v25_use_geometry_bundle_adjustment "
         "--use_v45_adaptive_geometry_fusion --v45_adaptive_weight_type per_view_joint --v45_adaptive_weight_hidden 32 --v45_adaptive_weight_n_layers 1 "
         "--use_v46_sparse_view_generalization --v46_svg_view_dropout_prob 0.3 --v46_svg_min_views 2 --v46_svg_hidden 64 --v46_svg_use_curriculum "
@@ -177,7 +177,7 @@ RUNS = [
     ),
     (
         "v50_self_evolution_feedback_head_aleatoric",
-        "--mixed_manifest configs/splits/webbridge_h36m_mpi_mixed_train_val_expanded.yaml "
+        "--mixed_manifest configs/deprecated/circular/splits/webbridge_h36m_mpi_mixed_train_val_expanded.yaml "
         "--use_multiview_geometry_fusion_v25 --v25_use_geometry_attention --v25_use_learned_depth_triangulation --v25_use_geometry_bundle_adjustment "
         "--use_v45_adaptive_geometry_fusion --v45_adaptive_weight_type per_view_joint --v45_adaptive_weight_hidden 32 --v45_adaptive_weight_n_layers 1 "
         "--use_v46_sparse_view_generalization --v46_svg_view_dropout_prob 0.3 --v46_svg_min_views 2 --v46_svg_hidden 64 --v46_svg_use_curriculum "
@@ -188,7 +188,7 @@ RUNS = [
     # v51 cross-domain sparse-view reliability (CDSVR) on top of v50 SEFH.
     (
         "v51_cross_domain_sparse_view_reliability_on_v50",
-        "--mixed_manifest configs/splits/webbridge_h36m_mpi_mixed_train_val_expanded.yaml "
+        "--mixed_manifest configs/deprecated/circular/splits/webbridge_h36m_mpi_mixed_train_val_expanded.yaml "
         "--use_multiview_geometry_fusion_v25 --v25_use_geometry_attention --v25_use_learned_depth_triangulation --v25_use_geometry_bundle_adjustment "
         "--use_v45_adaptive_geometry_fusion --v45_adaptive_weight_type per_view_joint --v45_adaptive_weight_hidden 32 --v45_adaptive_weight_n_layers 1 "
         "--use_v46_sparse_view_generalization --v46_svg_view_dropout_prob 0.3 --v46_svg_min_views 2 --v46_svg_hidden 64 --v46_svg_use_curriculum "
@@ -200,7 +200,7 @@ RUNS = [
     # v51 domain-agnostic ensemble of pose experts on top of v46 and v50 stacks.
     (
         "v51_domain_agnostic_ensemble_on_v46",
-        "--mixed_manifest configs/splits/webbridge_h36m_mpi_mixed_train_val_expanded.yaml "
+        "--mixed_manifest configs/deprecated/circular/splits/webbridge_h36m_mpi_mixed_train_val_expanded.yaml "
         "--use_multiview_geometry_fusion_v25 --v25_use_geometry_attention --v25_use_learned_depth_triangulation --v25_use_geometry_bundle_adjustment "
         "--use_v45_adaptive_geometry_fusion --v45_adaptive_weight_type per_view_joint --v45_adaptive_weight_hidden 32 --v45_adaptive_weight_n_layers 1 "
         "--use_v46_sparse_view_generalization --v46_svg_view_dropout_prob 0.3 --v46_svg_min_views 2 --v46_svg_hidden 64 --v46_svg_use_curriculum "
@@ -210,7 +210,7 @@ RUNS = [
     ),
     (
         "v51_domain_agnostic_ensemble_on_v50",
-        "--mixed_manifest configs/splits/webbridge_h36m_mpi_mixed_train_val_expanded.yaml "
+        "--mixed_manifest configs/deprecated/circular/splits/webbridge_h36m_mpi_mixed_train_val_expanded.yaml "
         "--use_multiview_geometry_fusion_v25 --v25_use_geometry_attention --v25_use_learned_depth_triangulation --v25_use_geometry_bundle_adjustment "
         "--use_v45_adaptive_geometry_fusion --v45_adaptive_weight_type per_view_joint --v45_adaptive_weight_hidden 32 --v45_adaptive_weight_n_layers 1 "
         "--use_v46_sparse_view_generalization --v46_svg_view_dropout_prob 0.3 --v46_svg_min_views 2 --v46_svg_hidden 64 --v46_svg_use_curriculum "
@@ -222,7 +222,7 @@ RUNS = [
     # v52 uncertainty-weighted triangulation on top of the v45/v46/v50/v51 stack.
     (
         "v52_uncertainty_weighted_triangulation_on_v50_v51",
-        "--mixed_manifest configs/splits/webbridge_h36m_mpi_mixed_train_val_expanded.yaml "
+        "--mixed_manifest configs/deprecated/circular/splits/webbridge_h36m_mpi_mixed_train_val_expanded.yaml "
         "--use_multiview_geometry_fusion_v25 --v25_use_geometry_attention --v25_use_learned_depth_triangulation --v25_use_geometry_bundle_adjustment "
         "--use_v45_adaptive_geometry_fusion --v45_adaptive_weight_type per_view_joint --v45_adaptive_weight_hidden 32 --v45_adaptive_weight_n_layers 1 "
         "--use_v46_sparse_view_generalization --v46_svg_view_dropout_prob 0.3 --v46_svg_min_views 2 --v46_svg_hidden 64 --v46_svg_use_curriculum "
@@ -235,7 +235,7 @@ RUNS = [
     # v53 physical-space calibration on top of the v45/v46/v50/v51/v52 stack.
     (
         "v53_physical_space_calibration_on_v52",
-        "--mixed_manifest configs/splits/webbridge_h36m_mpi_mixed_train_val_expanded.yaml "
+        "--mixed_manifest configs/deprecated/circular/splits/webbridge_h36m_mpi_mixed_train_val_expanded.yaml "
         "--use_multiview_geometry_fusion_v25 --v25_use_geometry_attention --v25_use_learned_depth_triangulation --v25_use_geometry_bundle_adjustment "
         "--use_v45_adaptive_geometry_fusion --v45_adaptive_weight_type per_view_joint --v45_adaptive_weight_hidden 32 --v45_adaptive_weight_n_layers 1 "
         "--use_v46_sparse_view_generalization --v46_svg_view_dropout_prob 0.3 --v46_svg_min_views 2 --v46_svg_hidden 64 --v46_svg_use_curriculum "
@@ -249,7 +249,7 @@ RUNS = [
     # v60 SEFH -> UWT feedback loop on top of v45/v46/v50/v51/v52.
     (
         "v60_sefh_uwt_feedback_on_v52",
-        "--mixed_manifest configs/splits/webbridge_h36m_mpi_mixed_train_val_expanded.yaml "
+        "--mixed_manifest configs/deprecated/circular/splits/webbridge_h36m_mpi_mixed_train_val_expanded.yaml "
         "--use_multiview_geometry_fusion_v25 --v25_use_geometry_attention --v25_use_learned_depth_triangulation --v25_use_geometry_bundle_adjustment "
         "--use_v45_adaptive_geometry_fusion --v45_adaptive_weight_type per_view_joint --v45_adaptive_weight_hidden 32 --v45_adaptive_weight_n_layers 1 "
         "--use_v46_sparse_view_generalization --v46_svg_view_dropout_prob 0.3 --v46_svg_min_views 2 --v46_svg_hidden 64 --v46_svg_use_curriculum "
@@ -264,7 +264,7 @@ RUNS = [
     # Legacy v42/v43 ablations (queued after the new v45-v49 stack).
     (
         "v42_v36_physical_domain_no_v37",
-        "--mixed_manifest configs/splits/webbridge_h36m_mpi_mixed_train_val_expanded.yaml "
+        "--mixed_manifest configs/deprecated/circular/splits/webbridge_h36m_mpi_mixed_train_val_expanded.yaml "
         "--use_hierarchical_multiview_v31 --v31_geometry_bias "
         "--use_view_joint_graph_network_v34 --v34_vjgn_n_layers 2 --v34_vjgn_n_heads 4 "
         "--use_temporal_view_joint_graph_network_v35 --v35_tvjgn_n_layers 2 --v35_tvjgn_n_heads 4 "
@@ -275,7 +275,7 @@ RUNS = [
     ),
     (
         "v43_adaptive_node_residual_on_v42",
-        "--mixed_manifest configs/splits/webbridge_h36m_mpi_mixed_train_val_expanded.yaml "
+        "--mixed_manifest configs/deprecated/circular/splits/webbridge_h36m_mpi_mixed_train_val_expanded.yaml "
         "--use_hierarchical_multiview_v31 --v31_geometry_bias "
         "--use_view_joint_graph_network_v34 --v34_vjgn_n_layers 2 --v34_vjgn_n_heads 4 "
         "--use_temporal_view_joint_graph_network_v35 --v35_tvjgn_n_layers 2 --v35_tvjgn_n_heads 4 "
@@ -286,7 +286,7 @@ RUNS = [
     ),
     (
         "v43_adaptive_node_residual_scaled",
-        "--mixed_manifest configs/splits/webbridge_h36m_mpi_mixed_train_val_expanded.yaml "
+        "--mixed_manifest configs/deprecated/circular/splits/webbridge_h36m_mpi_mixed_train_val_expanded.yaml "
         "--use_hierarchical_multiview_v31 --v31_geometry_bias "
         "--use_view_joint_graph_network_v34 --v34_vjgn_n_layers 2 --v34_vjgn_n_heads 4 "
         "--use_temporal_view_joint_graph_network_v35 --v35_tvjgn_n_layers 2 --v35_tvjgn_n_heads 4 "
@@ -298,7 +298,7 @@ RUNS = [
     ),
     (
         "v43_adaptive_node_residual_all_train",
-        "--mixed_manifest configs/splits/webbridge_h36m_mpi_mixed_train_val.yaml "
+        "--mixed_manifest configs/deprecated/circular/splits/webbridge_h36m_mpi_mixed_train_val.yaml "
         "--use_hierarchical_multiview_v31 --v31_geometry_bias "
         "--use_view_joint_graph_network_v34 --v34_vjgn_n_layers 2 --v34_vjgn_n_heads 4 "
         "--use_temporal_view_joint_graph_network_v35 --v35_tvjgn_n_layers 2 --v35_tvjgn_n_heads 4 "
@@ -311,7 +311,7 @@ RUNS = [
     # v45 adaptive geometry fusion (learnable triangulation weights) on top of v25 h36m+mpi.
     (
         "v45_adaptive_geometry_fusion_h36m_mpi",
-        "--mixed_manifest configs/splits/webbridge_h36m_mpi_mixed_train_val.yaml "
+        "--mixed_manifest configs/deprecated/circular/splits/webbridge_h36m_mpi_mixed_train_val.yaml "
         "--use_multiview_geometry_fusion_v25 --v25_use_geometry_attention --v25_use_learned_depth_triangulation --v25_use_geometry_bundle_adjustment "
         "--use_v45_adaptive_geometry_fusion --v45_adaptive_weight_type per_view_joint --v45_adaptive_weight_hidden 32 --v45_adaptive_weight_n_layers 1 "
         "--d 128 --residual_hidden 256 --n_st_layers 3 --batch_size 16 --clip_len 13 --train_samples 200 --epochs 5 --early_stopping_patience 2 --early_stopping_min_delta 0.001 --weight_decay 1e-4",
@@ -516,7 +516,7 @@ RUNS = [
     # v38: v37 + expanded WebBridge training data.
     (
         "v38_expanded_data_scvr",
-        "--mixed_manifest configs/splits/webbridge_h36m_mpi_mixed_train_val_expanded.yaml "
+        "--mixed_manifest configs/deprecated/circular/splits/webbridge_h36m_mpi_mixed_train_val_expanded.yaml "
         "--use_hierarchical_multiview_v31 --v31_geometry_bias "
         "--use_view_joint_graph_network_v34 --v34_vjgn_n_layers 2 --v34_vjgn_n_heads 4 "
         "--use_temporal_view_joint_graph_network_v35 --v35_tvjgn_n_layers 2 --v35_tvjgn_n_heads 4 "
@@ -527,7 +527,7 @@ RUNS = [
     # v39: v38 + reliability-coupled adaptive graph refinement (RCAR).
     (
         "v39_rcgr_on_v38_scvr",
-        "--mixed_manifest configs/splits/webbridge_h36m_mpi_mixed_train_val_expanded.yaml "
+        "--mixed_manifest configs/deprecated/circular/splits/webbridge_h36m_mpi_mixed_train_val_expanded.yaml "
         "--use_hierarchical_multiview_v31 --v31_geometry_bias "
         "--use_view_joint_graph_network_v34 --v34_vjgn_n_layers 2 --v34_vjgn_n_heads 4 "
         "--use_temporal_view_joint_graph_network_v35 --v35_tvjgn_n_layers 2 --v35_tvjgn_n_heads 4 "
@@ -539,7 +539,7 @@ RUNS = [
     # v40: v39 + skeleton-aware physical loss.
     (
         "v40_skeleton_physical_loss_on_v39_rcgr",
-        "--mixed_manifest configs/splits/webbridge_h36m_mpi_mixed_train_val_expanded.yaml "
+        "--mixed_manifest configs/deprecated/circular/splits/webbridge_h36m_mpi_mixed_train_val_expanded.yaml "
         "--use_hierarchical_multiview_v31 --v31_geometry_bias "
         "--use_view_joint_graph_network_v34 --v34_vjgn_n_layers 2 --v34_vjgn_n_heads 4 "
         "--use_temporal_view_joint_graph_network_v35 --v35_tvjgn_n_layers 2 --v35_tvjgn_n_heads 4 "
@@ -552,7 +552,7 @@ RUNS = [
     # v41: per-domain weighted MSE for mixed WebBridge/H36M/MPI training.
     (
         "v41_domain_weighted_loss_on_v40",
-        "--mixed_manifest configs/splits/webbridge_h36m_mpi_mixed_train_val_expanded.yaml "
+        "--mixed_manifest configs/deprecated/circular/splits/webbridge_h36m_mpi_mixed_train_val_expanded.yaml "
         "--use_hierarchical_multiview_v31 --v31_geometry_bias "
         "--use_view_joint_graph_network_v34 --v34_vjgn_n_layers 2 --v34_vjgn_n_heads 4 "
         "--use_temporal_view_joint_graph_network_v35 --v35_tvjgn_n_layers 2 --v35_tvjgn_n_heads 4 "

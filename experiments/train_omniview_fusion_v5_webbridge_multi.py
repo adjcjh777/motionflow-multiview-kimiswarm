@@ -14,7 +14,7 @@ Usage
 
     # Full training on a WebBridge manifest
     python experiments/train_omniview_fusion_v5_webbridge_multi.py \
-        --manifest configs/splits/webbridge_h36m_train_val.yaml \
+        --manifest configs/deprecated/circular/splits/webbridge_h36m_train_val.yaml \
         --use_camera_view_embedding --use_set_view_aggregator \
         --d 128 --residual_hidden 128 --epochs 30
 """
@@ -40,6 +40,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from motionflow_mv.calibration.perturb import perturb_cameras  # noqa: E402
 from motionflow_mv.data.split_loader import (  # noqa: E402
+    check_manifest_deprecated,
     load_multi_dataset_manifest,
     load_split_manifest,
 )
@@ -2023,6 +2024,7 @@ def build_datasets(args: Namespace) -> Tuple[torch.utils.data.Dataset, torch.uti
 
         with open(args.mixed_manifest, "r") as f:
             mixed_cfg = yaml.safe_load(f)
+        check_manifest_deprecated(args.mixed_manifest)
 
         train_paths = mixed_cfg["train_paths"]
         train_names = mixed_cfg["train_names"]
@@ -2147,7 +2149,7 @@ def parse_args() -> Namespace:
         action="append",
         default=None,
         help="Path to a YAML split manifest (can be passed multiple times). "
-             "Default: configs/splits/webbridge_all_train.yaml",
+             "Default: configs/deprecated/circular/splits/webbridge_all_train.yaml",
     )
     parser.add_argument("--train", type=str, nargs="+", default=None, help="Train .npz files (legacy, overrides manifest train)")
     parser.add_argument("--val", type=str, default=None, help="Validation .npz file (legacy, overrides manifest val)")
@@ -2727,7 +2729,7 @@ def parse_args() -> Namespace:
 
     # Default manifest if none provided and no legacy --train/--val.
     if args.manifest is None and (args.train is None or args.val is None):
-        args.manifest = ["configs/splits/webbridge_all_train.yaml"]
+        args.manifest = ["configs/deprecated/circular/splits/webbridge_all_train.yaml"]
 
     if args.smoke:
         args.epochs = 1

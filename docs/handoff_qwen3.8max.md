@@ -12,8 +12,8 @@
 ## 1. 核心结论
 
 - **v85 random view dropout 正在 GPU 7 上运行（已重启）**：PID `2058225`，日志 `outputs/ablations/v85_random_view_dropout_medium_a800.log`。当前已训练至 Epoch 5+，loss 从 ~24 降至 ~17.5，val MPJPE 62.53 mm（Epoch 1），仍在下降。目标是从根本上修复 k<4 稀疏视角失效。
-- **v85 no-fallback 可变视角评估已重启并在 GPU 6 上运行**：原 PID `2062181` 因 hung（~28 min 无输出）被终止；当前通过 tmux session `v85_nofallback_eval` 重新启动，新 PID `2098117`，仍在运行但日志/输出文件仍为 0 bytes（可能在加载/缓冲中，需继续观察）。
-- **VoxelPose SOTA 基线尚未启动**：原 monitor 脚本 `scripts/monitor_v85_then_launch_voxelpose.sh`（PID `2067976`）已停止。GPU 6 当前被 v85 no-fallback eval 占用，VoxelPose 需在 GPU 6 空闲后手动或自动启动。`run_voxelpose_h36m_true_gt_a800.sh` 已添加 `mkdir -p output log`，patch 脚本本地已修复（commit `02aa138`）但尚未同步到 A800。
+- **v85 no-fallback 可变视角评估已被终止**：原 PID `2098117` 运行约 20 min 后日志仍 0 bytes；子代理 micro-benchmark 显示完整 eval 需约 26 h，且当前 checkpoint 已落后于持续训练的模型，因此已 kill 该 eval 释放 GPU 6。后续由 `monitor_v85_then_run_evals.sh` 在训练结束后用最终 checkpoint 自动重新跑 no-fallback + DLT-fallback。
+- **VoxelPose SOTA 基线已排队**：新 monitor `scripts/monitor_v85_evalsuite_then_launch_voxelpose.sh`（PID `2146696`）已启动，会等待 v85 训练 + 完整 eval suite 结束且 GPU 6/7 空闲后自动启动 VoxelPose。`run_voxelpose_h36m_true_gt_a800.sh` 已添加 `mkdir -p output log`，patch 脚本已同步到 A800 并验证通过。
 - **v82 / v81 / v25 可变视角 DLT-fallback 评估已完成**：输出分别位于 `outputs/variable_view_fix/variable_view_v{82,81,25}_true_gt_*_a800_dlt_fallback.*`。
 - **MPI-INF-3DHP 检测 16/16 完成**，DLT baseline 已自动跑完：mean MPJPE **115.09 mm**，mean PA-MPJPE **132.68 mm**（`outputs/mpi_rtmpose_detected_2d/dlt_baseline_detected_2d.json`）。
 - **AIST++-only → H36M 交叉评估完成**：S9 **98.17 mm**，S11 **89.70 mm**，combined **~93.94 mm**（`outputs/eval_aistpp_only_medium_a800_fast_v2_h36m_test.json`）。
@@ -26,9 +26,9 @@
 | 机器 | GPU | 任务 | 日志/输出 | 状态 | 说明 |
 |------|-----|------|-----------|------|------|
 | A800-D | 7 | v85 random view dropout training | `outputs/ablations/v85_random_view_dropout_medium_a800.log` | RUNNING | PID `2058225`；Epoch 1 val MPJPE 62.53 mm，当前 Epoch 5+；GPU 0–5 已禁用，本项目仅 GPU 6/7 |
-| A800-D | 6 | v85 random view dropout var-view (no DLT fallback) | `outputs/variable_view_v85_random_view_dropout_medium_a800.*` | RUNNING | tmux `v85_nofallback_eval`，PID `2098117`；`PYTHONUNBUFFERED=1`；输出文件当前 0 bytes |
+| A800-D | 6 | (idle after killing hung v85 no-fallback eval) | — | IDLE | GPU 6 已释放，等待 v85 训练结束后由 monitor 自动调度 |
 | A800-D | — | v85 eval suite monitor | `outputs/sota_baselines/monitor_v85_then_run_evals.log` | RUNNING | PID `2072252`；训练结束后自动启动 test/no-fallback/DLT-fallback evals |
-| A800-D | — | VoxelPose SOTA baseline | `outputs/sota_baselines/voxelpose_h36m_true_gt_a800_run.log` | BLOCKED | GPU 6 被占用；需在 GPU 6/7 空闲后手动/自动启动 |
+| A800-D | — | VoxelPose auto-launch monitor | `outputs/sota_baselines/monitor_v85_evalsuite_then_launch_voxelpose.log` | RUNNING | PID `2146696`；v85 eval suite 结束后自动启动 VoxelPose |
 | A800-D | — | v25/v81/v82 variable-view DLT-fallback | `outputs/variable_view_fix/variable_view_v{25,81,82}_true_gt_*_a800_dlt_fallback.*` | COMPLETED | v25 S9 58.18/33.32/116.98 mm；v81 k=2,3 only；v82 k=2/3/4 |
 | A800-D | 7 | MPI RTMPose 检测 + DLT baseline | `outputs/mpi_rtmpose_detected_2d/dlt_baseline_detected_2d.json` | DONE | 16/16 `.npz`，DLT baseline 完成 |
 | Local | 0 | — | — | IDLE | RTX 4090 空闲，仅用于 smoke（<30 min） |
@@ -42,9 +42,9 @@
 | 任务 | 状态 | 关键产出 |
 |------|------|----------|
 | v85 random view dropout 训练 | 🔄 RUNNING | GPU 7，PID `2058225`；Epoch 1 val MPJPE 62.53 mm，当前 Epoch 5+；loss 持续下降 |
-| v85 no-fallback 可变视角评估 | 🔄 RUNNING | GPU 6，tmux `v85_nofallback_eval`，PID `2098117`；原 PID `2062181` 因 hung 被终止后重启；输出仍为空 |
+| v85 no-fallback 可变视角评估 | ️ KILLED | 原 PID `2098117` 因 eval 过慢（~26 h）且 checkpoint 落后，已 kill 释放 GPU 6；后续由 monitor 用最终 ckpt 重跑 |
 | v85 eval suite monitor | 🔄 RUNNING | PID `2072252`；训练结束后自动启动 test/no-fallback/DLT-fallback evals |
-| VoxelPose SOTA 基线 |  BLOCKED | GPU 6 被占用；需在 GPU 6/7 空闲后启动 |
+| VoxelPose auto-launch monitor |  RUNNING | PID `2146696`；v85 eval suite 结束后自动启动 VoxelPose |
 | v82/v81/v25 var-view DLT-fallback | ✅ DONE | `outputs/variable_view_fix/variable_view_v{82,81,25}_true_gt_*_a800_dlt_fallback.*` |
 | MPI 16/16 + DLT baseline | ✅ DONE | MPJPE **115.09 mm**，PA-MPJPE **132.68 mm** |
 | AIST++ → H36M cross-eval | ✅ DONE | combined **~93.94 mm** |
@@ -74,11 +74,11 @@
 
 ### P0 稀疏视角 k<4 学习模型失效
 
-- **v85 训练中**：在 GPU 7 上已重启 random view dropout（dropout prob 0.3，min 2 views），配合 active-view-count embedding，希望让模型在训练时直接见 k=2/3/4。当前 Epoch 5+，loss 从 ~24 降至 ~17.5（Epoch 1 val MPJPE 62.53 mm），仍在下降。
-- **v85 no-fallback 可变视角评估**：原 PID `2062181` 因 hung（~28 min 无输出）被终止；当前通过 tmux session `v85_nofallback_eval` 重新启动，新 PID `2098117`，`PYTHONUNBUFFERED=1`；输出文件仍为 0 bytes，需继续观察。
+- **v85 训练中**：在 GPU 7 上已重启 random view dropout（dropout prob 0.3，min 2 views），配合 active-view-count embedding，希望让模型在训练时直接见 k=2/3/4。当前 Epoch 5+，loss 从 ~24 降至 ~17.5（Epoch 1 val MPJPE 62.53 mm；Epoch 2 val 36.48 mm），仍在下降。
+- **v85 no-fallback 可变视角评估**：原 PID `2062181` 因 hung（~28 min 无输出）被终止；重启后的 PID `2098117` 运行约 20 min 仍无输出，子代理 micro-benchmark 显示完整 eval 需约 26 h，且当前 checkpoint 已落后于持续训练的模型，因此已 kill 释放 GPU 6。后续由 `monitor_v85_then_run_evals.sh` 在训练结束后用最终 checkpoint 自动重跑 no-fallback + DLT-fallback。
 - **DLT-fallback 基线**：v25/v81/v82 可变视角 DLT-fallback 已完成。当前 fallback 数字：S9 k=2/3/4 = 58.18/33.32/116.98 mm；S11 k=2/3/4 = 49.35/25.28/110.58 mm。
-- **VoxelPose SOTA 基线**：尚未启动。原 monitor 已停止。GPU 6 当前被 v85 no-fallback eval 占用，需在 GPU 6/7 空闲后手动或自动启动。`run_voxelpose_h36m_true_gt_a800.sh` 已添加 `mkdir -p output log`；本地 patch 脚本已修复，但尚未同步到 A800。
-- **下一步**：等待 v85 训练和当前 no-fallback eval 完成；对比 k=2/3/4 与 DLT-fallback 基线；随后在 GPU 6/7 空闲时启动 VoxelPose。
+- **VoxelPose SOTA 基线**：已启动新 auto-launch monitor `scripts/monitor_v85_evalsuite_then_launch_voxelpose.sh`（PID `2146696`），会等待 v85 训练 + 完整 eval suite 结束且 GPU 6/7 空闲后自动启动 VoxelPose。
+- **下一步**：等待 v85 训练结束并自动跑 eval suite；对比 k=2/3/4 与 DLT-fallback 基线；随后 VoxelPose 自动启动。
 
 ### P1 MPI-INF-3DHP 真实检测 2D
 
@@ -120,7 +120,7 @@
 ## 7. 执行约束
 
 - **A800 / Docker 只读**：可 `ssh a800-D` 查看文件，禁止启动/重启 Docker 或 tmux 训练；在 A800 主机训练仓库使用 `nohup` 启动作业是允许的。
-- **GPU 状态**：GPU 7 跑 v85 训练（PID `2058225`）；GPU 6 跑 v85 no-fallback eval（tmux `v85_nofallback_eval`，PID `2098117`）；GPU 0–3 为 VLLM；GPU 4/5 保留给其他项目，禁止本项目使用。VoxelPose 需等待 GPU 6/7 空闲。
+- **GPU 状态**：GPU 7 跑 v85 训练（PID `2058225`）；GPU 6 当前空闲（原 no-fallback eval PID `2098117` 已 kill）；GPU 0–3 为 VLLM；GPU 4/5 保留给其他项目，禁止本项目使用。VoxelPose auto-launch monitor（PID `2146696`）已启动，会等待 v85 eval suite 结束后自动启动。
 - **本地 GPU**：仅用于 smoke/diagnostic（<30 min），当前空闲。
 - **不要同时启动多个本地 GPU 训练进程**。
 - **数据**：不要使用 `data/h36m_hf/` 或 `data/webbridge/h36m*.npz` 进行模型选择。
@@ -136,7 +136,7 @@
 - [x] v85 已迁移并运行在 GPU 7（PID `2058225`）。
 - [x] v82/v81/v25 var-view DLT-fallback 全部完成。
 - [ ] v85 训练完成并通过 variable-view eval 验证 k<4 改善。
-- [ ] VoxelPose SOTA 基线启动并完成（GPU 6/7 空闲后手动/自动启动）。
+- [ ] VoxelPose SOTA 基线启动并完成（auto-launch monitor PID `2146696` 自动触发）。
 - [ ] A800 磁盘清理完成，释放 ≥2 GB。
 - [ ] 论文 draft 数字与 `docs/results_true_gt_h36m.md` 一致（待 v85 结果出来后统一审阅）。
 

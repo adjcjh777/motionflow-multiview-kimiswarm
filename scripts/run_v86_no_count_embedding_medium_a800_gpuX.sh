@@ -7,20 +7,20 @@
 #
 # Usage
 # -----
-#   # Default: GPU 5 (override with CUDA_VISIBLE_DEVICES if busy)
+#   # Default: GPU 7 (use only GPU 6/7 per project policy)
 #   bash scripts/run_v86_no_count_embedding_medium_a800_gpuX.sh
 #
-#   # Run on a specific free GPU
-#   CUDA_VISIBLE_DEVICES=4 bash scripts/run_v86_no_count_embedding_medium_a800_gpuX.sh
+#   # Run on a specific free GPU (must be 6 or 7 per project policy)
+#   CUDA_VISIBLE_DEVICES=6 bash scripts/run_v86_no_count_embedding_medium_a800_gpuX.sh
 
 set -euo pipefail
 
 # Pin to the A800-D repo root so the script can be launched from anywhere.
 cd /mnt/nvme0n1p1/zhangzy/motionflow-multiview-kimiswarm-iter20
 
-# GPU discipline: default to GPU 5, but allow CUDA_VISIBLE_DEVICES override.
-# v85 is currently running on GPU 4, so GPU 5 is a safer default launch slot.
-CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-5}
+# GPU discipline: default to GPU 7, but allow CUDA_VISIBLE_DEVICES override.
+# Project policy permits only GPU 6/7; GPU 0-5 are reserved.
+CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-7}
 export CUDA_VISIBLE_DEVICES
 
 # Use the project venv Python by default; allow override.

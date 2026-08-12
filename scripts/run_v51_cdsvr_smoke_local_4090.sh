@@ -12,7 +12,7 @@ set -euo pipefail
 
 python -u experiments/train_omniview_fusion_v5_webbridge_multi.py \
     --use_mixed_loader \
-    --mixed_manifest configs/splits/webbridge_h36m_mpi_mixed_train_val.yaml \
+    --mixed_manifest configs/deprecated/circular/splits/webbridge_h36m_mpi_mixed_train_val.yaml \
     --use_domain_embedding \
     --use_deformable_cross_view_attention_v18 \
     --use_multiview_geometry_fusion_v25 \

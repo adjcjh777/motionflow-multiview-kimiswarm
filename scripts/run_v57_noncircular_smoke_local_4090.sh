@@ -12,7 +12,7 @@ set -euo pipefail
 
 python -u experiments/train_omniview_fusion_v5_webbridge_multi.py \
     --use_mixed_loader \
-    --mixed_manifest configs/splits/mpi_shelf_campus_noncircular_smoke.yaml \
+    --mixed_manifest configs/deprecated/circular/splits/mpi_shelf_campus_noncircular_smoke.yaml \
     --use_domain_embedding \
     --use_deformable_cross_view_attention_v18 \
     --use_multiview_geometry_fusion_v25 \

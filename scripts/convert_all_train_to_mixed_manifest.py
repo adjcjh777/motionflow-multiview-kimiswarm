@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Convert configs/splits/webbridge_all_train.yaml to the mixed-loader format.
+"""Convert configs/deprecated/circular/splits/webbridge_all_train.yaml to the mixed-loader format.
 
 The mixed loader expects `train_paths`, `train_names`, `val_paths`, `val_names`.
 Names are inferred from the file paths (h36m, mpi, 3dpw, aist).

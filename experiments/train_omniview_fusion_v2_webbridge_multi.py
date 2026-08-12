@@ -12,12 +12,12 @@ Usage
 
     # Train on a single WebBridge dataset (H36M, 17 joints)
     python experiments/train_omniview_fusion_v2_webbridge_multi.py \
-        --manifest configs/splits/webbridge_h36m_train_val.yaml \
+        --manifest configs/deprecated/circular/splits/webbridge_h36m_train_val.yaml \
         --d 128 --residual_hidden 128 --epochs 30
 
     # Train on multiple datasets that share a skeleton, e.g. H36M + AIST++ (17 joints)
     python experiments/train_omniview_fusion_v2_webbridge_multi.py \
-        --manifest configs/splits/webbridge_h36m_train_val.yaml \
+        --manifest configs/deprecated/circular/splits/webbridge_h36m_train_val.yaml \
         --manifest configs/splits/webbridge_aistpp_train_val.yaml \
         --d 128 --residual_hidden 128 --epochs 30
 """
@@ -639,7 +639,7 @@ def parse_args() -> Namespace:
         action="append",
         default=None,
         help="Path to a YAML split manifest (can be passed multiple times). "
-             "Default: configs/splits/webbridge_all_train.yaml",
+             "Default: configs/deprecated/circular/splits/webbridge_all_train.yaml",
     )
     parser.add_argument("--train", type=str, nargs="+", default=None, help="Train .npz files (legacy, overrides manifest train)")
     parser.add_argument("--val", type=str, default=None, help="Validation .npz file (legacy, overrides manifest val)")
@@ -685,7 +685,7 @@ def parse_args() -> Namespace:
 
     # Default manifest if none provided and no legacy --train/--val.
     if args.manifest is None and (args.train is None or args.val is None):
-        args.manifest = ["configs/splits/webbridge_all_train.yaml"]
+        args.manifest = ["configs/deprecated/circular/splits/webbridge_all_train.yaml"]
 
     if args.smoke:
         # Smoke overrides for a fast, self-contained run.

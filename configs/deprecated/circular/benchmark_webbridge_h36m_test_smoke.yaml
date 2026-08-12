@@ -1,3 +1,5 @@
+deprecated: true
+deprecated_message: "Deprecated: references circular H36M labels or stale pre-true-GT Shelf/Campus data. Use true-GT replacements such as configs/splits/h36m_true_gt_standard.yaml, configs/splits/shelf_campus_detected_smoke.yaml, or configs/splits/mpiinf3dhp_detected_2d.yaml."
 # DEPRECATED — circular / stale non-true-GT data source
 # Reason: references data/h36m_hf/, data/webbridge/h36m_meters/, or data/webbridge/shelf_campus/
 #          which contain circular H36M labels or stale pre-true-GT Shelf/Campus data.

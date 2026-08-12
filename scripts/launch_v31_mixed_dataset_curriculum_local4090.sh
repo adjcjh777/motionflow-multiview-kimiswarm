@@ -43,7 +43,7 @@ mkdir -p "${OUT_DIR}"
 echo "[v31 curriculum] Stage 1: H36M-only smoke..."
 $PYTHON -u experiments/train_omniview_fusion_v5_webbridge_multi.py \
     "${COMMON_FLAGS[@]}" \
-    --mixed_manifest configs/v31_mixed_dataset_curriculum/stage1_h36m_only_smoke.yaml \
+    --mixed_manifest configs/deprecated/circular/v31_mixed_dataset_curriculum/stage1_h36m_only_smoke.yaml \
     --epochs 2 \
     --output "${STAGE1_PTH}" \
     > "${OUT_DIR}/stage1_h36m_only.log" 2>&1
@@ -51,7 +51,7 @@ $PYTHON -u experiments/train_omniview_fusion_v5_webbridge_multi.py \
 echo "[v31 curriculum] Stage 2: 3:1 H36M:MPI, warm-started from stage 1..."
 $PYTHON -u experiments/train_omniview_fusion_v5_webbridge_multi.py \
     "${COMMON_FLAGS[@]}" \
-    --mixed_manifest configs/v31_mixed_dataset_curriculum/stage2_h36m_mpi_3_1_smoke.yaml \
+    --mixed_manifest configs/deprecated/circular/v31_mixed_dataset_curriculum/stage2_h36m_mpi_3_1_smoke.yaml \
     --warm_start "${STAGE1_PTH}" \
     --epochs 2 \
     --output "${STAGE2_PTH}" \
@@ -60,7 +60,7 @@ $PYTHON -u experiments/train_omniview_fusion_v5_webbridge_multi.py \
 echo "[v31 curriculum] Stage 3: 1:1 H36M:MPI, warm-started from stage 2..."
 $PYTHON -u experiments/train_omniview_fusion_v5_webbridge_multi.py \
     "${COMMON_FLAGS[@]}" \
-    --mixed_manifest configs/v31_mixed_dataset_curriculum/stage3_h36m_mpi_1_1_smoke.yaml \
+    --mixed_manifest configs/deprecated/circular/v31_mixed_dataset_curriculum/stage3_h36m_mpi_1_1_smoke.yaml \
     --warm_start "${STAGE2_PTH}" \
     --epochs 2 \
     --output "${STAGE3_PTH}" \

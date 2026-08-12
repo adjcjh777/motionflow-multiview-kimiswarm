@@ -7,7 +7,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 COMMON_FLAGS=(
     --use_mixed_loader
-    --mixed_manifest configs/splits/webbridge_h36m_mpi_mixed_train_val.yaml
+    --mixed_manifest configs/deprecated/circular/splits/webbridge_h36m_mpi_mixed_train_val.yaml
     --use_domain_embedding
     --use_deformable_cross_view_attention_v18
     --use_multiview_geometry_fusion_v25

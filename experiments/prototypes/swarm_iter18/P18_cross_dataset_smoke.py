@@ -7,7 +7,7 @@ Validates that the YAML manifest is well-formed, that every referenced
 Usage
 -----
     python experiments/prototypes/swarm_iter18/P18_cross_dataset_smoke.py \
-        --manifest experiments/prototypes/swarm_iter18/P18_cross_dataset_manifest.yaml
+        --manifest configs/deprecated/circular/experiments/prototypes/swarm_iter18/P18_cross_dataset_manifest.yaml
 
 Exit codes
 ----------
@@ -120,7 +120,7 @@ def main():
     parser.add_argument(
         "--manifest",
         type=str,
-        default="experiments/prototypes/swarm_iter18/P18_cross_dataset_manifest.yaml",
+        default="configs/deprecated/circular/experiments/prototypes/swarm_iter18/P18_cross_dataset_manifest.yaml",
         help="Path to the benchmark YAML manifest",
     )
     parser.add_argument(

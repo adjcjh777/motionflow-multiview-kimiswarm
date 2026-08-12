@@ -7,8 +7,8 @@ loader or the mixed-dataset training loop.
 
 Examples
 --------
-    python scripts/audit_mixed_loader.py configs/splits/webbridge_h36m_mpi_mixed_train_val.yaml
-    python scripts/audit_mixed_loader.py configs/splits/webbridge_all_train.yaml --strict-shape
+    python scripts/audit_mixed_loader.py configs/deprecated/circular/splits/webbridge_h36m_mpi_mixed_train_val.yaml
+    python scripts/audit_mixed_loader.py configs/deprecated/circular/splits/webbridge_all_train.yaml --strict-shape
 """
 
 import argparse

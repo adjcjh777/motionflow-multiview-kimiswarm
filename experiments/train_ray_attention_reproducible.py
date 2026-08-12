@@ -3,7 +3,7 @@
 Summary
 -------
 This script adds a reproducibility harness around the existing v3 training loop:
-* YAML config via `--config` (see `configs/train_ray_attention_reproducible.yaml`)
+* YAML config via `--config` (see `configs/deprecated/circular/train_ray_attention_reproducible.yaml`)
 * Deterministic seeding (`torch`, `numpy`, `random`, `cudnn`)
 * Optional Weights & Biases logging when `wandb.enabled: true`
 * H36M NPZ input with the same `CameraDataset` / `augment_batch` used by
@@ -12,7 +12,7 @@ This script adds a reproducibility harness around the existing v3 training loop:
 Usage
 -----
     python experiments/train_ray_attention_reproducible.py \
-        --config configs/train_ray_attention_reproducible.yaml
+        --config configs/deprecated/circular/train_ray_attention_reproducible.yaml
 
 Verification
 ------------

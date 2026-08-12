@@ -189,7 +189,7 @@ def main():
     parser = argparse.ArgumentParser(description="Analyze WebBridge dataset split.")
     parser.add_argument(
         "--config",
-        default="configs/splits/webbridge_h36m_mpi_mixed_train_val.yaml",
+        default="configs/deprecated/circular/splits/webbridge_h36m_mpi_mixed_train_val.yaml",
         help="Path to the YAML split config.",
     )
     parser.add_argument(

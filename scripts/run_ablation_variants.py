@@ -20,7 +20,7 @@ Config schema
         PYTHONPATH: "."
       args:                                   # mapping flag -> value
         --use_mixed_loader: true
-        --mixed_manifest: "configs/splits/webbridge_h36m_mpi_mixed_train_val.yaml"
+        --mixed_manifest: "configs/deprecated/circular/splits/webbridge_h36m_mpi_mixed_train_val.yaml"
         --epochs: 2
         --batch_size: 4
 

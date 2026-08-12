@@ -1,18 +1,18 @@
 # Real-Time Efficiency Benchmark Report
 
-**Date**: 2026-08-05 05:25:07 UTC  
+**Date**: 2026-08-12 12:34:07 UTC  
 **Device**: `cuda`  
 **Input shape**: (B, T=13, V=14, J=28, 3)  
-**Warmup iterations**: 5  
-**Measured iterations**: 20  
+**Warmup iterations**: 20  
+**Measured iterations**: 100  
 
 ## Model Variants
 
 | Model | Params | Single-frame (ms) | Single FPS | Clip (ms) | Throughput (fps) | Peak Mem (MB) | 60 FPS? | 30 FPS? |
 |-------|--------:|------------------:|-----------:|----------:|-----------------:|----------------:|--------:|--------:|
-| RayAttentionFusionModelV3 | 134,497 | 134.56 | 7.4 | 134.56 | 28.4 | 10.6484375 | No | No |
-| RayAttentionFusionModelTemporal | 217,825 | 160.82 | 6.2 | 146.43 | 414.7 | 24.9033203125 | No | No |
-| RayAttentionFusionModelTemporalResidual | 243,428 | 122.98 | 8.1 | 130.12 | 434.7 | 25.00146484375 | No | No |
+| RayAttentionFusionModelV3 | 134,497 | 85.12 | 11.7 | 85.12 | 47.2 | 10.6484375 | No | No |
+| RayAttentionFusionModelTemporal | 217,825 | 85.99 | 11.6 | 86.19 | 571.7 | 24.9033203125 | No | No |
+| RayAttentionFusionModelTemporalResidual | 243,428 | 90.07 | 11.1 | 88.85 | 570.8 | 25.00146484375 | No | No |
 
 ## Interpretation
 
