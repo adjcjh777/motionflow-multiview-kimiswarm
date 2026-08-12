@@ -55,7 +55,7 @@
 ## Data foundation status
 
 1. **True H36M 3D GT** — obtained, but the `data/h36m_true_gt/*.npz` labels are misaligned with the stored cameras/2D (direct MJE ≈ 16,668 mm). A corrected converter is in `scripts/convert_h36m_true_gt_v2.py`; output will go to `data/h36m_true_gt_v2/`.
-2. **Regenerate canonical `.npz`** with non-circular labels — in progress; a corrected H36M converter exists. Test file and S1 combined train file verified (`direct MJE ≈ 16 mm`). Full regeneration to `data/h36m_true_gt_v2/` is running locally; a new manifest `configs/splits/h36m_true_gt_v2_standard.yaml` is ready. Full regeneration and leaderboard rerun are queued for after v85 finishes so the running training is not disturbed. Regeneration script: `scripts/convert_all_h36m_true_gt_v2.sh`.
+2. **Regenerate canonical `.npz`** with non-circular labels — **all H36M true-GT v2 .npz generated locally** (S1,5,6,7,8 train; S9,11 test). A new manifest `configs/splits/h36m_true_gt_v2_standard.yaml` is ready. Audit and DLT/RANSAC baselines on the v2 labels are running locally. Full sync to A800 and leaderboard rerun remain queued for after v85 finishes so the running training is not disturbed. Regeneration script: `scripts/convert_all_h36m_true_gt_v2.sh`.
 3. **Re-run baselines** (DLT, Iskakov, v25, v46, v52, v57, v80) on the corrected protocol — in progress.
    - DLT H36M true-GT: **25.67 mm** (conf-weighted), 28.77 mm (unweighted).
    - RANSAC/conf-DLT H36M true-GT: **26.47 mm** (reproducible; see `scripts/run_h36m_true_gt_ransac_baseline.py`).
