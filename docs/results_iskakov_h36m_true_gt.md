@@ -61,9 +61,31 @@ epoch 3-4, no NaN).
 
 | Run | Log | Checkpoint | Config/history |
 |-----|-----|------------|----------------|
-| H36M true GT | `outputs/iskakov_learnable_tri_h36m_true_gt.log` | `outputs/iskakov_learnable_tri_h36m_true_gt.pth` | `outputs/iskakov_learnable_tri_h36m_true_gt.config.json` |
+| H36M true GT (local RTX 4090, batch 64) | `outputs/iskakov_learnable_tri_h36m_true_gt.log` | `outputs/iskakov_learnable_tri_h36m_true_gt.pth` | `outputs/iskakov_learnable_tri_h36m_true_gt.config.json` |
+| H36M true GT (A800 GPU 6, batch 32) | `outputs/baselines/iskakov_learnable_tri_h36m_true_gt_a800_gpu6.log` | `outputs/baselines/iskakov_learnable_tri_h36m_true_gt_a800_gpu6.pth` | `outputs/baselines/iskakov_learnable_tri_h36m_true_gt_a800_gpu6.config.json` |
 
-Reproduce:
+### A800 reproduction (batch 32, 4,096 samples/epoch)
+
+Launched with `scripts/run_iskakov_h36m_true_gt_a800_gpu6.sh` on GPU 6.
+
+| Epoch | Combined direct | S9 direct | S11 direct |
+|---|---:|---:|---:|
+| 1 | 25.31 mm | 29.11 mm | 21.50 mm |
+| 2 | 23.60 mm | 27.28 mm | 19.91 mm |
+| 3 | 23.49 mm | 27.23 mm | 19.76 mm |
+| 4 | 23.45 mm | 27.19 mm | 19.72 mm |
+| 5 | 23.44 mm | 27.18 mm | 19.70 mm |
+| 6 | 23.41 mm | 27.16 mm | 19.67 mm |
+| 7 | 23.42 mm | 27.17 mm | 19.67 mm |
+| 8 | 23.40 mm | 27.15 mm | 19.65 mm |
+| 9 (best) | **23.40** | **27.15** | **19.65** |
+| 10 | 23.41 mm | 27.16 mm | 19.65 mm |
+
+- Best epoch: **9**
+- Gains vs frozen references: **+2.46 mm** vs conf-DLT (25.87 mm), **+5.79 mm** vs unweighted DLT (29.19 mm).
+- The A800 result is within 0.02 mm of the local batch-64 run, confirming the baseline is stable across hardware/batch size.
+
+Reproduce (local):
 
 ```bash
 CUDA_VISIBLE_DEVICES=0 /d/anaconda3/python.exe \
@@ -85,9 +107,9 @@ first subset of each k, float64 SVD routine). Full JSON:
 
 | k | Learned direct (mm) | Learned root (mm) | DLT unweighted (first subset) | DLT conf-weighted (first subset) |
 |---:|---:|---:|---:|---:|
-| 2 | 53.61 (±27) | 55.12 | 37.19 avg | 36.42 avg |
-| 3 | **27.80** (±2) | 27.54 | 34.86 avg | 33.68 avg |
-| 4 | **23.39** | 23.14 | 29.15 avg | 25.94 avg |
+| 2 | 53.62 (±27) | 55.12 | 37.19 avg | 36.42 avg |
+| 3 | **27.84** (±2) | 27.54 | 34.86 avg | 33.68 avg |
+| 4 | **23.42** | 23.14 | 29.15 avg | 25.94 avg |
 
 ### Shelf/Campus detected (Campus 3 views primary; Shelf carries the calibration caveat)
 

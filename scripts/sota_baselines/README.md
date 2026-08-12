@@ -126,6 +126,11 @@ environment requirements, joint mapping, and run instructions.
      created with `scripts/sota_baselines/setup_voxelpose_env_a800.sh`.
    - The adapter feeds ground-truth 2D points as input heatmaps and uses a blank
      placeholder image, so no raw H36M RGB frames are required.
+   - **Auto-launch monitor:** `scripts/monitor_v85_evalsuite_then_launch_voxelpose.sh`
+     waits for the v85 post-training eval suite to finish, then automatically
+     launches VoxelPose on the first free GPU (6 or 7). The older
+     `scripts/monitor_v85_then_launch_voxelpose.sh` is superseded because it
+     only watched the old no-fallback eval PID.
 
 2. **Camera convention validation**
    - The common format stores `K`, `R`, `t` in the project's convention and the

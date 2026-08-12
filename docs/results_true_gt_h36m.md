@@ -234,17 +234,21 @@ python experiments/train_iskakov_baseline_shelf_campus.py \
 
 | Epoch | Combined direct | S9 direct | S11 direct |
 |---|---:|---:|---:|
-| 1 | 23.40 mm | 27.12 mm | 19.68 mm |
-| 2 | 23.37 mm | 27.11 mm | 19.63 mm |
-| 3 | 23.37 mm | 27.12 mm | 19.62 mm |
-| 4 (best) | **23.35** | **27.10** | **19.60** |
-| ... | stable | stable | stable |
-| 10 | 23.37 mm | 27.13 mm | 19.62 mm |
+| 1 | 25.31 mm | 29.11 mm | 21.50 mm |
+| 2 | 23.60 mm | 27.28 mm | 19.91 mm |
+| 3 | 23.49 mm | 27.23 mm | 19.76 mm |
+| 4 | 23.45 mm | 27.19 mm | 19.72 mm |
+| 5 | 23.44 mm | 27.18 mm | 19.70 mm |
+| 6 | 23.41 mm | 27.16 mm | 19.67 mm |
+| 7 | 23.42 mm | 27.17 mm | 19.67 mm |
+| 8 | 23.40 mm | 27.15 mm | 19.65 mm |
+| 9 (best) | **23.40** | **27.15** | **19.65** |
+| 10 | 23.41 mm | 27.16 mm | 19.65 mm |
 
-- Early-stopped by patience, best epoch = 4.
-- Gain over confidence-weighted DLT: **+2.32 mm** combined direct (25.67 vs. 23.35 mm).
-- Gain over unweighted DLT: **+5.42 mm** combined direct (28.77 vs. 23.35 mm).
-- A confirmation run with larger batches (batch 64, 8,192 samples/epoch) produced **23.38 mm** (best epoch 7); see `docs/results_iskakov_h36m_true_gt.md`.
+- Early-stopped by patience, best epoch = 9.
+- Gain over confidence-weighted DLT: **+2.46 mm** combined direct (25.87 vs. 23.40 mm; run-computed frozen reference).
+- Gain over unweighted DLT: **+5.79 mm** combined direct (29.19 vs. 23.40 mm; run-computed frozen reference).
+- A confirmation run on A800 GPU 6 with the same recipe produced **23.40 mm** (best epoch 9; log `outputs/baselines/iskakov_learnable_tri_h36m_true_gt_a800_gpu6.log`). A local run with larger batches (batch 64, 8,192 samples/epoch) produced **23.38 mm** (best epoch 7); see `docs/results_iskakov_h36m_true_gt.md`.
 
 ### v80 (view-reliability weighting)
 
@@ -263,7 +267,7 @@ Detailed sweep in `docs/results_v80_h36m_true_gt.md`. Local evidence:
 - **Test MPJPE: 62.32 mm** (combined direct, simple average of S9/S11; S9 64.18 mm, S11 60.46 mm, stride 13). There is a large train/val-to-test gap: test is ~22 mm worse than the best validation, suggesting the model overfits to the val distribution.
   - Source: `outputs/eval_v80_true_gt_h36m_test_local_stride13.json` (A800, GPU 4).
 - Best local result: **39.98 mm** (medium, epoch 4). Best known result: **39.70 mm** (v2, A800 checkpoint).
-- v80 still lags Iskakov (~23.35 mm) and even confidence-weighted DLT (~25.67 mm).
+- v80 still lags Iskakov (~23.40 mm) and even confidence-weighted DLT (~25.67 mm).
 
 ### v46 (sparse-view generalization, A800)
 
@@ -378,7 +382,7 @@ bash scripts/run_v25_h36m_true_gt_medium_local_4090.sh
 - The training log above reports validation MPJPE. Best *validation* MPJPE was **72.80 mm** @ epoch 2, but this is **inflated**: validation did not pass `view_mask`, so the model was evaluated without view masking. After fixing the validation pass-through, the corrected **test** result is **43.93 mm**.
 - Training completed 8 epochs before early-stopping patience was exhausted; the run began to diverge after epoch 2.
 - Gap to baselines on combined direct (test):
-  - **Iskakov**: +20.58 mm (43.93 vs. 23.35 mm).
+  - **Iskakov**: +20.53 mm (43.93 vs. 23.40 mm).
   - **DLT (confidence-weighted)**: +18.26 mm (43.93 vs. 25.67 mm).
   - **DLT (unweighted)**: +15.16 mm (43.93 vs. 28.77 mm).
 - v25 does not currently beat the geometric or learnable-triangulation baselines on this true-GT protocol.

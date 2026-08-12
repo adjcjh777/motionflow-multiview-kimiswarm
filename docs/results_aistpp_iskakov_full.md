@@ -81,4 +81,7 @@ The model continued to improve monotonically in val MPJPE through epoch 10; no e
 | Checkpoint | `outputs/iskakov_learnable_tri_aistpp_full.pth` |
 | Config + history JSON | `outputs/iskakov_learnable_tri_aistpp_full.config.json` |
 | Trainer | `experiments/train_iskakov_aistpp_full.py` |
-| Runner script | `scripts/run_iskakov_aistpp_full_local_4090.sh` |
+| Runner script (local) | `scripts/run_iskakov_aistpp_full_local_4090.sh` |
+| Runner script (A800 GPU 6) | `scripts/run_iskakov_aistpp_full_a800_gpu6.sh` |
+
+> **Note:** The A800 GPU 6 script is prepared but not yet launched. As of 2026-08-12 the A800 GPU 6 run has no output artifacts.

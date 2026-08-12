@@ -8,7 +8,21 @@ set -euo pipefail
 PROJECT_ROOT="/mnt/nvme0n1p1/zhangzy/motionflow-multiview-kimiswarm-iter20"
 cd "$PROJECT_ROOT"
 
-echo "=== A800 disk cleanup ==="
+# Parse --dry-run flag.
+DRY_RUN=false
+for arg in "$@"; do
+    case "$arg" in
+        --dry-run)
+            DRY_RUN=true
+            ;;
+    esac
+done
+
+if [ "$DRY_RUN" = true ]; then
+    echo "=== A800 disk cleanup (DRY RUN) ==="
+else
+    echo "=== A800 disk cleanup ==="
+fi
 df -h /mnt/nvme0n1p1
 
 # 1. Remove non-final duplicate checkpoints when a corresponding *_final.pth exists.
@@ -27,7 +41,9 @@ find outputs/ablations -maxdepth 1 -name '*_final.pth' -type f | while read -r f
         echo "  SKIP (active process): $nonfinal"
     else
         echo "  REMOVE: $nonfinal"
-        rm -f "$nonfinal"
+        if [ "$DRY_RUN" = false ]; then
+            rm -f "$nonfinal"
+        fi
     fi
 done
 
@@ -38,24 +54,32 @@ if [ -f "$MIXED_CKPT" ]; then
         echo "  SKIP (active process): $MIXED_CKPT"
     else
         echo "  REMOVE: $MIXED_CKPT"
-        rm -f "$MIXED_CKPT"
+        if [ "$DRY_RUN" = false ]; then
+            rm -f "$MIXED_CKPT"
+        fi
     fi
 fi
 
 # 3. Purge pip package cache.
 if command -v pip >/dev/null 2>&1; then
     echo "Purging pip cache..."
-    yes | pip cache purge || true
+    if [ "$DRY_RUN" = false ]; then
+        yes | pip cache purge || true
+    fi
 fi
 
 # 4. Purge uv package cache (uv not in PATH on A800, so fall back to directory removal).
 UV_CACHE_DIR="/mnt/nvme0n1p1/zhangzy/.cache/uv"
 if command -v uv >/dev/null 2>&1; then
     echo "Pruning uv cache..."
-    uv cache prune || true
+    if [ "$DRY_RUN" = false ]; then
+        uv cache prune || true
+    fi
 elif [ -d "$UV_CACHE_DIR" ]; then
     echo "Removing uv cache directory: $UV_CACHE_DIR"
-    rm -rf "$UV_CACHE_DIR"
+    if [ "$DRY_RUN" = false ]; then
+        rm -rf "$UV_CACHE_DIR"
+    fi
 fi
 
 echo ""

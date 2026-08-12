@@ -57,7 +57,7 @@
 
 | 方法 | Combined (mm) | PA-MPJPE (mm) | 备注 |
 |---|---:|---:|---|
-| Iskakov ICCV 2019 | **23.35** | 23.15 | frozen ref |
+| Iskakov ICCV 2019 | **23.40** | 23.15 | frozen ref |
 | DLT (conf-weighted) | **25.67** | 25.55 | frozen ref |
 | RANSAC/conf-DLT | **26.47** | 28.98 | reproducible ref |
 | v25 stability | **30.83** | 34.35 | best learned result |

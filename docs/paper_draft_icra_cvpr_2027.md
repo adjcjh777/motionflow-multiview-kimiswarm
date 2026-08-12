@@ -173,18 +173,18 @@ The catastrophic sparse-view failure in Section 3.10 shows that the learned mode
 
 Formally, for a clip with `V` views we sample a random view mask `m ∈ {0,1}^V` such that `m^T 1 ≥ min_views` and `P(m_v = 0) = p_drop` for each view. The masked observations are passed to the v25 geometry-fusion module, and the scalar count embedding `c = embed(sum(m))` is broadcast to the ray tokens before the temporal transformer. The loss is computed only on the active views, so the model is forced to produce a sensible 3D pose even when only two or three views are available. At inference time the same model can be evaluated at any `k ≥ min_views` by simply masking out the missing views.
 
-This module is our structural candidate for fixing the k<4 failure. A medium-schedule run on true-GT H36M is in progress on **A800 GPU 7** (`v85_random_view_dropout_medium_a800`, PID `1954774`) with `--use_random_view_dropout_v85 --v85_dropout_prob 0.3 --v85_min_views 2 --v85_use_count_embedding`. As of the latest check the run has completed ~100 training steps and the loss is falling; no validation MPJPE is available yet. A no-fallback variable-view evaluation of the partially trained checkpoint is running in parallel on **A800 GPU 6** (PID `1945448`) to establish a learned-model sparse-view baseline while training continues.
+This module is our structural candidate for fixing the k<4 failure. A medium-schedule run on true-GT H36M is in progress on **A800 GPU 7** (`v85_random_view_dropout_medium_a800`, PID `2058225`, restarted after duplicate DataLoader-worker processes were killed) with `--use_random_view_dropout_v85 --v85_dropout_prob 0.3 --v85_min_views 2 --v85_use_count_embedding`. As of the latest check the run has completed Epoch 1 (train_loss 17.48, val_MPJPE 62.53 mm) and is now in Epoch 5+, with loss falling (train step 850 loss  16.26). A no-fallback variable-view evaluation is running in parallel on **A800 GPU 6** (PID `2098117`, launcher `2062178`; earlier PID `2062181` was killed after hanging; launched with `PYTHONUNBUFFERED=1`) to establish a learned-model sparse-view baseline while training continues.
 
 ## 4. Experiments
 
 ### 4.1 Datasets and metrics
 
-- **MPI-INF-3DHP.** Train on subject 1 sequences 1 and 2, validate on subject 2 sequence 1. Report MPJPE, PA-MPJPE, PCK@50/100/150 mm, and AUC.
-- **Human3.6M.** Train on subject 1, validate on subject 5 (action 02). Report the same metrics.
+- **Human3.6M true-GT standard protocol.** Train on subjects S1, S5, S6, S7, S8; test on S9 and S11. Validation uses the standard subject/action split (e.g., S5 action 02). Report MPJPE, PA-MPJPE, PCK@50/100/150 mm, and AUC where applicable.
+- **MPI-INF-3DHP detected-2D benchmark.** True 3D mocap with RTMPose-detected 2D keypoints on all 16 canonical sequences. The reported DLT baseline is the mean over all 16 detected-2D `.npz` files. Report MPJPE, PA-MPJPE, PCK@50/100/150 mm, and AUC.
 
 ### 4.2 Implementation details
 
-Models are implemented in PyTorch and trained on a local RTX 4090. The small residual model uses `d=32`, `residual_hidden=64`, and has 66 k parameters. The full model uses `d=64`, `residual_hidden=128`, and has 243 k parameters.
+Models are implemented in PyTorch. Smoke tests and quick diagnostics are run on a local RTX 4090. The medium-schedule true-GT H36M runs, AIST++ training, and MPI-INF-3DHP baselines are run on an A800 cluster (GPUs 6/7 only for this project). The small residual model uses `d=32`, `residual_hidden=64`, and has 66 k parameters. The full model uses `d=64`, `residual_hidden=128`, and has 243 k parameters.
 
 ## 5. Results
 
@@ -215,8 +215,9 @@ Metrics are direct MPJPE and PA-MPJPE in millimetres, plus PCK and AUC where app
 
 | Method | S9 direct (mm) | S11 direct (mm) | Combined direct (mm) | Combined PA-MPJPE (mm) | Notes |
 |---|---:|---:|---:|---:|---|
-| **Iskakov ICCV 2019** | **27.15** | **19.65** | **23.40** | **23.15** | best val epoch 4; current true-GT leader |
+| **Iskakov ICCV 2019** | **27.15** | **19.65** | **23.40** | **23.15** | best val epoch 9; current true-GT leader |
 | DLT (confidence-weighted) | 29.54 | 21.81 | **25.67** | 28.05 | frozen geometric baseline |
+| **MVPose (zju3dv/mvpose, GT 2D geometry-only)** | **29.19** | **21.54** | **26.06** | **28.32** | SOTA baseline; body-12 subset **31.13 / 34.45 mm** |
 | RANSAC/conf-DLT (reproducible) | 29.60 | 21.96 | **26.47** | 28.98 | confidence-weighted 3-view random-subset; `scripts/run_h36m_true_gt_ransac_baseline.py` |
 | DLT (unweighted) | 32.97 | 24.57 | 28.77 | 32.10 | frozen geometric baseline |
 | **v25 stability (A800)** | **34.87** | **26.80** | **30.83** | **33.59** | **test** result (stride 1); best val **31.13 mm** @ Epoch 10; early-stopped @ Epoch 12 |
@@ -231,7 +232,7 @@ Metrics are direct MPJPE and PA-MPJPE in millimetres, plus PCK and AUC where app
 | **v57 (medium, local)** | **62.48** | **56.69** | **59.59** | — | **test** result (stride 13); local run val best **75.16 mm** @ epoch 3 |
 | **v80 (medium)** | **64.18** | **60.46** | **62.32** | — | **test** result (stride 13); val best **39.98 mm** @ epoch 4; overfit afterward |
 
-On honest true-GT H36M, **Iskakov is the current leader at 23.40 mm**, improving over confidence-weighted DLT by **2.27 mm** and over unweighted DLT by **5.81 mm**. None of our learned MotionFlow variants yet beat a simple geometric baseline. The best MotionFlow result is **v25 stability at 30.83 mm** test (S9 34.87 / S11 26.80, stride 1, PA-MPJPE 33.59 mm), which trails confidence-weighted DLT by **5.16 mm** and Iskakov by **7.57 mm**. The mixed-dataset v25 checkpoint tests at **33.42 mm**, followed by v81 (**37.83 mm**) and v82 (**39.46 mm**). The original v25 medium reaches **43.93 mm** on the corrected **test** evaluation; its original val log of 72.80 mm was inflated because `view_mask` was not passed during validation, and follow-up A800 ablations with the mask fix reached **45.80 / 46.75 mm** at epoch 1 before diverging. v46, v52, v80 regularization and v57 re-run test at **52.46 mm**, **54.01 mm**, **53.98 mm** and **57.10 mm**, respectively. The v80 medium test is **62.32 mm**, while its best val was only **39.98 mm** @ epoch 4, after which it overfit to **133.71 mm**; this large train/val-to-test gap indicates that the residual head memorises training-set idiosyncrasies rather than learning a stable correction.
+On honest true-GT H36M, **Iskakov is the current leader at 23.40 mm**, improving over confidence-weighted DLT by **2.27 mm** and over unweighted DLT by **5.81 mm**. The third-party MVPose geometry-only triangulation baseline scores **26.06 mm**, falling between confidence-weighted DLT and RANSAC/conf-DLT and confirming that our learned MotionFlow variants have not yet reached even classical multi-view triangulation quality. The best MotionFlow result is **v25 stability at 30.83 mm** test (S9 34.87 / S11 26.80, stride 1, PA-MPJPE 33.59 mm), which trails confidence-weighted DLT by **5.16 mm** and Iskakov by **7.57 mm**. The mixed-dataset v25 checkpoint tests at **33.42 mm**, followed by v81 (**37.83 mm**) and v82 (**39.46 mm**). The original v25 medium reaches **43.93 mm** on the corrected **test** evaluation; its original val log of 72.80 mm was inflated because `view_mask` was not passed during validation, and follow-up A800 ablations with the mask fix reached **45.80 / 46.75 mm** at epoch 1 before diverging. v46, v52, v80 regularization and v57 re-run test at **52.46 mm**, **54.01 mm**, **53.98 mm** and **57.10 mm**, respectively. The v80 medium test is **62.32 mm**, while its best val was only **39.98 mm** @ epoch 4, after which it overfit to **133.71 mm**; this large train/val-to-test gap indicates that the residual head memorises training-set idiosyncrasies rather than learning a stable correction.
 
 These numbers are not the incremental improvements the circular protocol suggested. They show that, once the label feedback loop is removed, our current learned architectures are substantially weaker than both classical and learnable triangulation baselines. The honest leaderboard is therefore the central empirical result: it resets expectations and redirects the paper's contribution from absolute MPJPE to robustness under realistic deployment conditions.
 
@@ -297,7 +298,7 @@ Rather than reporting a single full-view number, we measure `MPJPE@k`: the pose 
 |---|---:|---:|---:|---|
 | DLT (unweighted) | 37.19 | 34.86 | 29.15 | frozen geometric baseline |
 | DLT (conf-weighted) | 36.42 | 33.68 | 25.94 | frozen geometric baseline |
-| Iskakov ICCV 2019 | 53.61 (±27) | **27.80** | **23.39** | current true-GT leader; full-view 23.40 mm test |
+| Iskakov ICCV 2019 | 53.62 (±27) | **27.84** | **23.42** | current true-GT leader; full-view 23.40 mm test |
 | v25 stability (DLT fallback, k<4) | 53.76 | 29.30 | 113.78 | direct conf-weighted DLT for k<4; learned model for k=4; per-subject S9/S11: k=2 58.18/49.35, k=3 33.32/25.28, k=4 116.98/110.58 mm |
 
 Iskakov does not beat DLT at `k=2` because it was trained on full-view batches, but for `k ≥ 3` it dominates both DLT variants, with the largest margin at `k=4`. This confirms that the true-GT H36M protocol cleanly separates the baselines and that a learned view-weighting can improve over triangulation once enough views are present.
@@ -376,10 +377,10 @@ Current experiment queue (updated 2026-08-12, v85 added) includes:
 1. **v25 true-GT stability** completed: best val **31.13 mm @ Epoch 10**, early-stopped @ Epoch 12; test **30.83 mm** (S9 34.87 / S11 26.80). This is the current best learned result on true-GT H36M.
 2. **v25 true-GT mixed-dataset training** first run completed with test **33.42 mm** (PA-MPJPE 34.60 mm); a stability relaunch on **A800 GPU 6** diverged at Epoch 3 (`val_MPJPE=481.99 mm`) and was killed. Mixed-dataset training is therefore deprioritised until a structural fix is found.
 3. **AIST++-only fast v2 training** completed on **A800 GPU 5**, early-stopped @ Epoch 4 with best val **91.43 mm** @ Epoch 2. Zero-shot H36M S9/S11 cross-eval: **93.94 mm** (S9 98.17 / S11 89.70), PA-MPJPE **44.50 mm**.
-4. **Iskakov ICCV 2019 baseline** is **completed** on the standard H36M true-GT protocol; best val **23.35 mm** @ Epoch 4, test **23.40 mm**.
+4. **Iskakov ICCV 2019 baseline** is **completed** on the standard H36M true-GT protocol; best val **23.40 mm** @ Epoch 9, test **23.40 mm**.
 5. **MPI-INF-3DHP RTMPose detected-2D DLT baseline** is completed: 16/16 `.npz` files processed; confidence-weighted DLT mean **115.09 mm**, PA-MPJPE **132.68 mm**.
 6. **Sparse-view (MPJPE@k) failure triaged and fixed.** The `variable_view_inference.py` wrapper did not pass `view_mask` to `OmniMultiViewFusionV5`, causing catastrophic k=2/k=3 results. A re-evaluation with the fixed wrapper still produced catastrophic k<4 errors, so a `--var_view_dlt_fallback` re-evaluation was run and is now **completed**. The DLT-fallback MPJPE@k on S9/S11 are: k=2 **58.18 / 49.35 mm**, k=3 **33.32 / 25.28 mm**, and k=4 **116.98 / 110.58 mm** (k=4 still uses the learned model). Source: `outputs/variable_view_fix/variable_view_v25_true_gt_stability_a800_dlt_fallback.json`. This confirms the sparse-view failure is in the learned model, not the observations.
-7. **v85 random view dropout** is running on **A800 GPU 7** (`v85_random_view_dropout_medium_a800`, PID `1954774`) to address the k<4 structural failure. Configuration: `--use_random_view_dropout_v85 --v85_dropout_prob 0.3 --v85_min_views 2 --v85_use_count_embedding`, combined with the variable-view training curriculum. As of the latest check the run is at ~100 training steps with loss falling; a no-fallback variable-view eval is running on **A800 GPU 6** (PID `1945448`) to track sparse-view progress.
+7. **v85 random view dropout** is running on **A800 GPU 7** (`v85_random_view_dropout_medium_a800`, PID `2058225`, restarted after DataLoader-worker duplicates were killed) to address the k<4 structural failure. Configuration: `--use_random_view_dropout_v85 --v85_dropout_prob 0.3 --v85_min_views 2 --v85_use_count_embedding`, combined with the variable-view training curriculum. As of the latest check the run has completed Epoch 1 (train_loss 17.48, val_MPJPE 62.53 mm) and is now in Epoch 5+ with loss falling (train step 850 loss  16.26). A no-fallback variable-view eval is running on **A800 GPU 6** (PID `2098117`, launcher `2062178`; earlier PID `2062181` was killed after hanging) to track sparse-view progress.
 8. **Re-measure calibration-robustness matrices** on the true-GT protocol once GPU capacity frees up.
 
 Verified leaderboard results now include the true-GT H36M, AIST++ smoke / AIST++-only cross-domain, MPI-INF-3DHP detected-2D DLT, and Shelf/Campus tables above. The paper's headline contribution remains repositioned around **sparse-view / cross-domain robustness on honest, non-circular benchmarks**.

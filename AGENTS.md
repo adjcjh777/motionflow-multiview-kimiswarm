@@ -7,7 +7,7 @@
 > **Latest fixes / launches:** **v85 random view dropout is training on A800 GPU 7** (PID `2058225`, log `outputs/ablations/v85_random_view_dropout_medium_a800.log`; **restarted** after duplicate DataLoader-worker processes were killed; Epoch 1 finished with train_loss 17.48, val_MPJPE 62.53 mm; now Epoch 2 step ~200, loss ~19.0 and falling). **v85 no-fallback variable-view eval is running on A800 GPU 6** (PID `2062181`, launcher `2062178`, log `outputs/variable_view_v85_random_view_dropout_medium_a800.log`; launched with `PYTHONUNBUFFERED=1`; output file still 0 bytes / buffered, low GPU memory footprint). **VoxelPose SOTA baseline monitor superseded**: the old `scripts/monitor_v85_then_launch_voxelpose.sh` (PID `2067976`) is no longer running; a new monitor `scripts/monitor_v85_then_run_evals.sh` (PID `2072251`) now waits for v85 training to finish, then launches test-set eval, no-fallback variable-view eval, and DLT-fallback variable-view eval sequentially on the first free GPU (6 or 7). **DLT/RANSAC/Iskakov baselines verified; docs updated**. **v82/v81/v25 variable-view DLT-fallback evals are completed** (`outputs/variable_view_fix/variable_view_v82_true_gt_medium_a800_dlt_fallback.json`, `variable_view_v81_true_gt_medium_a800_dlt_fallback_k23.*`, `variable_view_v25_true_gt_stability_a800_dlt_fallback.*`). **MPI-INF-3DHP RTMPose detection finished 16/16** `.npz` files; the CPU watcher automatically ran the DLT baseline: mean MPJPE **115.09 mm**, mean PA-MPJPE **132.68 mm**. **AIST++-only fast v2 → H36M cross-evaluation completed**: S9 **98.17 mm**, S11 **89.70 mm**, combined **~93.94 mm**. v25 true-GT stability **finished**: test S9/S11 **31.56 mm** weighted. v81/v82 H36M true-GT medium runs finished at **37.83 mm** and **39.46 mm** respectively.
 >
 > **Current true-GT H36M leaderboard (test S9/S11):**
-> - Iskakov ICCV 2019: **23.35 mm**
+> - Iskakov ICCV 2019: **23.40 mm**
 > - Conf-weighted DLT: **25.67 mm**
 > - RANSAC/conf-DLT: **26.47 mm** (reproducible; see `scripts/run_h36m_true_gt_ransac_baseline.py`)
 > - v25 stability: **30.83 mm** average / **31.56 mm** weighted (S9 34.87 mm, S11 26.80 mm), PA-MPJPE **34.35 mm**; best val **31.13 mm** @ Epoch 10
@@ -86,7 +86,7 @@
 3. **Re-run baselines** (DLT, Iskakov, v25, v46, v52, v57, v80) on the corrected protocol — in progress.
    - DLT H36M true-GT: **25.67 mm** (conf-weighted), 28.77 mm (unweighted).
    - RANSAC/conf-DLT H36M true-GT: **26.47 mm** (reproducible; see `scripts/run_h36m_true_gt_ransac_baseline.py`).
-   - Iskakov ICCV 2019 H36M true-GT: **23.35 mm**.
+   - Iskakov ICCV 2019 H36M true-GT: **23.40 mm**.
    - v25 H36M true-GT medium: test **43.93 mm**; original local val log **72.80 mm** @ epoch 2 was inflated because validation did not pass `view_mask`. A800 ablation 1 (`v25_true_gt_baseline_fix`) reached **46.53 mm** @ epoch 1 with the corrected validation recipe.
    - v46 H36M true-GT medium: val **52.92 mm** @ epoch 4, early-stopped @ epoch 7; test S9/S11 **52.46 mm** combined (S9 55.03 mm, S11 49.88 mm), PA-MPJPE 40.20 mm.
    - v52 UWT true-GT H36M: val **54.75 mm** @ epoch 4, early-stopped @ epoch 7; test S9/S11 **54.01 mm** (S9 58.15 mm, S11 49.87 mm), PA-MPJPE 42.22 mm.

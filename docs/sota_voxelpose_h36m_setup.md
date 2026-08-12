@@ -14,6 +14,24 @@ models/voxelpose-pytorch   # https://github.com/microsoft/voxelpose-pytorch
 The A800 launcher (`scripts/run_voxelpose_h36m_true_gt_a800.sh`) will clone the
 same repo on the A800 training host if it is not already there.
 
+## Auto-launch after the v85 eval suite
+
+A monitor script is provided so VoxelPose starts automatically once the v85
+random-view-dropout training and its post-training evaluation suite finish and a
+GPU becomes free:
+
+```bash
+nohup bash scripts/monitor_v85_evalsuite_then_launch_voxelpose.sh 2072251 \
+    > outputs/sota_baselines/monitor_v85_evalsuite_then_launch_voxelpose_nohup.log 2>&1 &
+```
+
+- It waits for the v85 post-training eval-suite monitor (PID `2072251` by default,
+  overridable as the first argument).
+- It then waits for GPU 6 or 7 to be free and launches
+  `scripts/run_voxelpose_h36m_true_gt_a800.sh` on the first available one.
+- The old `scripts/monitor_v85_then_launch_voxelpose.sh` is superseded because it
+  only watched the original no-fallback eval PID, which is no longer running.
+
 ## Python / environment requirements
 
 The upstream `requirements.txt` pins:

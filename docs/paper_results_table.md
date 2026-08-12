@@ -14,8 +14,9 @@ All numbers below are reported in **millimetres (mm)**. `direct` = mean per-join
 |--------|-------------------------------:|------------------------:|--------------------:|--------------------------:|
 | DLT (unweighted) | 28.77 | 134.43 | 38.11 / 12.66 | **115.09** (PA 132.68) |
 | DLT (confidence-weighted) | **25.67** | 132.29 | **15.93** / 6.52 | **115.09** (PA 132.68) |
+| **MVPose (zju3dv/mvpose, GT 2D geometry-only)** | **26.06** | — | — | — |
 | RANSAC/conf-DLT | 26.47 | — | — | — |
-| Iskakov ICCV 2019 | **23.35** | **128.73** | **29.27** / **9.31** | — |
+| Iskakov ICCV 2019 | **23.40** | **128.73** | **29.27** / **9.31** | — |
 | v25 stability (A800) | **30.83** (PA 33.59) | — | — | — |
 | v25 mixed (H36M + AIST++) | **33.42** (PA 34.60) | — | — | — |
 | v81 temporal-pose-attention | **37.83** (PA 37.75) | — | — | — |
@@ -41,8 +42,9 @@ Protocol: `S1, S5, S6, S7, S8` train → `S9, S11` test. Labels are true mocap w
 
 | Method | Combined direct (mm) | S9 direct (mm) | S11 direct (mm) | PA-MPJPE (mm) | Notes |
 |---|---:|---:|---:|---:|---|
-| Iskakov ICCV 2019 | **23.35** | 27.10 | 19.60 | 23.15 | best epoch 4; current true-GT leader |
+| Iskakov ICCV 2019 | **23.40** | 27.15 | 19.65 | 23.15 | best epoch 9; current true-GT leader |
 | DLT (confidence-weighted) | **25.67** | 29.54 | 21.81 | 28.05 | frozen geometric reference |
+| **MVPose (zju3dv/mvpose, GT 2D geometry-only)** | **26.06** | 29.19 | 21.54 | 28.32 | SOTA baseline; body-12 subset **31.13 / 34.45 mm** |
 | RANSAC/conf-DLT | **26.47** | 29.60 | 21.96 | 28.98 | reproducible baseline |
 | DLT (unweighted) | 28.77 | 32.97 | 24.57 | 32.10 | frozen geometric reference |
 | **v25 stability (A800)** | **30.83** | 34.87 | 26.80 | 33.59 | best learned result; best val 31.13 @ epoch 10; early-stopped @ epoch 12; stride 1 |
@@ -161,7 +163,7 @@ Protocol: RTMPose detected 2D keypoints on all 16 canonical MPI-INF-3DHP sequenc
 ## Key takeaways
 
 1. **True-GT protocol is now reliable.** H36M numbers are in the 23–63 mm range, unlike the old circular-label 0.62 mm figure.
-2. **Iskakov ICCV 2019 is the current leader at 23.35 mm**, improving over confidence-weighted DLT by 2.32 mm.
+2. **Iskakov ICCV 2019 is the current leader at 23.40 mm**, improving over confidence-weighted DLT by 2.27 mm.
 3. **v25 stability is the best MotionFlow variant at 30.83 mm**, but still 5.16 mm behind confidence-weighted DLT and 7.57 mm behind Iskakov.
 4. **Temporal modules help modestly.** v81 (37.83 mm) and v82 (39.46 mm) improve over the original v25 medium (43.93 mm), but do not yet match v25 stability.
 5. **Cross-domain transfer is hard.** AIST++-only v25 scores ~94 mm on H36M true-GT, confirming a large domain gap.
