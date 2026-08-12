@@ -346,6 +346,32 @@ def test_module_output_deterministic_with_seed():
     assert torch.allclose(out1, out2, atol=1e-6)
 
 
+def test_random_view_dropout_v85_forward_shape():
+    """v85 random view dropout should produce well-shaped finite outputs in train/eval modes."""
+    module = MultiViewGeometryFusionV25(
+        d=64,
+        n_heads=2,
+        n_views=4,
+        use_random_view_dropout_v85=True,
+        v85_dropout_prob=0.3,
+        v85_min_views=2,
+        v85_use_count_embedding=True,
+    )
+    points_2d, K, R, t, pred_3d_init, view_mask = _make_batch()
+
+    # Training mode: dropout is active.
+    module.train()
+    out_train, _ = module(points_2d, K, R, t, pred_3d_init=pred_3d_init, view_mask=view_mask)
+    assert out_train.shape == (2, 3, 17, 3)
+    assert torch.isfinite(out_train).all()
+
+    # Eval mode: dropout disabled, output should be deterministic.
+    module.eval()
+    out_eval1, _ = module(points_2d, K, R, t, pred_3d_init=pred_3d_init, view_mask=view_mask)
+    out_eval2, _ = module(points_2d, K, R, t, pred_3d_init=pred_3d_init, view_mask=view_mask)
+    assert torch.allclose(out_eval1, out_eval2, atol=1e-6)
+
+
 def test_outlier_view_detector_forward_shape_and_downweight():
     """The outlier-view detector toggle should run and down-weight a corrupted view."""
     module = MultiViewGeometryFusionV25(

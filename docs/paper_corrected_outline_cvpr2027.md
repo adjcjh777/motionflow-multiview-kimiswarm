@@ -18,7 +18,7 @@ Multi-view 3D human pose estimation has been benchmarked on labels that are them
 
 1. **Motivation.** Calibrated multi-view video is the dominant capture modality for robotics, sports, and AR/VR. Classical triangulation is brittle; learned fusion methods report ever-lower MPJPE.
 2. **The circular-label problem.** H36M multi-view labels and MPI GT-projected 2D are functions of the input 2D keypoints. Models trained on them are rewarded for reproducing DLT, not for recovering true 3D pose.
-3. **True-GT reality check.** On true mocap ground truth, Iskakov ICCV 2019 reaches 23.35 mm, confidence-weighted DLT reaches 25.67 mm, and our best learned variant (v25 stability) reaches 30.83 mm (31.56 mm weighted) on H36M true-GT test. Earlier reports of 0.62 mm were artifacts of circular labels.
+3. **True-GT reality check.** On true mocap ground truth, Iskakov ICCV 2019 reaches 23.35 mm, confidence-weighted DLT reaches 25.67 mm, and our best learned variant (v25 stability) reaches 30.83 mm (31.56 mm weighted) on H36M true-GT test. Earlier reports of 0.62 mm were artifacts of circular labels. Cross-domain transfer is hard: an AIST++-only v25 model scores ~94 mm on H36M, and the MPI-INF-3DHP RTMPose detected-2D DLT baseline is 115.09 mm.
 4. **Pivot to robustness.** The contribution is re-anchored on sparse-view and cross-domain robustness: how gracefully does a method degrade when views are removed or domains change?
 5. **Contributions.**
    - Honest benchmarking on true-GT H36M, AIST++, and Shelf/Campus.
@@ -78,8 +78,8 @@ Given 2D keypoints + confidences `(B, T, V, J, 3)`, intrinsics `K`, and extrinsi
 ### 4.1 Datasets and protocols
 - **H36M true-GT:** `S1,S5,S6,S7,S8 → S9,S11`, `data/h36m_true_gt/`.
 - **Shelf/Campus detected:** real 2D detections + true 3D, `data/webbridge/shelf_campus_detected/`.
-- **AIST++:** canonical 9-view `.npz`, cross-domain smoke/full validation.
-- **MPI-INF-3DHP:** blocked pending detected-2D/camera alignment fix.
+- **AIST++:** canonical 9-view `.npz`, cross-domain smoke/full validation; 1,408 clips now available.
+- **MPI-INF-3DHP:** RTMPose detected-2D `.npz` complete (16/16); DLT baseline computed.
 
 ### 4.1.1 SOTA baseline availability
 
@@ -105,7 +105,7 @@ Given 2D keypoints + confidences `(B, T, V, J, 3)`, intrinsics `K`, and extrinsi
 |---|---:|---:|---:|---:|---|
 | DLT (unweighted) | 33.61 | 24.77 | 29.19 | 29.31 | frozen baseline |
 | DLT (confidence-weighted) | 29.82 | 21.91 | 25.67 | 25.55 | frozen baseline |
-| RANSAC/conf-DLT | 29.86 | 21.91 | 26.61 | — | frozen baseline |
+| RANSAC/conf-DLT | 29.60 | 21.96 | 26.47 | 28.98 | reproducible; `scripts/run_h36m_true_gt_ransac_baseline.py` |
 | Iskakov ICCV 2019 | 27.10 | 19.60 | **23.35** | **23.10** | current leader |
 | VoxelPose | — | — | — | — | scripts ready; not yet run |
 | MVPose | — | — | — | — | scripts ready; not yet run |
@@ -141,11 +141,35 @@ Given 2D keypoints + confidences `(B, T, V, J, 3)`, intrinsics `K`, and extrinsi
 
 | Method | val MPJPE | Notes |
 |---|---:|---|
-| DLT (confidence-weighted) | **6.52** | frozen baseline |
-| DLT (unweighted) | 12.66 | frozen baseline |
+| DLT (confidence-weighted) | **6.52** | smoke frozen baseline |
+| DLT (unweighted) | 12.66 | smoke frozen baseline |
 | Iskakov ICCV 2019 | **9.31** | smoke, best epoch 6 |
 | v25 | 71.79 | 3-epoch smoke |
 | v80 | 76.34 | 3-epoch smoke |
+
+#### AIST++ full 1,408 clips
+
+| Method | MPJPE (mm) | PA-MPJPE (mm) | Notes |
+|---|---:|---:|---|
+| DLT (confidence-weighted) | **15.93** | **21.12** | 1,408 clips, 1,123,873 frames |
+| DLT (unweighted) | 38.11 | 42.66 | full frozen baseline |
+
+#### AIST++-only fast v2 → H36M true-GT S9/S11 cross-eval
+
+| Subject | MPJPE (mm) | PA-MPJPE (mm) | Notes |
+|---|---:|---:|---|
+| S9 | **98.17** | **49.44** | zero-shot cross-domain transfer |
+| S11 | **89.70** | **39.55** | zero-shot cross-domain transfer |
+| **Combined (simple avg)** | **93.94** | **44.50** | stride 1 |
+
+#### MPI-INF-3DHP detected-2D DLT baseline
+
+| Method | MPJPE (mm) | PA-MPJPE (mm) | Notes |
+|---|---:|---:|---|
+| DLT (confidence-weighted) | **115.09** | **132.68** | RTMPose detected-2D, 16 `.npz` files |
+
+- Source: `outputs/mpi_rtmpose_detected_2d/dlt_baseline_detected_2d.json`.
+- Learned-model benchmarking on MPI remains future work; the detected-2D DLT baseline sets a realistic lower bound for the current detection pipeline.
 
 ### 4.3 Sparse-view robustness (`MPJPE@k`)
 Report degradation curves for `k = 2, 3, 4` (H36M) and `k = 2..14` (MPI). Smoke evidence shows v57 degrades most gracefully as views drop, while v25 is volatile at low `k`.
@@ -160,6 +184,7 @@ Report degradation curves for `k = 2, 3, 4` (H36M) and `k = 2..14` (MPI). Smoke 
 
 - The honest leaderboards reset expectations: geometric and learnable-triangulation baselines are stronger than our current learned variants on true GT.
 - The positive signal is in robustness: different architectures degrade differently as views are removed.
+- Cross-domain transfer is hard: an AIST++-only v25 model scores ~94 mm on H36M, and the MPI detected-2D DLT baseline is ~115 mm, showing a large gap between controlled studio data and real detected data.
 - Future work: close the true-GT accuracy gap via stronger regularisation, mixed-dataset training, and explicit calibration correction.
 
 ---
@@ -178,8 +203,8 @@ Report degradation curves for `k = 2, 3, 4` (H36M) and `k = 2..14` (MPI). Smoke 
 
 ## Remaining Experimental Results to Collect
 
-1. **MPI-INF-3DHP real detected-2D alignment.** RTMPose regeneration is running on A800 GPU 7; 5/16 `.npz` complete. Current DLT baseline on the old MediaPipe detections is ~326–400 mm; validate RTMPose results drop to ~20–30 mm before learned-model benchmarking.
-2. **AIST++ full-medium runs.** Clean canonical `.npz` synced to A800 after fixing the NaN blocker. AIST++-only medium fast v2 relaunched on GPU 5; first validation is being monitored.
+1. ~~**MPI-INF-3DHP real detected-2D alignment.**~~ **Done.** RTMPose regeneration produced 16/16 `.npz` files; confidence-weighted DLT baseline is **115.09 mm** / PA-MPJPE **132.68 mm**. Learned-model benchmarking remains future work.
+2. **AIST++ full-medium runs.** Clean canonical `.npz` synced to A800 after fixing the NaN blocker. AIST++-only medium fast v2 finished/early-stopped at Epoch 4; cross-eval on H36M true-GT S9/S11 is **93.94 mm**.
 3. **H36M true-GT leaderboard.** Completed: v25 stability (30.83 mm), v81 (37.83 mm), v82 (39.46 mm), v46 (52.46 mm), v52 (54.01 mm), v80 regularization (53.98 mm), v57 re-run (57.10 mm). v25 mixed-dataset diverged at Epoch 3 but best checkpoint tests at 33.42 mm.
 4. **Sparse-view `MPJPE@k` curves.** v81, v82, v57, v80 completed; v25 stability curve is running on GPU 4. DLT and Iskakov sparse-view curves still needed.
 5. **Calibration-robustness matrix.** Earlier perturbation matrices were on the old circular protocol; re-measure on true GT.

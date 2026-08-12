@@ -17,7 +17,7 @@ description: >
   Smoke test for the v60 SEFH -> UWT feedback loop.  Enables v50, v51, v52
   and feeds v50 reliability into v52 as a weights prior.
 
-manifest: configs/splits/webbridge_h36m_mpi_mixed_train_val.yaml
+manifest: configs/splits/h36m_true_gt_aist_mixed_smoke.yaml
 script: experiments/train_omniview_fusion_v5_webbridge_multi.py
 
 training:

@@ -1,5 +1,11 @@
 # VoxelPose runtime config for H36M true-GT.
-# This config is passed to the upstream VoxelPose train/test scripts.
+# This config is passed to the upstream VoxelPose train/test scripts IF the
+# upstream repo is present. The exact keys expected depend on the upstream
+# revision, so this file is a best-effort template.
+#
+# NOTE: This template assumes the upstream VoxelPose repo exposes train.py and
+# test.py with a --cfg argument. If the actual repo uses a different API,
+# this file and prepare_voxelpose_h36m.sh must be updated.
 
 DATASET:
   NAME: h36m_true_gt

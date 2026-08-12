@@ -1,29 +1,29 @@
 # MotionFlow-MultiView Agent Notes
 
-> **Status: AIST++ CANONICAL .NPZ NaN BLOCKER DIAGNOSED AND FIX APPLIED; v25 STABILITY VAR-VIEW EVAL RUNNING ON GPU 4, MPI RTMPose 5/16 ON GPU 7, v81 DONE (TEST 37.83 MM), v25 STABILITY TEST 31.56 MM, AIST++ FULL DLT FINISHED — LOCAL RTX 4090 FOR QUICK SMOKE ONLY — 2026-08-12 (agent-6 handoff refresh)**
+> **Status: A800 ONLY GPU 6/7; v85 RANDOM VIEW DROPOUT TRAINING ON GPU 7 (PID 2058225, restarted, Epoch 1 done val_MPJPE 62.53 mm, now Epoch 2 step ~1000 loss falling); v85 NO-FALLBACK VAR-VIEW EVAL RUNNING ON GPU 6 (tmux session v85_nofallback_eval, third restart after two SIGTERM terminations); OLD VOXELPOSE MONITOR (PID 2067976) NO LONGER RUNNING — REPLACED BY `monitor_v85_then_run_evals.sh` (PID 2072251) THAT WILL LAUNCH TEST + NO-FALLBACK + DLT-FALLBACK EVALS AFTER TRAINING; DLT/RANSAC/ISKAKOV BASELINES VERIFIED; DISK 99% FULL (~59 GB FREE) — 2026-08-12 ~12:10 UTC**
 >
 > H36M circular-label problem is **confirmed and repaired**: `scripts/diagnose_circular_labels.py` reports `direct MJE = 0.0000 mm` on `data/h36m_hf/*.npz`, and `motionflow_mv/data/webbridge_loader.py` now sources true GT 3D instead of triangulating from input 2D. Trainer best-checkpoint saving was fixed to monitor `mpjpe` instead of `loss`, eliminating the v57 epoch-2 vs epoch-3 mismatch.
 >
-> **Latest fixes / launches:** v25 true-GT stability **finished**: test S9/S11 **31.56 mm** weighted (best true-GT learned result so far). v81 temporal-pose-attention medium on **A800 GPU 4**: **early-stopped @ Epoch 8**, test **37.83 mm**. **v82 multi-scale temporal-pose-attention medium** on **A800 GPU 4**: **finished 8 epochs**, best val **39.58 mm** @ Epoch 8, test **39.46 mm** (slightly worse than v81). v81 variable-view evaluation **completed**: k=4 **50.97 mm**, k=2/k=3 catastrophically high. **AIST++-only fast v2 was reporting `val_loss=nan, val_MPJPE=nan` at Epoch 1** because `convert_aistpp` used raw `keypoints3d`, which contains NaNs on ~20% of sequences. The converter now prefers `keypoints3d_optim` and drops any residual NaN frames. Clean canonical `.npz` are being regenerated locally and will be synced to A800. v25 true-GT mixed-dataset **diverged @ Epoch 3** but best checkpoint tests at **33.42 mm** average. v52 UWT finished (test **54.01 mm**). AIST++ full DLT baseline **finished**: MPJPE **15.93 mm** weighted / **38.11 mm** unweighted. MPI-INF-3DHP RTMPose detection is running on **GPU 7** (PID `2527668`), **5/16 .npz files** done. v57/v80/v81 variable-view evaluation **completed**. v83/v84 architecture variants **dropped** after plateauing at ~100 mm.
+> **Latest fixes / launches:** **v85 random view dropout is training on A800 GPU 7** (PID `2058225`, log `outputs/ablations/v85_random_view_dropout_medium_a800.log`; **restarted** after duplicate DataLoader-worker processes were killed; Epoch 1 finished with train_loss 17.48, val_MPJPE 62.53 mm; now Epoch 2 step ~200, loss ~19.0 and falling). **v85 no-fallback variable-view eval is running on A800 GPU 6** (PID `2062181`, launcher `2062178`, log `outputs/variable_view_v85_random_view_dropout_medium_a800.log`; launched with `PYTHONUNBUFFERED=1`; output file still 0 bytes / buffered, low GPU memory footprint). **VoxelPose SOTA baseline monitor superseded**: the old `scripts/monitor_v85_then_launch_voxelpose.sh` (PID `2067976`) is no longer running; a new monitor `scripts/monitor_v85_then_run_evals.sh` (PID `2072251`) now waits for v85 training to finish, then launches test-set eval, no-fallback variable-view eval, and DLT-fallback variable-view eval sequentially on the first free GPU (6 or 7). **DLT/RANSAC/Iskakov baselines verified; docs updated**. **v82/v81/v25 variable-view DLT-fallback evals are completed** (`outputs/variable_view_fix/variable_view_v82_true_gt_medium_a800_dlt_fallback.json`, `variable_view_v81_true_gt_medium_a800_dlt_fallback_k23.*`, `variable_view_v25_true_gt_stability_a800_dlt_fallback.*`). **MPI-INF-3DHP RTMPose detection finished 16/16** `.npz` files; the CPU watcher automatically ran the DLT baseline: mean MPJPE **115.09 mm**, mean PA-MPJPE **132.68 mm**. **AIST++-only fast v2 → H36M cross-evaluation completed**: S9 **98.17 mm**, S11 **89.70 mm**, combined **~93.94 mm**. v25 true-GT stability **finished**: test S9/S11 **31.56 mm** weighted. v81/v82 H36M true-GT medium runs finished at **37.83 mm** and **39.46 mm** respectively.
 >
 > **Current true-GT H36M leaderboard (test S9/S11):**
 > - Iskakov ICCV 2019: **23.35 mm**
 > - Conf-weighted DLT: **25.67 mm**
-> - RANSAC/conf-DLT: **26.61 mm**
+> - RANSAC/conf-DLT: **26.47 mm** (reproducible; see `scripts/run_h36m_true_gt_ransac_baseline.py`)
+> - v25 stability: **30.83 mm** average / **31.56 mm** weighted (S9 34.87 mm, S11 26.80 mm), PA-MPJPE **34.35 mm**; best val **31.13 mm** @ Epoch 10
+> - v25 mixed (H36M + AIST++): **33.42 mm** average / **34.23 mm** weighted on test (S9 37.87 mm, S11 28.96 mm) — diverged @ Epoch 3
 > - v81 temporal-pose-attention: **37.83 mm** @ test (S9 42.19 mm, S11 33.46 mm), PA-MPJPE 37.75 mm; best val 38.62 mm @ epoch 8
 > - v82 multi-scale temporal-pose-attention: **39.46 mm** @ test (S9 42.07 mm, S11 36.84 mm), PA-MPJPE 39.94 mm; best val 39.58 mm @ epoch 8
 > - v80: **39.98 mm** (epoch 4, then overfit)
 > - v25: **43.93 mm** on test (val log 72.80 mm was inflated due to missing `view_mask` during validation)
-> - v25 mixed (H36M + AIST++): **33.42 mm** average / **34.23 mm** weighted on test (S9 37.87 mm, S11 28.96 mm) — diverged @ Epoch 3
-> - v25 stability: **31.56 mm** weighted / **30.83 mm** average on test (S9 34.87 mm, S11 26.80 mm), PA-MPJPE **34.35 mm**; best val **31.13 mm** @ Epoch 10
-> - v57 re-run: **57.81 mm** @ epoch 4 (early-stopped @ epoch 7); test S9/S11 **57.10 mm**; checkpoint saved correctly at `outputs/ablations/v57_true_gt_medium_a800.pth`
-> - v52 UWT: **54.01 mm** @ test (S9 58.15 mm, S11 49.87 mm); PA-MPJPE 42.22 mm; val best **54.75 mm** @ epoch 4
-> - v80 regularization: **53.98 mm** @ test (S9 56.69 mm, S11 51.27 mm), PA-MPJPE 32.47 mm; val best **54.46 mm** @ epoch 1 (early-stopped @ epoch 4)
 > - v46: **52.46 mm** combined (S9 55.03 mm, S11 49.88 mm), PA-MPJPE 40.20 mm
+> - v80 regularization: **53.98 mm** @ test (S9 56.69 mm, S11 51.27 mm), PA-MPJPE 32.47 mm; val best **54.46 mm** @ epoch 1 (early-stopped @ epoch 4)
+> - v52 UWT: **54.01 mm** @ test (S9 58.15 mm, S11 49.87 mm); PA-MPJPE 42.22 mm; val best **54.75 mm** @ epoch 4
+> - v57 re-run: **57.10 mm** @ test; best val **57.81 mm** @ epoch 4 (early-stopped @ epoch 7); checkpoint saved correctly at `outputs/ablations/v57_true_gt_medium_a800.pth`
 >
 > **v25 true-GT stability on A800 (GPU 6):** Completed / early-stopped. Best val MPJPE **31.13 mm** @ Epoch 10 (early-stopped @ Epoch 12). Test S9/S11: **31.56 mm** weighted (S9 34.87 mm, S11 26.80 mm), PA-MPJPE **34.35 mm**; average **30.83 mm**. Result JSON: `outputs/eval_v25_true_gt_stability_h36m_test.json`.
 >
-> **AIST++-only medium on A800 (GPU 5):** Fast run v3 (`train_samples=64`, `batch_size=32`, `epochs=10`) **relaunched without `--use_full_precision_dlt`**; avoids the cusolver `eigh` error and is training. Log: `outputs/ablations/aistpp_only_medium_a800_fast_v2.log`; checkpoint: `outputs/ablations/aistpp_only_medium_a800_fast_v2.pth`.
+> **AIST++-only medium on A800 (GPU 5):** Fast run v3 (`train_samples=64`, `batch_size=32`, `epochs=10`) finished/early-stopped @ Epoch 4 with best val **91.43 mm** @ Epoch 2. Cross-eval on H36M true-GT S9/S11: **93.94 mm** (S9 98.17 / S11 89.70). Log: `outputs/ablations/aistpp_only_medium_a800_fast_v2.log`; checkpoint: `outputs/ablations/aistpp_only_medium_a800_fast_v2.pth`.
 >
 > **v81 temporal-pose-attention medium on A800 (GPU 4):** Early-stopped at Epoch 8 with best val **38.62 mm**. Test S9/S11: **37.83 mm** (S9 42.19 mm, S11 33.46 mm), PA-MPJPE **37.75 mm**. Log: `outputs/ablations/v81_true_gt_h36m_medium_a800.log`; checkpoint: `outputs/ablations/v81_true_gt_h36m_medium_a800.pth`; test JSON: `outputs/eval_v81_true_gt_h36m_test_a800.json`.
 >
@@ -31,25 +31,26 @@
 >
 > **v80 true-GT regularization on A800:** Completed on **GPU 6** (`v80_true_gt_regularization_a800`). Best val MPJPE **54.46 mm** @ epoch 1; early-stopped @ epoch 4. Checkpoint/log: `outputs/ablations/v80_true_gt_regularization_a800.pth` / `.log`.
 >
-> **GPU reality check:** GPU 4 is free after v82 training finished. GPU 5 hosts the AIST++-only fast v2 training run. GPU 6 runs the v82 variable-view evaluation. GPU 7 runs MPI RTMPose detection (PID `2527668`, **4/16 .npz** complete) and a CPU DLT-baseline watcher. GPUs 0-3 run VLLM workers.
+> **GPU reality check:** GPU policy updated: **only GPUs 6/7 are used by this project**; GPUs 0–5 are reserved. GPU 7 is running **v85 random view dropout medium training** (PID `2058225`, **restarted** after duplicate DataLoader-worker processes were killed; Epoch 1 done, val_MPJPE 62.53 mm; now Epoch 2 step ~200, loss ~19.0 and falling). GPU 6 is running the **v85 no-fallback variable-view eval** (PID `2062181`, launcher `2062178`; `PYTHONUNBUFFERED=1`; output file still 0 bytes / buffered, low GPU memory footprint). The old **VoxelPose SOTA baseline monitor** (PID `2067976`) is no longer running; it has been replaced by `scripts/monitor_v85_then_run_evals.sh` (PID `2072251`), which will launch the v85 test-set eval, no-fallback variable-view eval, and DLT-fallback variable-view eval sequentially once training finishes and a GPU (6 or 7) becomes free. The older v25/v81/v82 DLT-fallback evals have finished. GPUs 0–3 run VLLM workers and other projects occupy GPUs 4/5.
 >
-> **Disk space warning:** A800 `/mnt/nvme0n1p1` is **99% full** (~46 GB free out of 3.5 TB). Project outputs are small, but system-wide space is tight; avoid large checkpoint dumps or extracted video frames until cleanup is done.
+> **Disk space warning:** A800 `/mnt/nvme0n1p1` is **99% full** (~59 GB free out of 3.5 TB). v85 is writing checkpoints and logs; avoid extra frame extractions or duplicate checkpoints. Run `scripts/cleanup_a800_safe.sh` dry-run if needed.
 >
-> **Post-8th-swarm / current-session state:** v82 multi-scale temporal-pose-attention medium **finished** on GPU 4 (best val **39.58 mm** @ Epoch 8, test **39.46 mm**). v83 view-conditioned temporal attention is **implemented** and its local smoke is **running on RTX 4090**. AIST++-only fast v2 is **running on A800 GPU 5** after the previous cusolver crash, currently past step 450 with loss decreasing. v82 variable-view evaluation is **running on A800 GPU 6**. MPI RTMPose detection has produced **4/16 .npz files** on GPU 7; the waiting DLT baseline already reports **150.50 mm** mean MPJPE on those files. v81 test **37.83 mm** and v25 stability test **31.56 mm** remain the best true-GT learned results. AIST++ full DLT baseline is done.
+> **Post-8th-swarm / current-session state:** GPU policy is **A800 GPU 6/7 only**. v85 random view dropout is **training on GPU 7** (PID `2058225`, **restarted**; Epoch 1 done, val_MPJPE 62.53 mm; now Epoch 2 step ~200, loss ~19.0 and falling) and its **no-fallback variable-view eval is running on GPU 6** (PID `2062181`, launcher `2062178`; `PYTHONUNBUFFERED=1`; output file still 0 bytes / buffered, low GPU memory footprint). The old **VoxelPose SOTA baseline monitor** (PID `2067976`) has been replaced by `scripts/monitor_v85_then_run_evals.sh` (PID `2072251`), which will launch the v85 test-set eval, no-fallback variable-view eval, and DLT-fallback variable-view eval sequentially once training finishes and a GPU (6 or 7) becomes free. v25/v81/v82 **variable-view DLT-fallback evals are done**. MPI-INF-3DHP RTMPose detection is **done (16/16 .npz)**; the CPU watcher finished the DLT baseline at **115.09 mm** MPJPE / **132.68 mm** PA-MPJPE. AIST++-only fast v2 → H36M cross-eval is **done** (S9 98.17 mm, S11 89.70 mm, combined ~93.94 mm). v25 stability test **31.56 mm** and v81 test **37.83 mm** remain the best true-GT learned results.
 
 ## Current-session update (AIST++ NaN fix / v25 var-view / MPI / dropped v83/v84)
 
 - **AIST++ NaN / empty-sequence blocker:** `convert_aistpp` originally used raw `keypoints3d`, which contains NaNs on ~20% of sequences. The first fix preferred `keypoints3d_optim` and dropped frames with any NaN, but two sequences had NaN in all 2D frames and became empty, crashing the mixed-loader collate function. The converter now zeroes NaN 2D keypoints and sets confidence to 0 while preserving frame count, and only drops frames if 3D joints are NaN. Clean canonical `.npz` are regenerating locally and will be synced to A800 before relaunching on GPU 5.
 - **v83/v84 dropped:** v83 A800 medium plateaued at **~100 mm** val and was killed. v84 uncertainty-weighted view dropout smoke produced **107.11 mm** val, also no improvement. Architecture modules on top of v25 ray tokens are deprioritized until cross-dataset training is baselined.
-- **v25 stability variable-view eval:** Running on A800 GPU 4 (PID `4184808`). Outputs will land in `outputs/variable_view_v25_true_gt_stability_a800.csv/.json`.
-- **MPI-INF-3DHP detection:** RTMPose 2D detection is running on GPU 7 (PID `2527668`). Five of 16 `.npz` files are written to `data/webbridge/mpi_inf_3dhp_detected_2d/`.
+- **v25 stability variable-view eval:** The wrapper fix (explicit `view_mask` to `OmniMultiViewFusionV5`) was necessary but not sufficient: k=2/k=3 remained catastrophic (~3000/1000 mm). A diagnostic showed that while the learned model fails catastrophically for k<4, direct confidence-weighted DLT on the same active views achieves ~35–100 mm. A new `--var_view_dlt_fallback` mode was added to `HardenedVariableViewInferenceWrapper` that falls back to direct DLT whenever `n_active < n_views_max`. The DLT-fallback re-eval (PID `628743`) completed on GPU 4. Full S9/S11 numbers: k=2 **58.18 / 49.35 mm**, k=3 **33.32 / 25.28 mm**, k=4 **116.98 / 110.58 mm**. For k<4 the learned model is not used; direct confidence-weighted DLT fallback is used instead.
+- **MPI-INF-3DHP detection:** RTMPose 2D detection **finished** on GPU 7 (PID `2527668`). All 16 `.npz` files are in `data/webbridge/mpi_inf_3dhp_detected_2d/`. The CPU watcher ran the DLT baseline: mean MPJPE **115.09 mm**, PA-MPJPE **132.68 mm** → `outputs/mpi_rtmpose_detected_2d/dlt_baseline_detected_2d.json`.
 - **Stale circular config deprecation:** Moved all configs referencing `data/h36m_hf/`, `data/webbridge/h36m_meters/`, or `data/webbridge/shelf_campus/` into `configs/deprecated/circular/`. They now fail loudly if launched and point to the replacement true-GT splits. See `configs/deprecated/circular/README.md`.
+- **WebBridge loader audit:** `convert_human36m` now raises an error by default when true 3D GT is missing, instead of silently falling back to DLT triangulation of the input 2D. Pass `allow_circular_fallback=True` (CLI `--allow-circular-fallback`) to opt into the legacy circular behavior. `convert_aistpp` now defaults to `use_optim=True` (CLI `--no-optim` to override), matching the clean canonical `.npz` already used on A800. New tests in `tests/test_webbridge_loader_audit.py` cover both behaviors.
 
 ## Current work in flight
 
 | Agent | Task | Machine | Notes |
 |-------|------|---------|-------|
-| `agent-6` (running) | AGENTS.md / handoff refresh | Local WSL | Updating status; v83 smoke running, AIST++ v2 running, v82 eval running, MPI 4/16; no code changes |
+| Current agent | AGENTS.md / handoff refresh | Local WSL | GPU policy 6/7; v85 training on GPU 7; v85 no-fallback eval on GPU 6; v81/v82/v25 DLT-fallback done; MPI/AIST done |
 | `agent-272` (done) | v57 true-GT re-run | A800 GPU 5 | `v57_true_gt_medium_a800`; best **57.81 mm** @ Epoch 4; early-stopped @ Epoch 7 |
 | `agent-51` (done) | H36M true-GT v25 medium | Local RTX 4090 | Completed: test 43.93 mm; val log 72.80 mm @ epoch 2 (val ignored `view_mask`) |
 | `agent-67` (done / idle) | AIST++ smoke integration v25/v80 | Local RTX 4090 / A800 | Smoke complete (DLT 6.52 mm); only 16 `.npz` present on A800 |
@@ -60,13 +61,14 @@
 - v52 UWT (`v52_true_gt_h36m_a800`) **finished** on **A800 GPU 4**. Best val **54.75 mm** @ Epoch 4, early-stopped @ Epoch 7. **Test S9/S11: 54.01 mm** (S9 58.15 mm, S11 49.87 mm), PA-MPJPE 42.22 mm.
 - v81 temporal-pose-attention medium (`v81_true_gt_h36m_medium_a800`) on **A800 GPU 4** — **early-stopped @ Epoch 8** with best val **38.62 mm**. Test S9/S11: **37.83 mm** (S9 42.19 mm, S11 33.46 mm), PA-MPJPE **37.75 mm**. Log: `outputs/ablations/v81_true_gt_h36m_medium_a800.log`; test JSON: `outputs/eval_v81_true_gt_h36m_test_a800.json`.
 - v82 multi-scale temporal-pose-attention medium (`v82_true_gt_h36m_medium_a800`) **finished on A800 GPU 4**. Best val **39.58 mm** @ Epoch 8; test S9/S11 **39.46 mm**. Log: `outputs/ablations/v82_true_gt_h36m_medium_a800.log`; checkpoint: `outputs/ablations/v82_true_gt_h36m_medium_a800.pth`.
-- v81 variable-view evaluation (`eval_variable_views_v81_true_gt_medium_a800`) **completed on A800 GPU 6**. Outputs: `outputs/variable_view_v81_true_gt_medium_a800.csv` / `.json`.
-- v82 variable-view evaluation (`eval_variable_views_v82_true_gt_medium_a800`) **completed on A800 GPU 6**. k=4 MPJPE@k: S9 47.81 mm, S11 42.36 mm; k=2/k=3 remain catastrophically high (thousands of mm). Outputs: `outputs/variable_view_v82_true_gt_medium_a800.csv` / `.json`.
-- AIST++-only medium fast v2 (`aistpp_only_medium_a800_fast_v2`) **relaunched on A800 GPU 5** with clean canonical `.npz` after the NaN/empty-sequence fix. Training loss is decreasing; first validation is being monitored.
-- v25 mixed-dataset (`v25_true_gt_mixed_dataset_a800`) on **A800 GPU 5** has **diverged** (Epoch 3 val **584.25 mm**), but its best checkpoint tests at **33.42 mm** avg on H36M S9/S11. Consider killing or debugging before re-running.
+- v81 variable-view DLT-fallback eval **completed** (`outputs/variable_view_fix/variable_view_v81_true_gt_medium_a800_dlt_fallback_k23.csv` / `.json`). Only k=2,3 were needed; results match the model-agnostic DLT fallback (S9 58.18/33.32 mm; S11 49.35/25.28 mm).
+- v82 variable-view DLT-fallback eval **completed** (`outputs/variable_view_fix/variable_view_v82_true_gt_medium_a800_dlt_fallback.csv` / `.json`). k=4 uses the learned v82 model (S9 47.81 / S11 42.36 mm); k=2/k=3 use the DLT fallback and match v25/v81 (S9 58.18/33.32 mm; S11 49.35/25.28 mm).
+- v25 stability DLT-fallback variable-view re-evaluation **completed on A800 GPU 4** (PID `628743`). k=2/3/4 S9: 58.18/33.32/116.98 mm; S11: 49.35/25.28/110.58 mm. Outputs: `outputs/variable_view_fix/variable_view_v25_true_gt_stability_a800_dlt_fallback.*`.
+- AIST++-only medium fast v2 (`aistpp_only_medium_a800_fast_v2`) **early-stopped on A800 GPU 5** (PID was `117455`). Best val **91.43 mm** @ Epoch 4. Checkpoint: `outputs/ablations/aistpp_only_medium_a800_fast_v2.pth`. H36M S9/S11 cross-evaluation **completed** (PID `1090542`, GPU 6): S9 **98.17 mm**, S11 **89.70 mm**, combined **~93.94 mm** → `outputs/eval_aistpp_only_medium_a800_fast_v2_h36m_test.json`.
+- v25 H36M + AIST++ mixed-dataset stability (`v25_true_gt_mixed_dataset_stability_a800_gpu6`) **killed on A800 GPU 6** (PID `175675`). Epoch 1: `val_loss=0.001683`, `val_MPJPE=36.49 mm`; Epoch 2: `val_MPJPE=52.27 mm`; Epoch 3: `val_MPJPE=481.99 mm` (diverged). Best checkpoint retained at `outputs/ablations/v25_true_gt_mixed_dataset_stability_a800_gpu6.pth` (Epoch 1, 36.49 mm). GPU 6 was later used for the v82 variable-view DLT-fallback eval.
 - v25 stability (`v25_true_gt_stability_a800`) on **A800 GPU 6** **early-stopped @ Epoch 12**; best val **31.13 mm** @ Epoch 10. Test S9/S11: **31.56 mm** weighted (S9 34.87 mm, S11 26.80 mm), PA-MPJPE **34.35 mm**. Result JSON: `outputs/eval_v25_true_gt_stability_h36m_test.json`.
 - AIST++ full DLT baseline **finished on A800 GPU 6**: MPJPE **15.93 mm** weighted / **38.11 mm** unweighted; PA-MPJPE **21.12 mm** / **42.66 mm**. Log: `outputs/aistpp_full_dlt_baseline_a800.log`; JSON: `outputs/aistpp_full_dlt_baseline_a800.json`.
-- MPI-INF-3DHP RTMPose detection running on **A800 GPU 7** (PID `2527668`, CUDA provider active). Log: `outputs/mpi_rtmpose_detected_2d/generate_20260811_191500.log`. Files land in `data/webbridge/mpi_inf_3dhp_detected_2d/`; **4/16 `.npz` files complete**.
+- MPI-INF-3DHP RTMPose detection **finished on A800 GPU 7** (PID `2527668`). **16/16 `.npz` files** are in `data/webbridge/mpi_inf_3dhp_detected_2d/`. The CPU watcher automatically ran the DLT baseline: mean MPJPE **115.09 mm**, mean PA-MPJPE **132.68 mm** → `outputs/mpi_rtmpose_detected_2d/dlt_baseline_detected_2d.json`.
 - v57/v80 variable-view evaluation **completed**. v80 regularization is better than v57 at all view counts: v80 S9@4 102.8 mm / S11@4 105.8 mm vs v57 S9@4 143.0 mm / S11@4 137.4 mm.
 - Before starting any new work, check active background tasks and A800 GPU availability.
 
@@ -83,7 +85,7 @@
 2. **Regenerate canonical `.npz`** with non-circular labels — done; H36M and Shelf/Campus datasets have been rebuilt.
 3. **Re-run baselines** (DLT, Iskakov, v25, v46, v52, v57, v80) on the corrected protocol — in progress.
    - DLT H36M true-GT: **25.67 mm** (conf-weighted), 28.77 mm (unweighted).
-   - RANSAC/conf-DLT H36M true-GT: **26.61 mm**.
+   - RANSAC/conf-DLT H36M true-GT: **26.47 mm** (reproducible; see `scripts/run_h36m_true_gt_ransac_baseline.py`).
    - Iskakov ICCV 2019 H36M true-GT: **23.35 mm**.
    - v25 H36M true-GT medium: test **43.93 mm**; original local val log **72.80 mm** @ epoch 2 was inflated because validation did not pass `view_mask`. A800 ablation 1 (`v25_true_gt_baseline_fix`) reached **46.53 mm** @ epoch 1 with the corrected validation recipe.
    - v46 H36M true-GT medium: val **52.92 mm** @ epoch 4, early-stopped @ epoch 7; test S9/S11 **52.46 mm** combined (S9 55.03 mm, S11 49.88 mm), PA-MPJPE 40.20 mm.
@@ -94,9 +96,9 @@
    - v82 multi-scale temporal-pose-attention H36M true-GT medium: best val **39.58 mm** @ epoch 8; test **39.46 mm** (S9 42.07 mm, S11 36.84 mm), PA-MPJPE **39.94 mm**.
    - v83 view-conditioned temporal attention: **implemented** (`motionflow_mv/fusion/view_conditioned_temporal_attention_v83.py`); local smoke running on RTX 4090, A800 medium script ready.
    - See [`docs/results_true_gt_h36m.md`](docs/results_true_gt_h36m.md) and [`docs/results_true_gt_shelf_campus.md`](docs/results_true_gt_shelf_campus.md).
-4. **MPI-INF-3DHP real detected 2D** — RTMPose regeneration running on GPU 7 (CUDA provider active, PID `2527668`). Output will land in `data/webbridge/mpi_inf_3dhp_detected_2d/`. Once files are present, validate the DLT baseline.
-5. **AIST++ integration** — full 1,408 canonical `.npz` are now on A800 (`data/webbridge/aistpp_canonical/`). AIST++-only v25 medium fast v2 **relaunched and is training on GPU 5** after the earlier cusolver `eigh` crash; full AIST++ DLT baseline **finished**: MPJPE **15.93 mm** weighted / **38.11 mm** unweighted; PA-MPJPE **21.12 mm** / **42.66 mm**. Smoke DLT was conf-weighted **6.52 mm**, unweighted **12.66 mm**.
-6. **Re-orient the paper contribution** around sparse-view / cross-domain robustness, not absolute MPJPE records — **paper rewrite in progress**.
+4. **MPI-INF-3DHP real detected 2D** — **done**. RTMPose regeneration finished on GPU 7 (PID `2527668`); 16/16 `.npz` files in `data/webbridge/mpi_inf_3dhp_detected_2d/`. The CPU watcher ran the DLT baseline: mean MPJPE **115.09 mm**, PA-MPJPE **132.68 mm** → `outputs/mpi_rtmpose_detected_2d/dlt_baseline_detected_2d.json`.
+5. **AIST++ integration** — **done**. Full 1,408 canonical `.npz` are on A800 (`data/webbridge/aistpp_canonical/`). AIST++-only v25 fast v2 **finished** (best val **91.43 mm** @ Epoch 2, early-stopped @ Epoch 4). Cross-eval on H36M true-GT S9/S11: **93.94 mm** (S9 98.17 / S11 89.70). Full AIST++ DLT baseline: MPJPE **15.93 mm** weighted / **38.11 mm** unweighted; PA-MPJPE **21.12 mm** / **42.66 mm**.
+6. **Re-orient the paper contribution** around sparse-view / cross-domain robustness, not absolute MPJPE records — **paper rewrite in progress**. MPI/AIST++ numbers are already recorded in `docs/results_true_gt_h36m.md` and `docs/paper_draft_icra_cvpr_2027.md`.
 
 ## Current data sources
 
@@ -105,28 +107,24 @@
 | `data/h36m_hf/*.npz` | No | Circular labels; do not use for model selection |
 | `data/webbridge/h36m*.npz` | No | Same circular labels |
 | `data/h36m_true_gt/*_multiview_m.npz` | **Yes** | True mocap world coordinates; standard protocol S1,5,6,7,8 → S9/S11 |
-| MPI-INF-3DHP | Yes | Labels are real mocap; RTMPose detected-2D regeneration in progress (GPU); previous MediaPipe run was ~326–400 mm due to joint-mapping/detection issues |
+| MPI-INF-3DHP | Yes | True mocap; RTMPose detected-2D regeneration **done**; DLT baseline **115.09 mm** / **132.68 mm** PA-MPJPE |
 | Shelf/Campus | Yes | Non-circular `.npz` rebuilt from `detection.json + annotation_3d.json` at `data/webbridge/shelf_campus_detected/` |
 | A800-D `/mnt/nvme0n1p1/zhangzy/projects` | No true H36M found | Read-only only |
 
 ## Next 3 tasks for the next agent
 
-1. **Sync clean AIST++ data to A800 and restart AIST++-only training.**
-   - Wait for the local WSL regeneration of `data/webbridge/aistpp_canonical/*.npz` to finish, then verify no NaN remains.
-   - `rsync` the clean canonical directory to A800 `data/webbridge/aistpp_canonical/`.
-   - Relaunch `scripts/run_aistpp_only_medium_a800_gpu5_fast_v2.sh` on A800 GPU 5 and confirm the first validation reports finite `val_loss` and `val_MPJPE`.
+1. **Wait for v85 to finish and evaluate sparse-view robustness.**
+   - v85 random view dropout is training on A800 GPU 7 (PID `1954774`).
+   - The no-fallback variable-view eval is already running on GPU 6 (PID `1945448`); once it finishes, run a DLT-fallback eval (`--var_view_dlt_fallback`) on GPU 6 or 7 and compare k=2/3/4 MPJPE to the v25 stability baseline (S9: 58.18/33.32/116.98 mm; S11: 49.35/25.28/110.58 mm).
+   - If k<4 is still catastrophic, consider stronger count-conditioning or a separate sparse-view head.
 
-2. **Monitor the v25 stability variable-view eval and MPI RTMPose detection.**
-   - Tail `outputs/variable_view_v25_true_gt_stability_a800_nohup.log` and record the final `MPJPE@k` curves.
-   - Continue polling MPI RTMPose until 16/16 `.npz` files are ready; the CPU watcher will run the DLT baseline automatically.
+2. **Prepare SOTA comparison configs and free disk.**
+   - VoxelPose / MVPose / DLT configs are ready to run when GPU 6/7 is free.
+   - Run `scripts/cleanup_a800_safe.sh` dry-run; disk is 99% full (~42 GB free).
 
-3. **Prepare cross-dataset mixed training once AIST++-only converges.**
-   - Evaluate the AIST++-only checkpoint on H36M S9/S11 true-GT test.
-   - If loss/MPJPE are reasonable, launch a **H36M + AIST++ mixed-dataset** medium run using `configs/splits/h36m_true_gt_aist_mixed_train_val_a800.yaml`. Target: improve over v25 stability's **31.56 mm** test weighted.
-
-3. **Finish MPI-INF-3DHP detected-2D validation.**
-   - RTMPose detection is ongoing on GPU 7 (4/16 `.npz` files done). A CPU watcher is already running the DLT baseline on completed files (interim: **150.50 mm** MPJPE / **164.22 mm** PA-MPJPE).
-   - Once all 16 files are ready, record the full DLT baseline in `docs/results_true_gt_h36m.md` and add v81/v82/v25-stability variable-view curves when their evals finish.
+3. **Finalize paper draft around honest true-GT story.**
+   - Ensure `docs/paper_draft_icra_cvpr_2027.md` final tables/figures use the non-circular numbers.
+   - Add v85 sparse-view results once they land.
 
 ## Remaining CVPR 2027 backlog
 
@@ -147,6 +145,10 @@
 
 ## GPU usage rules
 
+- **A800 project GPUs (hard rule):** MotionFlow-MultiView only uses **GPU 6 and GPU 7** on A800. GPUs 0–5 are reserved for other projects (VLLM, etc.) and must NOT be used.
+  - All `CUDA_VISIBLE_DEVICES` values must be `6` or `7`.
+  - Existing scripts that default to GPU 4/5 must be updated or launched with an explicit `CUDA_VISIBLE_DEVICES=6|7` override.
+  - See `docs/a800_gpu_policy.md` for the full policy and migration procedure.
 - **Local GPU concurrency:** RTX 4090 can run **one training task at a time**. If `agent-51` or `agent-67` is active, only prepare configs/scripts; do not launch a new training run.
 - **A800 read/write boundaries:**
   - `/mnt/nvme0n1p1/zhangzy/projects` and the A800 Docker `motionflow` service are **read-only / inspection-only**.
@@ -190,3 +192,83 @@ tail -f outputs/<log>.log
 | `question` | Needs clarification or discussion |
 
 Optional status prefixes for issue titles: `[RUNNING]`, `[STOPPED]`, `[READY]`, `[BLOCKED]`, `[DONE]`.
+
+## Next handoff for qwen3.8max
+
+> **Status as of 2026-08-12 ~12:07 UTC** (agent handoff refresh)
+
+### Active runs on A800
+
+| PID | GPU | Task | State | Notes |
+|------|------|------|-------|-------|
+| `2058225` | 7 | v85 random view dropout training | RUNNING | H36M true-GT medium; **restarted** after duplicate DataLoader-worker processes were killed; Epoch 1 done (train_loss 17.48, val_MPJPE 62.53 mm), now Epoch 2 step ~200, loss ~19.0 and falling. `--v85_dropout_prob 0.3 --v85_min_views 2 --v85_use_count_embedding`. Log: `outputs/ablations/v85_random_view_dropout_medium_a800.log`. |
+| `2062181` | 6 | v85 no-fallback variable-view eval | RUNNING | Manifest-based eval (`--dataset_manifest tmp/h36m_true_gt_val_manifest.txt`); PID `2062181` (launcher `2062178`); launched with `PYTHONUNBUFFERED=1`; output file currently 0 bytes (buffered/loading), low GPU memory footprint. Output: `outputs/variable_view_v85_random_view_dropout_medium_a800.{csv,json,log}`. |
+| `2072251` | 6/7 (queued) | v85 post-training eval suite monitor | QUEUED | `scripts/monitor_v85_then_run_evals.sh`; will launch v85 test-set eval, no-fallback variable-view eval, and DLT-fallback variable-view eval sequentially on the first free GPU (6 or 7) after training finishes. |
+| `2067976` | — | VoxelPose SOTA baseline monitor | STOPPED | Old `scripts/monitor_v85_then_launch_voxelpose.sh`; no longer running. Superseded by `monitor_v85_then_run_evals.sh` (PID `2072251`). |
+| `117455` | 5 | AIST++-only medium fast v2 | EARLY-STOPPED | Best val **91.43 mm** @ Epoch 4. Checkpoint: `outputs/ablations/aistpp_only_medium_a800_fast_v2.pth`. |
+| `1090542` | 6 | AIST++-only → H36M cross-eval | COMPLETED | S9 **98.17 mm**, S11 **89.70 mm**, combined **~93.94 mm** → `outputs/eval_aistpp_only_medium_a800_fast_v2_h36m_test.json`. |
+| `175675` | — | v25 H36M + AIST++ mixed-dataset stability | KILLED | Diverged @ Epoch 3 (`val_MPJPE=481.99 mm`). Best checkpoint: Epoch 1 **36.49 mm** at `outputs/ablations/v25_true_gt_mixed_dataset_stability_a800_gpu6.pth`. |
+| `2527668` | 7 | MPI-INF-3DHP RTMPose detection | COMPLETED | 16/16 `.npz` files in `data/webbridge/mpi_inf_3dhp_detected_2d/`. |
+| — | — | MPI DLT-baseline | COMPLETED | Mean MPJPE **115.09 mm**, mean PA-MPJPE **132.68 mm** → `outputs/mpi_rtmpose_detected_2d/dlt_baseline_detected_2d.json`. |
+| `628743` | 4 | v25 var-view re-eval (DLT fallback) | COMPLETED | S9 k=2/3/4 = 58.18/33.32/116.98 mm; S11 k=2/3/4 = 49.35/25.28/110.58 mm. Output: `outputs/variable_view_fix/variable_view_v25_true_gt_stability_a800_dlt_fallback.json`. |
+| — | — | v81 var-view DLT-fallback | COMPLETED | k=2/3 only; output: `outputs/variable_view_fix/variable_view_v81_true_gt_medium_a800_dlt_fallback_k23.{csv,json}`. |
+| — | — | v82 var-view DLT-fallback | COMPLETED | k=2/3/4; output: `outputs/variable_view_fix/variable_view_v82_true_gt_medium_a800_dlt_fallback.{csv,json}`. |
+| — | 0–3 | VLLM workers | OCCUPIED | Do not touch. |
+
+### Notable update: v85 is the only in-flight training run
+
+The **v25 stability DLT-fallback** (PID `628743`) replaced the learned model with direct confidence-weighted DLT for k<4 and produced: S9 **58.18 / 33.32 / 116.98 mm**, S11 **49.35 / 25.28 / 110.58 mm** for k=2/3/4. This is now the fallback baseline against which v85 will be compared.
+
+The **v81/v82 DLT-fallback evals** are done. v81 only evaluated k=2/3 (model-agnostic fallback), so the output is `..._k23.*`. v82 evaluated k=2/3/4 and shows the learned v82 k=4 result is much better than the v25 stability k=4 result (v82: 47.81/42.36 mm vs v25: 116.98/110.58 mm), confirming v82's learned full-view model is stronger.
+
+The **v85 random view dropout** medium run is training on GPU 7 (PID `2058225`) with `--use_random_view_dropout_v85 --v85_dropout_prob 0.3 --v85_min_views 2 --v85_use_count_embedding`. It is the first attempt to train a model that natively handles k=2/3/4. Training was **restarted** after duplicate DataLoader-worker processes were killed; it has completed Epoch 1 (train_loss 17.48, val_MPJPE 62.53 mm) and is now in Epoch 2 at step ~200 with loss ~19.0 and falling. A no-fallback variable-view eval is running on GPU 6 (PID `2062181`, launcher `2062178`; `PYTHONUNBUFFERED=1`) to get a learned-model baseline; its output file is still 0 bytes because the process is still loading/buffering. Note: any extra python processes with the same command line are DataLoader workers; `nvidia-smi` shows only PID `2058225` using GPU memory.
+
+The old **VoxelPose SOTA baseline monitor** (PID `2067976`, `scripts/monitor_v85_then_launch_voxelpose.sh`) is no longer running. It has been superseded by `scripts/monitor_v85_then_run_evals.sh` (PID `2072251`), which will wait for v85 training to finish and then launch the v85 test-set eval, no-fallback variable-view eval, and DLT-fallback variable-view eval sequentially on the first free GPU (6 or 7). VoxelPose/MVPose SOTA baselines remain in the backlog and will be scheduled after the v85 eval suite completes.
+
+### Blockers / watch-outs
+
+1. **Sparse-view (k=2/k=3) failure — structural fix in progress:** The `view_mask` wrapper fix was applied in `motionflow_mv/fusion/variable_view_inference.py` but k<4 MPJPE remained catastrophic. A DLT-fallback re-evaluation confirms the underlying 2D observations are sound: direct confidence-weighted DLT on the same active views gives S9 58.18/33.32 mm and S11 49.35/25.28 mm for k=2/3. v85 random view dropout is now training to address the root cause (model only saw 4-view rigs during training). Monitor GPU 7.
+2. **A800 `/mnt/nvme0n1p1` is ~99% full** (~59 GB free; was ~42 GB). v85 is writing checkpoints and logs; avoid dumping extra frame extractions or duplicate checkpoints. Run `scripts/cleanup_a800_safe.sh` dry-run if needed.
+3. **Only GPUs 6/7 are available to this project**; GPUs 4/5 are reserved for other projects. GPU 7 is busy training v85; GPU 6 is running the v85 no-fallback eval. Do not launch anything new on GPUs 0–5.
+
+### Next 3 concrete tasks
+
+1. **Wait for v85 to finish and evaluate sparse-view robustness.**
+   - v85 random view dropout is training on A800 GPU 7 (PID `2058225`); Epoch 1 done (val_MPJPE 62.53 mm), now Epoch 2 step ~200, loss ~19.0 and falling.
+   - The no-fallback variable-view eval is already running on GPU 6 (PID `2062181`); output still 0 bytes / loading. The eval-suite monitor `scripts/monitor_v85_then_run_evals.sh` (PID `2072251`) will automatically launch the test-set eval, a fresh no-fallback eval, and the DLT-fallback eval (`--var_view_dlt_fallback`) after training finishes. Compare k=2/3/4 MPJPE to the v25 stability baseline (S9: 58.18/33.32/116.98 mm; S11: 49.35/25.28/110.58 mm).
+   - If k<4 is still catastrophic, consider stronger count-conditioning or a separate sparse-view head.
+
+2. **Validate documentation and finalize SOTA comparison configs.**
+   - `docs/results_true_gt_h36m.md` and `docs/paper_draft_icra_cvpr_2027.md` already record the MPI DLT baseline (115.09 mm / 132.68 mm) and the AIST++ → H36M cross-eval (93.94 mm).
+   - Prepare SOTA comparison configs for VoxelPose / MVPose / DLT when GPU 6 or 7 is free.
+
+3. **Run `scripts/cleanup_a800_safe.sh` dry-run and free disk if safe.**
+   - Disk is at 99%; before launching more training, identify removable checkpoints/logs (especially old failed runs like v83/v84).
+
+### Quick verification commands for next agent
+
+```bash
+# Check v85 training
+ssh a800-D "tail -f /mnt/nvme0n1p1/zhangzy/motionflow-multiview-kimiswarm-iter20/outputs/ablations/v85_random_view_dropout_medium_a800.log"
+
+# Check v85 no-fallback eval
+ssh a800-D "tail -f /mnt/nvme0n1p1/zhangzy/motionflow-multiview-kimiswarm-iter20/outputs/variable_view_v85_random_view_dropout_medium_a800.log"
+
+# Check v85 post-training eval suite monitor
+ssh a800-D "tail -f /mnt/nvme0n1p1/zhangzy/motionflow-multiview-kimiswarm-iter20/outputs/sota_baselines/monitor_v85_then_run_evals.log"
+
+# Check v82 DLT-fallback result
+ssh a800-D "cat /mnt/nvme0n1p1/zhangzy/motionflow-multiview-kimiswarm-iter20/outputs/variable_view_fix/variable_view_v82_true_gt_medium_a800_dlt_fallback.json"
+
+# Check v25 DLT-fallback result
+ssh a800-D "cat /mnt/nvme0n1p1/zhangzy/motionflow-multiview-kimiswarm-iter20/outputs/variable_view_fix/variable_view_v25_true_gt_stability_a800_dlt_fallback.json"
+
+# Check AIST++ cross-eval
+ssh a800-D "cat /mnt/nvme0n1p1/zhangzy/motionflow-multiview-kimiswarm-iter20/outputs/eval_aistpp_only_medium_a800_fast_v2_h36m_test.json"
+
+# Check MPI DLT baseline
+ssh a800-D "cat /mnt/nvme0n1p1/zhangzy/motionflow-multiview-kimiswarm-iter20/outputs/mpi_rtmpose_detected_2d/dlt_baseline_detected_2d.json"
+
+# GPU overview
+ssh a800-D "nvidia-smi --query-gpu=index,utilization.gpu,memory.used --format=csv"
+```

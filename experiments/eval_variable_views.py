@@ -294,6 +294,7 @@ def evaluate_variable_views(
     num_subsets_per_k: int | None = None,
     seed: int = 42,
     hardened: bool = False,
+    hardened_kwargs: dict | None = None,
 ) -> dict:
     """Evaluate model for each view count in [min_views, max_views].
 
@@ -326,6 +327,7 @@ def evaluate_variable_views(
         align="none",
         device=device,
         hardened=hardened,
+        hardened_kwargs=hardened_kwargs,
     )
     # Preserve the legacy result shape expected by callers of this function.
     results = {}
@@ -492,7 +494,11 @@ def main():
                         help="OmniMultiViewFusionV5 v47 checkpoint for side-by-side comparison")
     parser.add_argument("--compare_v46_v47", action="store_true",
                         help="Compare v46 vs v47 by toggling use_v47_temporal_aggregation on the loaded model")
+    parser.add_argument("--var_view_dlt_fallback", action="store_true",
+                        help="For HardenedVariableViewInferenceWrapper, fall back to direct DLT for any incomplete view rig")
     args = parser.parse_args()
+
+    args.hardened_kwargs = {"fallback_to_dlt_for_incomplete_views": True} if args.var_view_dlt_fallback else None
 
     if args.dataset is not None and args.dataset_manifest is not None:
         parser.error("--dataset and --dataset_manifest are mutually exclusive")
@@ -537,6 +543,7 @@ def main():
             seed=args.seed,
             hardened=isinstance(model.__class__.__name__, str)
             and "OmniMultiViewFusionV5" in model.__class__.__name__,
+            hardened_kwargs=args.hardened_kwargs,
         )
 
     def _evaluate_all(model) -> Dict[str, dict]:

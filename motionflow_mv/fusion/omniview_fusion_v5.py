@@ -47,6 +47,8 @@ from motionflow_mv.fusion.multiview_geometry_fusion_v25 import MultiViewGeometry
 from motionflow_mv.fusion.temporal_aggregation_v47 import TemporalAggregationV47
 from motionflow_mv.fusion.temporal_aggregation_v49_lite import TemporalAggregationV49Lite
 from motionflow_mv.fusion.temporal_geometry_fusion_v26 import TemporalGeometryFusionV26
+from motionflow_mv.fusion.temporal_pose_attention_v81 import TemporalPoseAttentionV81
+from motionflow_mv.fusion.temporal_pose_attention_v82 import TemporalPoseAttentionV82
 from motionflow_mv.fusion.uncertainty_aware_triangulation_v33 import (
     UncertaintyAwareTriangulationV33,
 )
@@ -228,6 +230,37 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
         v25_outlier_soft_beta: float = 1.0,
         v25_geom_loss_weight: float = 0.1,
         v25_dropout: float = 0.1,
+        use_temporal_pose_attention_v81: bool = False,
+        v81_temporal_window: int = 9,
+        v81_temporal_residual_gate_init: float = -6.0,
+        v81_temporal_dropout: float = 0.1,
+        use_temporal_pose_attention_v82: bool = False,
+        v82_temporal_windows: Sequence[Optional[int]] = (5, 13, -1),
+        v82_hidden_dim: int = 16,
+        v82_temporal_dropout: float = 0.1,
+        v82_temporal_residual_gate_init: float = -6.0,
+        # v83 view-conditioned temporal attention on v25 ray tokens
+        use_view_conditioned_temporal_attention_v83: bool = False,
+        v83_d: int = 128,
+        v83_n_heads: int = 4,
+        v83_temporal_window: int = 9,
+        v83_n_layers: int = 1,
+        v83_dropout: float = 0.1,
+        v83_residual_gate_init: float = -6.0,
+        v83_use_view_reliability_bias: bool = True,
+        use_uncertainty_weighted_view_dropout_v84: bool = False,
+        v84_d: int = 128,
+        v84_hidden: int = 64,
+        v84_weight_type: str = "per_view",
+        v84_use_reprojection: bool = True,
+        v84_use_epipolar: bool = True,
+        v84_dropout_prob: float = 0.1,
+        v84_min_weight: float = 0.05,
+        # v85 random view dropout with active-view-count conditioning
+        use_random_view_dropout_v85: bool = False,
+        v85_dropout_prob: float = 0.3,
+        v85_min_views: int = 2,
+        v85_use_count_embedding: bool = True,
         use_temporal_geometry_fusion_v26: bool = False,
         v26_temporal_window: int = 3,
         v26_temporal_attention_residual_gate_init: float = 0.0,
@@ -800,9 +833,54 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
                 v45_adaptive_weight_type=v45_adaptive_weight_type,
                 v45_adaptive_weight_hidden=v45_adaptive_weight_hidden,
                 v45_adaptive_weight_n_layers=v45_adaptive_weight_n_layers,
+                use_view_conditioned_temporal_attention_v83=use_view_conditioned_temporal_attention_v83,
+                v83_d=v83_d,
+                v83_n_heads=v83_n_heads,
+                v83_temporal_window=v83_temporal_window,
+                v83_n_layers=v83_n_layers,
+                v83_dropout=v83_dropout,
+                v83_residual_gate_init=v83_residual_gate_init,
+                v83_use_view_reliability_bias=v83_use_view_reliability_bias,
+                use_uncertainty_weighted_view_dropout_v84=use_uncertainty_weighted_view_dropout_v84,
+                v84_d=v84_d,
+                v84_hidden=v84_hidden,
+                v84_weight_type=v84_weight_type,
+                v84_use_reprojection=v84_use_reprojection,
+                v84_use_epipolar=v84_use_epipolar,
+                v84_dropout_prob=v84_dropout_prob,
+                v84_min_weight=v84_min_weight,
+                use_random_view_dropout_v85=use_random_view_dropout_v85,
+                v85_dropout_prob=v85_dropout_prob,
+                v85_min_views=v85_min_views,
+                v85_use_count_embedding=v85_use_count_embedding,
             )
         else:
             self.multiview_geometry_fusion_v25 = None
+
+        # Optional v81 per-joint temporal pose attention (refines v25 output).
+        self.use_temporal_pose_attention_v81 = use_temporal_pose_attention_v81
+        if self.use_temporal_pose_attention_v81:
+            self.temporal_pose_attention_v81 = TemporalPoseAttentionV81(
+                n_joints=self.j,
+                temporal_window=v81_temporal_window,
+                residual_gate_init=v81_temporal_residual_gate_init,
+                dropout=v81_temporal_dropout,
+            )
+        else:
+            self.temporal_pose_attention_v81 = None
+
+        # Optional v82 multi-scale temporal pose attention (refines v25 output).
+        self.use_temporal_pose_attention_v82 = use_temporal_pose_attention_v82
+        if self.use_temporal_pose_attention_v82:
+            self.temporal_pose_attention_v82 = TemporalPoseAttentionV82(
+                n_joints=self.j,
+                temporal_windows=v82_temporal_windows,
+                hidden_dim=v82_hidden_dim,
+                dropout=v82_temporal_dropout,
+                residual_gate_init=v82_temporal_residual_gate_init,
+            )
+        else:
+            self.temporal_pose_attention_v82 = None
 
         # Optional v33 uncertainty-aware triangulation head.
         self.use_uncertainty_aware_triangulation_v33 = use_uncertainty_aware_triangulation_v33
@@ -1682,9 +1760,12 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
         # View embedding: learned positional embedding plus optional camera
         # conditioned embedding as a residual.  Keeping the learned embedding helps
         # fixed-view accuracy while the camera embedding enables variable views.
+        # Mask the learned embedding for inactive/padded views so they receive no
+        # positional signal.
         feat = feat.view(B, T, V, J, self.d)
         view_emb = self.view_pos_embed[:V].view(1, 1, V, 1, self.d)
-        feat = feat + view_emb
+        view_emb_mask = view_mask_flat.view(B, T, V, 1, 1)
+        feat = feat + view_emb * view_emb_mask
         if self.use_camera_view_embedding and self.camera_view_embedding is not None:
             camera_emb = self.camera_view_embedding(K_corrected, R, t)  # (B*T, V, d)
             camera_emb = camera_emb.view(B, T, V, 1, self.d)
@@ -2061,7 +2142,10 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
                 pred_3d_raw = triangulate_dlt_batched_lstsq(points_2d, P, weights)
 
         # Adaptive Gauss-Newton refinement.
-        feat_pooled = feat.mean(dim=1)
+        # Use masked mean pooling so inactive/padded views do not leak into the
+        # per-joint pooled features used by the damping and residual heads.
+        view_pool_mask = view_mask_flat.view(B * T, V, 1, 1)
+        feat_pooled = (feat * view_pool_mask).sum(dim=1) / view_pool_mask.sum(dim=1).clamp(min=1.0)
         damping = self.damping_head(feat_pooled).squeeze(-1)
         damping = self.min_gn_damping + (
             self.max_gn_damping - self.min_gn_damping
@@ -2107,6 +2191,24 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
                 confidence=confidences.view(B, T, V, J),
             )
             pred_3d_gn = pred_3d_gn_v25.view(B * T, J, 3)
+
+        # Optional v81 per-joint temporal pose attention over the triangulated pose.
+        if (
+            self.use_temporal_pose_attention_v81
+            and self.temporal_pose_attention_v81 is not None
+        ):
+            pred_3d_gn = self.temporal_pose_attention_v81(
+                pred_3d_gn.view(B, T, J, 3)
+            ).view(B * T, J, 3)
+
+        # Optional v82 multi-scale temporal pose attention over the triangulated pose.
+        if (
+            self.use_temporal_pose_attention_v82
+            and self.temporal_pose_attention_v82 is not None
+        ):
+            pred_3d_gn = self.temporal_pose_attention_v82(
+                pred_3d_gn.view(B, T, J, 3)
+            ).view(B * T, J, 3)
 
         # Optional v55 outlier-robust reliability pre-conditioning for v52.
         orr_loss = torch.tensor(0.0, device=device, dtype=pred_3d_gn.dtype)

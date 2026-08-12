@@ -18,7 +18,7 @@ description: >
   v45/v46/v50/v51/v52/v53 stack and adds the v54 PSC-v2 module after the
   v53 PSC block.
 
-manifest: configs/splits/webbridge_h36m_mpi_mixed_train_val.yaml
+manifest: configs/splits/h36m_true_gt_aist_mixed_smoke.yaml
 script: experiments/train_omniview_fusion_v5_webbridge_multi.py
 
 training:

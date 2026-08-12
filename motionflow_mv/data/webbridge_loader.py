@@ -162,6 +162,8 @@ def convert_human36m(
     camera_param_file: str = "camera_params.json",
     archive_file: str = "h36m_sh_conf_cam_source_final.pkl.zip",
     true_gt_path: Optional[Path] = None,
+    true_gt_dir: Optional[Path] = None,
+    allow_circular_fallback: bool = False,
 ) -> Path:
     """Convert the preprocessed Hugging Face Human3.6M subset to canonical ``.npz``.
 
@@ -177,8 +179,14 @@ def convert_human36m(
             a ``joints_3d`` array with the true 3D ground truth. If provided, it is
             used as the 3D label instead of triangulating from the 2D input. When
             omitted, ``convert_human36m`` attempts to auto-discover a matching
-            true-GT npz in ``data/h36m_true_gt/`` and slices it to the requested
-            actions.
+            true-GT npz in ``true_gt_dir`` (default ``data/h36m_true_gt/``) and
+            slices it to the requested actions.
+        true_gt_dir: directory to search for auto-discovered true-GT ``.npz``
+            files. Ignored when ``true_gt_path`` is provided.
+        allow_circular_fallback: if ``False`` (default), the converter raises an
+            error when no true 3D GT can be found. Only set to ``True`` if you
+            intentionally want the legacy circular labels (DLT triangulation of the
+            input 2D keypoints).
 
     Returns:
         Path to the generated ``.npz`` file.
@@ -272,9 +280,11 @@ def convert_human36m(
         true_gt_path = Path(true_gt_path)
     else:
         # Auto-discover a true-GT npz for this (subject, actions, split).
-        discovered = _find_h36m_true_gt(
-            subject, actions, split, Path("data/h36m_true_gt")
-        )
+        if true_gt_dir is None:
+            true_gt_dir = Path("data/h36m_true_gt")
+        else:
+            true_gt_dir = Path(true_gt_dir)
+        discovered = _find_h36m_true_gt(subject, actions, split, true_gt_dir)
         if discovered is not None:
             true_gt_path, _ = discovered
             print(f"NOTE: auto-discovered true 3D GT: {true_gt_path}")
@@ -308,6 +318,14 @@ def convert_human36m(
             )
     else:
         true_joints_3d = None
+        if not allow_circular_fallback:
+            raise RuntimeError(
+                "No true 3D GT found for Human3.6M subject "
+                f"{subject}, actions {actions}, split {split}. "
+                "The legacy triangulation fallback produces circular labels "
+                "(DLT of input 2D). Provide a true-GT npz or pass "
+                "allow_circular_fallback=True to opt in."
+            )
         print(
             "WARNING: No true 3D GT supplied; triangulating 2D keypoints to "
             "produce joints_3d. The resulting labels are circular: DLT(points_2d, "
@@ -617,7 +635,7 @@ def convert_aistpp(
     split: Path | None = None,
     scale_factor: float | None = None,
     max_seqs: int | None = None,
-    use_optim: bool = False,
+    use_optim: bool = True,
 ) -> List[Path]:
     """Convert AIST++ annotations to canonical ``.npz`` files.
 
@@ -644,6 +662,8 @@ def convert_aistpp(
         max_seqs: if given, stop after converting this many sequences (useful
             for a quick smoke test).
         use_optim: use ``keypoints3d_optim`` instead of ``keypoints3d``.
+            Defaults to ``True`` because the raw ``keypoints3d`` contains NaNs
+            for occluded joints on ~20% of sequences.
 
     Returns:
         List of paths to generated ``.npz`` files.
@@ -830,10 +850,26 @@ def main():
     parser.add_argument("--scale_factor", type=float, default=None, help="AIST++: scale 3D points/cameras by this factor (e.g. 0.01 for meters).")
     parser.add_argument("--meters", action="store_true", help="AIST++: alias for --scale_factor 0.01 (raw AIST++ units are usually centimeters).")
     parser.add_argument(
+        "--no-optim",
+        action="store_true",
+        help="AIST++: use raw keypoints3d instead of the optimized clean keypoints3d_optim.",
+    )
+    parser.add_argument(
         "--true-gt-path",
         type=Path,
         default=None,
         help="Human3.6M: path to a canonical npz containing the true joints_3d to use instead of triangulating.",
+    )
+    parser.add_argument(
+        "--true-gt-dir",
+        type=Path,
+        default=None,
+        help="Human3.6M: directory to search for auto-discovered true-GT npz files (default: data/h36m_true_gt).",
+    )
+    parser.add_argument(
+        "--allow-circular-fallback",
+        action="store_true",
+        help="Human3.6M: allow triangulating 2D keypoints when true 3D GT is missing (produces circular labels).",
     )
     args = parser.parse_args()
 
@@ -845,6 +881,8 @@ def main():
             split=args.split,
             out_dir=args.out.parent,
             true_gt_path=args.true_gt_path,
+            true_gt_dir=args.true_gt_dir,
+            allow_circular_fallback=args.allow_circular_fallback,
         )
     elif args.dataset in {"shelf", "campus"}:
         convert_shelf_campus(data_root=args.data_root, out_path=args.out, person_id=args.person_id)
@@ -858,6 +896,7 @@ def main():
             split=args.split_file,
             scale_factor=scale_factor,
             max_seqs=args.max_seqs,
+            use_optim=not args.no_optim,
         )
     else:
         _CONVERTERS[args.dataset](data_root=args.data_root, out_path=args.out)

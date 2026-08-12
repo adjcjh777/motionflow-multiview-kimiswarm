@@ -31,7 +31,7 @@ model_config:
 datasets:
   # H36M canonical test split.
   - name: "h36m"
-    path: "configs/splits/webbridge_h36m_train_val.yaml"
+    path: "configs/splits/h36m_true_gt_standard.yaml"
     split: "test"
 
   # MPI-INF-3DHP official test sequences (local dry-run only; final numbers

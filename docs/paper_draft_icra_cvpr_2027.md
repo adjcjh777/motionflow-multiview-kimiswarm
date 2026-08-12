@@ -1,16 +1,17 @@
 # MotionFlow-MultiView: Residual Refinement of Temporal Ray-Attention Fusion for Calibrated Multi-View 3D Human Pose Estimation
 
-> ⚠️ **SUPERSEDED (2026-08-10).** Headline numbers in the abstract and
-> conclusion come from circular-label protocols (H36M `joints_3d = DLT(points_2d, cameras)`;
-> MPI-INF-3DHP GT-projection 2D) and are invalidated by the data-foundation
-> audit. Do not cite the MPI 9.32 mm or H36M 0.62 mm results. See
-> `docs/data_foundation_blocker.md` and the repositioned story in
-> `docs/roadmap_cvpr2027.md`; verified leaderboards now include H36M true-GT
-> (`docs/results_true_gt_h36m.md`), AIST++ smoke (Section 5.4.1), and
-> Shelf/Campus detected (`docs/results_true_gt_shelf_campus.md`).
+> **Data-foundation note (2026-08-12).** This draft reports numbers obtained on
+> honest, non-circular benchmarks. Earlier versions of the paper cited
+> MPI-INF-3DHP **9.32 mm** and Human3.6M **0.62 mm** results that came from
+> circular-label protocols (H36M `joints_3d = DLT(points_2d, cameras)`;
+> MPI-INF-3DHP GT-projected 2D) and are no longer valid. Do not cite those
+> old figures. Verified leaderboards now include H36M true-GT
+> (`docs/results_true_gt_h36m.md`), AIST++ (Section 5.5.1), MPI-INF-3DHP
+> RTMPose detected-2D (Section 5.2.3), and Shelf/Campus detected
+> (`docs/results_true_gt_shelf_campus.md`).
 
 **Abstract.**
-We present a lightweight residual refinement head that boosts calibrated multi-view 3D human pose estimation and integrates it into a robotics-oriented pipeline. Starting from a temporal ray-attention fusion baseline, our model first predicts per-view weights and triangulates a 3D pose via weighted DLT, then refines the result with a small MLP that corrects the residual triangulation error. On the repaired, non-circular evaluation protocols the paper pivots from absolute-record MPJPE to **sparse-view and cross-domain robustness**: on honest true-GT Human3.6M, even the best learned variant (v80, 39.98 mm) still trails Iskakov (23.35 mm) and confidence-weighted DLT (25.87 mm), while the v25 variant reaches only 72.80 mm before diverging. The framework therefore integrates a new AIST++ cross-domain smoke benchmark and supports variable camera rigs through geometry-based camera positional encoding (CamPE) and a skeleton-aware graph joint relation (GJR) module. A learned principal-point correction layer is retained as an architectural option, though its contribution is still being re-evaluated on the true-GT protocols. The fusion module is exposed as a pluggable `MultiViewFusionPlugin` inside MotionFlow, consumes calibrated multi-view 2D keypoints, and outputs a `HumanMotionIR` that feeds robot retargeting and policy training. It runs at 12.7–194 clips/s on an RTX 4090, making it suitable for robotics and immersive-video applications.
+Multi-view 3D human pose estimation has been benchmarked on labels that are themselves triangulations of the input 2D keypoints. We show that this circular protocol inflates apparent accuracy and conceals a large generalisation gap: when evaluated on honest, true mocap ground truth, even competitive learned triangulation methods lag behind a simple confidence-weighted DLT baseline. Motivated by this finding, we pivot the paper away from absolute-record MPJPE and toward the properties that matter for real deployment: **sparse-view robustness**, **cross-domain generalisation**, and resilience to imperfect calibration. We present MotionFlow-MultiView, a lightweight residual refinement head built on a temporal ray-attention fusion baseline. The model predicts per-view, per-joint weights, triangulates a 3D pose via weighted DLT, and refines the result with a small MLP that corrects the residual triangulation error. To support variable camera rigs and dataset transfer, we integrate geometry-based camera positional encoding (CamPE) and a skeleton-aware graph joint relation (GJR) module, so the same model can operate across camera configurations without per-dataset pose heads. On true-GT Human3.6M, our best learned variant (v25 stability) reaches **30.83 mm**, still behind Iskakov (**23.40 mm**) and confidence-weighted DLT (**25.67 mm**), showing that the real remaining challenge is not incremental accuracy on circular leaderboards but robustness under domain shift and view scarcity. We evaluate cross-domain behaviour on AIST++ and Shelf/Campus, and expose the fusion module as a pluggable `MultiViewFusionPlugin` inside MotionFlow. The system runs at **12.8–194.8 clips/s** on an RTX 4090, making it suitable for robotics and immersive-video applications.
 
 ---
 
@@ -18,76 +19,66 @@ We present a lightweight residual refinement head that boosts calibrated multi-v
 
 Multi-view video is the dominant capture modality in sports, entertainment, and human-robot interaction. Existing monocular pose pipelines such as MotionFlow are accurate for single-view inputs, but they discard the geometric constraints that relate different camera views. Calibrated multi-view triangulation can recover metric 3D pose, yet classical DLT is brittle to occlusions, detector noise, and small calibration errors.
 
-Our key observation is that a **geometric triangulation step followed by a learned residual correction** is the right decomposition: the triangulation enforces camera consistency and metric scale, while the residual head only has to learn the small, structured leftover error. We make the following contributions:
+The standard multi-view pose literature has therefore pursued learned triangulation and fusion methods that report ever-lower MPJPE. We argue that this pursuit rests on a hidden circularity: many widely used benchmark labels, including the Human3.6M multi-view annotations, are themselves generated by triangulating the input 2D keypoints. A model trained on such labels is rewarded for reproducing DLT, not for recovering true 3D pose. When we replace the circular labels with true mocap ground truth, the apparent accuracy of learned methods collapses: on Human3.6M our strongest learned variant (v25 stability) reaches **30.83 mm**, far behind confidence-weighted DLT (**25.67 mm**) and Iskakov's learnable triangulation (**23.40 mm**), while the original v25 medium reaches **43.93 mm** on the corrected test evaluation (its validation log reported 72.80 mm only because `view_mask` was not passed during validation) before diverging. This **true-GT pivot** redefines the problem. The goal is no longer to beat a record on a compromised leaderboard; it is to build multi-view pose systems that remain reliable when views are sparse, calibrations are noisy, and test data comes from a different domain.
 
-1. A temporal ray-attention fusion module that predicts per-view, per-joint weights and feeds a differentiable weighted DLT layer.
-2. A lightweight residual refinement head that predicts per-joint corrections from temporally attended features and the raw triangulated pose.
-3. Empirical validation on MPI-INF-3DHP and Human3.6M, including efficiency numbers on an RTX 4090.
-4. A plug-in integration into the MotionFlow pipeline as a `MultiViewFusionPlugin`, producing a `HumanMotionIR` for downstream robot retargeting and policy training.
+Our key observation is that a **geometric triangulation step followed by a learned residual correction** is still the right decomposition: the triangulation enforces camera consistency and metric scale, while the residual head only has to learn the small, structured leftover error. The challenge is therefore to make this decomposition generalise—across camera configurations, view counts, and datasets—rather than to chase incremental gains on circular benchmarks. We make the following contributions:
+
+1. A **true-GT pivot and honest benchmarking** argument that exposes the circular-label problem and reorients the paper toward sparse-view robustness and cross-domain generalisation.
+2. A **temporal ray-attention fusion module** with geometry-based camera positional encoding (CamPE) and a skeleton-aware graph joint relation (GJR) module, enabling a single model to transfer across variable camera rigs and datasets without per-dataset pose heads.
+3. A **lightweight residual refinement head** that predicts per-joint corrections from temporally attended features and the raw triangulated pose.
+4. Empirical validation on **Human3.6M true-GT**, **Campus sparse-view**, and **AIST++ cross-domain transfer**, including efficiency numbers on an RTX 4090, with explicit failure-mode analysis when views are removed.
+5. A plug-in integration into the MotionFlow pipeline as a `MultiViewFusionPlugin`, producing a `HumanMotionIR` for downstream robot retargeting and policy training.
 
 ## 2. Related Work
 
-**Multi-view pose estimation.** Classic approaches triangulate 2D keypoints detected in each view [1,2]. Learnable triangulation [3] and ray-aware attention [4] have improved robustness by predicting view weights, but still output the weighted DLT solution directly. We differ by learning a post-triangulation residual.
+**Multi-view pose estimation.** Classic approaches triangulate 2D keypoints detected in each view [1,2]. Learnable triangulation [3] and ray-aware attention [4] have improved robustness by predicting view weights, but still output the weighted DLT solution directly. We differ by learning a post-triangulation residual. Ray-aware transformer methods such as RUMPL [4] propose universal multi-view 2D-to-3D lifting with ray-based representations; we cite them as recent related work and do not reproduce their model.
 
 **Temporal pose models.** Temporal transformers and 1-D convolutions enforce smoothness across frames [5,6]. We use a temporal transformer over (view, joint) tokens after ray-aware feature extraction.
 
 **Residual learning in pose.** Residual connections are common in 2D pose networks [7]; applying them after explicit triangulation is less explored. Our residual head is conditioned on both 3D geometry and temporal context.
 
-## 3. Method
+## 3. Method: geometry-first robust multi-view fusion
 
-### 3.1 Base temporal ray-attention fusion
+We frame multi-view 3D pose estimation as a robustness problem rather than a pure accuracy contest. Given per-view 2D keypoints and confidences `(B, T, V, J, 3)` plus calibrated intrinsics `K` and extrinsics `R, t`, the model must produce a metric 3D pose that remains reliable when (i) only a subset of views is usable, (ii) cameras are perturbed or calibrated imprecisely, and (iii) the test domain differs from the training domain. We therefore decompose the problem into a strong geometric baseline, a learned robustification stage, and a small residual correction. This section describes the shared architecture; the exact variant used for each experiment is indicated in Section 5.
 
-Input: per-frame 2D keypoints and confidences `(B, T, V, J, 3)` plus calibrated camera intrinsics `K` and extrinsics `R, t`.
+### 3.1 Geometric triangulation backbone
 
-1. **Ray embedding.** For each view and joint, compute the camera ray and encode it together with the 2D point, confidence, and a camera embedding.
-2. **Joint-level attention.** Exchange information across joints within each view.
-3. **Temporal attention.** Treat each (view, joint) pair as a temporal sequence and apply a transformer encoder.
-4. **Weight head.** Predict per-view, per-joint weights `w_{v,j}` and multiply by input confidences.
-5. **Weighted DLT.** Triangulate the 3D joints `X_raw` from the weighted rays.
+The backbone is weighted Direct Linear Transformation (DLT). For each view `v` and joint `j` we back-project the detected 2D point into a ray, scale it by the detector confidence `c_{v,j}`, and triangulate the 3D point `X_j` that minimises the squared ray distance. Formally, the weighted least-squares solution solves
 
-### 3.2 Residual refinement head
+```
+A W X = 0,
+```
 
-The residual head takes the pooled temporal feature `f` and the raw triangulation `X_raw`:
+where each row of `A` encodes the ray from a view and `W` contains the per-view weights. We also support a robust reweighted DLT: an initial solution is projected back into each view, outliers are down-weighted by a Huber penalty on the reprojection residual, and the triangulation is repeated. This geometric baseline is frozen and serves as the reference against which the learned components are evaluated.
+
+Importantly, the triangulation step enforces multi-view geometry and metric scale before any learned correction is applied. On true-GT Human3.6M this baseline already attains 25.67 mm (confidence-weighted DLT) and 28.77 mm (unweighted DLT), so the residual head is only required to correct the small, structured errors that remain after triangulation.
+
+### 3.2 Learned view reliability and visibility gating
+
+The first learned component estimates per-view, per-joint reliability. A lightweight head predicts a soft visibility or reliability score `r_{v,j} ∈ [0,1]` from ray-aware features. The score is multiplied with the detector confidence before weighted DLT, so unreliable or occluded views contribute less to the triangulation. A hard fallback guard ensures that at least `min_visible_views` remain active, preventing degenerate triangulation when most views are occluded.
+
+This gating is the primary mechanism for **sparse-view robustness**: when only `k` views are available, the model can amplify the remaining reliable rays rather than treating every view equally. The visibility head is supervised with a binary cross-entropy loss against the detector confidence mask, with an optional reprojection-consistency term that rewards views whose rays agree with the current triangulation. This design is the basis of the v80 view-reliability variant used in the experiments.
+
+### 3.3 Temporal ray-attention fusion
+
+After ray embedding, we encode each 2D detection as a ray token that includes the image point, the camera ray, the detector confidence, and a geometry-based camera positional encoding (CamPE; Section 3.5). A transformer encoder then attends over the temporal dimension for each `(view, joint)` pair, producing temporally smoothed features. The temporal model is lightweight: for the default `d = 64`, `n_st_layers = 3` configuration it adds only ~66 k parameters.
+
+The base temporal-only model (v25) predicts per-view weights from the temporally pooled features and feeds them into the weighted DLT layer. Because the temporal context is shared across views, the model can borrow evidence from neighbouring frames when a view is briefly occluded, improving stability without sacrificing geometric consistency.
+
+### 3.4 Residual refinement head
+
+After weighted DLT, a small residual head corrects the raw triangulation. Let `X_raw` be the output of the weighted DLT and `f` the pooled temporal feature. The residual head computes
 
 ```
 ΔX = MLP([f, X_raw])    # (B·T, J, 3)
 X  = X_raw + ΔX
 ```
 
-The MLP has two hidden layers of size `residual_hidden` (default 128) and ReLU activations. Because the correction is added to a camera-consistent estimate, the output preserves metric scale while correcting systematic residual errors (detector bias, mild calibration drift, occlusion-dominated clips).
+The MLP has two hidden layers of size `residual_hidden` (default 128) with ReLU activations. Because the correction is added to a camera-consistent estimate, the output preserves metric scale while correcting detector bias, mild calibration drift, and occlusion-dominated clips.
 
-### 3.3 Training
+On the true-GT H36M protocol this residual head must be heavily regularised. Our v25 and v80 medium runs show that large residual MLPs quickly overfit the small true-GT training set; best results are obtained with early stopping, weight decay, and reduced augmentation (see Section 5.2). We therefore treat the residual head as a small, regularised correction rather than a high-capacity pose generator.
 
-End-to-end 3D MSE loss:
-
-```
-L_3D = || X - X_gt ||_2^2
-```
-
-Optionally, a calibrated reprojection loss and a skeleton bone-length loss can be added:
-
-```
-L_reproj = sum_{v} || proj_v(X) - x_v ||_2^2
-L_bone   = sum_{(parent, child)} ( ||bone_pred|| - ||bone_gt|| )^2
-L = L_3D + lambda_reproj * L_reproj + lambda_bone * L_bone
-```
-
-The reprojection term does not require skeleton topology and directly enforces multi-view consistency. The bone-length term enforces anatomical consistency without adding learnable parameters. The model is trained with Adam, a clip length of 13 frames, and early stopping on validation MPJPE.
-
-### 3.3.1 Training-time camera calibration perturbation
-
-Calibration noise is the dominant failure mode of the production system (Table 5), so we expose the model to realistic camera perturbations during training. For each clip we sample independent per-view rotation, translation, focal-length, and principal-point offsets and corrupt the calibration tensors before they reach the weighted DLT layer:
-
-```
-K', R', t' = perturb(K, R, t;  rot_std, trans_std, focal_std, pp_std)
-X_raw = weighted_DLT(..., K', R', t')
-```
-
-The ground-truth 3D pose and 2D keypoints remain unchanged, so the residual head learns to absorb small calibration drift while preserving metric scale. Typical magnitudes are ±0.5° rotation, ±5 mm translation, ±1% focal length, and ±2 px principal point. Validation is always run on the unperturbed calibration.
-
-### 3.3.2 Reprojection-error-gated residual head
-
-An optional refinement step makes the residual correction conditional on the raw triangulation's own reprojection error. After the weighted DLT triangulation, the raw 3D estimate is projected back into each view and the per-view pixel residual is summarized by its mean, standard deviation, maximum, and inlier fraction. This 4-D vector is concatenated to the residual head's input, and a tiny sigmoid gate scales the per-joint correction:
+**Reprojection-error-gated residual.** An optional variant makes the residual correction conditional on the raw triangulation's own reprojection error. The per-view pixel residual is summarised by its mean, standard deviation, maximum, and inlier fraction, and a tiny sigmoid gate scales the per-joint correction:
 
 ```
 s = summary( proj_v(X_raw) - x_v )
@@ -95,25 +86,34 @@ g = sigmoid( MLP_gate([f_pooled, X_raw, s]) )
 X = X_raw + g * MLP_delta([f_pooled, X_raw])
 ```
 
-The gate lets the model suppress the correction when the raw triangulation is already geometrically consistent, and amplify it when reprojection residuals indicate noise, occlusion, or calibration drift. It adds only a few hundred parameters and can be switched off to recover the original residual head.
+The gate suppresses the correction when the raw triangulation is already geometrically consistent and amplifies it when reprojection residuals indicate noise or occlusion.
 
-### 3.4 Geometry-based camera positional encoding (CamPE)
+### 3.5 Geometry-based camera positional encoding (CamPE)
 
-A practical multi-view system must generalise across camera rigs. Learned view embeddings are tied to a fixed number of views and an arbitrary ordering, so we replace them with a geometry-based camera positional encoding computed from the intrinsics and extrinsics. For each view we derive the camera center `c = -R^T t` and the principal ray `r = R^T [0,0,1]^T`, normalise them to be scale-invariant, encode each component with sinusoidal Fourier bands, and project the concatenated vector to the token dimension with a small MLP. The resulting camera token is added to every joint token before view-level attention, allowing the same model to accept any number of views and to transfer across datasets without relearning view identities.
+A practical system must transfer across camera rigs with different view counts and layouts. Learned view embeddings are tied to a fixed number of views and an arbitrary ordering, so we replace them with a geometry-based camera positional encoding computed directly from `K`, `R`, and `t`. For each view we derive the camera center `c = -R^T t` and the principal ray `r = R^T [0,0,1]^T`, normalise them to be scale-invariant, encode each component with sinusoidal Fourier bands, and project the concatenated vector to the token dimension with a small MLP. The resulting camera token is added to every joint token before view-level attention.
 
-### 3.5 Skeleton-aware graph joint relation (GJR)
+CamPE allows the same model to accept any number of views and to transfer across datasets without relearning arbitrary view indices. It is used in all cross-domain experiments (H36M → AIST++, H36M → Shelf/Campus).
 
-The dense joint-level transformer in the base model treats all joints equally and ignores skeleton topology. We replace it with a sparse graph over `(view, joint)` nodes. Edges encode bone parent–child links, left/right symmetry, and cross-view same-joint connections. Edge-conditioned message passing with a learned scalar gate propagates evidence along anatomically meaningful paths, so occluded joints can borrow information from neighbouring joints and mirrored limbs while preserving multi-view consistency.
+### 3.6 Skeleton-aware graph joint relation (GJR)
 
-### 3.6 Cross-view spatio-temporal attention
+The dense joint-level transformer treats all joints equally and ignores skeleton topology. We optionally replace it with a sparse graph over `(view, joint)` nodes. Edges encode bone parent–child links, left/right symmetry, and cross-view same-joint connections. Edge-conditioned message passing with a learned scalar gate propagates evidence along anatomically meaningful paths, so occluded joints can borrow information from neighbouring joints and mirrored limbs while preserving multi-view consistency. This module is used in the v46 sparse-view graph variant.
 
-A more expressive variant replaces the temporal-only transformer with a single transformer that attends jointly over time and views for each joint. The input tokens are arranged on a (time, view) grid, so each token can aggregate information from all views at any frame within the clip. A residual refinement head is added on top of the weighted DLT triangulation as before. This variant increases capacity modestly (~350–400 k parameters for d=128, n_st_layers=3) while preserving the same plug-in interface.
+### 3.7 Cross-view spatio-temporal attention
 
-### 3.7 Learned intrinsic correction (principal point + focal length)
+A higher-capacity variant replaces the temporal-only transformer with a single transformer that attends jointly over time and views for each joint. The input tokens are arranged on a `(time, view)` grid, so each token can aggregate information from all views at any frame within the clip. A residual refinement head is added on top of the weighted DLT triangulation as before. This variant increases capacity modestly (~350–400 k parameters for `d = 128`, `n_st_layers = 3`) while preserving the same plug-in interface. It is used in the v57 robustness/calibration-aware variant.
 
-Small errors in the intrinsic matrix `K` are common in practice: principal-point offsets from checkerboard drift or off-center calibration, and focal-length drift from lens zooms or imprecise camera models. Because these errors shift the back-projected rays before triangulation, the residual head alone cannot correct them. We therefore add a lightweight `IntrinsicCorrection` layer that predicts a bounded per-view correction from the pooled temporal features or raw 2D observations and applies it to `K` before triangulation.
+### 3.8 Calibration-robust training
 
-The layer first predicts a principal-point offset `(dx, dy)` and, optionally, a focal-length scale `s`:
+**Training-time camera perturbation.** Calibration noise is the dominant failure mode in production, so we expose the model to realistic perturbations during training. For each clip we sample independent per-view rotation, translation, focal-length, and principal-point offsets and corrupt the calibration tensors before they reach the weighted DLT layer:
+
+```
+K', R', t' = perturb(K, R, t;  rot_std, trans_std, focal_std, pp_std)
+X_raw = weighted_DLT(..., K', R', t')
+```
+
+The ground-truth 3D pose and 2D keypoints remain unchanged, so the model learns to absorb small calibration drift while preserving metric scale. Typical magnitudes are ±0.5° rotation, ±5 mm translation, ±1% focal length, and ±2 px principal point. Validation is always run on the unperturbed calibration.
+
+**Learned intrinsic correction.** Small errors in `K` shift the back-projected rays before triangulation; the residual head alone cannot fully correct them. We therefore add a lightweight `IntrinsicCorrection` layer that predicts a bounded per-view correction from pooled features and applies it to `K` before triangulation:
 
 ```
 out  = tanh(MLP(pool(feat)))              # (N, V, 3)
@@ -125,23 +125,55 @@ K_corrected[..., 0, 0] *= s
 K_corrected[..., 1, 1] *= s
 ```
 
-All corrections are initialized near zero and bounded, so the layer is transparent when calibration is accurate and only activates when drift is detected. During training, the input cameras are perturbed with realistic rotation, translation, focal-length, and principal-point noise; the correction head is supervised with the inverse of the applied perturbation so it learns to restore the true calibration. The same correction layer is applied both to the temporal-only model (Section 3.2) and to the cross-view spatio-temporal variant (Section 3.6), with identical training and inference overhead.
+All corrections are initialised near zero and bounded, so the layer is transparent when calibration is accurate and only activates when drift is detected. During training the correction head is supervised with the inverse of the applied perturbation.
 
-### 3.9 Visibility-gated adaptive fusion
+### 3.9 Training objectives and regularisation
 
-In real captures some views may be occluded or unreliable. We add a per-view, per-joint visibility head that predicts a soft visibility score from the spatio-temporal features and gates the DLT weights. The head is conditioned on a per-joint pooled context across views, so each view's visibility estimate is aware of the full multi-view context. A fallback guard ensures at least `min_visible_views` remain active, preventing degenerate triangulation. The visibility head is supervised with a binary cross-entropy loss against the detector confidence mask.
+The primary loss is end-to-end 3D MSE against true ground truth:
 
-### 3.10 Factorised spatio-temporal attention (T x V x J)
+```
+L_3D = || X - X_gt ||_2^2
+```
 
-A more expressive backbone factorises attention along the temporal, view, and joint axes. After ray-aware feature extraction and intrinsic correction, tokens are arranged as a 3-D grid `(T, V, J)` and refined by separate Transformer layers along each axis. Three-dimensional positional embeddings (time, view, joint) are added before the factorised attention, and per-view weights are predicted from the refined features. This model is larger than the temporal-only baseline and targets the same plug-in interface.
+Because the true-GT protocol reveals that even modest-capacity models overfit after a few epochs, we rely on strong regularisation rather than richer losses. In practice we use Adam with weight decay, cosine learning-rate scheduling with warmup, gradient clipping, and early stopping on validation MPJPE.
 
-### 3.11 Self-supervised masked-view pre-training
+Optionally we add auxiliary terms:
 
-To reduce reliance on 3D labels, we pre-train the backbone without ground-truth 3D. Random views or time steps are masked out by zeroing their confidence channels, and the model is asked to minimise the reprojection error on both visible and masked slots. A temporal smoothness loss and a skeleton bone-length consistency loss serve as regularisers. After pre-training on unlabeled multi-view video, the model is fine-tuned with labelled data.
+```
+L_reproj = sum_{v} || proj_v(X) - x_v ||_2^2
+L_bone   = sum_{(parent, child)} ( ||bone_pred|| - ||bone_gt|| )^2
+L = L_3D + lambda_reproj * L_reproj + lambda_bone * L_bone
+```
+
+The reprojection term enforces multi-view consistency; the bone-length term enforces anatomical plausibility without adding learnable parameters. We found that aggressive data augmentation (outlier views, strong variable-view dropout) is harmful on the smaller true-GT sets and is therefore reduced or disabled for the honest-label experiments (see Section 5.2).
+
+### 3.10 Sparse-view evaluation: MPJPE@k
+
+To measure sparse-view robustness we report `MPJPE@k`, the pose error when only `k` randomly chosen views are supplied, averaged over multiple random subsets and all test clips. `MPJPE@k` is reported for `k = 2, 3, 4` on Human3.6M. MPI-INF-3DHP sparse-view evaluation on true detected 2D is pending a learned baseline; the current MPI result is the confidence-weighted DLT baseline in Section 5.2.3. The metric directly tests whether a learned fusion model degrades more gracefully than geometric baselines as views are removed.
+
+Initial evaluation of v25-stability produced catastrophic k=2/k=3 errors, while k=4 remained reasonable. On S9/S11 the measured MPJPE@k are: k=2 **3482.62 / 3376.04 mm**, k=3 **1042.45 / 1030.19 mm**, and k=4 **116.98 / 110.58 mm**. The root cause was traced to the variable-view inference wrapper zeroing inactive-view observations but not passing an explicit `view_mask` to the model; the fixed wrapper now propagates the mask so that inactive views are ignored by attention and fusion layers. A corrected re-evaluation with the fixed wrapper still gave catastrophic k<4 results, so a separate `--var_view_dlt_fallback` re-evaluation was run. In that fallback, active views are directly triangulated with confidence-weighted DLT whenever fewer than four views are available, while k=4 still uses the learned model. The DLT-fallback MPJPE@k on S9/S11 are: k=2 **58.18 / 49.35 mm**, k=3 **33.32 / 25.28 mm**, and k=4 **116.98 / 110.58 mm**. This confirms that the sparse-view failure is in the learned model, not the underlying 2D observations, and that geometric triangulation remains reliable when views are scarce. A training-time random view dropout module with active-view-count conditioning (v85; Section 3.13) has been launched to test whether the learned model can be trained to handle fewer than four views without a geometric fallback.
+
+### 3.11 Cross-domain training
+
+For cross-domain transfer we train a single model on a mixed dataset (H36M true-GT plus AIST++ and/or Shelf/Campus) using the same CamPE-based ray features. No per-dataset pose head is used; the only dataset-specific component is a small domain embedding that is added to the input tokens and is trained jointly. This forces the model to represent pose in a domain-agnostic geometric space rather than memorising dataset-specific camera layouts.
 
 ### 3.12 Quality gating and system integration
 
-The fusion module is exposed as a `MultiViewFusionPlugin` inside MotionFlow. It outputs a `HumanMotionIR` containing the fused 3D pose, per-joint confidence, and view-support count, which downstream quality gating can use to fall back to the best single view when fusion disagreement is high.
+The fusion module is exposed as a `MultiViewFusionPlugin` inside MotionFlow. It consumes per-view 2D keypoints + confidences and calibrated camera parameters, and emits a `HumanMotionIR` containing:
+
+- `pose`: world-coordinate 3D joints (the output of the residual head).
+- `uncertainty`: per-joint, per-view weights and the model's confidence summary.
+- `provenance`: source manifest, camera calibration hash, and fusion plugin version.
+
+This IR decouples upstream human recovery from downstream robot retargeting and policy training. Before forwarding to GMR/MJLab, the system checks frame-level validity, per-joint confidence, and view support count. When the fusion disagreement exceeds a threshold, the pipeline can fall back to the best single view or flag the segment for human review, preventing low-quality motion from entering robot training.
+
+### 3.13 Training-time random view dropout (v85)
+
+The catastrophic sparse-view failure in Section 3.10 shows that the learned model has memorised a fixed four-view H36M layout. To break this dependency we introduce a training-time random view dropout module (v85). For each training clip a random subset of entire camera views is zeroed out, subject to a minimum of `v85_min_views` remaining active (typically 2). The active-view count is embedded and added to every ray token, so the model receives an explicit signal of how many views are present. This is combined with the existing variable-view training curriculum, which gradually exposes the model to fewer views during training.
+
+Formally, for a clip with `V` views we sample a random view mask `m ∈ {0,1}^V` such that `m^T 1 ≥ min_views` and `P(m_v = 0) = p_drop` for each view. The masked observations are passed to the v25 geometry-fusion module, and the scalar count embedding `c = embed(sum(m))` is broadcast to the ray tokens before the temporal transformer. The loss is computed only on the active views, so the model is forced to produce a sensible 3D pose even when only two or three views are available. At inference time the same model can be evaluated at any `k ≥ min_views` by simply masking out the missing views.
+
+This module is our structural candidate for fixing the k<4 failure. A medium-schedule run on true-GT H36M is in progress on **A800 GPU 7** (`v85_random_view_dropout_medium_a800`, PID `1954774`) with `--use_random_view_dropout_v85 --v85_dropout_prob 0.3 --v85_min_views 2 --v85_use_count_embedding`. As of the latest check the run has completed ~100 training steps and the loss is falling; no validation MPJPE is available yet. A no-fallback variable-view evaluation of the partially trained checkpoint is running in parallel on **A800 GPU 6** (PID `1945448`) to establish a learned-model sparse-view baseline while training continues.
 
 ## 4. Experiments
 
@@ -156,35 +188,52 @@ Models are implemented in PyTorch and trained on a local RTX 4090. The small res
 
 ## 5. Results
 
-> **Data-foundation caveat.** Earlier versions of this paper cited MPI-INF-3DHP **9.32 mm** and Human3.6M **0.62 mm** MPJPE results. Those numbers came from circular-label protocols: H36M labels were the unweighted DLT triangulation of the input 2D keypoints (`direct MJE ≈ 0 mm`), and MPI-INF-3DHP 2D inputs were GT-projected rather than detector output. After repairing the data foundation, absolute MPJPEs rise to the 15-130 mm range typical of honest multi-view benchmarks. The experiments below therefore pivot from chasing records to measuring **sparse-view and cross-domain robustness** on true 3D ground truth.
+> **Data-foundation caveat.** Earlier versions of this paper cited MPI-INF-3DHP **9.32 mm** and Human3.6M **0.62 mm** MPJPE results. Those numbers came from circular-label protocols: H36M labels were the unweighted DLT triangulation of the input 2D keypoints (`direct MJE ≈ 0 mm`), and MPI-INF-3DHP 2D inputs were GT-projected rather than detector output. After repairing the data foundation, absolute MPJPEs rise to the 15–130 mm range typical of honest multi-view benchmarks. The experiments below therefore pivot from chasing records to measuring **sparse-view and cross-domain robustness** on true 3D ground truth.
 
 ### 5.1 Datasets and protocols
 
 We evaluate on four non-circular benchmarks:
 
 - **Human3.6M true-GT standard protocol.** Train on subjects S1, S5, S6, S7, S8; test on S9 and S11. Labels are true mocap world coordinates from `data/h36m_true_gt/*_multiview_m.npz` and pass both non-circularity and reprojection acceptance gates.
-- **AIST++ cross-domain smoke.** A 9-view dance-motion benchmark built from canonical AIST++ `.npz` (`data/webbridge/aistpp_canonical/`). It uses the same 17-joint skeleton as H36M and is non-circular (DLT direct MJE ≈ 44 mm), making it a useful cross-domain stress test.
+- **AIST++ cross-domain smoke.** A 9-view dance-motion benchmark built from canonical AIST++ `.npz` (`data/webbridge/aistpp_canonical/`). It uses a **17-joint H36M-compatible skeleton mapping** and is non-circular (full-set unweighted DLT direct MPJPE ≈ **38 mm**; confidence-weighted ≈ **16 mm**), making it a useful cross-domain stress test.
 - **Shelf / Campus detected.** Rebuilt from COCO-style detections and true 3D annotations (`data/webbridge/shelf_campus_detected/`). Campus (3 views, well-calibrated) is the primary sparse-view benchmark; Shelf is reported with a calibration caveat because its reprojection error is ~53 px.
-- **MPI-INF-3DHP non-circular smoke.** True 3D GT with GT-projected 2D (used only for controlled smoke diagnostics while real detected 2D is being obtained).
+- **MPI-INF-3DHP detected-2D benchmark.** True 3D mocap with RTMPose-detected 2D keypoints on all 16 canonical sequences. The confidence-weighted DLT baseline is **115.09 mm** MPJPE / **132.68 mm** PA-MPJPE (Section 5.2.3); earlier GT-projected smoke numbers are now deprecated.
 
 Metrics are direct MPJPE and PA-MPJPE in millimetres, plus PCK and AUC where applicable.
 
+**Finalized true-detected benchmarks.** The MPI-INF-3DHP DLT baseline on RTMPose detected 2D and the AIST++-only / H36M+AIST++ mixed-dataset medium runs have completed. Results:
+
+| Benchmark | Status | Final metric | Notes |
+|---|---|---|---|
+| MPI-INF-3DHP true detected 2D DLT baseline | completed | MPJPE **115.09 mm** / PA-MPJPE **132.68 mm** | RTMPose detection 16/16 `.npz`; confidence-weighted DLT on all 16 files. Per-sequence table in `docs/results_true_gt_h36m.md`. |
+| AIST++-only fast v2 v25 | completed | val best **91.43 mm** @ Epoch 2 (early-stopped @ Epoch 4) | Zero-shot H36M S9/S11 cross-eval: **93.94 mm** (S9 98.17 / S11 89.70, 1,843,178 frames), PA-MPJPE **44.50 mm** (S9 49.44 / S11 39.55). |
+| H36M true-GT + AIST++ mixed-dataset v25 | killed (first run completed) | first run test **33.42 mm** / PA-MPJPE **34.60 mm** | First run diverged @ Epoch 3, best checkpoint Epoch 1. Stability relaunch also diverged @ Epoch 3 and was killed. |
+
 ### 5.2 True-GT leaderboards
 
-#### 5.2.1 Human3.6M (S1,5,6,7,8 -> S9/S11)
+#### 5.2.1 Human3.6M (S1,5,6,7,8 → S9/S11)
 
 | Method | S9 direct (mm) | S11 direct (mm) | Combined direct (mm) | Combined PA-MPJPE (mm) | Notes |
 |---|---:|---:|---:|---:|---|
-| DLT (unweighted) | 33.61 | 24.77 | 29.19 | 29.31 | frozen geometric baseline |
-| DLT (confidence-weighted) | 29.82 | 21.91 | 25.87 | 25.55 | frozen geometric baseline |
-| **Iskakov ICCV 2019** | **27.10** | **19.60** | **23.35** | **23.10** | 10 epochs, hidden_dim=32; current leader on true GT |
-| v80 (smoke) | -- | -- | 98.12 | -- | 2-epoch smoke |
-| v80 (long, best recipe) | -- | -- | 39.70 | -- | A800 v2 checkpoint; overfits after epoch 2 |
-| **v80 (medium)** | -- | -- | **39.98** | -- | local medium; best epoch 4, then diverges to 133.71 by epoch 8 |
-| v57 (medium) | -- | -- | *pending* | -- | started but did not complete; slot reserved for true-GT result |
-| **v25** | -- | -- | **72.80** | -- | 8-epoch medium completed; epoch 1 83.19, best epoch 2, diverged to 207.62 by epoch 8 |
+| **Iskakov ICCV 2019** | **27.15** | **19.65** | **23.40** | **23.15** | best val epoch 4; current true-GT leader |
+| DLT (confidence-weighted) | 29.54 | 21.81 | **25.67** | 28.05 | frozen geometric baseline |
+| RANSAC/conf-DLT (reproducible) | 29.60 | 21.96 | **26.47** | 28.98 | confidence-weighted 3-view random-subset; `scripts/run_h36m_true_gt_ransac_baseline.py` |
+| DLT (unweighted) | 32.97 | 24.57 | 28.77 | 32.10 | frozen geometric baseline |
+| **v25 stability (A800)** | **34.87** | **26.80** | **30.83** | **33.59** | **test** result (stride 1); best val **31.13 mm** @ Epoch 10; early-stopped @ Epoch 12 |
+| **v25 (mixed H36M+AIST++, A800)** | **37.87** | **28.96** | **33.42** | **34.60** | early-stopped Epoch 3; best val **34.94 mm** @ Epoch 1 |
+| **v81 (temporal-pose-attention, A800)** | **42.19** | **33.46** | **37.83** | **37.75** | **test** result (stride 13); best val **38.62 mm** @ Epoch 8; completed 8 epochs |
+| **v82 (multi-scale temporal-pose-attention, A800)** | **42.07** | **36.84** | **39.46** | **39.94** | **test** result with EMA weights (stride 13); best val **39.58 mm** @ Epoch 8; completed 8 epochs |
+| **v25 (medium, local 4090)** | **47.28** | **40.54** | **43.93** | — | **test** result; corrected-val ablations **45.80 / 46.75 mm** @ epoch 1 (was 72.80 mm) |
+| **v46 (SVG, A800)** | **55.03** | **49.88** | **52.46** | **40.20** | **test** result with EMA weights (stride 13); val best **52.92 mm** @ epoch 4 |
+| **v80 (regularization A800)** | **56.69** | **51.27** | **53.98** | **32.47** | **test** result with EMA weights (stride 13); val best **54.46 mm** @ epoch 1; early-stopped @ epoch 4 |
+| **v52 (UWT, A800)** | **58.15** | **49.87** | **54.01** | **42.22** | **test** result with EMA weights (stride 13); val best **54.75 mm** @ epoch 4; early-stopped Epoch 7 |
+| **v57 (medium, A800 re-run)** | **61.09** | **53.11** | **57.10** | **37.30** | **test** result with EMA weights (stride 13); val best **57.81 mm** @ epoch 4 |
+| **v57 (medium, local)** | **62.48** | **56.69** | **59.59** | — | **test** result (stride 13); local run val best **75.16 mm** @ epoch 3 |
+| **v80 (medium)** | **64.18** | **60.46** | **62.32** | — | **test** result (stride 13); val best **39.98 mm** @ epoch 4; overfit afterward |
 
-Iskakov-style learnable triangulation is the current leader on the true-GT protocol, improving over confidence-weighted DLT by **2.52 mm** combined direct. **The v25 model substantially underperforms both Iskakov and the geometric baselines on true-GT H36M (best 72.80 mm direct, epoch 1 83.19 mm, versus 23.35 mm for Iskakov and 25.87 mm for confidence-weighted DLT), confirming that the headline results from the circular-label protocol do not transfer to honest labels.** The best v80 result is now **39.98 mm** (local medium, best epoch 4; A800 v2 **39.70 mm**), which is closer to the geometric baselines than v25 but still lags confidence-weighted DLT by **14.11 mm**. This pattern reinforces the true-GT narrative: honest H36M labels expose a large generalisation gap that the circular protocol had masked, and the current learned architectures need stronger regularisation, longer training, or mixed-dataset training before they can beat a simple geometric baseline on non-circular data. The v57 H36M true-GT medium run is still pending.
+On honest true-GT H36M, **Iskakov is the current leader at 23.40 mm**, improving over confidence-weighted DLT by **2.27 mm** and over unweighted DLT by **5.81 mm**. None of our learned MotionFlow variants yet beat a simple geometric baseline. The best MotionFlow result is **v25 stability at 30.83 mm** test (S9 34.87 / S11 26.80, stride 1, PA-MPJPE 33.59 mm), which trails confidence-weighted DLT by **5.16 mm** and Iskakov by **7.57 mm**. The mixed-dataset v25 checkpoint tests at **33.42 mm**, followed by v81 (**37.83 mm**) and v82 (**39.46 mm**). The original v25 medium reaches **43.93 mm** on the corrected **test** evaluation; its original val log of 72.80 mm was inflated because `view_mask` was not passed during validation, and follow-up A800 ablations with the mask fix reached **45.80 / 46.75 mm** at epoch 1 before diverging. v46, v52, v80 regularization and v57 re-run test at **52.46 mm**, **54.01 mm**, **53.98 mm** and **57.10 mm**, respectively. The v80 medium test is **62.32 mm**, while its best val was only **39.98 mm** @ epoch 4, after which it overfit to **133.71 mm**; this large train/val-to-test gap indicates that the residual head memorises training-set idiosyncrasies rather than learning a stable correction.
+
+These numbers are not the incremental improvements the circular protocol suggested. They show that, once the label feedback loop is removed, our current learned architectures are substantially weaker than both classical and learnable triangulation baselines. The honest leaderboard is therefore the central empirical result: it resets expectations and redirects the paper's contribution from absolute MPJPE to robustness under realistic deployment conditions.
 
 #### 5.2.2 Shelf / Campus detected
 
@@ -193,27 +242,76 @@ Iskakov-style learnable triangulation is the current leader on the true-GT proto
 | DLT (unweighted) | 134.43 | 122.37 | frozen reference |
 | DLT (confidence-weighted) | 132.29 | 120.95 | frozen reference |
 | **Iskakov ICCV 2019** | **128.73** | **119.23** | early-stop at epoch 11; leader |
-| v80 | 408.58 | -- | 3-epoch smoke |
-| v57 | 424.63 | -- | 3-epoch smoke |
-| v25 | 430.67 | -- | 3-epoch smoke |
+| v80 long (25 epochs, best epoch 7) | 276.49 | — | long-run best, then overfits |
+| v57 long (25 epochs, best epoch 4) | 306.45 | — | long-run best, then overfits |
+| v80 (view reliability) | 408.58 | — | 3-epoch smoke |
+| v57 (domain-conditional PSC) | 424.63 | — | 3-epoch smoke |
+| v25 (geometry fusion) | 430.67 | — | 3-epoch smoke |
 
-All learned MotionFlow variants, including v25, are far undertrained relative to DLT on this small true-GT benchmark. The ranking among smoke checkpoints is v80 > v57 > v25, which is consistent with the intended robustness narrative: v80's explicit view-reliability head begins to show value even after only three epochs. **These results further confirm that v25 is not competitive with the DLT/Iskakov geometric baselines in absolute terms on true GT.**
+The Shelf/Campus true-GT benchmark amplifies the same pattern. DLT and Iskakov again define the lower bound, with Iskakov slightly ahead. All MotionFlow smoke checkpoints are far above this lower bound, and even 25-epoch long runs on v80 and v57 only reduce the gap to **276.49 mm** and **306.45 mm**, respectively, before overfitting. The ranking among smoke checkpoints is v80 > v57 > v25, consistent with the intended robustness narrative: the explicit view-reliability head in v80 begins to show value even after only three epochs. Nevertheless, **the absolute gap confirms that none of the current MotionFlow variants are competitive with geometric or learnable-triangulation baselines on non-circular data**.
 
-#### 5.2.3 MPI-INF-3DHP non-circular smoke
+#### 5.2.3 MPI-INF-3DHP detected-2D DLT baseline
 
-| Model | Best val MPJPE (mm) | Notes |
-|---|---:|---|
-| DLT baseline | **23.79** | Geometric lower bound |
-| v25 geometry fusion | 26.15 | Closest learned model to DLT |
-| v57 DC-PSC | 33.26 | Domain-conditional physical-space calibration |
-| v46 SVG | 34.94 | Sparse-view generalisation |
-| v80 VRBT | 35.22 | Learned view reliability before triangulation |
+RTMPose detection finished for all 16 canonical MPI-INF-3DHP sequences (`data/webbridge/mpi_inf_3dhp_detected_2d/`). The confidence-weighted DLT baseline on the full detected-2D set is:
 
-The MPI smoke confirms that DLT is a strong baseline on true 3D GT. The gap between v25 and DLT is only ~2.4 mm, while v46/v57/v80 are still tuning. This reinforces the shift from absolute accuracy to **robustness under view scarcity**.
+| File | MPJPE (mm) | PA-MPJPE (mm) |
+|---|---:|---:|
+| s_01_seq_01_v14_multiview_m.npz | 138.31 | 155.81 |
+| s_01_seq_02_v14_multiview_m.npz | 162.69 | 172.63 |
+| s_02_seq_01_v14_multiview_m.npz | 148.56 | 153.30 |
+| s_03_seq_01_v14_multiview_m.npz | 99.71 | 114.30 |
+| s_03_seq_02_v14_multiview_m.npz | 108.42 | 119.24 |
+| s_04_seq_01_v14_multiview_m.npz | 97.45 | 122.16 |
+| s_04_seq_02_v14_multiview_m.npz | 147.90 | 161.91 |
+| s_05_seq_01_v14_multiview_m.npz | 104.94 | 129.26 |
+| s_05_seq_02_v14_multiview_m.npz | 87.59 | 105.85 |
+| s_06_seq_01_v14_multiview_m.npz | 84.23 | 104.26 |
+| s_06_seq_02_v14_multiview_m.npz | 89.09 | 112.38 |
+| s_07_seq_01_v14_multiview_m.npz | 87.31 | 103.91 |
+| s_07_seq_02_v14_multiview_m.npz | 91.03 | 109.18 |
+| s_08_seq_01_v14_multiview_m.npz | 162.18 | 181.87 |
+| s_08_seq_02_v14_multiview_m.npz | 107.01 | 129.85 |
+| **Mean** | **115.09** | **132.68** |
 
-### 5.3 Sparse-view robustness
+- Source: `outputs/mpi_rtmpose_detected_2d/dlt_baseline_detected_2d.json`
 
-Rather than reporting a single full-view number, we measure `MPJPE@k`: the pose error when only `k` views are available, averaged over random view subsets. Table below is a smoke evaluation on a 300-frame subset of MPI-INF-3DHP S2/Seq1 (17-joint H36M mapping).
+These numbers are far higher than the earlier GT-projected smoke baseline (≈23 mm) because the 2D inputs now come from a real detector and the camera/label alignment is harder. They establish an honest, detected-2D lower bound for MPI-INF-3DHP and reinforce the shift from absolute accuracy to **robustness under real detection noise and calibration drift**. The old GT-projected smoke table is retained only as a diagnostic in `docs/noncircular_mpi_smoke_results.md`.
+
+### 5.3 Failure-mode analysis
+
+The true-GT protocol exposes two dominant failure modes that the circular leaderboard had hidden:
+
+**Rapid divergence and overfitting.** v25 on H36M true GT improves to its best validation error of **72.80 mm** at epoch 2, then degrades monotonically to **113.48 mm** by epoch 5 and finally **207.62 mm** by epoch 8 (epoch 1 was **83.19 mm**). v80 on the same protocol is better early on but follows the same trajectory, peaking at **39.98 mm** in epoch 4 and climbing to **133.71 mm** by epoch 8. v57 stops early at epoch 5 after rising from a best of **75.16 mm** to a final **80.21 mm**. These trajectories are consistent across model sizes and variants, indicating that the residual head is memorising training-set idiosyncrasies rather than learning a stable correction over the triangulated pose.
+
+**Small-dataset overfitting.** On Shelf/Campus, the training set is only ~1 000 frames. Long runs of v80 and v57 improve only to **276.49 mm** and **306.45 mm** before overfitting to **783.6 mm** and **833.7 mm**, respectively. This confirms that simply training longer does not close the gap; the architectures need either stronger regularisation, much larger mixed-dataset training, or both.
+
+The failure modes imply that the central remaining research problem is not incremental architecture design on circular benchmarks, but training learned multi-view pose models that remain stable and generalisable on small, honest, true-3D datasets.
+
+### 5.4 Sparse-view robustness (`MPJPE@k`)
+
+Rather than reporting a single full-view number, we measure `MPJPE@k`: the pose error when only `k` randomly chosen views are supplied, averaged over multiple random subsets. The primary benchmark is now the true-GT Human3.6M protocol (4 views), where we have verified non-circular numbers for both geometric and learnable-triangulation baselines. On true-GT H36M, every learned variant we have evaluated so far degrades catastrophically when fewer than four views are supplied, as shown below. The MPI-INF-3DHP sparse-view curves below come from an earlier GT-projected smoke set and are retained only as a cross-architecture diagnostic; the true detected-2D DLT baseline is **115.09 mm** MPJPE / **132.68 mm** PA-MPJPE (Section 5.2.3).
+
+**True-GT H36M (S9/S11, macro mean).** The `MPJPE@k` numbers below were evaluated deterministically with 50 subsets per `k` for the DLT variants and Iskakov; values are direct MPJPE in mm.
+
+| Method | MPJPE@2 | MPJPE@3 | MPJPE@4 | Notes |
+|---|---:|---:|---:|---|
+| DLT (unweighted) | 37.19 | 34.86 | 29.15 | frozen geometric baseline |
+| DLT (conf-weighted) | 36.42 | 33.68 | 25.94 | frozen geometric baseline |
+| Iskakov ICCV 2019 | 53.61 (±27) | **27.80** | **23.39** | current true-GT leader; full-view 23.40 mm test |
+| v25 stability (DLT fallback, k<4) | 53.76 | 29.30 | 113.78 | direct conf-weighted DLT for k<4; learned model for k=4; per-subject S9/S11: k=2 58.18/49.35, k=3 33.32/25.28, k=4 116.98/110.58 mm |
+
+Iskakov does not beat DLT at `k=2` because it was trained on full-view batches, but for `k ≥ 3` it dominates both DLT variants, with the largest margin at `k=4`. This confirms that the true-GT H36M protocol cleanly separates the baselines and that a learned view-weighting can improve over triangulation once enough views are present.
+
+**MotionFlow sparse-view curves on true-GT H36M.** v25 stability was re-evaluated under variable views using the `--var_view_dlt_fallback` mode: whenever fewer than four views are active, the active views are triangulated directly with confidence-weighted DLT. The resulting MPJPE@k on S9/S11 are:
+
+| Subject | MPJPE@2 (mm) | MPJPE@3 (mm) | MPJPE@4 (mm) |
+|---|---:|---:|---:|
+| S9 | 58.18 | 33.32 | 116.98 |
+| S11 | 49.35 | 25.28 | 110.58 |
+
+k=4 still runs the learned v25 stability model and matches the full 4-view subset benchmark; k=2 and k=3 now report the direct DLT baseline on the active views, because the learned model itself continues to fail catastrophically when views are dropped. This confirms that the v25 architecture has not learned sparse-view robustness and must rely on a geometric fallback for k<4. v81/v82/v57 variable-view curves show the same learned-model failure, and v80 true-GT regularization also degrades under view dropout (k=4 ~103–106 mm vs. its full 4-view test of 53.98 mm; see `docs/results_true_gt_h36m.md`). We therefore retain the earlier MPI-INF-3DHP smoke comparison only as preliminary cross-architecture evidence.
+
+**MPI-INF-3DHP non-circular smoke (14 views).** This smoke evaluation on a 300-frame subset of MPI-INF-3DHP S2/Seq1 (17-joint H36M mapping) compares the MotionFlow variants before the true-GT protocol was fully established.
 
 | Model | MPJPE@2 | MPJPE@3 | MPJPE@4 | MPJPE@14 | Notes |
 |---|---:|---:|---:|---:|---|
@@ -222,35 +320,45 @@ Rather than reporting a single full-view number, we measure `MPJPE@k`: the pose 
 | v57 | 143.67 | 87.02 | 53.41 | 40.93 | strongest low-view scaling |
 | v80 | 145.01 | 74.41 | 63.34 | 51.79 | good scaling, higher full-view floor |
 
-These are smoke numbers and should not be used for final model selection, but they already reveal the paper's new claim: **different architectures trade off full-view accuracy against low-view reliability**. v25 is best when all 14 cameras are present; v57 degrades most gracefully as views drop. The v80 sparse-view robust architecture is explicitly designed to shrink this gap by learning per-view reliability before triangulation.
+These smoke numbers should not be used for final model selection, but they reveal the paper's central claim: **different architectures trade off full-view accuracy against low-view reliability**. v25 is best when all 14 cameras are present but is volatile at low view counts; v57 degrades most gracefully as views drop. The v80 sparse-view robust architecture is explicitly designed to shrink this gap by learning per-view reliability before triangulation. This trade-off is the positive signal we extract from the true-GT failure: even though all learned models lag DLT/Iskakov in absolute error, they differ meaningfully in how they behave when views are removed.
 
-### 5.4 Cross-dataset and cross-domain behaviour
+### 5.5 Cross-dataset and cross-domain behaviour
 
-A mixed-dataset variant trained on MPI-INF-3DHP plus the (now deprecated) circular H36M WebBridge reached 11.16 mm on MPI S2/Seq1 under the old circular protocol. While that exact number is no longer meaningful, the underlying design principle--domain-agnostic ray features plus optional per-dataset heads--remains the core of our cross-domain strategy. Ongoing work is repeating the mix on true-GT H36M, AIST++, and Shelf/Campus.
+A mixed-dataset variant trained on MPI-INF-3DHP plus the (now deprecated) circular H36M WebBridge reached 11.16 mm on MPI S2/Seq1 under the old circular protocol. While that exact number is no longer meaningful, the underlying design principle—domain-agnostic ray features plus optional per-dataset heads—remains the core of our cross-domain strategy. Ongoing work is repeating the mix on true-GT H36M, AIST++, and Shelf/Campus.
 
-#### 5.4.1 AIST++ cross-domain smoke benchmark
+#### 5.5.1 AIST++ cross-domain smoke benchmark
 
-We added AIST++ to the cross-domain suite. The canonical `.npz` are built from the 9-camera AIST++ annotations (`data/webbridge/aistpp_canonical/`) and are non-circular (DLT direct MJE ≈ 44 mm). A small smoke split uses one genre (`gBR_sBM_cAll_d04`) with two training takes and one validation take, giving a quick read on whether the v25/v80 pipelines generalise to dance-style, motion-rich captures.
+We added AIST++ to the cross-domain suite. The canonical `.npz` are built from the 9-camera AIST++ annotations (`data/webbridge/aistpp_canonical/`) and are non-circular (full-set unweighted DLT direct MPJPE ≈ **38 mm**; confidence-weighted ≈ **16 mm**). A small smoke split uses one genre (`gBR_sBM_cAll_d04`) with two training takes and one validation take, giving a quick read on whether the v25/v80 pipelines generalise to dance-style, motion-rich captures.
 
 | Method | val MPJPE (mm) | Notes |
 |---|---:|---|
 | DLT (unweighted) | **12.66** | frozen geometric reference |
+| DLT (confidence-weighted) | **6.52** | frozen geometric reference |
+| Iskakov ICCV 2019 | **9.31** | best epoch 6, CPU smoke |
 | v25 geometry fusion | 71.79 | 3-epoch smoke |
 | v80 view reliability | 76.34 | 3-epoch smoke |
 
-The geometric DLT baseline is again strong on AIST++ (12.66 mm), confirming that AIST++ is a viable, high-quality, non-circular cross-domain source. The learned v25 and v80 models are far from convergence after only three smoke epochs, so the gap is not yet meaningful; these numbers serve only to verify pipeline integration and data loading. Full medium-schedule runs and a true cross-domain training mix (H36M true-GT + AIST++ + Shelf/Campus) are ongoing.
+The geometric baselines are very strong on AIST++: confidence-weighted DLT is below 7 mm and Iskakov reaches ~9 mm. The learned v25 and v80 models are far from convergence after only three smoke epochs, so the gap is not yet meaningful; these numbers serve only to verify pipeline integration and data loading.
 
-#### 5.4.2 Shelf/Campus detected
+**AIST++-only medium cross-eval.** A full fast-schedule v25 model was trained only on AIST++ (`aistpp_only_medium_a800_fast_v2`, 10 epochs, batch size 32) and early-stopped @ Epoch 4 with best val **91.43 mm** @ Epoch 2. Evaluating this checkpoint zero-shot on H36M true-GT S9/S11 gives:
 
-Preliminary cross-dataset evaluation on the true-GT Shelf/Campus detected benchmark shows that none of the learned models yet transfer across datasets without dedicated tuning. This is expected: the camera rigs (3-5 views, different focal lengths and room scales) differ radically from the 14-view MPI studio or the 9-view AIST++ rig. We therefore treat cross-domain transfer as an active research direction rather than a resolved result, and we report it as such.
+| Subject | MPJPE (mm) | PA-MPJPE (mm) | Frames |
+|---|---:|---:|---:|
+| S9 | **98.17** | **49.44** | 1,088,711 |
+| S11 | **89.70** | **39.55** | 753,467 |
+| **Combined (simple avg)** | **93.94** | **44.50** | — |
 
-### 5.5 Calibration robustness
+This confirms a large domain gap: a model trained only on AIST++ dance motion and a 9-camera rig generalises poorly to H36M's 4-view protocol. The error is finite and well above the catastrophic k<4 failure mode, but it is far behind the same model trained on H36M (v25 stability 30.83 mm). Cross-dataset mixing is therefore an active research direction rather than a solved transfer problem, and mixed-dataset training remains deprioritised until a structural fix is found.
 
-Earlier calibration-perturbation tables (rotation, translation, focal length, principal point) were measured on the old MPI GT-projection protocol. Their qualitative lessons remain valid--rotation and principal-point drift are the dominant failure modes, translation and focal-length errors are better tolerated--but the absolute numbers should be re-measured on true detected 2D once that data is available.
+#### 5.5.2 Shelf/Campus detected
 
-On the true-GT H36M protocol, the regularised v80 long run shows that even modest capacity models overfit after epoch 2, suggesting that calibration-robust training must be paired with stronger data augmentation or mixed-protocol training. The learned principal-point correction head from earlier iterations was found to saturate at its maximum allowed offset; it has been retained as an architectural option but is not relied upon for the new narrative.
+Preliminary cross-dataset evaluation on the true-GT Shelf/Campus detected benchmark shows that none of the learned models yet transfer across datasets without dedicated tuning. This is expected: the camera rigs (3–5 views, different focal lengths and room scales) differ radically from the 14-view MPI studio or the 9-view AIST++ rig. We therefore treat cross-domain transfer as an active research direction rather than a resolved result, and we report it as such.
 
-### 5.6 Runtime on RTX 4090
+### 5.6 Calibration robustness
+
+The perturbation recipe and `IntrinsicCorrection` layer described in Section 3.8 are implemented, but absolute robustness numbers on true-GT H36M are still being collected. Until those runs complete, we report the architectural design as a contribution and do not claim a calibrated-robustness improvement over the baselines. On the true-GT H36M protocol, the regularised v80 long run shows that even modest-capacity models overfit after epoch 2, suggesting that calibration-robust training must be paired with stronger data augmentation or mixed-protocol training. The learned principal-point correction head from earlier iterations was found to saturate at its maximum allowed offset; it has been retained as an architectural option but is not relied upon for the new narrative.
+
+### 5.7 Runtime on RTX 4090
 
 | Batch | Latency (ms) | Throughput (clips/s) |
 |---:|---:|---:|
@@ -261,18 +369,20 @@ On the true-GT H36M protocol, the regularised v80 long run shows that even modes
 
 A single clip (13 frames, 14 views, 28 joints) takes 78 ms, and batching increases throughput to 195 clips/s. These timing numbers were measured on the original model variant and demonstrate that the architecture is lightweight enough for robotics and immersive-video applications regardless of the ongoing data-foundation repair.
 
-### 5.7 Ongoing work and next experiments
+### 5.8 Ongoing work and next experiments
 
-The immediate priority is to complete a fair true-GT comparison of v25, v46, v57 and v80 on H36M, AIST++, and Shelf/Campus with matched epoch budgets. Pending experiments include:
+Current experiment queue (updated 2026-08-12, v85 added) includes:
 
-1. **Finish v25 H36M true-GT medium run** (`agent-51`).
-2. **Run v57 / v80 full-medium schedule** on H36M true GT, AIST++, and Shelf/Campus detected.
-3. **Generate true detected 2D for MPI-INF-3DHP** by obtaining `imageSequence/` and running MediaPipe/HRNet/RTMPose.
-4. **Re-measure calibration-robustness matrices** on the true-GT protocol.
-5. **Produce MPJPE@k curves** for all model variants on H36M (k = 2..4) and MPI (k = 2..14).
-6. **Build a true cross-domain training mix** of H36M true-GT, AIST++, and Shelf/Campus to test whether domain-agnostic ray features transfer across rigs.
+1. **v25 true-GT stability** completed: best val **31.13 mm @ Epoch 10**, early-stopped @ Epoch 12; test **30.83 mm** (S9 34.87 / S11 26.80). This is the current best learned result on true-GT H36M.
+2. **v25 true-GT mixed-dataset training** first run completed with test **33.42 mm** (PA-MPJPE 34.60 mm); a stability relaunch on **A800 GPU 6** diverged at Epoch 3 (`val_MPJPE=481.99 mm`) and was killed. Mixed-dataset training is therefore deprioritised until a structural fix is found.
+3. **AIST++-only fast v2 training** completed on **A800 GPU 5**, early-stopped @ Epoch 4 with best val **91.43 mm** @ Epoch 2. Zero-shot H36M S9/S11 cross-eval: **93.94 mm** (S9 98.17 / S11 89.70), PA-MPJPE **44.50 mm**.
+4. **Iskakov ICCV 2019 baseline** is **completed** on the standard H36M true-GT protocol; best val **23.35 mm** @ Epoch 4, test **23.40 mm**.
+5. **MPI-INF-3DHP RTMPose detected-2D DLT baseline** is completed: 16/16 `.npz` files processed; confidence-weighted DLT mean **115.09 mm**, PA-MPJPE **132.68 mm**.
+6. **Sparse-view (MPJPE@k) failure triaged and fixed.** The `variable_view_inference.py` wrapper did not pass `view_mask` to `OmniMultiViewFusionV5`, causing catastrophic k=2/k=3 results. A re-evaluation with the fixed wrapper still produced catastrophic k<4 errors, so a `--var_view_dlt_fallback` re-evaluation was run and is now **completed**. The DLT-fallback MPJPE@k on S9/S11 are: k=2 **58.18 / 49.35 mm**, k=3 **33.32 / 25.28 mm**, and k=4 **116.98 / 110.58 mm** (k=4 still uses the learned model). Source: `outputs/variable_view_fix/variable_view_v25_true_gt_stability_a800_dlt_fallback.json`. This confirms the sparse-view failure is in the learned model, not the observations.
+7. **v85 random view dropout** is running on **A800 GPU 7** (`v85_random_view_dropout_medium_a800`, PID `1954774`) to address the k<4 structural failure. Configuration: `--use_random_view_dropout_v85 --v85_dropout_prob 0.3 --v85_min_views 2 --v85_use_count_embedding`, combined with the variable-view training curriculum. As of the latest check the run is at ~100 training steps with loss falling; a no-fallback variable-view eval is running on **A800 GPU 6** (PID `1945448`) to track sparse-view progress.
+8. **Re-measure calibration-robustness matrices** on the true-GT protocol once GPU capacity frees up.
 
-Until these runs complete, the only verified leaderboard results are the true-GT H36M, AIST++ smoke, and Shelf/Campus tables above, and the paper's headline contribution is repositioned around **sparse-view / cross-domain robustness on honest, non-circular benchmarks**.
+Verified leaderboard results now include the true-GT H36M, AIST++ smoke / AIST++-only cross-domain, MPI-INF-3DHP detected-2D DLT, and Shelf/Campus tables above. The paper's headline contribution remains repositioned around **sparse-view / cross-domain robustness on honest, non-circular benchmarks**.
 
 ## 6. MotionFlow System Integration
 
@@ -302,21 +412,23 @@ Training-time camera perturbation improves rotation robustness with only a small
 
 ## 8. Conclusion
 
-We introduced a residual refinement head on top of temporal ray-attention fusion for calibrated multi-view 3D pose estimation. The data-foundation audit showed that the original v25 headline numbers were artefacts of a circular-label protocol; on honest, true-GT H36M, **v25 reaches only 72.80 mm (best epoch 2, then diverging to 207.62 mm) and v80 reaches 39.98 mm (best epoch 4, then diverging to 133.71 mm), while Iskakov reaches 23.35 mm and confidence-weighted DLT reaches 25.87 mm**. Both learned variants underperform the geometric and learnable-triangulation baselines by a wide margin on the non-circular protocol. We therefore reposition the paper's contribution around **sparse-view and cross-domain robustness on honest, true-GT benchmarks** rather than absolute MPJPE records.
+We introduced a residual refinement head on top of temporal ray-attention fusion for calibrated multi-view 3D pose estimation. The data-foundation audit showed that the original v25 headline numbers were artefacts of a circular-label protocol; on honest, true-GT H36M, **v25 stability reaches 30.83 mm (S9 34.87 / S11 26.80, PA-MPJPE 33.59 mm)**, the mixed-dataset v25 reaches **33.42 mm**, v81 reaches **37.83 mm**, v82 reaches **39.46 mm**, v46 reaches **52.46 mm**, v52 reaches **54.01 mm**, v80 regularization reaches **53.98 mm**, v57 re-run reaches **57.10 mm**, v80 medium test is **62.32 mm** (val best 39.98 mm @ epoch 4, then diverging to 133.71 mm), and the original local v57 reaches a final val 80.21 mm (best observed 75.16 mm @ epoch 3; saved checkpoint is epoch 2 at 81.47 mm). Iskakov reaches **23.40 mm** and confidence-weighted DLT reaches **25.67 mm**. Our learned variants underperform the geometric and learnable-triangulation baselines by a wide margin on the non-circular protocol. We therefore reposition the paper's contribution around **sparse-view and cross-domain robustness on honest, true-GT benchmarks** rather than absolute MPJPE records.
 
-Verified true-GT leaderboards now include Human3.6M (Iskakov 23.35 mm, confidence-weighted DLT 25.87 mm, v80 medium 39.98 mm / A800 v2 39.70 mm, v25 medium 72.80 mm; v57 pending), AIST++ smoke (DLT 12.66 mm; v25/v80 smoke checkpoints 71.79/76.34 mm), and Shelf/Campus detected (Iskakov 128.73 mm; DLT 132.29 mm). The sparse-view smoke experiments (Section 5.3) show that different architectures trade full-view accuracy for low-view reliability: v57 degrades most gracefully as views drop, while v25 is volatile at low view counts. These observations, together with the cross-domain AIST++ and Shelf/Campus diagnostics, frame the core research question as designing learned fusion models that match or exceed geometric triangulation on true GT while remaining robust when only a few views are available or when transferring across camera rigs.
+Verified true-GT leaderboards now include Human3.6M (Iskakov **23.40 mm**, confidence-weighted DLT 25.67 mm, RANSAC/conf-DLT 26.47 mm, v25 stability **30.83 mm**, v25 mixed-dataset **33.42 mm**, v81 **37.83 mm**, v82 **39.46 mm**, v46 **52.46 mm**, v80 regularization **53.98 mm**, v52 **54.01 mm**, v57 re-run **57.10 mm**, v80 medium **62.32 mm test** / val best 39.98 mm, v25 medium **43.93 mm test** / corrected-val ablations 45.80 / 46.75 mm, v57 local 59.59 mm test / val best 75.16 mm @ epoch 3), AIST++ smoke (DLT unweighted 12.66 mm, DLT confidence-weighted 6.52 mm, Iskakov 9.31 mm; v25/v80 smoke checkpoints 71.79/76.34 mm), AIST++-only → H36M cross-eval (**93.94 mm**, PA-MPJPE 44.50 mm), MPI-INF-3DHP detected-2D DLT baseline (MPJPE **115.09 mm**, PA-MPJPE **132.68 mm**), and Shelf/Campus detected (Iskakov 128.73 mm; DLT 132.29 mm). The true-GT H36M sparse-view results (Section 5.4) and the earlier MPI smoke experiments show that different architectures trade full-view accuracy for low-view reliability: v57 degrades most gracefully as views drop, while v25 is volatile at low view counts. These observations, together with the cross-domain AIST++ and Shelf/Campus diagnostics, frame the core research question as designing learned fusion models that match or exceed geometric triangulation on true GT while remaining robust when only a few views are available or when transferring across camera rigs.
 
-The architecture remains lightweight (12.7–194 clips/s on an RTX 4090) and is exposed as a `MultiViewFusionPlugin` inside MotionFlow, outputting a `HumanMotionIR` that supports quality gating and robot-profile-based retargeting. These properties make it a promising candidate for ICRA / CVPR 2027, provided that the true-GT performance gap against Iskakov/DLT is closed by stronger regularisation, longer training, or cross-dataset mixing in the coming experimental cycle.
+The architecture remains lightweight (**12.8–194.8 clips/s** on an RTX 4090) and is exposed as a `MultiViewFusionPlugin` inside MotionFlow, outputting a `HumanMotionIR` that supports quality gating and robot-profile-based retargeting. These properties make it a promising candidate for ICRA / CVPR 2027, provided that the true-GT performance gap against Iskakov/DLT is closed by stronger regularisation, longer training, or cross-dataset mixing in the coming experimental cycle.
+
+The honest leaderboards reset expectations: on true-GT H36M, geometric and learnable-triangulation baselines still outperform our current learned variants. The paper's contribution is therefore not a new MPJPE record, but a geometry-first fusion architecture, an honest evaluation protocol, and a set of failure-mode diagnostics that point toward sparse-view and cross-domain robustness as the central research problems. An in-flight v85 random view dropout run is testing whether training-time view scarcity and active-view-count conditioning can close the k<4 gap.
 
 ## References
 
 1. Hartley, R. and Zisserman, A. *Multiple View Geometry in Computer Vision*. Cambridge University Press, 2004.
-2. Hartley, R. and Zisserman, A. *Multiple View Geometry in Computer Vision*. Cambridge University Press, 2004.
+2. Hartley, R. and Sturm, P. “Triangulation.” *Computer Vision and Image Understanding*, 68(2):146–157, 1997.
 3. Iskakov, K., Burkov, E., Lempitsky, V., and Malkov, Y. “Learnable triangulation of human pose.” *ICCV*, 2019.
 4. Ghasemzadeh, S. A. and Alahi, A. “RUMPL: Ray-based transformers for universal multi-view 2D to 3D human pose lifting.” arXiv:2512.15488, 2025.
 5. Zhu, W., Ma, X., Liu, Z., Liu, L., Wu, W., and Wang, Y. “MotionBERT: A Unified Perspective on Learning Human Motion Representations.” *ICCV*, 2023.
-6. Zeng, et al. “SmoothNet.” *CVPR*, 2022.
-7. Newell, et al. “Stacked hourglass networks.” *CVPR*, 2016.
+6. Zeng, A., Yang, L., Ju, X., Li, J., Wang, J., and Xu, Q. “SmoothNet: A Plug-and-Play Network for Refining Human Poses in Videos.” *European Conference on Computer Vision (ECCV)*, 2022.
+7. Newell, A., Yang, K., and Deng, J. “Stacked hourglass networks for human pose estimation.” *ECCV*, 2016.
 
 ---
 

@@ -1,0 +1,119 @@
+# VoxelPose A800 config for H36M true-GT (S1,5,6,7,8 -> S9/S11).
+#
+# This YAML is read by run/train_3d.py in the upstream VoxelPose repo.
+# Data live in the A800 training repo under
+# /mnt/nvme0n1p1/zhangzy/motionflow-multiview-kimiswarm-iter20/tmp/sota_baselines/voxelpose_data
+# and are produced from data/h36m_true_gt/.
+#
+# Important constraints:
+#   - Units are metres to match the true-GT *_m.npz files.
+#   - BACKBONE_MODEL is empty; the adapter feeds ground-truth 2D heatmaps
+#     directly (campus/shelf-style inference branch).
+#   - NUM_JOINTS is 17 to match the H36M skeleton used by this project.
+
+CUDNN:
+  BENCHMARK: true
+  DETERMINISTIC: false
+  ENABLED: true
+
+BACKBONE_MODEL: ''
+MODEL: 'multi_person_posenet'
+
+# Output directories are relative to the upstream VoxelPose repo root.
+OUTPUT_DIR: 'output/h36m_true_gt_a800'
+LOG_DIR: 'log/h36m_true_gt_a800'
+
+WORKERS: 4
+PRINT_FREQ: 100
+
+DATASET:
+  COLOR_RGB: true
+  TRAIN_DATASET: 'h36m_true_gt'
+  TEST_DATASET: 'h36m_true_gt'
+  DATA_FORMAT: 'jpg'
+  DATA_AUGMENTATION: false
+  FLIP: false
+  # Absolute path on A800 to the VoxelPose-format data directory.
+  ROOT: '/mnt/nvme0n1p1/zhangzy/motionflow-multiview-kimiswarm-iter20/tmp/sota_baselines/voxelpose_data'
+  ROT_FACTOR: 0
+  SCALE_FACTOR: 0
+  TRAIN_SUBSET: 'train'
+  TEST_SUBSET: 'validation'
+  # Hip is the H36M root joint.
+  ROOTIDX: 0
+  CAMERA_NUM: 4
+  BBOX: 2000
+  CROP: true
+
+NETWORK:
+  PRETRAINED_BACKBONE: ''
+  PRETRAINED: ''
+  TARGET_TYPE: 'gaussian'
+  # H36M images are ~1000x1000; 1024x1024 gives a safe square canvas.
+  IMAGE_SIZE:
+    - 1024
+    - 1024
+  HEATMAP_SIZE:
+    - 128
+    - 128
+  SIGMA: 3
+  NUM_JOINTS: 17
+  USE_GT: false
+
+POSE_RESNET:
+  FINAL_CONV_KERNEL: 1
+  DECONV_WITH_BIAS: false
+  NUM_DECONV_LAYERS: 3
+  NUM_DECONV_FILTERS:
+    - 256
+    - 256
+    - 256
+  NUM_DECONV_KERNELS:
+    - 4
+    - 4
+    - 4
+  NUM_LAYERS: 50
+
+LOSS:
+  USE_TARGET_WEIGHT: true
+
+TRAIN:
+  BATCH_SIZE: 4
+  SHUFFLE: true
+  BEGIN_EPOCH: 0
+  END_EPOCH: 10
+  RESUME: false
+  OPTIMIZER: 'adam'
+  LR: 0.001
+
+TEST:
+  MODEL_FILE: 'model_best.pth.tar'
+  BATCH_SIZE: 4
+  FLIP_TEST: false
+
+MULTI_PERSON:
+  # 4m x 4m x 2.4m capture volume; H36M true-GT is in metres.
+  SPACE_SIZE:
+    - 4.0
+    - 4.0
+    - 2.4
+  SPACE_CENTER:
+    - 0.0
+    - 0.0
+    - 1.0
+  INITIAL_CUBE_SIZE:
+    - 40
+    - 40
+    - 24
+  MAX_PEOPLE_NUM: 1
+  THRESHOLD: 0.1
+
+PICT_STRUCT:
+  GRID_SIZE:
+    - 2.0
+    - 2.0
+    - 2.0
+  CUBE_SIZE:
+    - 32
+    - 32
+    - 32

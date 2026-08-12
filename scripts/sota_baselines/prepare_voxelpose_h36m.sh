@@ -4,6 +4,11 @@
 # This script is meant to be launched manually when the local RTX 4090 is free.
 # It will exit early if the GPU is busy or if the repo is on the read-only
 # A800-D mount.
+#
+# IMPORTANT: VoxelPose training is run on A800 using the dedicated conda
+# environment (see scripts/run_voxelpose_h36m_true_gt_a800.sh). This local
+# script only prepares the converted data; it does not run training because
+# the upstream code requires PyTorch 1.x / Python 3.8.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -56,13 +61,20 @@ if [[ ! -f "${INPUT_PKL}" ]]; then
     "${PYTHON}" "${SCRIPT_DIR}/common_export_h36m_true_gt.py"
 fi
 
-# 2. Clone VoxelPose repository if not present.
-if [[ ! -d "${VOXELPOSE_DIR}/.git" ]]; then
-    echo "Cloning VoxelPose from ${REPO_URL}..."
+# 2. Check / clone VoxelPose repository.
+#    For actual training, use scripts/run_voxelpose_h36m_true_gt_a800.sh on A800.
+if [[ -d "${VOXELPOSE_DIR}/.git" ]] || [[ -f "${VOXELPOSE_DIR}/run/train_3d.py" ]]; then
+    echo "VoxelPose repo already present at ${VOXELPOSE_DIR}."
+    VOXELPOSE_READY=true
+elif [[ ! -d "${VOXELPOSE_DIR}" ]]; then
+    echo "Cloning Microsoft VoxelPose repo into ${VOXELPOSE_DIR}..."
     mkdir -p "$(dirname "${VOXELPOSE_DIR}")"
-    git clone "${REPO_URL}" "${VOXELPOSE_DIR}"
+    git clone --depth 1 "${REPO_URL}" "${VOXELPOSE_DIR}"
+    VOXELPOSE_READY=true
 else
-    echo "VoxelPose repo already cloned at ${VOXELPOSE_DIR}."
+    echo "WARN: ${VOXELPOSE_DIR} exists but does not look like the VoxelPose repo." >&2
+    echo "      Please remove it or clone microsoft/voxelpose-pytorch there." >&2
+    VOXELPOSE_READY=false
 fi
 
 # 3. Convert common baseline format to VoxelPose input format.
@@ -70,18 +82,20 @@ echo "Converting to VoxelPose input format..."
 "${PYTHON}" "${SCRIPT_DIR}/convert_to_voxelpose_format.py" \
     --config "${CONFIG}"
 
-# 4. Run VoxelPose training (or evaluation if checkpoint already exists).
-#    This is the GPU-backed step and is gated by check_gpu_free.sh above.
-CHECKPOINT_DIR="${VOXELPOSE_DIR}/output/h36m_true_gt/final_state.pth"
-if [[ -f "${CHECKPOINT_DIR}" ]]; then
-    echo "Checkpoint exists; running evaluation."
-    "${PYTHON}" "${VOXELPOSE_DIR}/run/test.py" \
-        --cfg "${REPO_ROOT}/scripts/sota_baselines/voxelpose_h36m_run_config.yaml" \
-        --model "${CHECKPOINT_DIR}"
-else
-    echo "Starting VoxelPose training..."
-    "${PYTHON}" "${VOXELPOSE_DIR}/run/train.py" \
-        --cfg "${REPO_ROOT}/scripts/sota_baselines/voxelpose_h36m_run_config.yaml"
+# 4. Run VoxelPose training/evaluation only if the upstream repo is present.
+#    The exact command line depends on the upstream revision.
+if [[ "${VOXELPOSE_READY}" != "true" ]]; then
+    echo ""
+    echo "VoxelPose data prepared, but upstream repository is missing." >&2
+    echo "To train/eval, run on A800:" >&2
+    echo "  bash scripts/run_voxelpose_h36m_true_gt_a800.sh" >&2
+    exit 0
 fi
 
-echo "VoxelPose prep/run complete. See outputs/sota_baselines/ for logs/metrics."
+# Local training is intentionally not supported because the upstream code needs
+# PyTorch 1.x / Python 3.8. Point the user to the A800 launcher.
+echo ""
+echo "VoxelPose data prepared. Training must be run on A800:" >&2
+echo "  bash scripts/run_voxelpose_h36m_true_gt_a800.sh" >&2
+exit 0
+

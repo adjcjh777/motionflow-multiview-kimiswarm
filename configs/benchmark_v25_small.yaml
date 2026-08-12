@@ -40,7 +40,7 @@ common_args:
 datasets:
   - name: h36m_val
     script: experiments/eval_omniview_fusion_v5_h36m.py
-    split_yaml: configs/splits/webbridge_h36m_train_val.yaml
+    split_yaml: configs/splits/h36m_true_gt_standard.yaml
     split: val
     limit: 1
 

@@ -45,8 +45,12 @@ with ~1.9 mm MPJPE, matching the DLT baseline reported in `docs/design_v3.md`.
 
 * **DLT is the strong geometric baseline** on clean, internally consistent
   data.  It should be the reference against which `ray_attention_v3` is judged.
-* **RANSAC-DLT only helps with sparse outliers / extra views.** With only 4
-  views it falls back to DLT; on the clean H36M data it is identical to DLT.
+* **RANSAC-DLT now samples 3-view subsets even with only 4 total views.** After
+  removing the `V <= 4` fallback in `experiments/baselines.py`, the canonical
+  unweighted RANSAC-DLT gives **~28.4 mm** on the H36M true-GT test set (S9/S11,
+  4 views).  A confidence-weighted random-subset variant gives **~26.5 mm**, the
+  closest reproducible result to the historical 26.61 mm reference (now superseded).  See
+  `docs/results_true_gt_h36m.md` for the full discrepancy note.
 * **Robust Huber weighting stays close to DLT** on clean data (~3.6 mm) but can
   degrade when the initial DLT estimate is already poor (see Shelf pseudogt and
   H36M subject 9).

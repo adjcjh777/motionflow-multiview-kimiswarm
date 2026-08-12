@@ -426,6 +426,8 @@ class TrainerV2:
         log_interval: int = 0,
         early_stopping_patience: int = 0,
         early_stopping_min_delta: float = 0.0,
+        monitor: str = "loss",
+        mode: str = "min",
     ) -> List[Dict[str, Any]]:
         """Train for ``epochs`` epochs and optionally evaluate/ checkpoint.
 
@@ -434,12 +436,19 @@ class TrainerV2:
         log_interval:
             If ``> 0``, print a running average of the loss every ``log_interval``
             steps.  Useful for monitoring long epochs on slow filesystems.
+        monitor:
+            Name of the validation metric to use for best-checkpoint selection
+            and early stopping (e.g. ``"loss"`` or ``"mpjpe"``).
+        mode:
+            ``"min"`` (lower is better) or ``"max"`` (higher is better).
 
         Returns
         -------
         The per-epoch history list.
         """
-        best_metric = float("inf")
+        if mode not in {"min", "max"}:
+            raise ValueError(f"mode must be 'min' or 'max', got {mode!r}")
+        best_metric = float("inf") if mode == "min" else float("-inf")
         epochs_without_improvement = 0
         for _ in range(epochs):
             self.epoch += 1
@@ -454,9 +463,18 @@ class TrainerV2:
                 entry["val"] = val_metrics
                 self.history.append(entry)
                 if save_best and checkpoint_path is not None:
-                    val_loss = val_metrics.get("loss", float("inf"))
-                    if val_loss < best_metric - early_stopping_min_delta:
-                        best_metric = val_loss
+                    monitored_value = val_metrics.get(monitor)
+                    if monitored_value is None:
+                        raise ValueError(
+                            f"Validation metrics do not contain monitored key {monitor!r} "
+                            f"(available keys: {list(val_metrics.keys())})"
+                        )
+                    if mode == "min":
+                        improved = monitored_value < best_metric - early_stopping_min_delta
+                    else:
+                        improved = monitored_value > best_metric + early_stopping_min_delta
+                    if improved:
+                        best_metric = monitored_value
                         epochs_without_improvement = 0
                         self.save_checkpoint(checkpoint_path)
                     else:

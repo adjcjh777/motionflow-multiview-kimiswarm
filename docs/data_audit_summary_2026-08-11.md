@@ -6,8 +6,8 @@
 
 - **H36M true GT** (`data/h36m_true_gt/`) — ✅ non-circular, S9/S11 DLT error ~25–34 mm.
 - **MPI-INF-3DHP** (GT 2D) — ✅ non-circular, DLT error ~35 mm.
-- **MPI detected-2D fallback** — ️ non-circular but only GT 2D + 2 px noise; not standard protocol.
-- **AIST++** — ✅ non-circular, DLT error ~44 mm.
+- **MPI detected-2D** — ⚠️ real detected 2D `.npz` generated (16 files), but DLT baseline ~326–400 mm due to camera/label alignment; not yet usable for learned-model benchmarking.
+- **AIST++** — ✅ non-circular, AIST++ smoke DLT (conf-weighted) 6.52 mm / (unweighted) 12.66 mm.
 - **Shelf/Campus detected** — ✅ non-circular, DLT error ~130 mm.
 - **3DPW pseudo** — ❌ circular (DLT error 0 mm).
 - **3DPW actual** — ⚠️ monocular (1 view), not usable for multi-view triangulation.

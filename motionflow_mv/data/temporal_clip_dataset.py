@@ -101,6 +101,39 @@ class RandomClipDataset(Dataset):
         return x, y, self.K, self.R, self.t
 
 
+def _apply_view_dropout(
+    x: torch.Tensor,
+    prob: float = 0.0,
+    min_views: int = 2,
+) -> torch.Tensor:
+    """Zero out the confidence channel for randomly dropped views.
+
+    Args:
+        x: (B, T, V, J, 3) tensor of (x, y, confidence).
+        prob: Probability of dropping each view independently.
+        min_views: Minimum number of views to retain per batch element.
+
+    Returns:
+        x with confidence channel masked for dropped views.
+    """
+    if prob <= 0.0:
+        return x
+    B, T, V, J, _ = x.shape
+    device = x.device
+    keep = (torch.rand(B, V, device=device) > prob).float()
+    for i in range(B):
+        active = keep[i].nonzero(as_tuple=True)[0]
+        if active.numel() < min_views:
+            needed = min_views - active.numel()
+            dropped = (keep[i] == 0).nonzero(as_tuple=True)[0]
+            if dropped.numel() > 0:
+                perm = torch.randperm(dropped.numel(), device=device)
+                extra = dropped[perm[:needed]]
+                keep[i, extra] = 1.0
+    x[..., 2] = x[..., 2] * keep.view(B, 1, V, 1)
+    return x
+
+
 def collate_fn(batch: List[Tuple]) -> Tuple[torch.Tensor, ...]:
     """Stack a list of (x, y, K, R, t) tuples into batches."""
     x = torch.stack([b[0] for b in batch], dim=0)
@@ -144,22 +177,52 @@ def augment_clip(
     return x
 
 
+def make_collate_fn_with_view_dropout(
+    dropout_prob: float = 0.0,
+    min_views: int = 2,
+) -> callable:
+    """Return a collate function that applies random whole-view dropout.
+
+    Args:
+        dropout_prob: Probability of dropping each view during training.
+        min_views: Minimum number of views to retain per batch element.
+
+    Returns:
+        A collate function ``(batch) -> (x, y, K, R, t)`` that stacks the batch
+        and then randomly zeros the confidence channel for dropped views.
+    """
+    def _collate(batch: List[Tuple]) -> Tuple[torch.Tensor, ...]:
+        x, y, K, R, t = collate_fn(batch)
+        x = _apply_view_dropout(x, prob=dropout_prob, min_views=min_views)
+        return x, y, K, R, t
+
+    return _collate
+
+
 def make_dataloaders(
     train_paths: List[str],
     val_path: str,
     clip_len: int,
     batch_size: int,
     train_samples: int = 4000,
+    view_dropout_prob: float = 0.0,
+    view_dropout_min_views: int = 2,
 ) -> Tuple[DataLoader, DataLoader]:
     """Build train/val DataLoaders from canonical .npz paths."""
     train_datasets = [RandomClipDataset(p, clip_len, n_samples=train_samples) for p in train_paths]
     val_dataset = TemporalClipDataset(val_path, clip_len)
 
+    train_collate = (
+        make_collate_fn_with_view_dropout(view_dropout_prob, view_dropout_min_views)
+        if view_dropout_prob > 0.0
+        else collate_fn
+    )
+
     train_loader = DataLoader(
         ConcatDataset(train_datasets),
         batch_size=batch_size,
         shuffle=True,
-        collate_fn=collate_fn,
+        collate_fn=train_collate,
         num_workers=0,
     )
     val_loader = DataLoader(

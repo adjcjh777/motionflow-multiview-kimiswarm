@@ -21,6 +21,9 @@ from .epipolar_attention_bias import compute_epipolar_distance
 from .outlier_view_detector import OutlierViewDetector
 from .triangulation import triangulate_dlt_batched_lstsq
 from .uncertainty_depth_proposal_v27 import UncertaintyDepthProposalTriangulation
+from .view_conditioned_temporal_attention_v83 import ViewConditionedTemporalAttentionV83
+from .uncertainty_weighted_view_dropout_v84 import UncertaintyWeightedViewDropoutV84
+from .random_view_dropout_v85 import RandomViewDropoutV85
 
 
 def _safe_inverse(x: torch.Tensor) -> torch.Tensor:
@@ -413,7 +416,27 @@ class MultiViewGeometryFusionV25(nn.Module):
         v45_adaptive_weight_type: str = "per_view",
         v45_adaptive_weight_hidden: int = 32,
         v45_adaptive_weight_n_layers: int = 1,
-    ):
+        use_view_conditioned_temporal_attention_v83: bool = False,
+        v83_d: int = 128,
+        v83_n_heads: int = 4,
+        v83_temporal_window: int = 9,
+        v83_n_layers: int = 1,
+        v83_dropout: float = 0.1,
+        v83_residual_gate_init: float = -6.0,
+        v83_use_view_reliability_bias: bool = True,
+        use_uncertainty_weighted_view_dropout_v84: bool = False,
+        v84_d: int = 128,
+        v84_hidden: int = 64,
+        v84_weight_type: str = "per_view",
+        v84_use_reprojection: bool = True,
+        v84_use_epipolar: bool = True,
+        v84_dropout_prob: float = 0.1,
+        v84_min_weight: float = 0.05,
+        use_random_view_dropout_v85: bool = False,
+        v85_dropout_prob: float = 0.3,
+        v85_min_views: int = 2,
+        v85_use_count_embedding: bool = True,
+   ):
         super().__init__()
         self.d = d
         self.n_heads = n_heads
@@ -441,6 +464,51 @@ class MultiViewGeometryFusionV25(nn.Module):
             self.adaptive_geometry_fusion_v45 = None
 
         self.ray_tokenizer = RayTokenizer(d=d, n_ray_samples=n_ray_samples, dropout=dropout)
+
+        # Optional v83 view-conditioned temporal attention on ray tokens.
+        self.use_view_conditioned_temporal_attention_v83 = use_view_conditioned_temporal_attention_v83
+        if self.use_view_conditioned_temporal_attention_v83:
+            self.view_conditioned_temporal_attention_v83 = ViewConditionedTemporalAttentionV83(
+                d=v83_d,
+                n_heads=v83_n_heads,
+                n_views=n_views,
+                temporal_window=v83_temporal_window,
+                n_layers=v83_n_layers,
+                dropout=v83_dropout,
+                residual_gate_init=v83_residual_gate_init,
+                use_view_reliability_bias=v83_use_view_reliability_bias,
+            )
+        else:
+            self.view_conditioned_temporal_attention_v83 = None
+
+        # Optional v84 uncertainty-weighted view dropout on ray tokens.
+        self.use_uncertainty_weighted_view_dropout_v84 = use_uncertainty_weighted_view_dropout_v84
+        if self.use_uncertainty_weighted_view_dropout_v84:
+            self.uncertainty_weighted_view_dropout_v84 = UncertaintyWeightedViewDropoutV84(
+                d=v84_d,
+                n_views=n_views,
+                hidden=v84_hidden,
+                weight_type=v84_weight_type,
+                use_reprojection=v84_use_reprojection,
+                use_epipolar=v84_use_epipolar,
+                dropout_prob=v84_dropout_prob,
+                min_weight=v84_min_weight,
+            )
+        else:
+            self.uncertainty_weighted_view_dropout_v84 = None
+
+        # Optional v85 random view dropout with active-view-count conditioning.
+        self.use_random_view_dropout_v85 = use_random_view_dropout_v85
+        if self.use_random_view_dropout_v85:
+            self.random_view_dropout_v85 = RandomViewDropoutV85(
+                d=d,
+                n_views=n_views,
+                dropout_prob=v85_dropout_prob,
+                min_views=v85_min_views,
+                use_count_embedding=v85_use_count_embedding,
+            )
+        else:
+            self.random_view_dropout_v85 = None
 
         if use_geometry_attention:
             self.geom_attn_layers = nn.ModuleList(
@@ -535,11 +603,56 @@ class MultiViewGeometryFusionV25(nn.Module):
             tri_weights = confidence if view_mask is None else confidence * view_mask[:, :, :, None]
             pred_3d_init = triangulate_initial(pts, K, R, t, weights=tri_weights)
 
+        # Optional v85 random view dropout on the view mask.
+        if self.use_random_view_dropout_v85 and self.random_view_dropout_v85 is not None:
+            if view_mask is None:
+                view_mask = torch.ones(B, T, V, device=pts.device, dtype=torch.bool)
+            view_mask = self.random_view_dropout_v85.apply_dropout(view_mask)
+            confidence = confidence * view_mask[:, :, :, None].float()
+
         # World rays.
         centre, direction = compute_rays(pts, K, R, t)
 
         # Ray tokens.
         tokens = self.ray_tokenizer(centre, direction, confidence)
+
+        # Optional v85 active-view-count embedding.
+        if self.use_random_view_dropout_v85 and self.random_view_dropout_v85 is not None:
+            tokens = self.random_view_dropout_v85.embed_tokens(tokens, view_mask)
+
+        # Optional v83 view-conditioned temporal attention pre-refinement.
+        if self.use_view_conditioned_temporal_attention_v83 and self.view_conditioned_temporal_attention_v83 is not None:
+            view_reliability = self._compute_view_reliability(
+                confidence=confidence,
+                view_mask=view_mask,
+            )
+            tokens = self.view_conditioned_temporal_attention_v83(
+                tokens,
+                view_reliability,
+                view_mask=view_mask,
+            )
+
+        # Optional v84 uncertainty-weighted view dropout.
+        if self.use_uncertainty_weighted_view_dropout_v84 and self.uncertainty_weighted_view_dropout_v84 is not None:
+            tokens, v84_view_weights = self.uncertainty_weighted_view_dropout_v84(
+                tokens,
+                pred_3d=pred_3d_init,
+                points_2d=pts,
+                K=K,
+                R=R,
+                t=t,
+                view_mask=view_mask,
+            )
+            # Use v84 weights to re-triangulate the initial 3D estimate.
+            if v84_view_weights.dim() == 3:
+                # (B, T, V) -> (B, T, V, 1)
+                v84_weights = v84_view_weights.unsqueeze(-1)
+            else:
+                # (B, T, V, J)
+                v84_weights = v84_view_weights
+            weighted_confidence = confidence * v84_weights
+            tri_weights = weighted_confidence if view_mask is None else weighted_confidence * view_mask[:, :, :, None]
+            pred_3d_init = triangulate_initial(pts, K, R, t, weights=tri_weights)
 
         # Geometry-aware cross-view attention on ray tokens.
         if self.use_geometry_attention and self.geom_attn_layers is not None:
@@ -568,6 +681,30 @@ class MultiViewGeometryFusionV25(nn.Module):
 
         geom_loss = self._reprojection_loss(pred_3d_ref, pts, K, R, t, confidence, view_mask)
         return pred_3d_ref, geom_loss + uncertainty_loss
+
+    def _compute_view_reliability(
+        self,
+        confidence: torch.Tensor,
+        view_mask: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
+        """Return per-view reliability for the v83 cross-view bias.
+
+        If v45 adaptive geometry fusion is enabled, its per-view-joint weights
+        are averaged over joints.  Otherwise, the input confidence is averaged
+        over joints (with invalid views masked) to give a per-view score.
+        """
+        B, T, V, J = confidence.shape
+        if view_mask is not None:
+            mask = view_mask[:, :, :, None].float()  # (B, T, V, 1)
+        else:
+            mask = torch.ones(B, T, V, 1, device=confidence.device, dtype=confidence.dtype)
+
+        # Use confidence as a base per-view-joint reliability.
+        rel = confidence * mask  # (B, T, V, J)
+        # Average over joints, guarding against empty masks.
+        rel = rel.sum(dim=-1) / mask.sum(dim=-1).clamp(min=1e-6)  # (B, T, V)
+        # Clamp away from zero so log(reliability) is finite.
+        return rel.clamp(min=1e-6, max=1.0)
 
     def _reprojection_loss(
         self,

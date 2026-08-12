@@ -56,7 +56,7 @@ import sys
 import warnings
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import List, Optional, Sequence, Tuple
+from typing import Any, List, Optional, Sequence, Tuple, Union
 
 import numpy as np
 
@@ -124,7 +124,7 @@ class Detector(ABC):
     @abstractmethod
     def __call__(
         self,
-        image_paths: Sequence[Optional[Path]],
+        image_paths: Sequence[Optional[Union[Path, VideoFrameRef]]],
         points_2d_gt: np.ndarray,
     ) -> Tuple[np.ndarray, np.ndarray]:
         """Run detection.
@@ -132,7 +132,8 @@ class Detector(ABC):
         Parameters
         ----------
         image_paths:
-            Per-view image paths.  Missing images are represented by ``None``.
+            Per-view image paths or video-frame references.  Missing images are
+            represented by ``None``.
         points_2d_gt:
             Ground-truth 2D points for this frame, shape ``(V, J, 2)``.  Can be
             used to fill joints the detector does not model.
@@ -156,7 +157,7 @@ class FallbackDetector(Detector):
 
     def __call__(
         self,
-        image_paths: Sequence[Optional[Path]],
+        image_paths: Sequence[Optional[Union[Path, VideoFrameRef]]],
         points_2d_gt: np.ndarray,
     ) -> Tuple[np.ndarray, np.ndarray]:
         if self.noise_std <= 0:
@@ -202,12 +203,17 @@ class MediaPipePoseDetector(Detector):
             min_tracking_confidence=0.5,
         )
 
-    def _load_image(self, path: Optional[Path]) -> Optional[np.ndarray]:
+    def _load_image(self, path: Optional[Union[Path, VideoFrameRef]]) -> Optional[np.ndarray]:
+        import cv2  # type: ignore
+        if isinstance(path, tuple):
+            video_path, frame_idx = path
+            frame = _read_video_frame(video_path, frame_idx)
+            if frame is None:
+                return None
+            return cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         if path is None or not Path(path).exists():
             return None
         try:
-            # Lazy import so that the script can still be parsed when cv2 is absent.
-            import cv2  # type: ignore
             img = cv2.imread(str(path))
             if img is None:
                 return None
@@ -217,7 +223,7 @@ class MediaPipePoseDetector(Detector):
 
     def __call__(
         self,
-        image_paths: Sequence[Optional[Path]],
+        image_paths: Sequence[Optional[Union[Path, VideoFrameRef]]],
         points_2d_gt: np.ndarray,
     ) -> Tuple[np.ndarray, np.ndarray]:
         V, J, _ = points_2d_gt.shape
@@ -309,18 +315,20 @@ class OpenPoseCVDNNDetector(Detector):
             self.net.setPreferableBackend(cv2.dnn.DNN_BACKEND_CUDA)
             self.net.setPreferableTarget(cv2.dnn.DNN_TARGET_CUDA)
 
-    def _load_image(self, path: Optional[Path]) -> Optional[np.ndarray]:
+    def _load_image(self, path: Optional[Union[Path, VideoFrameRef]]) -> Optional[np.ndarray]:
+        import cv2  # type: ignore
+        if isinstance(path, tuple):
+            return _read_video_frame(path[0], path[1])
         if path is None or not Path(path).exists():
             return None
         try:
-            import cv2  # type: ignore
             return cv2.imread(str(path))
         except Exception:
             return None
 
     def __call__(
         self,
-        image_paths: Sequence[Optional[Path]],
+        image_paths: Sequence[Optional[Union[Path, VideoFrameRef]]],
         points_2d_gt: np.ndarray,
     ) -> Tuple[np.ndarray, np.ndarray]:
         # OpenPose COCO produces 18 joints.  We map them to MPI where possible.
@@ -377,6 +385,137 @@ class OpenPoseCVDNNDetector(Detector):
         return out, conf
 
 
+class RTMPoseDetector(Detector):
+    """RTMPose Wholebody 2D detector wrapper.
+
+    Uses the lightweight ``rtmlib`` package to run RTMPose on each view image
+    and maps the 133 wholebody keypoints to the MPI-INF-3DHP 28-joint skeleton.
+    Joints without a direct RTMPose correspondent are filled from the GT 2D
+    projection with a low confidence score so the output remains a complete
+    canonical frame.
+    """
+
+    # RTMPose Wholebody (133 keypoints) -> MPI-INF-3DHP 28 joints.
+    # Body keypoint order for RTMPose Wholebody follows the Halpe format.
+    RTM_TO_MPI = {
+        0: 6,    # nose            -> head
+        5: 9,    # left_shoulder   -> left_shoulder
+        6: 14,   # right_shoulder  -> right_shoulder
+        7: 10,   # left_elbow      -> left_elbow
+        8: 15,   # right_elbow     -> right_elbow
+        9: 11,   # left_wrist      -> left_wrist
+        10: 16,  # right_wrist     -> right_wrist
+        11: 18,  # left_hip        -> left_hip
+        12: 23,  # right_hip       -> right_hip
+        13: 19,  # left_knee       -> left_knee
+        14: 24,  # right_knee      -> right_knee
+        15: 20,  # left_ankle      -> left_ankle
+        16: 25,  # right_ankle     -> right_ankle
+        17: 22,  # left_big_toe    -> left_toe
+        20: 21,  # left_heel       -> left_foot
+        21: 27,  # right_big_toe   -> right_toe
+        22: 26,  # right_heel      -> right_foot
+    }
+
+    # Face keypoints averaged together approximate head_top.
+    FACE_INDICES = [1, 2, 3, 4, 68, 69, 70, 71, 72, 73, 74, 75]
+
+    def __init__(
+        self,
+        device: str = "cpu",
+        mode: str = "balanced",
+    ) -> None:
+        super().__init__("rtmpose", device=device)
+        try:
+            from rtmlib import Wholebody
+        except ImportError as exc:
+            raise RuntimeError(
+                "rtmlib is not installed. Install it with: pip install rtmlib"
+            ) from exc
+
+        backend = "onnxruntime" if device == "cpu" else "onnxruntime"
+        self.model = Wholebody(mode=mode, device=device, backend=backend)
+
+    def _load_image(self, path: Optional[Union[Path, VideoFrameRef]]) -> Optional[np.ndarray]:
+        import cv2  # type: ignore
+        if isinstance(path, tuple):
+            video_path, frame_idx = path
+            frame = _read_video_frame(video_path, frame_idx)
+            if frame is None:
+                return None
+            return cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        if path is None or not Path(path).exists():
+            return None
+        try:
+            img = cv2.imread(str(path))
+            if img is None:
+                return None
+            return cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+        except Exception:
+            return None
+
+    def __call__(
+        self,
+        image_paths: Sequence[Optional[Union[Path, VideoFrameRef]]],
+        points_2d_gt: np.ndarray,
+    ) -> Tuple[np.ndarray, np.ndarray]:
+        V, J, _ = points_2d_gt.shape
+        out = np.zeros((V, J, 2), dtype=np.float64)
+        conf = np.zeros((V, J), dtype=np.float32)
+
+        for v, path in enumerate(image_paths):
+            img = self._load_image(path)
+            if img is None:
+                out[v] = points_2d_gt[v]
+                conf[v] = 0.5
+                continue
+
+            keypoints, scores = self.model(img)
+            # rtmlib.Wholebody returns keypoints/scores with an extra leading
+            # batch / list dimension of size 1 when called on a single image.
+            # Normalize them to (K, 2) and (K,) arrays.
+            def _squeeze_rtmlib(arr: np.ndarray, target_ndim: int) -> np.ndarray:
+                arr = np.asarray(arr)
+                while (arr.ndim > target_ndim) or (arr.ndim >= 1 and arr.dtype == object):
+                    if arr.size == 0:
+                        break
+                    arr = arr[0]
+                    arr = np.asarray(arr)
+                return arr
+
+            keypoints = _squeeze_rtmlib(keypoints, 2)
+            scores = _squeeze_rtmlib(scores, 1)
+            # keypoints: (K, 2), scores: (K,)
+            mapped: set[int] = set()
+
+            # Map main body joints.
+            for rtm_idx, mpi_idx in self.RTM_TO_MPI.items():
+                if rtm_idx < len(keypoints):
+                    out[v, mpi_idx] = keypoints[rtm_idx]
+                    conf[v, mpi_idx] = float(scores[rtm_idx])
+                    mapped.add(mpi_idx)
+
+            # Approximate head_top as the average of available face keypoints.
+            face_points = []
+            face_scores = []
+            for fidx in self.FACE_INDICES:
+                if fidx < len(keypoints):
+                    face_points.append(keypoints[fidx])
+                    face_scores.append(scores[fidx])
+            if face_points:
+                out[v, 7] = np.mean(face_points, axis=0)
+                conf[v, 7] = float(np.mean(face_scores))
+                mapped.add(7)
+
+            # Fill any unmapped MPI joints with GT so the skeleton stays complete.
+            for j in range(J):
+                if j not in mapped:
+                    out[v, j] = points_2d_gt[v, j]
+                    conf[v, j] = 0.25
+
+        return out, conf
+
+
 # ---------------------------------------------------------------------------
 # Detector factory
 # ---------------------------------------------------------------------------
@@ -391,12 +530,15 @@ def _build_detector(name: str, device: str = "cpu", fallback_noise: float = 2.0)
         return MediaPipePoseDetector(device=device)
     if name == "openpose":
         return OpenPoseCVDNNDetector(device=device)
+    if name == "rtmpose":
+        return RTMPoseDetector(device=device)
     if name in {"stub", "none", "", "fallback"}:
         return FallbackDetector(noise_std=fallback_noise, device=device)
 
     if name == "auto":
         errors: List[str] = []
         for ctor, label in (
+            (RTMPoseDetector, "RTMPose Wholebody"),
             (MediaPipePoseDetector, "MediaPipe Pose"),
             (OpenPoseCVDNNDetector, "OpenPose cv2.dnn"),
         ):
@@ -420,6 +562,56 @@ def _build_detector(name: str, device: str = "cpu", fallback_noise: float = 2.0)
 _OMIT_RE = re.compile(r"_smoke|_v4_|test_set")
 
 
+# MPI-INF-3DHP raw-data layout uses per-view .avi videos.  This helper reads a
+# single BGR frame from an AVI so the detector can fall back to video sources
+# when extracted per-frame images are not available.
+VideoFrameRef = Tuple[Path, int]
+
+
+class _VideoCaptureCache:
+    """Keep per-video capture handles open to avoid reopening for every frame."""
+
+    def __init__(self) -> None:
+        self._caps: dict[Path, Any] = {}
+        self._pos: dict[Path, int] = {}
+
+    def get_frame(self, video_path: Path, frame_idx: int) -> Optional[np.ndarray]:
+        import cv2  # type: ignore
+
+        cap = self._caps.get(video_path)
+        if cap is None:
+            cap = cv2.VideoCapture(str(video_path))
+            if not cap.isOpened():
+                return None
+            self._caps[video_path] = cap
+            self._pos[video_path] = 0
+
+        current = self._pos[video_path]
+        if frame_idx != current:
+            cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx)
+            current = frame_idx
+
+        ret, frame = cap.read()
+        if not ret:
+            return None
+        self._pos[video_path] = current + 1
+        return frame
+
+    def close(self) -> None:
+        for cap in self._caps.values():
+            cap.release()
+        self._caps.clear()
+        self._pos.clear()
+
+
+# Module-level cache reused within a single process.
+_VIDEO_CAPTURE_CACHE = _VideoCaptureCache()
+
+
+def _read_video_frame(video_path: Path, frame_idx: int) -> Optional[np.ndarray]:
+    return _VIDEO_CAPTURE_CACHE.get_frame(video_path, frame_idx)
+
+
 def _find_source_npz(input_dir: Path) -> List[Path]:
     """Return list of canonical .npz files to re-generate."""
     files = sorted(input_dir.glob("*.npz"))
@@ -436,20 +628,44 @@ def _add_fallback_noise(points_2d: np.ndarray, noise_std: float) -> np.ndarray:
     return points_2d + noise
 
 
-def _parse_subject_seq_from_name(name: str) -> Tuple[Optional[int], Optional[int]]:
+def _parse_subject_seq_from_name(name: str) -> Tuple[Optional[int], Optional[List[int]]]:
     """Infer subject and sequence numbers from a canonical .npz filename.
+
+    The canonical name may encode a single sequence (``s_01_seq_01_...``) or a
+    concatenated range (``s_01_seq_01_02_...``).  Returns the subject and a
+    list of sequence numbers.
 
     Examples
     --------
     >>> _parse_subject_seq_from_name("s_01_seq_01_v14_multiview.npz")
-    (1, 1)
+    (1, [1])
+    >>> _parse_subject_seq_from_name("s_01_seq_01_02_v14_multiview.npz")
+    (1, [1, 2])
     >>> _parse_subject_seq_from_name("TS1_v14_multiview.npz")
     (None, None)
     """
-    m = re.search(r"s_(\d+)_seq_(\d+)", name)
+    m = re.search(r"s_(\d+)_seq_([0-9_]+)", name)
     if m:
-        return int(m.group(1)), int(m.group(2))
+        subject = int(m.group(1))
+        seq_part = m.group(2)
+        # Split on underscores, treating each token as a sequence number.
+        seqs = [int(x) for x in seq_part.split("_") if x]
+        return subject, seqs
     return None, None
+
+
+def _count_video_frames(video_path: Path) -> int:
+    """Return the number of frames in a video file, or 0 if unreadable."""
+    import cv2  # type: ignore
+
+    cap = cv2.VideoCapture(str(video_path))
+    if not cap.isOpened():
+        return 0
+    try:
+        count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+    finally:
+        cap.release()
+    return max(0, count)
 
 
 def _resolve_view_image_paths(
@@ -457,50 +673,131 @@ def _resolve_view_image_paths(
     npz_name: str,
     frame_idx: int,
     n_views: int,
-) -> List[Optional[Path]]:
-    """Resolve per-view image paths for a canonical frame.
+) -> List[Optional[Union[Path, VideoFrameRef]]]:
+    """Resolve per-view image source for a canonical frame.
 
-    Tries several common MPI-INF-3DHP raw-image layouts:
+    Tries several common MPI-INF-3DHP raw-image layouts first.  If the
+    canonical ``.npz`` encodes multiple sequences (e.g. ``s_01_seq_01_02_``),
+    the helper concatenates the per-sequence video sources and maps the global
+    ``frame_idx`` to the correct sequence and local frame index.
+
+    Supported source layouts:
 
     1. ``image_dir/S{subj}/Seq{seq}/imageSequence/cam{view:02d}/frame_{frame:05d}.jpg``
     2. ``image_dir/S{subj}/Seq{seq}/imageSequence/cam{view:02d}/img_{frame:05d}.png``
     3. ``image_dir/S{subj}/Seq{seq}/video_{view:02d}/frame_{frame:05d}.jpg``
 
-    The first layout that exists for view 0 is assumed for all views.  Missing
-    per-view files return ``None`` so the detector can fall back to GT for that
-    view.
+    If no extracted images are found, falls back to raw .avi videos:
+
+    4. ``image_dir/S{subj}/Seq{seq}/imageSequence/.avi_cache/video_{view}.avi``
+    5. ``image_dir/S{subj}/Seq{seq}/imageSequence/video_{view}.avi``
+
+    Missing per-view sources return ``None`` so the detector can fall back to
+    GT for that view.
     """
-    subject, seq = _parse_subject_seq_from_name(npz_name)
+    subject, seqs = _parse_subject_seq_from_name(npz_name)
     if subject is None or image_dir is None or not image_dir.exists():
         return [None] * n_views
+
+    if seqs is None:
+        return [None] * n_views
+
+    # Single-sequence case: keep the original behaviour.
+    if len(seqs) == 1:
+        seq = seqs[0]
+    else:
+        # Multi-sequence case: build a frame-index -> (seq, local_idx) mapping
+        # by probing the first available .avi for each sequence.
+        seq_frame_offsets = []
+        total = 0
+        for seq in seqs:
+            base = image_dir / f"S{subject}" / f"Seq{seq}"
+            if not base.exists():
+                seq_frame_offsets.append((seq, total, 0))
+                continue
+            # Probe the first video candidate that exists.
+            found = False
+            for pattern in [
+                base / "imageSequence" / ".avi_cache" / "video_0.avi",
+                base / "imageSequence" / "video_0.avi",
+                base / "imageSequence" / "video_00.avi",
+            ]:
+                if pattern.exists():
+                    count = _count_video_frames(pattern)
+                    seq_frame_offsets.append((seq, total, count))
+                    total += count
+                    found = True
+                    break
+            if not found:
+                seq_frame_offsets.append((seq, total, 0))
+
+        # Find which sequence the global frame_idx belongs to.
+        selected_seq = None
+        local_idx = frame_idx
+        for seq, offset, count in seq_frame_offsets:
+            if offset <= frame_idx < offset + count:
+                selected_seq = seq
+                local_idx = frame_idx - offset
+                break
+
+        if selected_seq is None:
+            # Beyond available video frames -> fall back to GT for all views.
+            return [None] * n_views
+        seq = selected_seq
 
     base = image_dir / f"S{subject}" / f"Seq{seq}"
     if not base.exists():
         return [None] * n_views
 
+    # Use the local frame index for all file/video lookups within this sequence.
+    local_frame_idx = local_idx if len(seqs) > 1 else frame_idx
+
     candidate_patterns = [
         base / "imageSequence" / f"cam{{view:02d}}" / f"frame_{{frame:05d}}.jpg",
         base / "imageSequence" / f"cam{{view:02d}}" / f"img_{{frame:05d}}.png",
-        base / "imageSequence" / f"cam{{view:02d}}" / f"{frame_idx:05d}.jpg",
+        base / "imageSequence" / f"cam{{view:02d}}" / f"{local_frame_idx:05d}.jpg",
         base / f"video_{{view:02d}}" / f"frame_{{frame:05d}}.jpg",
     ]
 
     # Find the first pattern that has an valid image for view 0.
     chosen_pattern: Optional[Path] = None
     for pattern in candidate_patterns:
-        candidate = Path(str(pattern).format(view=0, frame=frame_idx))
+        candidate = Path(str(pattern).format(view=0, frame=local_frame_idx))
         if candidate.exists():
             chosen_pattern = pattern
             break
 
-    if chosen_pattern is None:
-        return [None] * n_views
+    if chosen_pattern is not None:
+        paths: List[Optional[Union[Path, VideoFrameRef]]] = []
+        for v in range(n_views):
+            path = Path(str(chosen_pattern).format(view=v, frame=local_frame_idx))
+            paths.append(path if path.exists() else None)
+        return paths
 
-    paths: List[Optional[Path]] = []
-    for v in range(n_views):
-        path = Path(str(chosen_pattern).format(view=v, frame=frame_idx))
-        paths.append(path if path.exists() else None)
-    return paths
+    # Fallback: raw .avi videos (common MPI-INF-3DHP download layout).
+    video_candidates = [
+        base / "imageSequence" / ".avi_cache" / "video_{view}.avi",
+        base / "imageSequence" / "video_{view}.avi",
+        base / "imageSequence" / "video_{view:02d}.avi",
+    ]
+    chosen_video_pattern: Optional[Path] = None
+    for pattern in video_candidates:
+        candidate = Path(str(pattern).format(view=0))
+        if candidate.exists():
+            chosen_video_pattern = pattern
+            break
+
+    if chosen_video_pattern is not None:
+        refs: List[Optional[Union[Path, VideoFrameRef]]] = []
+        for v in range(n_views):
+            video_path = Path(str(chosen_video_pattern).format(view=v))
+            if video_path.exists():
+                refs.append((video_path, local_frame_idx))
+            else:
+                refs.append(None)
+        return refs
+
+    return [None] * n_views
 
 
 def _generate_detected_sequence(

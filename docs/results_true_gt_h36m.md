@@ -3,16 +3,64 @@
 > Standard protocol: **S1, S5, S6, S7, S8 train → S9, S11 test**  
 > Labels: `data/h36m_true_gt/*_multiview_m.npz` (true mocap world coordinates, non-circular).  
 > Manifest: `configs/splits/h36m_true_gt_standard.yaml`.  
-> Last updated: **2026-08-12** (v82 true-GT H36M medium & var-view done; v25 stability var-view in-flight; AIST++-only fast v2 training on GPU 5; MPI RTMPose 4/16 files).
+> Last updated: **2026-08-12 ~10:51 UTC** (H36M true-GT DLT baseline re-run with `scripts/run_h36m_true_gt_dlt_baseline.py`; MPI RTMPose detected-2D DLT baseline and AIST++-only fast v2 → H36M cross-eval finalized; v85 random-view dropout training in progress on A800 GPU 4; v83/v84 dropped).
+
+## Variable-view (sparse-view) robustness
+
+v25 stability variable-view evaluation completed on A800 (GPU 4). Results are for the standard test subjects S9/S11, using `num_subsets_per_k=50` and `clip_len=13`.
+
+| Subject | k=2 MPJPE@k (mm) | k=3 MPJPE@k (mm) | k=4 MPJPE@k (mm) |
+|---|---:|---:|---:|
+| S9 | 3482.62 | 1042.45 | 116.98 |
+| S11 | 3376.04 | 1030.19 | 110.58 |
+
+- k=4 is plausible (~110 mm) but much worse than the 4-view test result (30.83 mm), indicating the model overfits to the 4-view training rig.
+- k=2/k=3 are catastrophic (~1000–3500 mm), matching the same failure pattern seen for v81/v82.
+- **Root cause identified:** `HardenedVariableViewInferenceWrapper` (and `VariableViewInferenceWrapper`) zeroed out inactive-view observations but did **not** pass an explicit `view_mask` to `OmniMultiViewFusionV5.forward`. The model therefore treated inactive views as real zero-confidence observations, and downstream attention/triangulation layers without mask awareness produced garbage.
+- **Fix applied:** `motionflow_mv/fusion/variable_view_inference.py` now builds a `view_mask` from the active-view mask and passes it to the model. A synthetic smoke test with a random `OmniMultiViewFusionV5` produced finite outputs for k=2/3/4 (no NaN/Inf). Full real-data re-evaluation on A800 completed (`scripts/run_v25_var_view_fix_a800.sh`) but k<4 errors remained catastrophic, confirming the root cause is the learned model rather than the wrapper.
+- **DLT-fallback re-evaluation:** A second re-evaluation also added a `--var_view_dlt_fallback` mode to `HardenedVariableViewInferenceWrapper`: whenever the active view count is below the full 4-view rig, the evaluator directly triangulates the active views with confidence-weighted DLT instead of running the learned model. The v25 stability checkpoint is being evaluated with this fallback on A800; results will be inserted below once `outputs/variable_view_fix/variable_view_v25_true_gt_stability_a800_dlt_fallback.json` is available.
+
+### Variable-view MPJPE@k with DLT fallback for k<4
+
+| Subject | k=2 MPJPE@k (mm) | k=3 MPJPE@k (mm) | k=4 MPJPE@k (mm) |
+|---|---:|---:|---:|
+| S9 | 58.18 | 33.32 | 116.98 |
+| S11 | 49.35 | 25.28 | 110.58 |
+
+- Source: `outputs/variable_view_fix/variable_view_v25_true_gt_stability_a800_dlt_fallback.json`
+- DLT fallback is triggered only when the active view count is below the full 4-view rig (k<4); k=4 still runs the learned v25 stability model, hence the same ~111-117 mm k=4 values seen without fallback.
+- With DLT fallback, k=2 and k=3 become reasonable (S9 58.18/33.32 mm, S11 49.35/25.28 mm), confirming that the catastrophic sparse-view errors came from the learned model, not from the underlying 2D observations.
+
+### v81 temporal-pose-attention variable-view MPJPE@k with DLT fallback for k<4
+
+| Subject | k=2 MPJPE@k (mm) | k=3 MPJPE@k (mm) | k=4 MPJPE@k (mm) |
+|---|---:|---:|---:|
+| S9 | **58.18** | **33.32** | — |
+| S11 | **49.35** | **25.28** | — |
+
+- Source: `outputs/variable_view_fix/variable_view_v81_true_gt_medium_a800_dlt_fallback_k23.json` (only k=2,3 were evaluated; k=4 would use the learned v81 model and has not been run).
+- k<4 numbers are essentially identical to v25/v82 because the DLT-fallback path is model-agnostic. The learned model itself is not evaluated here.
+
+### v82 multi-scale temporal-pose-attention variable-view MPJPE@k with DLT fallback for k<4
+
+| Subject | k=2 MPJPE@k (mm) | k=3 MPJPE@k (mm) | k=4 MPJPE@k (mm) |
+|---|---:|---:|---:|
+| S9 | **58.18** | **33.32** | **47.81** |
+| S11 | **49.35** | **25.28** | **42.36** |
+
+- Source: `outputs/variable_view_fix/variable_view_v82_true_gt_medium_a800_dlt_fallback.json`
+- k<4 uses direct confidence-weighted DLT fallback; k=4 uses the learned v82 model. The v82 k=4 result (47.81/42.36 mm) is consistent with its full 4-view test result (~39.46 mm) and substantially better than the v25 stability k=4 (~117 mm), showing v82's learned full-view estimate is stronger.
+- DLT-fallback k=2/k=3 numbers are comparable to the v25 stability DLT-fallback baseline, confirming the sparse-view 2D observations themselves are sound.
 
 ## Current results
 
 | Method | S9 direct (mm) | S11 direct (mm) | Combined direct (mm) | Combined PA-MPJPE (mm) | Notes |
 |---|---:|---:|---:|---:|---|
-| **Iskakov ICCV 2019** | **27.10** | **19.60** | **23.35** | **23.10** | best run, epoch 4 |
-| DLT (confidence-weighted) | 29.54 | 21.81 | **25.67** | 25.55 | frozen reference |
-| RANSAC/conf-DLT (reproducible) | 29.60 | 21.96 | **26.47** | — | confidence-weighted 3-view random-subset; historical ref **26.61 mm** |
-| DLT (unweighted) | 33.61 | 24.77 | 29.19 | 29.31 | frozen reference |
+| **Iskakov ICCV 2019** | **27.15** | **19.65** | **23.40** | **23.15** | best val epoch 9; run `iskakov_learnable_tri_h36m_true_gt_a800_gpu4` |
+| DLT (confidence-weighted) | 29.54 | 21.81 | **25.67** | 28.05 | frozen reference; `scripts/run_h36m_true_gt_dlt_baseline.py` |
+| **MVPose (zju3dv/mvpose, GT 2D geometry-only)** | **29.19** | **21.54** | **26.06** | **28.32** | Native COCO17 skeleton; body12 subset **31.13 / 34.45 mm** |
+| **RANSAC/conf-DLT (reproducible)** | **29.60** | **21.96** | **26.47** | **28.98** | confidence-weighted 3-view random-subset; see `scripts/run_h36m_true_gt_ransac_baseline.py` |
+| DLT (unweighted) | 32.97 | 24.57 | 28.77 | 32.10 | frozen reference; `scripts/run_h36m_true_gt_dlt_baseline.py --unweighted` |
 | **v25 stability (A800)** | **34.87** | **26.80** | **30.83** | **33.59** | **test** result (stride 1); best val **31.13 mm** @ Epoch 10; early-stopped @ Epoch 12 |
 | **v25 (mixed H36M+AIST++, A800)** | **37.87** | **28.96** | **33.42** | **34.60** | early-stopped Epoch 3; best val **34.94 mm** @ Epoch 1 |
 | **v81 (temporal-pose-attention, A800)** | **42.19** | **33.46** | **37.83** | **37.75** | **test** result (stride 13); best val **38.62 mm** @ Epoch 8; completed 8 epochs |
@@ -61,51 +109,116 @@ AIST++ uses the same 17-joint skeleton as H36M and 9 calibrated views. The smoke
 - Source logs: `outputs/iskakov_aist_smoke.log`, `outputs/omniview_fusion_v25_aist_only_smoke.log`, `outputs/omniview_fusion_v80_aist_only_smoke.log`.
 - An AIST++-only medium v25 training run has been launched on A800 GPU 5 now that all 1,408 canonical `.npz` files are present. Log: `outputs/ablations/aistpp_only_medium_a800_gpu5.log`.
 
-A fast v2 run (`train_samples=64`, `batch_size=32`, `epochs=10`) was relaunched on GPU 5 after the AIST++ NaN/empty-sequence fix and is training (past step 450 with decreasing loss). Log: `outputs/ablations/aistpp_only_medium_a800_fast_v2.log`; config: `outputs/ablations/aistpp_only_medium_a800_fast_v2.config.json`.
+A fast v2 run (`train_samples=64`, `batch_size=32`, `epochs=10`) was relaunched on GPU 5 after the AIST++ NaN/empty-sequence fix and finished/early-stopped at Epoch 4. Best val MPJPE **91.43 mm**. Log: `outputs/ablations/aistpp_only_medium_a800_fast_v2.log`; config: `outputs/ablations/aistpp_only_medium_a800_fast_v2.config.json`.
 
-### MPI-INF-3DHP DLT baseline (pending)
+#### AIST++-only fast v2 → H36M true-GT S9/S11 cross-eval
 
-RTMPose detected-2D regeneration is running on A800 GPU 7. Once all detected-2D `.npz` files are produced, the MPI DLT baseline will be computed with `scripts/run_mpi_dlt_baseline.py`.
+The AIST++-only checkpoint was evaluated on H36M true-GT S9/S11 with the prepared script `scripts/eval_aistpp_only_on_h36m_test_a800.sh` (stride 1, batch 8, `clip_len=13`).
 
-| Status | Files ready | DLT MPJPE (mm) | PA-MPJPE (mm) | Notes |
-|---|---:|---:|---:|---|
-| Partial | 4 / 16 | **150.50** | **164.22** | Mean over the first two completed files (`s_01_seq_01_02_v14_multiview_m.npz` 138.31 mm, `s_01_seq_01_v14_multiview_m.npz` 162.69 mm); not representative. Full MPI DLT pending remaining files. |
-| Full | pending | — | — | Pending completion of RTMPose detection for all sequences. |
+| Subject | MPJPE (mm) | PA-MPJPE (mm) | Frames |
+|---|---:|---:|---:|
+| S9 | **98.17** | **49.44** | 1,088,711 |
+| S11 | **89.70** | **39.55** | 753,467 |
+| **Combined (simple avg)** | **93.94** | **44.50** | — |
 
-- Detection log: `outputs/mpi_rtmpose_detected_2d/generate_20260811_191500.log`
-- Partial DLT output: `outputs/mpi_rtmpose_detected_2d/dlt_baseline_detected_2d.json`
+- Source: `outputs/eval_aistpp_only_medium_a800_fast_v2_h36m_test.json`
+- The model was trained only on AIST++ and has never seen H36M, so this is a zero-shot cross-domain transfer result. The error is much higher than models trained on H36M (e.g., v25 stability 30.83 mm), confirming a large domain gap between the two datasets, but it is finite and well above the catastrophic k<4 failure mode.
+- Combined direct MPJPE: **(98.17 + 89.70) / 2 = 93.94 mm**.
+
+### MPI-INF-3DHP DLT baseline (completed)
+
+RTMPose detected-2D regeneration finished; DLT baseline computed with `scripts/run_mpi_dlt_baseline.py` on the 16 detected-2D `.npz` files.
+
+| File | MPJPE (mm) | PA-MPJPE (mm) |
+|---|---:|---:|
+| s_01_seq_01_02_v14_multiview_m.npz            |       138.31 |          155.81 |
+| s_01_seq_01_v14_multiview_m.npz               |       162.69 |          172.63 |
+| s_01_seq_02_v14_multiview_m.npz               |       125.02 |          147.01 |
+| s_02_seq_01_v14_multiview_m.npz               |       148.56 |          153.30 |
+| s_03_seq_01_v14_multiview_m.npz               |        99.71 |          114.30 |
+| s_03_seq_02_v14_multiview_m.npz               |       108.42 |          119.24 |
+| s_04_seq_01_v14_multiview_m.npz               |        97.45 |          122.16 |
+| s_04_seq_02_v14_multiview_m.npz               |       147.90 |          161.91 |
+| s_05_seq_01_v14_multiview_m.npz               |       104.94 |          129.26 |
+| s_05_seq_02_v14_multiview_m.npz               |        87.59 |          105.85 |
+| s_06_seq_01_v14_multiview_m.npz               |        84.23 |          104.26 |
+| s_06_seq_02_v14_multiview_m.npz               |        89.09 |          112.38 |
+| s_07_seq_01_v14_multiview_m.npz               |        87.31 |          103.91 |
+| s_07_seq_02_v14_multiview_m.npz               |        91.03 |          109.18 |
+| s_08_seq_01_v14_multiview_m.npz               |       162.18 |          181.87 |
+| s_08_seq_02_v14_multiview_m.npz               |       107.01 |          129.85 |
+|---|---:|---:|
+| **Mean** | **115.09** | **132.68** |
+
+- Source: `outputs/mpi_rtmpose_detected_2d/dlt_baseline_detected_2d.json`
+
 
 ## Per-method details
 
-### DLT / RANSAC baselines
+### MVPose (zju3dv/mvpose geometry-only top-down triangulation)
 
-Computed by `scripts/run_mpi_dlt_baseline.py` over the true-GT `data/h36m_true_gt/*_multiview_m.npz` files. Iskakov-style stride sampling uses `ref_max_frames=2000`.
+MVPose was evaluated on the H36M true-GT S9/S11 split using the adapter in
+`scripts/sota_baselines/mvpose_h36m_adapter.py`. The upstream `zju3dv/mvpose`
+kernel was used for triangulation, with ground-truth 2D projections feeding the
+geometry-only top-down pose kernel (`MultiEstimator._top_down_pose_kernel`).
 
 ```bash
-# Confidence-weighted (and unweighted) DLT
-python scripts/run_mpi_dlt_baseline.py \
-    --glob "data/h36m_true_gt/*_multiview_m.npz" \
-    --output data/h36m_true_gt/dlt_baseline_h36m.json \
-    --device cpu
+python scripts/sota_baselines/mvpose_h36m_adapter.py \
+    --input_pkl tmp/sota_baselines/mvpose_data_a800/h36m_true_gt_val.pkl \
+    --output_dir tmp/sota_baselines/mvpose_predictions_full
+
+python scripts/sota_baselines/eval_mvpose_predictions.py \
+    --input_pkl tmp/sota_baselines/mvpose_data_a800/h36m_true_gt_val.pkl \
+    --pred_dir tmp/sota_baselines/mvpose_predictions_full \
+    --out_json outputs/sota_baselines/mvpose_h36m_true_gt_metrics.json
 ```
 
-The reproducible RANSAC-DLT result is **26.47 mm** (confidence-weighted 3-view random-subset). The historical 26.61 mm result stored in `outputs/ransac_dlt_h36m_true_gt_focused.json` was produced by an untracked one-off script and is retained as a reference, but it is **not exactly reproducible** today.
+| Subject | All-17 MPJPE (mm) | All-17 PA-MPJPE (mm) | Body-12 MPJPE (mm) | Body-12 PA-MPJPE (mm) | Frames |
+|---|---:|---:|---:|---:|---:|
+| S9 | **29.19** | **31.90** | **35.33** | **39.10** | 83,759 |
+| S11 | **21.54** | **23.15** | **25.06** | **27.73** | 57,971 |
+| **Combined** | **26.06** | **28.32** | **31.13** | **34.45** | 141,730 |
+
+- Source: `outputs/sota_baselines/mvpose_h36m_true_gt_metrics.json`
+- The body-12 subset (COCO17 joints 5-16, i.e. shoulders/elbows/wrists/hips/knees/ankles) is
+  reported separately because the five COCO17 facial keypoints are approximated from the
+  single H36M Head joint and can distort PA-MPJPE.
+- MVPose slightly beats the confidence-weighted DLT baseline on S11 and is within 0.4 mm
+  of DLT on the combined metric (26.06 mm vs. 25.67 mm).
+
+### DLT / RANSAC baselines
+
+Computed by `scripts/run_h36m_true_gt_dlt_baseline.py` and `scripts/run_h36m_true_gt_ransac_baseline.py` over the true-GT `data/h36m_true_gt/*_multiview_m.npz` files. Iskakov-style stride sampling uses `ref_max_frames=2000`.
+
+```bash
+# Confidence-weighted DLT (fast; uses CPU by default, add --device cuda for GPU)
+python scripts/run_h36m_true_gt_dlt_baseline.py
+
+# Also compute unweighted DLT (slower)
+python scripts/run_h36m_true_gt_dlt_baseline.py --unweighted --device cuda
+
+# Reproducible confidence-weighted 3-view random-subset RANSAC-DLT
+python scripts/run_h36m_true_gt_ransac_baseline.py
+```
+
+The reproducible RANSAC-DLT result is **26.47 mm** (S9 29.60 mm, S11 21.96 mm, PA-MPJPE 28.98 mm) using the confidence-weighted 3-view random-subset variant. The historical 26.61 mm result in `outputs/ransac_dlt_h36m_true_gt_focused.json` is retained only as a reference; it was produced by an untracked one-off script and is now superseded by the reproducible script.
 
 Reproducible RANSAC-DLT variants on the same true-GT test data:
 
-| Variant | S9 direct | S11 direct | Combined direct | Notes |
-|---|---:|---:|---:|---|
-| Confidence-weighted 3-view random-subset RANSAC-DLT | 29.60 mm | 21.96 mm | **~26.47 mm** | Closest to the historical 26.61 mm; uses confidence-weighted subset triangulation (`tmp/test_ransac_variants2.py`). |
-| Unweighted 3-view random-subset RANSAC-DLT | 31.63 mm | 23.62 mm | **~28.36 mm** | Uses `experiments/baselines.baseline_ransac_dlt` with the 4-view fallback removed (`tmp/verify_ransac_baseline_h36m_exact.py`). |
+| Variant | S9 direct | S11 direct | Combined direct | PA-MPJPE | Source |
+|---|---:|---:|---:|---:|---|
+| Confidence-weighted 3-view random-subset RANSAC-DLT | 29.60 mm | 21.96 mm | **26.47 mm** | **28.98 mm** | `scripts/run_h36m_true_gt_ransac_baseline.py` → `outputs/ransac_dlt_h36m_true_gt_reproducible.json` |
+| Confidence-weighted 3-view all-subsets RANSAC-DLT | 27.84 mm | 20.77 mm | **24.94 mm** | **26.92 mm** | `scripts/run_h36m_true_gt_ransac_baseline.py --all_unique` → `outputs/ransac_dlt_h36m_true_gt_reproducible_all_unique.json` |
+| Unweighted 3-view random-subset RANSAC-DLT | 31.63 mm | 23.62 mm | **~28.36 mm** | — | `experiments/baselines.baseline_ransac_dlt` (`tmp/verify_ransac_baseline_h36m_exact.py`) |
 
-`experiments/baselines.py` has been updated so that `baseline_ransac_dlt` no longer falls back to plain DLT when `V=4`; this lets RANSAC actually sample 3-view subsets on the 4-view H36M test data, but the resulting number is ~28.36 mm, not 26.61 mm.  The 0.14 mm gap between the confidence-weighted random-subset variant and the historical 26.61 mm likely comes from a slightly different subset-sampling or scoring rule in the untracked original script.
+`experiments/baselines.py` has been updated so that `baseline_ransac_dlt` no longer falls back to plain DLT when `V=4`; this lets RANSAC actually sample 3-view subsets on the 4-view H36M test data, but the resulting number is ~28.36 mm because it uses unweighted subset triangulation. The confidence-weighted variant in the new script closes the gap to the historical 26.61 mm result.
 
-| Reference | S9 direct | S11 direct | Combined direct | Source |
-|---|---:|---:|---:|---|
-| Unweighted DLT | 33.61 mm | 24.77 mm | 29.19 mm | `data/h36m_true_gt/dlt_baseline_h36m.json` |
-| Confidence-weighted DLT | 29.54 mm | 21.81 mm | **25.67 mm** | `data/h36m_true_gt/dlt_baseline_h36m.json` |
-| RANSAC/conf-DLT (reproducible) | 29.60 mm | 21.96 mm | **26.47 mm** | `tmp/test_ransac_variants2.py` |
-| RANSAC/conf-DLT (historical) | 29.86 mm | 21.91 mm | 26.61 mm | `outputs/ransac_dlt_h36m_true_gt_focused.json` (untracked one-off) |
+| Reference | S9 direct | S11 direct | Combined direct | PA-MPJPE | Source |
+|---|---:|---:|---:|---:|---|
+| Unweighted DLT | 32.97 mm | 24.57 mm | 28.77 mm | 32.10 mm | `data/h36m_true_gt/dlt_baseline_h36m.json` |
+| Confidence-weighted DLT | 29.54 mm | 21.81 mm | **25.67 mm** | 28.05 mm | `data/h36m_true_gt/dlt_baseline_h36m.json` |
+| RANSAC/conf-DLT (reproducible) | 29.60 mm | 21.96 mm | **26.47 mm** | 28.98 mm | `outputs/ransac_dlt_h36m_true_gt_reproducible.json` |
+| RANSAC/conf-DLT (historical) | 29.86 mm | 21.91 mm | 26.61 mm | — | `outputs/ransac_dlt_h36m_true_gt_focused.json` (untracked one-off) |
 
 ### Iskakov learnable triangulation
 
@@ -130,7 +243,7 @@ python experiments/train_iskakov_baseline_shelf_campus.py \
 
 - Early-stopped by patience, best epoch = 4.
 - Gain over confidence-weighted DLT: **+2.32 mm** combined direct (25.67 vs. 23.35 mm).
-- Gain over unweighted DLT: **+5.84 mm** combined direct (29.19 vs. 23.35 mm).
+- Gain over unweighted DLT: **+5.42 mm** combined direct (28.77 vs. 23.35 mm).
 - A confirmation run with larger batches (batch 64, 8,192 samples/epoch) produced **23.38 mm** (best epoch 7); see `docs/results_iskakov_h36m_true_gt.md`.
 
 ### v80 (view-reliability weighting)
@@ -267,7 +380,7 @@ bash scripts/run_v25_h36m_true_gt_medium_local_4090.sh
 - Gap to baselines on combined direct (test):
   - **Iskakov**: +20.58 mm (43.93 vs. 23.35 mm).
   - **DLT (confidence-weighted)**: +18.26 mm (43.93 vs. 25.67 mm).
-  - **DLT (unweighted)**: +14.74 mm (43.93 vs. 29.19 mm).
+  - **DLT (unweighted)**: +15.16 mm (43.93 vs. 28.77 mm).
 - v25 does not currently beat the geometric or learnable-triangulation baselines on this true-GT protocol.
 
 #### v25 true-GT divergence ablations
@@ -401,17 +514,21 @@ Follow-up runs were launched on A800 after the corrected-validation `view_mask` 
 | `v25_true_gt_stability_a800` | 6 | `configs/splits/h36m_true_gt_standard.yaml` | **completed** | **31.13 mm** @ Epoch 10 | Low LR (`1e-4`), 4-epoch warmup, no `variable_view_permute`. Early-stopped @ Epoch 12. Test MPJPE **30.83 mm** (S9 34.87 / S11 26.80, stride 1, PA-MPJPE 33.59 mm). Log: `outputs/ablations/v25_true_gt_stability_a800.log`; test log: `outputs/eval_v25_true_gt_stability_h36m_test.log`. |
 | `v81_true_gt_h36m_medium_a800` | 4 | `scripts/run_v81_true_gt_h36m_medium_a800.sh` | **completed** | **38.62 mm** @ Epoch 8 | v25 + per-joint temporal pose attention. Completed 8 epochs (no early stop). Test MPJPE **37.83 mm** (S9 42.19 / S11 33.46, stride 13, PA-MPJPE 37.75 mm). Log: `outputs/ablations/v81_true_gt_h36m_medium_a800.log`; test JSON: `outputs/eval_v81_true_gt_h36m_test_a800.json`. |
 | `v82_true_gt_h36m_medium_a800` | 4 | `scripts/run_v82_true_gt_h36m_medium_a800.sh` | **completed** | **39.58 mm** @ Epoch 8 | v81 + multi-scale temporal-pose-attention. Completed 8 epochs. Test MPJPE **39.46 mm** (S9 42.07 / S11 36.84, stride 13, PA-MPJPE 39.94 mm). Log: `outputs/ablations/v82_true_gt_h36m_medium_a800.log`; test JSON: `outputs/eval_v82_true_gt_h36m_test_a800.json`. |
-| `aistpp_only_medium_a800_fast_v2` | 5 | `configs/splits/aist_only_smoke.yaml` / `outputs/ablations/aistpp_only_medium_a800_fast_v2.*` | **running** | — | Relaunched after AIST++ NaN/empty-sequence fix. Training past step 450 with decreasing loss. Log: `outputs/ablations/aistpp_only_medium_a800_fast_v2.log`. |
-| `eval_variable_views_v25_true_gt_stability_a800` | 4 | `scripts/run_eval_variable_views_v25_true_gt_stability_a800.sh` | **in progress** | — | Variable-view evaluation of the v25 stability checkpoint on GPU 4. Outputs: `outputs/variable_view_v25_true_gt_stability_a800.csv/.json`. |
-| MPI DLT baseline | 7 | `scripts/run_mpi_dlt_baseline.py` | **in progress** | — | RTMPose detected-2D regeneration produced 4/16 files so far. Partial two-file DLT: **150.50 mm** / PA-MPJPE **164.22 mm** (not representative). Full MPI DLT pending remaining files. Log: `outputs/mpi_rtmpose_detected_2d/generate_20260811_191500.log`; partial JSON: `outputs/mpi_rtmpose_detected_2d/dlt_baseline_detected_2d.json`. |
+| `aistpp_only_medium_a800_fast_v2` | 5 | `configs/splits/aist_only_smoke.yaml` / `outputs/ablations/aistpp_only_medium_a800_fast_v2.*` | **completed** | **91.43 mm** @ Epoch 2 | Early-stopped @ Epoch 4. Cross-eval on H36M true-GT S9/S11: **93.94 mm** (S9 98.17 / S11 89.70, stride 1, PA-MPJPE 44.50 mm). Log: `outputs/ablations/aistpp_only_medium_a800_fast_v2.log`; test JSON: `outputs/eval_aistpp_only_medium_a800_fast_v2_h36m_test.json`. |
+| `v85_random_view_dropout_medium_a800` | 7 | `scripts/run_v85_random_view_dropout_medium_a800.sh` | **in progress** | — | Random view dropout (`--use_random_view_dropout_v85 --v85_dropout_prob 0.3 --v85_min_views 2 --v85_use_count_embedding`) to address k<4 sparse-view failure. Log: `outputs/ablations/v85_random_view_dropout_medium_a800.log`. |
+| `v81_var_view_dlt_fallback` | 6/7 | manifest eval | **in progress** | — | Per-dataset DLT-fallback eval for S9/S11; outputs: `outputs/variable_view_fix/variable_view_v81_true_gt_medium_a800_dlt_fallback.*`. |
+| `v82_var_view_dlt_fallback` | 6 | manifest eval | **in progress** | — | DLT-fallback eval on `tmp/h36m_true_gt_val_manifest.txt`; outputs: `outputs/variable_view_fix/variable_view_v82_true_gt_medium_a800_dlt_fallback.*`. |
+| `v25_true_gt_stability_dlt_fallback` | 6 | manifest eval | **in progress** | — | DLT-fallback re-evaluation of v25 stability checkpoint. Output: `outputs/variable_view_fix/variable_view_v25_true_gt_stability_a800_dlt_fallback.*`. |
+| `eval_variable_views_v25_true_gt_stability_a800` | 4 | `scripts/run_eval_variable_views_v25_true_gt_stability_a800.sh` | **completed** | — | Variable-view evaluation of the v25 stability checkpoint on GPU 4. Outputs: `outputs/variable_view_v25_true_gt_stability_a800.csv/.json`. |
+| MPI DLT baseline | 7 | `scripts/run_mpi_dlt_baseline.py` | **completed** | **115.09 mm** / PA-MPJPE **132.68 mm** | RTMPose detected-2D regeneration produced 16/16 `.npz` files; confidence-weighted DLT baseline computed on all 16 files. Source: `outputs/mpi_rtmpose_detected_2d/dlt_baseline_detected_2d.json`. |
 
 - **v80 regularization** finished with best val **54.46 mm** @ epoch 1 and early-stopped @ epoch 4. Test MPJPE is **53.98 mm** (S9 56.69 / S11 51.27, stride 13, PA-MPJPE 32.47 mm). This is a clear improvement over the previous v80 medium test result of **62.32 mm**, but still well behind the v80 best val of **39.70 mm** (A800 v2) / **39.98 mm** (local medium), indicating a train/val-to-test gap.
 - **v25 mixed-dataset** diverged after Epoch 1. Best val **34.94 mm** @ Epoch 1, then rose to **81.35 mm** @ Epoch 2 and **584.25 mm** @ Epoch 3, so the run was early-stopped and the best checkpoint was tested. Test MPJPE is **33.42 mm** (S9 37.87 / S11 28.96, stride 13, PA-MPJPE 34.60 mm).
 - **v25 stability** finished training with best val **31.13 mm** @ Epoch 10 and was early-stopped @ Epoch 12. **Test MPJPE: 30.83 mm** (S9 34.87 / S11 26.80, stride 1, PA-MPJPE 33.59 mm). A variable-view evaluation of this checkpoint is currently running on GPU 4.
 - **v81 temporal-pose-attention** completed training on GPU 4. Best val **38.62 mm** @ Epoch 8, **test MPJPE: 37.83 mm** (S9 42.19 / S11 33.46, stride 13, PA-MPJPE 37.75 mm).
 - **v82 multi-scale temporal-pose-attention** completed training on GPU 4. Best val **39.58 mm** @ Epoch 8, **test MPJPE: 39.46 mm** (S9 42.07 / S11 36.84, stride 13, PA-MPJPE 39.94 mm). The variable-view evaluation on GPU 6 is complete: k=4 reports **~45 mm** (S9 47.81 / S11 42.36), while k=2/k=3 are catastrophically high (>>1,000 mm). Log: `outputs/ablations/v82_true_gt_h36m_medium_a800.log`; test JSON: `outputs/eval_v82_true_gt_h36m_test_a800.json`; var-view CSV: `outputs/variable_view_v82_true_gt_medium_a800.csv`.
-- **AIST++-only fast v2** (`aistpp_only_medium_a800_fast_v2`) was relaunched on GPU 5 after the AIST++ NaN/empty-sequence fix and is training (past step 450 with decreasing loss). Log: `outputs/ablations/aistpp_only_medium_a800_fast_v2.log`.
-- **MPI-INF-3DHP DLT baseline** is in progress. Four of 16 expected detected-2D files have been generated; the mean DLT on the first two files is **150.50 mm** / PA-MPJPE **164.22 mm**, which is not representative. Full MPI DLT results are pending.
+- **AIST++-only fast v2** (`aistpp_only_medium_a800_fast_v2`) finished on GPU 5 and was early-stopped @ Epoch 4 with best val **91.43 mm** @ Epoch 2. Cross-eval on H36M true-GT S9/S11 gives **93.94 mm** (S9 98.17 / S11 89.70, stride 1, PA-MPJPE 44.50 mm). Log: `outputs/ablations/aistpp_only_medium_a800_fast_v2.log`; test JSON: `outputs/eval_aistpp_only_medium_a800_fast_v2_h36m_test.json`.
+- **MPI-INF-3DHP DLT baseline** is completed. All 16 detected-2D `.npz` files have been generated; the confidence-weighted DLT mean is **115.09 mm** / PA-MPJPE **132.68 mm**. Source: `outputs/mpi_rtmpose_detected_2d/dlt_baseline_detected_2d.json`.
 - A800 disk remains **99 % full**. AIST++ canonical `.npz` files are now present on A800 (1,408 clips).
 
 ## How to reproduce

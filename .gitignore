@@ -18,6 +18,9 @@ tmp/
 outputs/
 .worktrees/
 tools/
+models/
+rtmlib_check/
+tmp_*/
 oa*.json
 oa*.xml
 lt.json
@@ -26,3 +29,9 @@ tmpmpi_advanced_v1_train.log
 monitor_dense_graph_v2_nohup.log
 monitor_dense_graph_v2_status.txt
 tmp_pytest
+C*/
+Standard
+archive_cleanup_20260811/
+tmp_*.sh
+tmp_*.py
+tmp_*.png

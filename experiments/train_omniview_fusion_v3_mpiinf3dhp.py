@@ -712,9 +712,10 @@ def main():
             eval_metric=build_eval_metric(),
             checkpoint_path=str(output_path),
             save_best=True,
+            monitor="mpjpe",
         )
 
-        best = min(history, key=lambda e: e.get("val", {}).get("loss", float("inf")))
+        best = min(history, key=lambda e: e.get("val", {}).get("mpjpe", float("inf")))
         best_mpjpe = best.get("val", {}).get("mpjpe", float("nan"))
         print(f"Best val MPJPE: {best_mpjpe * 1000:.2f}mm -> {output_path}")
 

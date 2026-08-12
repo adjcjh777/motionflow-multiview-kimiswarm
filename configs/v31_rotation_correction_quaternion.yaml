@@ -22,7 +22,7 @@ disable_test_time_self_evolution: true
 
 training:
   script: experiments/train_omniview_fusion_v5_webbridge_multi.py
-  manifest: configs/splits/webbridge_h36m_mpi_mixed_train_val.yaml
+  manifest: configs/splits/h36m_true_gt_aist_mixed_train_val_a800.yaml
   # Local smoke-only settings; scale up for A800 full runs.
   d: 64
   residual_hidden: 128

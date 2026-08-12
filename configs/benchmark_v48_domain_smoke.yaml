@@ -23,7 +23,7 @@ description: >
   domain-conditional training so the model generalises across studio
   multi-view and in-the-wild monocular data.
 
-manifest: configs/splits/webbridge_h36m_mpi_mixed_train_val.yaml
+manifest: configs/splits/h36m_true_gt_aist_mixed_smoke.yaml
 script: experiments/train_omniview_fusion_v5_webbridge_multi.py
 
 training:

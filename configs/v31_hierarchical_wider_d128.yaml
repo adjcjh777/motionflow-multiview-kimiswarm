@@ -8,7 +8,7 @@ base: experiments/train_omniview_fusion_v5_webbridge_multi.py
 flags:
   data:
     - --use_mixed_loader
-    - --mixed_manifest configs/splits/webbridge_h36m_mpi_mixed_train_val.yaml
+    - --mixed_manifest configs/splits/h36m_true_gt_aist_mixed_train_val_a800.yaml
     - --num_workers 4
   model:
     - --d 128

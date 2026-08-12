@@ -2,6 +2,22 @@
 
 > 从单目视频到多视角人体动作融合的轻量级探索
 
+> **CVPR 2027 pivot in progress.** The project has moved from absolute-MPJPE chasing to a **data-foundation rebuild** after discovering circular H36M labels. New collaborators should start with `docs/cvpr2027_pivot_for_new_collaborators.md` before using any smoke/medium numbers.
+
+## Project status
+
+| Status item | Value |
+|---|---|
+| Phase | Data-foundation rebuild → CVPR 2027 pivot |
+| H36M true GT | ✅ Ready; best Iskakov **23.35 mm**; v80 **39.98 mm**; v57 **75.16 mm** observed (saved ckpt **81.47 mm**); v25 **72.80 mm** |
+| GPU |  **BUSY**: `v25_true_gt_baseline_fix` ablation running on local RTX 4090. Do **not** start another GPU task. |
+| MPI real detected 2D | ⚠️ 16 `_m.npz` files ready in `data/webbridge/mpi_inf_3dhp_detected_2d/`, but DLT baseline is ~326–400 mm due to camera/label alignment issue; `s_02_seq_02` removed |
+
+**Key docs**
+- `docs/cvpr2027_status.md` — CVPR 2027 overall status, leaderboards, blockers, and next steps.
+- `docs/handoff_qwen3.8max.md` — qwen3.8max handoff (true-GT H36M results, v25 ablation queue, execution constraints, quick commands).
+- `docs/results_true_gt_h36m.md` — H36M true-GT standard protocol leaderboard and per-method details.
+
 ## Core Idea
 
 Extend the existing MotionFlow pipeline (monocular video → human motion) to accept **multi-view videos** of the same action, fuse per-view 2D/3D pose estimates, and calibrate them into a **common physical space**. The goal is a minimal, reproducible baseline that demonstrates improved robustness/accuracy over single-view inference, and serves as a paper-worthy direction.

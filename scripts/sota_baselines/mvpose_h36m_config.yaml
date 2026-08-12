@@ -3,16 +3,19 @@
 # This YAML is read by scripts/sota_baselines/prepare_mvpose_h36m.sh and
 # describes how to prepare and run MVPose on the corrected H36M true-GT
 # protocol (S1,5,6,7,8 -> S9/S11).
+#
+# NOTE: The original `emredog/mvposeestim` (also written `mvposestim`) is no
+# longer reachable. The closest public implementation is `zju3dv/mvpose`
+# (Dong et al., CVPR 2019 / T-PAMI 2021). The script therefore clones that
+# repository and documents the remaining adapter work needed to run on H36M.
 
 name: mvpose_h36m_true_gt
 
 # External repository settings.
-# Note: the canonical MVPose repository is a third-party implementation;
-# update the URL if the project uses a fork.
 repo:
-  url: https://github.com/jiajunhua/MvPose.git
+  url: "https://github.com/zju3dv/mvpose.git"
   ref: master
-  dir: tmp/sota_baselines/MVPose
+  dir: tmp/sota_baselines/mvpose
 
 # Data produced by common_export_h36m_true_gt.py.
 input_pkl: tmp/sota_baselines/h36m_true_gt_baseline_format.pkl
@@ -41,3 +44,12 @@ eval:
   protocol: h36m_standard
   subjects_test: [9, 11]
   actions: all
+
+# MVPose-specific data expectations. The converter writes per-split pickles
+# and a manifest, but a full run also needs:
+#   - An upstream launcher that accepts the manifest format below.
+#   - Camera parameters in the exact convention used by MVPose.
+upstream_requirements:
+  needs_images: false
+  needs_2d_detector: false
+  manifest_format: per_split_pickle

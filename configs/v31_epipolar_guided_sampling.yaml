@@ -5,7 +5,7 @@ description: |
   deformable cross-view attention with straight-through top-k sampling,
   where the top-k mask is driven by epipolar-geometry-biased attention
   scores.  TTE is intentionally disabled (TTE is broken in v29/v30).
-manifest: configs/splits/webbridge_h36m_mpi_mixed_train_val.yaml
+manifest: configs/splits/h36m_true_gt_aist_mixed_train_val_a800.yaml
 
 training:
   # Core architecture (kept small for a fast 4090 smoke test)

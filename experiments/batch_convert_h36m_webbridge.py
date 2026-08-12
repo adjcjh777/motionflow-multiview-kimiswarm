@@ -3,6 +3,12 @@
 Each output file covers one (subject, action, split) group in the canonical format used
 by the ray-attention training pipeline.
 
+.. warning::
+    Without true 3D mocap ground truth, the produced labels are circular
+    (DLT triangulation of the input 2D keypoints). The converter now raises
+    an error unless true-GT ``.npz`` files are found in ``data/h36m_true_gt/``
+    or ``--allow-circular-fallback`` is explicitly passed.
+
 Example
 -------
     conda run -n mf python experiments/batch_convert_h36m_webbridge.py \
@@ -55,6 +61,10 @@ def main():
                         help="If provided, only convert these actions.")
     parser.add_argument("--meters", action="store_true",
                         help="Also emit a meters variant (_m.npz).")
+    parser.add_argument("--allow-circular-fallback", action="store_true",
+                        help="Allow triangulation fallback when true 3D GT is missing.")
+    parser.add_argument("--true-gt-dir", type=Path, default=None,
+                        help="Directory to search for true-GT npz files (default: data/h36m_true_gt).")
     args = parser.parse_args()
 
     data_root = Path(args.data_root)
@@ -83,7 +93,7 @@ def main():
             continue
         print(f"Converting {len(groups)} (subject, action) groups for split={split}")
         for subject, action in groups:
-            out_path = out_dir / f"s_{subject:02d}_act_{action:02d}_{split}_multiview.npz"
+            out_path = out_dir / f"s_{subject:02d}_acts_{action:02d}_multiview.npz"
             if out_path.exists():
                 print(f"  Skipping existing {out_path}")
                 continue
@@ -95,6 +105,8 @@ def main():
                     split=split,
                     out_dir=out_dir,
                     archive_file=archive_path.name,
+                    true_gt_dir=args.true_gt_dir,
+                    allow_circular_fallback=args.allow_circular_fallback,
                 )
                 print(f"  -> {out_path}")
                 if args.meters:

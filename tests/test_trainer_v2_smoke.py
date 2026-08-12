@@ -179,6 +179,71 @@ def test_checkpoint_roundtrip(tmp_path=None):
         assert torch.allclose(p1, p2)
 
 
+def test_monitor_mpjpe_saves_best_epoch(tmp_path=None):
+    """Checkpoint should be saved for the best monitored metric, not val_loss.
+
+    Reproduces the v57 bug: val_loss barely changes between epochs while
+    val_mpjpe keeps improving.  With monitor='mpjpe', the checkpoint at the
+    best-MPJPE epoch must be retained.
+    """
+    device = torch.device("cpu")
+    model = DummyModel()
+    optimizer = optim.SGD(model.parameters(), lr=0.1)
+
+    def compute_loss(model, batch, device):
+        x, y = batch
+        x, y = x.to(device), y.to(device)
+        pred = model(x)
+        return nn.functional.mse_loss(pred, y), {}
+
+    trainer = TrainerV2(
+        model,
+        optimizer,
+        device,
+        compute_loss=compute_loss,
+        total_epochs=3,
+        ema_decay=0.9,
+    )
+
+    loader = _make_dataloader(num_batches=1)
+
+    # Sequence of validation metrics: loss worsens slightly, mpjpe improves.
+    val_sequence = [
+        {"loss": 0.0100, "mpjpe": 0.08147},  # 81.47 mm
+        {"loss": 0.0101, "mpjpe": 0.07516},  # 75.16 mm (best)
+        {"loss": 0.0100, "mpjpe": 0.08021},  # 80.21 mm
+    ]
+    original_evaluate = trainer.evaluate
+
+    def _fake_evaluate(*args, **kwargs):
+        metrics = val_sequence.pop(0)
+        return metrics
+
+    trainer.evaluate = _fake_evaluate  # type: ignore[method-assign]
+
+    checkpoint_path = tmp_path / "best.pth" if tmp_path else "outputs/test_trainer_v2_best.pth"
+    history = trainer.fit(
+        loader,
+        val_loader=loader,
+        epochs=3,
+        save_best=True,
+        checkpoint_path=str(checkpoint_path),
+        monitor="mpjpe",
+        early_stopping_min_delta=0.001,
+    )
+
+    # Restore original evaluate so later tests are unaffected.
+    trainer.evaluate = original_evaluate  # type: ignore[method-assign]
+
+    # The saved checkpoint must correspond to epoch 2 (best MPJPE).
+    state = torch.load(str(checkpoint_path), map_location="cpu", weights_only=False)
+    assert state["epoch"] == 2, f"Expected epoch 2 checkpoint, got epoch {state['epoch']}"
+
+    # History should still contain all three epochs.
+    assert len(history) == 3
+    assert history[1]["epoch"] == 2
+
+
 def main():
     test_lr_scheduler()
     print("LR scheduler test passed")
@@ -190,6 +255,8 @@ def main():
     print("MultiViewPoseTrainerV2 test passed")
     test_checkpoint_roundtrip()
     print("Checkpoint roundtrip test passed")
+    test_monitor_mpjpe_saves_best_epoch()
+    print("MPJPE monitor best-checkpoint test passed")
     print("All trainer_v2 smoke tests passed")
 
 

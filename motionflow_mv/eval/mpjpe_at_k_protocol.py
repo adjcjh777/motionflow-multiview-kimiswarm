@@ -201,6 +201,7 @@ def evaluate_mpjpe_at_k(
     device: Optional[torch.device] = None,
     hardened: bool = False,
     n_views_max: Optional[int] = None,
+    hardened_kwargs: Optional[Dict[str, Any]] = None,
 ) -> Dict[int, Dict[str, Any]]:
     """Evaluate ``model`` for variable view counts using the MPJPE@k protocol.
 
@@ -232,7 +233,8 @@ def evaluate_mpjpe_at_k(
 
     K, R, t = _prepare_cameras(cameras, device)
     wrapper_cls = HardenedVariableViewInferenceWrapper if hardened else VariableViewInferenceWrapper
-    wrapper = wrapper_cls(model)
+    hardened_kwargs = hardened_kwargs or {}
+    wrapper = wrapper_cls(model, **hardened_kwargs)
     rng = np.random.default_rng(seed)
 
     all_subsets = generate_view_subsets(V, k_values, num_subsets_per_k=num_subsets_per_k, seed=seed)
@@ -264,7 +266,7 @@ def evaluate_mpjpe_at_k(
                     x_clip, K, R, t, active, n_views_max=(n_views_max if n_views_max is not None else V)
                 )
                 with torch.no_grad():
-                    pred = wrapper.model(x_padded.unsqueeze(0), K=Kp, R=Rp, t=tp)[0]
+                    pred = wrapper(x_padded.unsqueeze(0), K=Kp, R=Rp, t=tp, active_views=active)[0]
                 pred = pred.squeeze(0).cpu().numpy()  # (T_clip, J, 3)
                 clip_preds.append(pred)
                 clip_gts.append(joints_3d[start:end])

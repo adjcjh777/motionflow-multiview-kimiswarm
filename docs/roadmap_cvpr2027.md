@@ -98,7 +98,7 @@ The leaderboard question is no longer "who has the smallest MPJPE?" but "who deg
 | Dataset | True 3D? | 2D input | Current status | Protocol |
 |---|---|---|---|---|
 | **Human3.6M** | Yes (`data/h36m_true_gt/`) | Detected 2D supplied with true-GT release | True mocap world coordinates available and non-circular; old `data/h36m_hf` and `data/webbridge/h36m*.npz` are circular DLT(p2d, cams) and must not be used | S1,S5,S6,S7,S8 train → S9,S11 test; 17 joints, 4 views |
-| **MPI-INF-3DHP** | Yes (`univ_annot3`) | Current: GT-projected 2D; Future: detected 2D (blocked on missing `imageSequence`) | Non-circular DLT baseline ~23.8 mm | Train S1/S3, validate S2/Seq1; 28 joints, 14 views |
+| **MPI-INF-3DHP** | Yes (`univ_annot3`) | Detected-2D `.npz` generated (16 files), but DLT baseline ~326–400 mm due to camera/label alignment; blocked until fixed | Non-circular DLT baseline ~23.8 mm on GT-projected 2D | Train S1/S3, validate S2/Seq1; 28 joints, 14 views |
 | **Shelf** | Yes | Detection 2D | Non-circular `.npz` rebuilt; DLT val 130.77 mm direct / 124.13 mm root-aligned; calibration coarse (53.7 px reproj RMSE) — report with caveat | Standard Shelf protocol, 5 views |
 | **Campus** | Yes | Detection 2D | Non-circular `.npz` rebuilt; DLT val 138.08 mm direct / 120.61 mm root-aligned; cameras consistent (7.7 px reproj RMSE) — primary sparse-view benchmark | Standard Campus protocol, 3 views |
 
@@ -125,9 +125,10 @@ The leaderboard question is no longer "who has the smallest MPJPE?" but "who deg
    8 epochs but diverged after epoch 2 (72.80 → 207.62 mm). Debug
    overfitting, then run v80 and v57 medium to fill
    `docs/results_true_gt_h36m.md`.
-2. **Obtain MPI `imageSequence` (external).** Then run
-   `scripts/generate_mpi_detected_2d.py --detector auto` (MediaPipe/OpenPose
-   wrappers are already implemented) to replace the GT+noise fallback.
+2. **Fix MPI detected-2D / camera / label alignment.** Real detected-2D `.npz`
+   exist in `data/webbridge/mpi_inf_3dhp_detected_2d/`, but the DLT baseline is
+   ~326–400 mm. Diagnose the coordinate-frame mismatch, regenerate affected files,
+   and re-run DLT until it reaches ~20–30 mm before learned-model benchmarking.
 3. **Longer true-GT training on Campus.** Extend v80/v57 from the 3-epoch
    smoke to full-data, >= 20-epoch runs on
    `configs/splits/shelf_campus_detected_smoke.yaml` and check whether any

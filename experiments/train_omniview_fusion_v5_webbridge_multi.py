@@ -147,6 +147,39 @@ def build_model_from_args(
         "use_temporal_geometry_fusion_v26": getattr(args, "use_temporal_geometry_fusion_v26", False),
         "v26_temporal_window": getattr(args, "v26_temporal_window", 3),
         "v26_temporal_attention_residual_gate_init": getattr(args, "v26_temporal_attention_residual_gate_init", 0.0),
+        # v81 per-joint temporal pose attention
+        "use_temporal_pose_attention_v81": getattr(args, "use_temporal_pose_attention_v81", False),
+        "v81_temporal_window": getattr(args, "v81_temporal_window", 9),
+        "v81_temporal_residual_gate_init": getattr(args, "v81_temporal_residual_gate_init", -6.0),
+        "v81_temporal_dropout": getattr(args, "v81_temporal_dropout", 0.1),
+        # v82 multi-scale per-joint temporal pose attention
+        "use_temporal_pose_attention_v82": getattr(args, "use_temporal_pose_attention_v82", False),
+        "v82_temporal_windows": getattr(args, "v82_temporal_windows", (5, 13, -1)),
+        "v82_hidden_dim": getattr(args, "v82_hidden_dim", 16),
+        "v82_temporal_dropout": getattr(args, "v82_temporal_dropout", 0.1),
+        "v82_temporal_residual_gate_init": getattr(args, "v82_temporal_residual_gate_init", -6.0),
+        # v83 view-conditioned temporal attention on v25 ray tokens
+        "use_view_conditioned_temporal_attention_v83": getattr(args, "use_view_conditioned_temporal_attention_v83", False),
+        "v83_d": getattr(args, "v83_d", 128),
+        "v83_n_heads": getattr(args, "v83_n_heads", 4),
+        "v83_temporal_window": getattr(args, "v83_temporal_window", 9),
+        "v83_n_layers": getattr(args, "v83_n_layers", 1),
+        "v83_dropout": getattr(args, "v83_dropout", 0.1),
+        "v83_residual_gate_init": getattr(args, "v83_residual_gate_init", -6.0),
+        "v83_use_view_reliability_bias": getattr(args, "v83_use_view_reliability_bias", True),
+        "use_uncertainty_weighted_view_dropout_v84": getattr(args, "use_uncertainty_weighted_view_dropout_v84", False),
+        "v84_d": getattr(args, "v84_d", 128),
+        "v84_hidden": getattr(args, "v84_hidden", 64),
+        "v84_weight_type": getattr(args, "v84_weight_type", "per_view"),
+        "v84_use_reprojection": getattr(args, "v84_use_reprojection", True),
+        "v84_use_epipolar": getattr(args, "v84_use_epipolar", True),
+        "v84_dropout_prob": getattr(args, "v84_dropout_prob", 0.1),
+        "v84_min_weight": getattr(args, "v84_min_weight", 0.05),
+        # v85 random view dropout
+        "use_random_view_dropout_v85": getattr(args, "use_random_view_dropout_v85", False),
+        "v85_dropout_prob": getattr(args, "v85_dropout_prob", 0.3),
+        "v85_min_views": getattr(args, "v85_min_views", 2),
+        "v85_use_count_embedding": getattr(args, "v85_use_count_embedding", True),
         "use_uncertainty_depth_proposals_v27": getattr(args, "use_uncertainty_depth_proposals_v27", False),
         "v27_uncertainty_loss_weight": getattr(args, "v27_uncertainty_loss_weight", 0.01),
         "v27_udp_n_mixtures": getattr(args, "v27_udp_n_mixtures", 1),
@@ -1854,6 +1887,12 @@ def build_eval_metric():
         R = R.to(device)
         t = t.to(device)
 
+        # Build a view mask from the input confidence channel so that padded
+        # views (all-zero confidence) are ignored during validation.  Without
+        # this mask the model treats the 14-view padded batch as fully valid,
+        # which inflates the validation MPJPE.
+        view_mask = (x[..., 2].sum(dim=(1, 3)) > 0).float()
+
         with torch.no_grad():
             forward_kwargs: Dict[str, Any] = {}
             if len(batch) == 6 and (
@@ -1863,7 +1902,7 @@ def build_eval_metric():
                 or getattr(model, "use_v58_simplified_domain_psc", False)
             ):
                 forward_kwargs["domain_id"] = batch[5].to(device)
-            out = model(x, K=K, R=R, t=t, **forward_kwargs)
+            out = model(x, K=K, R=R, t=t, view_mask=view_mask, **forward_kwargs)
             pred_3d = out[0]
             loss = F.mse_loss(pred_3d, y)
             mpjpe = (pred_3d - y).norm(dim=-1).mean()
@@ -2177,6 +2216,40 @@ def parse_args() -> Namespace:
     parser.add_argument("--use_temporal_geometry_fusion_v26", action="store_true", default=False, help="Use v26 temporal geometry fusion instead of v25")
     parser.add_argument("--v26_temporal_window", type=int, default=3, help="Temporal window size for v26 (must be odd)")
     parser.add_argument("--v26_temporal_attention_residual_gate_init", type=float, default=0.0, help="Initial value of the residual gate in v26 temporal attention (0.0 = identity at init)")
+    # v81 per-joint temporal pose attention
+    parser.add_argument("--use_temporal_pose_attention_v81", action="store_true", default=False, help="Use v81 lightweight per-joint temporal attention over triangulated 3-D poses (add-on to v25)")
+    parser.add_argument("--v81_temporal_window", type=int, default=9, help="Temporal window size for v81 (0 or -1 = full clip)")
+    parser.add_argument("--v81_temporal_residual_gate_init", type=float, default=-6.0, help="Initial residual gate logit for v81 (default -6.0 = near-identity at init)")
+    parser.add_argument("--v81_temporal_dropout", type=float, default=0.1, help="Dropout on v81 output projection")
+    # v82 multi-scale per-joint temporal pose attention
+    parser.add_argument("--use_temporal_pose_attention_v82", action="store_true", default=False, help="Use v82 multi-scale per-joint temporal attention over triangulated 3-D poses (add-on to v25)")
+    parser.add_argument("--v82_temporal_windows", type=int, nargs="+", default=(5, 13, -1), help="List of temporal window sizes for v82 (use -1 or 0 for full clip)")
+    parser.add_argument("--v82_hidden_dim", type=int, default=16, help="Hidden dimension of the shared QKV projection in v82")
+    parser.add_argument("--v82_temporal_residual_gate_init", type=float, default=-6.0, help="Initial residual gate logit for v82 (default -6.0 = near-identity at init)")
+    parser.add_argument("--v82_temporal_dropout", type=float, default=0.1, help="Dropout on v82 output projections")
+    # v83 view-conditioned temporal attention on v25 ray tokens
+    parser.add_argument("--use_view_conditioned_temporal_attention_v83", action="store_true", default=False, help="Use v83 view-conditioned temporal attention on v25 ray tokens (before triangulation)")
+    parser.add_argument("--v83_d", type=int, default=128, help="Token dimension for v83 attention layers")
+    parser.add_argument("--v83_n_heads", type=int, default=4, help="Number of attention heads in v83")
+    parser.add_argument("--v83_temporal_window", type=int, default=9, help="Temporal window size for v83 (0 or -1 = full clip)")
+    parser.add_argument("--v83_n_layers", type=int, default=1, help="Number of stacked v83 [temporal, cross-view] layers")
+    parser.add_argument("--v83_dropout", type=float, default=0.1, help="Dropout on v83 output projections")
+    parser.add_argument("--v83_residual_gate_init", type=float, default=-6.0, help="Initial residual gate logit for v83 (default -6.0 = near-identity at init)")
+    parser.add_argument("--v83_use_view_reliability_bias", action="store_true", default=True, help="Use per-view reliability bias in v83 cross-view attention")
+    parser.add_argument("--use_uncertainty_weighted_view_dropout_v84", action="store_true", default=False, help="Use v84 uncertainty-weighted view dropout on v25 ray tokens")
+    parser.add_argument("--v84_d", type=int, default=128, help="v84 token dimension")
+    parser.add_argument("--v84_hidden", type=int, default=64, help="v84 uncertainty MLP hidden dimension")
+    parser.add_argument("--v84_weight_type", type=str, default="per_view", help="v84 weight type: per_view | per_view_joint")
+    parser.add_argument("--v84_use_reprojection", action="store_true", default=True, help="Use reprojection error residual in v84 uncertainty")
+    parser.add_argument("--v84_use_epipolar", action="store_true", default=True, help="Use epipolar-style residual in v84 uncertainty")
+    parser.add_argument("--v84_dropout_prob", type=float, default=0.1, help="v84 stochastic view-dropout probability")
+    parser.add_argument("--v84_min_weight", type=float, default=0.05, help="v84 minimum triangulation weight")
+    # v85 random view dropout with active-view-count conditioning
+    parser.add_argument("--use_random_view_dropout_v85", action="store_true", default=False, help="Use v85 random whole-view dropout during training")
+    parser.add_argument("--v85_dropout_prob", type=float, default=0.3, help="v85 per-view dropout probability during training")
+    parser.add_argument("--v85_min_views", type=int, default=2, help="v85 minimum retained views after dropout")
+    parser.add_argument("--v85_use_count_embedding", action="store_true", default=True, help="Add v85 active-view-count embedding to ray tokens")
+    parser.add_argument("--no_v85_use_count_embedding", dest="v85_use_count_embedding", action="store_false", help="Disable v85 active-view-count embedding")
     parser.add_argument("--use_uncertainty_depth_proposals_v27", action="store_true", default=False, help="Use v27 uncertainty-aware depth-proposal triangulation head in v25/v26")
     parser.add_argument("--v27_uncertainty_loss_weight", type=float, default=0.01, help="Weight for v27 uncertainty regularisation loss")
     parser.add_argument("--v27_udp_n_mixtures", type=int, default=1, help="Number of Gaussian mixture components for v27 depth proposals (default 1=single Gaussian)")
@@ -2823,9 +2896,10 @@ def main():
             log_interval=50,
             early_stopping_patience=args.early_stopping_patience,
             early_stopping_min_delta=args.early_stopping_min_delta,
+            monitor="mpjpe",
         )
 
-        best = min(history, key=lambda e: e.get("val", {}).get("loss", float("inf")))
+        best = min(history, key=lambda e: e.get("val", {}).get("mpjpe", float("inf")))
         best_mpjpe = best.get("val", {}).get("mpjpe", float("nan"))
         print(f"Best val MPJPE: {best_mpjpe * 1000:.2f}mm -> {output_path}")
 

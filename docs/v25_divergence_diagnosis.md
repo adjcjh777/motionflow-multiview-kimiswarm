@@ -213,13 +213,49 @@ python -u experiments/train_omniview_fusion_v5_webbridge_multi.py \
 
 The consistent pattern is: **best generalisation is reached at epoch 1–2**, and every run without early stopping and weight decay degrades afterward. The fixes above address exactly that.
 
-## 6. Files to Modify
+## 6. Conservative smoke-test result (2026-08-11)
+
+A fast local RTX 4090 smoke was run to test the hypothesis that the divergence is driven by training-rate / augmentation instability rather than a structural bug in `MultiViewGeometryFusionV25`.
+
+| Setting | Value |
+|---|---|
+| Script | `scripts/run_v25_diagnose_divergence_fast_smoke.sh` |
+| Log | `outputs/ablations/v25_true_gt_lowlr_no_permute_fast_smoke.log` |
+| Checkpoint | `outputs/ablations/v25_true_gt_lowlr_no_permute_fast_smoke.pth` |
+| train_samples | 256 per file |
+| epochs | 3 |
+| lr | 1e-4 |
+| lr_warmup_epochs | 2 |
+| weight_decay | 1e-4 |
+| `--variable_view_permute` | disabled |
+| `--outlier_view_prob` | 0.0 |
+| v25 geometry fusion | enabled (attention + learned depth triangulation + bundle adjustment) |
+
+### Results
+
+| Epoch | train_loss | val_loss | val_MPJPE (mm) |
+|---|---:|---:|---:|
+| 1 | 21.912 | 0.003567 | **100.44** |
+| 2 | 23.653 | 0.003540 | **100.02** |
+| 3 | 21.350 | 0.003479 | **99.08** |
+
+### Interpretation
+
+- The validation MPJPE **did not explode** after epoch 1/2 under the conservative schedule.
+- This contradicts the "structural v25 blow-up" hypothesis; the divergence in the baseline-fix ablation is therefore likely caused by the combination of **higher learning rate**, **variable-view permutation**, and/or **outlier augmentation**.
+- Absolute MPJPE (~100 mm) is poor, but this is expected from a tiny smoke (256 samples/epoch, 3 epochs). The run is not meant to be competitive; it only tests stability.
+
+### Implication
+
+To move v25 true-GT training forward, run the conservative hyperparameter recipe at full scale (`train_samples=4096`, more epochs) on a free A800 GPU, or combine it with mixed-dataset training. If divergence reappears at full scale, only then do we need structural changes such as bounding `residual_scale` or adding a geometry-loss warmup.
+
+## 7. Files to Modify
 
 1. `scripts/run_v25_h36m_true_gt_medium_local_4090.sh` — apply the short-term hyperparameter changes.
 2. `motionflow_mv/fusion/multiview_geometry_fusion_v25.py` — optional: bound `residual_scale` and/or add warmup for `v25_geom_loss_weight`.
 3. `docs/results_true_gt_h36m.md` — update the v25 row when the re-run completes.
 
-## 7. Verification Checklist
+## 8. Verification Checklist
 
 - [ ] Re-run uses `--train_samples 4096` (or higher) and `--early_stopping_patience 3`.
 - [ ] `weight_decay > 0` is set.

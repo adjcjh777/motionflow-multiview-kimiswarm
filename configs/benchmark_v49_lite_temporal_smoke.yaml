@@ -9,7 +9,7 @@ description: >
   v46-SVG baseline and replaces the v47 transformer with a small causal
   depthwise-separable Conv1D stack to save memory and latency on RTX 4090.
 
-manifest: configs/splits/webbridge_h36m_mpi_mixed_train_val.yaml
+manifest: configs/splits/h36m_true_gt_aist_mixed_smoke.yaml
 script: experiments/train_omniview_fusion_v5_webbridge_multi.py
 
 training:

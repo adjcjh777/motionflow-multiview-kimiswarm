@@ -3,14 +3,19 @@
 # This YAML is read by scripts/sota_baselines/prepare_voxelpose_h36m.sh and
 # describes how to prepare and run VoxelPose on the corrected H36M true-GT
 # protocol (S1,5,6,7,8 -> S9/S11).
+#
+# Upstream repository: Microsoft VoxelPose (verified cloneable). The A800
+# launcher in scripts/run_voxelpose_h36m_true_gt_a800.sh clones it into
+# tmp/sota_baselines/voxelpose-pytorch and applies the H36M adapter overlay.
 
 name: voxelpose_h36m_true_gt
 
 # External repository settings.
+# Official Microsoft PyTorch implementation of VoxelPose (ICCV 2021).
 repo:
-  url: https://github.com/susuhustle/VoxelPose.git
+  url: "https://github.com/microsoft/voxelpose-pytorch.git"
   ref: main
-  dir: tmp/sota_baselines/VoxelPose
+  dir: tmp/sota_baselines/voxelpose-pytorch
 
 # Data produced by common_export_h36m_true_gt.py.
 input_pkl: tmp/sota_baselines/h36m_true_gt_baseline_format.pkl
@@ -31,7 +36,7 @@ training:
   lr_decay_epoch: 1
   # Number of cameras for H36M.
   num_cameras: 4
-  # Voxel grid parameters used by VoxelPose.
+  # Voxel grid parameters used by VoxelPose (mm convention).
   voxel_size: 20.0
   cube_size: [2000.0, 2000.0, 6000.0]
   # Joint count for H36M true-GT.
@@ -48,3 +53,15 @@ eval:
   protocol: h36m_standard
   subjects_test: [9, 11]
   actions: all
+
+# VoxelPose-specific data expectations. The converter writes a compatibility
+# pickle, but a full run also needs:
+#   - Actual H36M RGB frames (or placeholders) because VoxelPose's dataset
+#     class reads images.
+#   - 2D heatmaps/detections compatible with the upstream repo.
+#   - A dataset adapter inside tmp/sota_baselines/VoxelPose/lib/datasets that
+#     loads the files written to data_dir above.
+upstream_requirements:
+  needs_images: true
+  needs_2d_detector: true
+  dataset_adapter_status: not_provided

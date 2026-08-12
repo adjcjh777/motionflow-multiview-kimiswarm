@@ -10,6 +10,12 @@ Why a new script instead of ``generate_mpi_detected_2d.py``:
 * mediapipe >= 1.0 removed the legacy ``mp.solutions.pose`` API used by the
   older script; this one uses the tasks ``PoseLandmarker`` API.
 
+To avoid MediaPipe memory growth / re-initialisation issues on long
+sequences, the script can process each sequence in short frame-range chunks,
+spawning a fresh Python process per chunk (``--chunk_size``).  Each chunk
+loads the existing partial output, updates its slice, and writes the full
+.npz back, so the pipeline is resumable.
+
 Protocol (P0-2, issue #191):
 * Input canonical npz: ``data/webbridge/mpi_inf_3dhp/s_XX_seq_YY_v14_multiview*.npz``
   (GT-projected 2D kept only for joints MediaPipe does not model — those get
@@ -31,7 +37,7 @@ Usage
         --raw_dir data/webbridge/mpi_inf_3dhp/raw \
         --output_dir data/webbridge/mpi_inf_3dhp_detected_2d \
         --model models/mediapipe/pose_landmarker_full.task \
-        --detect_size 512 --workers 4
+        --detect_size 512 --chunk_size 500
 
 Author: research swarm (data foundation repair, 2026-08)
 """
@@ -39,8 +45,9 @@ Author: research swarm (data foundation repair, 2026-08)
 from __future__ import annotations
 
 import argparse
-import io
+import gc
 import os
+import subprocess
 import sys
 import tempfile
 import time
@@ -80,35 +87,42 @@ VIEW_TO_GROUP: Dict[int, str] = {
 MULTI_SOURCE_MPI = {mpi for lst in [MEDIAPIPE_TO_MPI.values()] for mpi in lst if list(MEDIAPIPE_TO_MPI.values()).count(mpi) > 1}
 
 
-def _extract_avi_bytes(zip_path: Path, view: int) -> Optional[bytes]:
-    """Return the raw bytes of ``video_{view}.avi`` inside *zip_path*."""
+def _get_avi_path(zip_path: Path, view: int, cache_dir: Path) -> Optional[Path]:
+    """Return a local path to ``video_{view}.avi``, extracting it from *zip_path* once.
+
+    Extracted AVIs are cached in *cache_dir* so that subsequent chunks do not
+    need to unzip the raw camera archives again. This avoids filling the system
+    temp directory with large per-chunk temp files.
+    """
     name = f"video_{view}.avi"
+    cache_file = cache_dir / name
+    if cache_file.exists() and cache_file.stat().st_size > 0:
+        return cache_file
     try:
         with zipfile.ZipFile(zip_path) as z:
             if name not in z.namelist():
                 return None
-            return z.read(name)
+            cache_dir.mkdir(parents=True, exist_ok=True)
+            with open(cache_file, "wb") as f:
+                f.write(z.read(name))
+            return cache_file
     except Exception:
         return None
 
 
 class AviReader:
-    """Sequential frame decoder for an in-memory AVI (written to a temp file).
+    """Sequential frame decoder for a local AVI file.
 
     Optimised for the canonical use case: frames are read strictly in order,
     so we never call ``cap.set(POS_FRAMES)`` (re-seeking forces a decode from
     the previous keyframe and was ~5x slower than sequential reads).
     """
 
-    def __init__(self, avi_bytes: bytes):
+    def __init__(self, avi_path: Path):
         import cv2
 
-        fd, tmp = tempfile.mkstemp(suffix=".avi")
-        os.close(fd)
-        with open(tmp, "wb") as f:
-            f.write(avi_bytes)
-        self.tmp = tmp
-        self.cap = cv2.VideoCapture(tmp)
+        self.avi_path = avi_path
+        self.cap = cv2.VideoCapture(str(avi_path))
         if not self.cap.isOpened():
             raise RuntimeError("cv2 cannot open AVI (ffmpeg backend missing?)")
         self.n = int(self.cap.get(cv2.CAP_PROP_FRAME_COUNT))
@@ -127,23 +141,20 @@ class AviReader:
 
     def close(self) -> None:
         self.cap.release()
-        try:
-            os.remove(self.tmp)
-        except OSError:
-            pass
 
 
 class MediaPipeTasksDetector:
     """MediaPipe PoseLandmarker (tasks API) single-pose detector."""
 
-    def __init__(self, model_path: str, detect_size: int = 512):
+    def __init__(self, model_path: str, detect_size: int = 512, cpu_only: bool = True):
         import mediapipe as mp
         from mediapipe.tasks.python import BaseOptions
         from mediapipe.tasks.python import vision
 
         self.mp = mp
+        delegate = BaseOptions.Delegate.CPU if cpu_only else BaseOptions.Delegate.GPU
         opts = vision.PoseLandmarkerOptions(
-            base_options=BaseOptions(model_asset_path=model_path),
+            base_options=BaseOptions(model_asset_path=model_path, delegate=delegate),
             num_poses=1,
             min_pose_detection_confidence=0.5,
         )
@@ -197,6 +208,20 @@ def map_landmarks_to_mpi(
     return out, conf
 
 
+def _load_or_init_arrays(out_path: Path, points_2d: np.ndarray, T: int, V: int, J: int):
+    """Load an existing partial output or allocate fresh zero arrays."""
+    if out_path.exists():
+        try:
+            existing = np.load(out_path)
+            det2d = np.asarray(existing["points_2d"], dtype=np.float64)
+            detconf = np.asarray(existing["confidences"], dtype=np.float32)
+            if det2d.shape == points_2d.shape and detconf.shape == (T, V, J):
+                return det2d, detconf
+        except Exception:
+            pass
+    return np.zeros_like(points_2d), np.zeros((T, V, J), dtype=np.float32)
+
+
 def process_file(args_ns, npz_path: Path) -> str:
     """Generate one detected-2D npz. Runs inside a worker process."""
     import cv2  # noqa: F401  (ensure import in child)
@@ -206,7 +231,27 @@ def process_file(args_ns, npz_path: Path) -> str:
     T, V, J, _ = points_2d.shape
 
     raw_seq_dir = args_ns.raw_dir / f"S{args_ns.subject}" / f"Seq{args_ns.seq}"
-    det = MediaPipeTasksDetector(args_ns.model, args_ns.detect_size)
+    out_path = args_ns.output_dir / npz_path.name
+    avi_cache_dir = raw_seq_dir / "imageSequence" / ".avi_cache"
+    det2d, detconf = _load_or_init_arrays(out_path, points_2d, T, V, J)
+
+    start = getattr(args_ns, "start_frame", 0)
+    end = getattr(args_ns, "end_frame", 0)
+    if end <= 0 or end > T:
+        end = T
+    max_frames = getattr(args_ns, "max_frames", 0)
+    if max_frames > 0 and end > max_frames:
+        end = max_frames
+    if start < 0:
+        start = 0
+    if start >= end:
+        return f"S{args_ns.subject}/Seq{args_ns.seq}: no frames to process"
+
+    refresh_every = getattr(args_ns, "detector_refresh_every", 0)
+    if not isinstance(refresh_every, int) or refresh_every < 0:
+        refresh_every = 0
+
+    det = MediaPipeTasksDetector(args_ns.model, args_ns.detect_size, cpu_only=args_ns.cpu_only)
 
     # Open all 14 cameras.
     readers: List[Optional[AviReader]] = []
@@ -217,19 +262,20 @@ def process_file(args_ns, npz_path: Path) -> str:
             readers.append(None)
             missing_views.append(v)
             continue
-        avi = _extract_avi_bytes(zpath, v)
-        if avi is None:
+        avi_path = _get_avi_path(zpath, v, avi_cache_dir)
+        if avi_path is None:
             readers.append(None)
             missing_views.append(v)
             continue
-        readers.append(AviReader(avi))
+        readers.append(AviReader(avi_path))
 
-    det2d = np.zeros_like(points_2d)
-    detconf = np.zeros((T, V, J), dtype=np.float32)
     n_frames_missing_det = 0
     t0 = time.time()
-    Tmax = args_ns.max_frames if getattr(args_ns, "max_frames", 0) > 0 else T
-    for t in range(Tmax):
+    for t in range(start, end):
+        if refresh_every > 0 and t > start and (t - start) % refresh_every == 0:
+            del det
+            gc.collect()
+            det = MediaPipeTasksDetector(args_ns.model, args_ns.detect_size, cpu_only=args_ns.cpu_only)
         for v in range(V):
             r = readers[v]
             if r is None:
@@ -243,8 +289,8 @@ def process_file(args_ns, npz_path: Path) -> str:
             p, c = map_landmarks_to_mpi(lm, points_2d[t, v])
             det2d[t, v] = p
             detconf[t, v] = c
-        if t > 0 and t % 500 == 0:
-            rate = t / (time.time() - t0)
+        if t > start and (t - start) % 500 == 0:
+            rate = (t - start) / (time.time() - t0)
             print(
                 f"  S{args_ns.subject}/Seq{args_ns.seq} frame {t}/{T} "
                 f"({rate:.1f} frames/s)",
@@ -255,7 +301,6 @@ def process_file(args_ns, npz_path: Path) -> str:
         if r is not None:
             r.close()
 
-    out_path = args_ns.output_dir / npz_path.name
     np.savez(
         out_path,
         points_2d=det2d,
@@ -275,6 +320,69 @@ def process_file(args_ns, npz_path: Path) -> str:
     return msg
 
 
+def _chunk_cmd_args(base_args, s: int, q: int, start: int, end: int) -> List[str]:
+    """Build argument list for a single chunk subprocess."""
+    return [
+        sys.executable,
+        __file__,
+        "--input_dir", str(base_args.input_dir),
+        "--raw_dir", str(base_args.raw_dir),
+        "--output_dir", str(base_args.output_dir),
+        "--model", str(base_args.model),
+        "--detect_size", str(base_args.detect_size),
+        "--subjects", str(s),
+        "--seqs", str(q),
+        "--workers", "1",
+        "--chunk_size", "0",
+        "--start_frame", str(start),
+        "--end_frame", str(end),
+    ] + (["--only_m"] if base_args.only_m else []) \
+      + (["--cpu_only"] if base_args.cpu_only else []) \
+      + (["--gpu_only"] if base_args.gpu_only else [])
+
+
+def _run_with_chunking(args) -> None:
+    """Split each sequence into frame-range chunks and run each in a fresh process."""
+    subjects = [int(s) for s in args.subjects.split(",")]
+    seqs = [int(s) for s in args.seqs.split(",")]
+    jobs = []
+    for s in subjects:
+        for q in seqs:
+            stem = f"s_{s:02d}_seq_{q:02d}_v14_multiview"
+            name = f"{stem}_m.npz" if args.only_m else f"{stem}.npz"
+            npz = args.input_dir / name
+            if not npz.exists():
+                print(f"skip (missing canonical npz): {npz}", flush=True)
+                continue
+            out_npz = args.output_dir / name
+            if args.skip_existing and out_npz.exists():
+                print(f"skip (output already exists): {out_npz}", flush=True)
+                continue
+            jobs.append((s, q, npz))
+
+    print(f"processing {len(jobs)} sequences with chunked workers", flush=True)
+
+    for s, q, npz in jobs:
+        try:
+            with np.load(npz) as npz_data:
+                T = int(npz_data["points_2d"].shape[0])
+        except Exception as exc:
+            warnings.warn(f"S{s}/Seq{q}: cannot read canonical npz: {exc}")
+            continue
+
+        end_cap = args.max_frames if args.max_frames > 0 else T
+        chunk_size = args.chunk_size
+        if chunk_size <= 0:
+            chunk_size = end_cap
+
+        for start in range(0, end_cap, chunk_size):
+            end = min(start + chunk_size, end_cap)
+            cmd = _chunk_cmd_args(args, s, q, start, end)
+            print(f"  S{s}/Seq{q} chunk frames {start}-{end}/{T}", flush=True)
+            subprocess.run(cmd, check=True)
+        print(f"S{s}/Seq{q}: complete", flush=True)
+
+
 def main() -> None:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--input_dir", type=Path, default=Path("data/webbridge/mpi_inf_3dhp"))
@@ -291,9 +399,42 @@ def main() -> None:
                    help="parallel sequences (each uses one MediaPipe instance)")
     p.add_argument("--max_frames", type=int, default=0,
                    help="if >0, only process the first N frames (smoke test)")
+    p.add_argument("--chunk_size", type=int, default=500,
+                   help="if >0, split each sequence into chunks of this many "
+                        "frames and run each chunk in a fresh subprocess "
+                        "(default: 500)")
+    p.add_argument("--detector_refresh_every", type=int, default=1000,
+                   help=("in non-chunked mode, recreate the MediaPipe detector "
+                         "every N frames to limit memory growth (default: 1000; "
+                         "set 0 to never refresh)"))
+    p.add_argument("--start_frame", type=int, default=0,
+                   help="internal: process frames [start_frame, end_frame)")
+    p.add_argument("--end_frame", type=int, default=0,
+                   help="internal: process frames [start_frame, end_frame)")
+    p.add_argument("--cpu_only", action="store_true", default=True,
+                   help="force MediaPipe CPU delegate (default: True)")
+    p.add_argument("--gpu_only", action="store_true", default=False,
+                   help="force MediaPipe GPU delegate (overrides cpu_only)")
+    p.add_argument("--skip_existing", action="store_true", default=False,
+                   help="skip sequences whose output .npz already exists")
     args = p.parse_args()
 
+    if os.environ.get("MOTIONFLOW_MP_CPU", "").lower() in ("1", "true", "yes"):
+        args.cpu_only = True
+    if args.gpu_only:
+        args.cpu_only = False
+
     args.output_dir.mkdir(parents=True, exist_ok=True)
+
+    # Chunking mode: split sequences into frame ranges and run each range in a
+    # fresh Python process. This avoids MediaPipe memory growth and the
+    # recreation issues that occur when instantiating PoseLandmarker twice in
+    # the same interpreter.
+    if args.chunk_size > 0:
+        _run_with_chunking(args)
+        return
+
+    # Single-frame-range mode (used by chunk subprocesses or direct runs).
     subjects = [int(s) for s in args.subjects.split(",")]
     seqs = [int(s) for s in args.seqs.split(",")]
 
@@ -306,6 +447,10 @@ def main() -> None:
             if not npz.exists():
                 print(f"skip (missing canonical npz): {npz}", flush=True)
                 continue
+            out_npz = args.output_dir / name
+            if args.skip_existing and out_npz.exists():
+                print(f"skip (output already exists): {out_npz}", flush=True)
+                continue
             jobs.append((s, q, npz))
 
     print(f"processing {len(jobs)} sequences with {args.workers} workers", flush=True)
@@ -313,7 +458,10 @@ def main() -> None:
     if args.workers <= 1:
         for s, q, npz in jobs:
             ns = argparse.Namespace(**vars(args), subject=s, seq=q)
-            print(process_file(ns, npz), flush=True)
+            try:
+                print(process_file(ns, npz), flush=True)
+            except Exception as exc:
+                warnings.warn(f"S{s}/Seq{q} FAILED: {exc}")
         return
 
     with ProcessPoolExecutor(max_workers=args.workers) as ex:

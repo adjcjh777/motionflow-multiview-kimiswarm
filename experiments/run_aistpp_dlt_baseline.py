@@ -17,6 +17,7 @@ Outputs
     docs/results_aistpp_dlt_baseline.md
 """
 
+import argparse
 import json
 import os
 import sys
@@ -45,7 +46,9 @@ import torch as _torch
 def load_val_paths(split_path: Path) -> list[str]:
     with open(split_path) as f:
         split = yaml.safe_load(f)
-    return list(split.get("val", []))
+    # Support both plain `val` and mixed-loader `val_paths` keys.
+    val = split.get("val", []) or split.get("val_paths", [])
+    return list(val)
 
 
 def evaluate_npz(path: Path) -> dict:
@@ -144,9 +147,28 @@ def style_of(name: str) -> str:
 
 
 def main() -> None:
-    split_path = Path("configs/splits/webbridge_aistpp_train_val.yaml")
-    out_json = Path("outputs/aistpp_dlt_baseline.json")
-    out_md = Path("docs/results_aistpp_dlt_baseline.md")
+    parser = argparse.ArgumentParser(description="DLT baseline for AIST++.")
+    parser.add_argument(
+        "--split",
+        type=Path,
+        default=Path("configs/splits/webbridge_aistpp_train_val.yaml"),
+        help="Path to the YAML split file (default: webbridge_aistpp_train_val.yaml).",
+    )
+    parser.add_argument(
+        "--output",
+        type=Path,
+        default=None,
+        help="Optional output JSON path. Default is derived from the split name.",
+    )
+    args = parser.parse_args()
+
+    split_path = args.split
+    if args.output:
+        out_json = args.output
+        out_md = args.output.with_suffix(".md")
+    else:
+        out_json = Path("outputs") / f"{split_path.stem}_dlt_baseline.json"
+        out_md = Path("docs") / f"results_{split_path.stem}_dlt_baseline.md"
 
     val_paths = load_val_paths(split_path)
     if not val_paths:

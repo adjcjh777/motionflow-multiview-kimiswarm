@@ -362,3 +362,47 @@ def test_reprojection_missing_keys(tmp_path):
     np.savez(path, points_2d=np.zeros((2, 1, 3, 2)))
     with pytest.raises(KeyError, match="missing keys"):
         check_npz(path)
+
+
+# ---------------------------------------------------------------------------
+# webbridge_loader true-GT auto-discovery / slicing
+# ---------------------------------------------------------------------------
+from motionflow_mv.data.webbridge_loader import (  # noqa: E402
+    _find_h36m_true_gt,
+    _slice_true_gt_by_actions,
+)
+
+
+def test_find_h36m_true_gt_prefers_exact_match(tmp_path):
+    """Exact-match true-GT files are preferred over superset files."""
+    exact = tmp_path / "s_09_acts_02_14_true_gt.npz"
+    np.savez(exact, joints_3d=np.zeros((10, 17, 3)), actions=np.array([2, 14]))
+    full = tmp_path / "s_09_test_true_gt.npz"
+    np.savez(full, joints_3d=np.zeros((100, 17, 3)), actions=np.array(list(range(2, 17))))
+    path, actions = _find_h36m_true_gt(9, [2, 14], "test", tmp_path)
+    assert path == exact
+    np.testing.assert_array_equal(actions, np.array([2, 14]))
+
+
+def test_slice_true_gt_by_actions_reorders_and_slices(tmp_path):
+    """Slicing extracts requested actions in the requested order."""
+    # Actions 2, 3, 4 with 2, 3, 4 frames respectively.
+    joints = np.concatenate(
+        [
+            np.full((2, 17, 3), 2.0, dtype=np.float64),
+            np.full((3, 17, 3), 3.0, dtype=np.float64),
+            np.full((4, 17, 3), 4.0, dtype=np.float64),
+        ],
+        axis=0,
+    )
+    groups = {
+        "s_01_act_02_cam": {"01": [0, 1]},
+        "s_01_act_03_cam": {"01": [0, 1, 2]},
+        "s_01_act_04_cam": {"01": [0, 1, 2, 3]},
+    }
+    true_actions = np.array([2, 3, 4])
+    # Request [4, 2] -> 4 frames of 4.0 followed by 2 frames of 2.0.
+    sliced = _slice_true_gt_by_actions(joints, true_actions, [4, 2], groups, 1)
+    assert sliced.shape == (6, 17, 3)
+    np.testing.assert_array_equal(sliced[:4], np.full((4, 17, 3), 4.0))
+    np.testing.assert_array_equal(sliced[4:], np.full((2, 17, 3), 2.0))

@@ -18,6 +18,7 @@ Future work: train a model with geometry-based camera positional encoding so
 that views can be added/removed without fixed slots at all.
 """
 
+import inspect
 from typing import List, Optional, Tuple, Union
 
 import numpy as np
@@ -359,9 +360,33 @@ class VariableViewInferenceWrapper:
         active_views: Union[int, List[int], torch.Tensor],
         **model_kwargs,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
-        x, K, R, t, _ = prepare_variable_view_input(x, K, R, t, active_views)
+        # Legacy callers sometimes pass a single clip without a batch dimension.
+        # Add it here and remove it from the returned tensors.
+        added_batch = False
+        if x.dim() == 4:
+            x = x.unsqueeze(0)
+            added_batch = True
+        if K.dim() == 3:
+            K = K.unsqueeze(0)
+        if R.dim() == 3:
+            R = R.unsqueeze(0)
+        if t.dim() == 2:
+            t = t.unsqueeze(0)
+
+        x, K, R, t, mask = prepare_variable_view_input(x, K, R, t, active_views)
+        # Build a view mask so the model can explicitly ignore padded/inactive
+        # views instead of treating zero-confidence observations as real data.
+        B, T, V, J, _ = x.shape
+        view_mask = mask.view(1, 1, V).expand(B, T, V).to(x.device)
         with torch.no_grad():
-            return self.model(x, K=K, R=R, t=t, **model_kwargs)
+            if "view_mask" in inspect.signature(self.model.forward).parameters:
+                outputs = self.model(x, K=K, R=R, t=t, view_mask=view_mask, **model_kwargs)
+            else:
+                outputs = self.model(x, K=K, R=R, t=t, **model_kwargs)
+
+        if added_batch:
+            outputs = tuple(o.squeeze(0) if isinstance(o, torch.Tensor) else o for o in outputs)
+        return outputs
 
 
 class HardenedVariableViewInferenceWrapper(VariableViewInferenceWrapper):
@@ -389,10 +414,14 @@ class HardenedVariableViewInferenceWrapper(VariableViewInferenceWrapper):
         model: nn.Module,
         min_views: int = 2,
         fill_camera_mode: str = "last_active",
+        fallback_to_dlt_for_incomplete_views: bool = False,
+        dlt_chunk_size: Optional[int] = 64,
     ):
         super().__init__(model)
         self.min_views = max(2, min_views)
         self.fill_camera_mode = fill_camera_mode
+        self.fallback_to_dlt_for_incomplete_views = fallback_to_dlt_for_incomplete_views
+        self.dlt_chunk_size = dlt_chunk_size
 
     def __call__(
         self,
@@ -403,10 +432,18 @@ class HardenedVariableViewInferenceWrapper(VariableViewInferenceWrapper):
         active_views: Union[int, List[int], torch.Tensor],
         **model_kwargs,
     ) -> Tuple[torch.Tensor, ...]:
-        x_in = x
-        K_in = K
-        R_in = R
-        t_in = t
+        # Legacy callers sometimes pass a single clip without a batch dimension.
+        # Add it here and remove it from the returned tensors.
+        added_batch = False
+        if x.dim() == 4:
+            x = x.unsqueeze(0)
+            added_batch = True
+        if K.dim() == 3:
+            K = K.unsqueeze(0)
+        if R.dim() == 3:
+            R = R.unsqueeze(0)
+        if t.dim() == 2:
+            t = t.unsqueeze(0)
 
         x, K, R, t, mask = prepare_variable_view_input(
             x, K, R, t, active_views, fill_camera_mode=self.fill_camera_mode
@@ -416,15 +453,26 @@ class HardenedVariableViewInferenceWrapper(VariableViewInferenceWrapper):
         B, T, V, J, _ = x.shape
         set_graph_joint_attention_active_views(self.model, J, mask)
 
+        # Build a view mask so the model can explicitly ignore padded/inactive
+        # views instead of treating zero-confidence observations as real data.
+        view_mask = mask.view(1, 1, V).expand(B, T, V).to(x.device)
         with torch.no_grad():
-            outputs = self.model(x, K=K, R=R, t=t, **model_kwargs)
+            if "view_mask" in inspect.signature(self.model.forward).parameters:
+                outputs = self.model(x, K=K, R=R, t=t, view_mask=view_mask, **model_kwargs)
+            else:
+                outputs = self.model(x, K=K, R=R, t=t, **model_kwargs)
 
         pred_3d = outputs[0]
         weights = outputs[1]
 
-        # If active views < min_views, replace the model output with direct DLT.
+        # If active views < min_views, or if requested for any incomplete rig,
+        # replace the model output with direct confidence-weighted DLT.  This
+        # avoids catastrophic errors when a model trained on the full rig is
+        # evaluated with fewer views than it has seen during training.
         n_active = int(mask.sum().item())
-        if n_active < self.min_views:
+        if n_active < self.min_views or (
+            self.fallback_to_dlt_for_incomplete_views and n_active < V
+        ):
             # Prepare projection matrices from the padded camera parameters.
             Rt = torch.cat([R, t[..., None]], dim=-1)  # (B*T, V, 3, 4)
             P = K @ Rt  # (B*T, V, 3, 4)
@@ -433,21 +481,50 @@ class HardenedVariableViewInferenceWrapper(VariableViewInferenceWrapper):
 
             # Use the original 2D points and confidences; inactive views have
             # zero confidence so they do not affect the DLT solve.
-            x_flat = x.reshape(B * T, V, J, 3)
-            points_2d = x_flat[..., :2]
-            confidences = x_flat[..., 2]
-
-            fallback = triangulate_dlt_batched_lstsq(points_2d, P, confidences)
-
-            # Reshape back to the model's output shape.
-            if pred_3d.dim() == 3:  # (B, J, 3) single-frame
-                pred_3d = fallback.view(B, J, 3)
+            # Chunk the DLT fallback along the temporal dimension.  A single
+            # massive batched lstsq call can hang the CUDA driver on some
+            # PyTorch/cuSolver versions, so we process at most
+            # ``dlt_chunk_size`` frames per call and concatenate the results.
+            chunk_size = self.dlt_chunk_size
+            if chunk_size is None or T <= chunk_size:
+                x_flat = x.reshape(B * T, V, J, 3)
+                fallback = triangulate_dlt_batched_lstsq(
+                    x_flat[..., :2], P, x_flat[..., 2]
+                )
+                fallback = fallback.view(B, T, J, 3)
             else:
-                pred_3d = fallback.view(B, T, J, 3)
+                chunks = []
+                for t_start in range(0, T, chunk_size):
+                    t_end = min(t_start + chunk_size, T)
+                    # (B, T_chunk, V, J, 3)
+                    x_chunk = x[:, t_start:t_end]
+                    T_chunk = x_chunk.shape[1]
+                    x_chunk = x_chunk.reshape(B * T_chunk, V, J, 3)
+                    # Repeat the same camera parameters for every frame in the
+                    # chunk so shapes match the flattened batch dimension.
+                    P_chunk = (
+                        P.unsqueeze(2)
+                        .repeat(1, 1, T_chunk, 1, 1)
+                        .permute(0, 2, 1, 3, 4)
+                        .reshape(B * T_chunk, V, 3, 4)
+                    )
+                    fallback_chunk = triangulate_dlt_batched_lstsq(
+                        x_chunk[..., :2], P_chunk, x_chunk[..., 2]
+                    )
+                    fallback_chunk = fallback_chunk.view(B, T_chunk, J, 3)
+                    chunks.append(fallback_chunk)
+                fallback = torch.cat(chunks, dim=1)  # (B, T, J, 3)
+
+            # Match the original model output shape: non-temporal models emit
+            # (B, J, 3) even though internally we keep a temporal dimension of 1.
+            if pred_3d.dim() == 3:
+                fallback = fallback.view(B, J, 3)
 
             # Re-pack outputs with the fallback prediction.
-            outputs = (pred_3d,) + outputs[1:]
+            outputs = (fallback,) + outputs[1:]
 
+        if added_batch:
+            outputs = tuple(o.squeeze(0) if isinstance(o, torch.Tensor) else o for o in outputs)
         return outputs
 
 

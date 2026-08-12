@@ -12,7 +12,7 @@ description: >
   A800 (d=128, n_st_layers=3, 10k samples), but at d=64 / 2 epochs / 1k samples
   for fast local validation.
 
-manifest: configs/splits/webbridge_h36m_mpi_mixed_train_val.yaml
+manifest: configs/splits/h36m_true_gt_aist_mixed_smoke.yaml
 script: experiments/train_omniview_fusion_v5_webbridge_multi.py
 
 training:

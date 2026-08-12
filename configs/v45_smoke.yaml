@@ -20,7 +20,7 @@ description: >
   geometry-fusion baseline and introduces a learnable per-view (and optional
   per-joint) reliability weight for weighted DLT/triangulation.
 
-manifest: configs/splits/webbridge_h36m_mpi_mixed_train_val.yaml
+manifest: configs/splits/h36m_true_gt_aist_mixed_smoke.yaml
 script: experiments/train_omniview_fusion_v5_webbridge_multi.py
 
 training:

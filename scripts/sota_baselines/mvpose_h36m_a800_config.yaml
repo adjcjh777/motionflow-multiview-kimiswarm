@@ -1,0 +1,122 @@
+# MVPose H36M true-GT A800 baseline configuration.
+#
+# This YAML is used by scripts/run_mvpose_h36m_true_gt_a800.sh on the A800
+# remote. It points to the public zju3dv/mvpose implementation and describes
+# the joint mapping needed to run the method on the corrected H36M true-GT
+# protocol (S1,5,6,7,8 -> S9/S11).
+#
+# NOTE: zju3dv/mvpose is an inference-only, multi-person method designed for
+# Campus/Shelf. Running it on H36M requires a custom adapter; this file
+# documents the mapping and the expected input format.
+
+name: mvpose_h36m_true_gt_a800
+
+# Public upstream repository.
+repo:
+  url: "https://github.com/zju3dv/mvpose.git"
+  ref: master
+  dir: tmp/sota_baselines/mvpose
+
+# Common baseline pickle produced by common_export_h36m_true_gt.py.
+input_pkl: tmp/sota_baselines/h36m_true_gt_baseline_format.pkl
+
+# Where MVPose-specific converted data lives.
+data_dir: tmp/sota_baselines/mvpose_data_a800
+
+# Inference settings (MVPose has no training phase for 3D pose; it runs
+# test-time optimization given 2D detections / GT projections).
+inference:
+  # Use ground-truth 2D projections for a fair comparison against true-GT 3D.
+  detector: gt
+  # Number of views in the H36M true-GT setup.
+  num_views: 4
+  # Joint format expected by the upstream code. Options: h36m, coco17.
+  # COCO17 is what zju3dv/mvpose expects internally.
+  output_joint_format: coco17
+
+# Paths for outputs.
+output:
+  # Directory where the upstream repo will write any model/dumped data.
+  work_dir: tmp/sota_baselines/mvpose_work_a800
+  log: outputs/sota_baselines/mvpose_h36m_true_gt_a800.log
+  metrics_json: outputs/sota_baselines/mvpose_h36m_true_gt_a800_metrics.json
+
+# Evaluation protocol.
+eval:
+  protocol: h36m_standard
+  subjects_test: [9, 11]
+  actions: all
+
+# Joint mapping: H36M true-GT (17 joints) -> COCO17 (17 joints).
+#
+# The upstream method operates on COCO17 ordering internally. H36M has no
+# direct equivalents for the five facial keypoints, so they are approximated
+# from the Head joint and marked with zero confidence so the pictorial model
+# can ignore them.
+joint_mapping:
+  source: h36m
+  target: coco17
+  names:
+    - nose
+    - left_eye
+    - right_eye
+    - left_ear
+    - right_ear
+    - left_shoulder
+    - right_shoulder
+    - left_elbow
+    - right_elbow
+    - left_wrist
+    - right_wrist
+    - left_hip
+    - right_hip
+    - left_knee
+    - right_knee
+    - left_ankle
+    - right_ankle
+  # Map each target (COCO17) joint to the closest source (H36M) joint.
+  # Source names come from common_export_h36m_true_gt.py::H36M_JOINT_NAMES.
+  map_by_name:
+    nose: Head
+    left_eye: Head
+    right_eye: Head
+    left_ear: Head
+    right_ear: Head
+    left_shoulder: LShoulder
+    right_shoulder: RShoulder
+    left_elbow: LElbow
+    right_elbow: RElbow
+    left_wrist: LWrist
+    right_wrist: RWrist
+    left_hip: LHip
+    right_hip: RHip
+    left_knee: LKnee
+    right_knee: RKnee
+    left_ankle: LFoot
+    right_ankle: RFoot
+  # Indices into the H36M 17-joint array (see common_export_h36m_true_gt.py).
+  # -1 means the joint is synthesized from the Head and confidence is zero.
+  map_by_index: [10, 10, 10, 10, 10, 11, 14, 12, 15, 13, 16, 4, 1, 5, 2, 6, 3]
+  # Indices of the five COCO17 facial keypoints that will be marked as absent.
+  face_indices: [0, 1, 2, 3, 4]
+
+# Notes on upstream requirements and known blockers.
+upstream_requirements:
+  needs_images: true
+  needs_2d_detector: true
+  # zju3dv/mvpose expects per-frame per-camera dictionaries with heatmaps,
+  # cropped images, and camera parameters. The current converter only writes
+  # a simple per-split pickle; a custom adapter is still required.
+  manifest_format: per_split_pickle
+  # The repo's requirements.txt pins Python 2/3.5-era packages, including
+  # tensorflow_gpu==1.9.0 and torch==1.0.1.post2. Modern A800 Ampere GPUs
+  # are incompatible with these versions; a CUDA 9 / older-GPU environment
+  # (or a container) is needed before the 2D detector backend can run.
+  python_requirements:
+    - "tensorflow_gpu==1.9.0"
+    - "torch==1.0.1.post2"
+    - "torchvision==0.2.2"
+    - "numpy==1.16.2"
+    - "scipy==1.2.1"
+    - "opencv_python==4.0.0.21"
+    - "Cython==0.29.6"

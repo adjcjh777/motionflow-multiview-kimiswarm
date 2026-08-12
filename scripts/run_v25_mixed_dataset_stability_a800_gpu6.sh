@@ -1,40 +1,20 @@
 #!/usr/bin/env bash
-# A800 GPU 6 launch script for v25 H36M true-GT + AIST++ mixed-dataset training.
+# A800 GPU 6 launch script for v25 H36M true-GT + AIST++ mixed-dataset training
+# using the stability recipe (lower LR, no variable-view permute).
 #
-# This run applies the conservative "stability" recipe that yielded the best
-# true-GT H36M result (v25_true_gt_stability_a800, 31.56 mm test weighted)
-# to the mixed-dataset loader. The earlier mixed-dataset attempt
-# (run_v25_ablation_mixed_dataset_a800.sh) used a more aggressive LR/warmup
-# schedule and diverged at Epoch 3.
-#
-# Usage:
-#   nohup bash scripts/run_v25_mixed_dataset_stability_a800_gpu6.sh \
-#       > outputs/ablations/v25_true_gt_mixed_dataset_stability_a800_gpu6_nohup.log 2>&1 &
-#
-# Requirements before launch:
-#   - AIST++ canonical .npz files are present at
-#     data/webbridge/aistpp_canonical/ on A800.
-#   - GPU 6 is free (check nvidia-smi on a800-D).
+# Launch with:
+#   nohup bash scripts/run_v25_mixed_dataset_stability_a800_gpu6.sh &
 
 set -euo pipefail
 
-# Pin to the A800-D repo root so the script can be launched from anywhere.
 cd /mnt/nvme0n1p1/zhangzy/motionflow-multiview-kimiswarm-iter20
 
-# GPU discipline: pin to GPU 6 explicitly.
 export CUDA_VISIBLE_DEVICES=6
 
-# Use the project venv Python by default; allow override.
-PYTHON=${PYTHON:-/mnt/nvme0n1p1/zhangzy/motionflow-multiview-kimiswarm-iter20/.venv/bin/python}
+PYTHON=${PYTHON:-/mnt/nvme0n1p1/zhangzy/motionflow-multiview-kimiswarm/.venv/bin/python}
 
 mkdir -p outputs/ablations
 
-# v25 H36M true-GT + AIST++ mixed-dataset training with the stability recipe.
-# Key differences from the original mixed-dataset run:
-#   - Lower initial LR (1e-4 vs 5e-4)
-#   - Longer warmup (4 epochs vs 2)
-#   - Variable-view max 4 views (vs 9) and no permutation
-#   - Monitors MPJPE for checkpoint selection (trainer default)
 nohup "$PYTHON" -u experiments/train_omniview_fusion_v5_webbridge_multi.py \
     --use_mixed_loader \
     --mixed_manifest configs/splits/h36m_true_gt_aist_mixed_train_val_a800.yaml \
@@ -72,5 +52,5 @@ nohup "$PYTHON" -u experiments/train_omniview_fusion_v5_webbridge_multi.py \
     > outputs/ablations/v25_true_gt_mixed_dataset_stability_a800_gpu6.log 2>&1 &
 
 PID=$!
-echo "Launched v25 mixed-dataset stability run on GPU ${CUDA_VISIBLE_DEVICES} (PID: ${PID})"
+echo "Launched v25 mixed-dataset stability training on GPU ${CUDA_VISIBLE_DEVICES} (PID: ${PID})"
 echo "Log: outputs/ablations/v25_true_gt_mixed_dataset_stability_a800_gpu6.log"
