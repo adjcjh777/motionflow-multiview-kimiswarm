@@ -327,4 +327,85 @@ cat outputs/h36m_true_gt_v2_ransac_baseline.json
 
 # GPU overview
 ssh a800-D "nvidia-smi --query-gpu=index,utilization.gpu,memory.used --format=csv"
+
+## Next handoff — v85 eval done, GPU policy violations observed, v86 status uncertain
+
+> **Status as of 2026-08-12 ~15:12 UTC** (agent handoff refresh)
+
+### Executive snapshot
+
+- **v85 training finished:** Random-view-dropout training on A800 GPU 7 is **done**. The no-fallback variable-view eval also completed on GPU 6.
+- **v85 no-fallback variable-view results:**
+  - k=2: S9 **2310.27 mm**, S11 **2308.80 mm**
+  - k=3: S9 **1119.45 mm**, S11 **1118.18 mm**
+  - k=4: S9 **83.52 mm**, S11 **77.07 mm**
+  - **k<4 remains catastrophic**; sparse-view problem is unsolved by random dropout alone.
+- **GPU policy violation:** GPUs 6 and 7 currently host other-project processes (LuxTTS, Mega-ASR, `.venv-cu130-a800`). This violates the MotionFlow-MultiView GPU 6/7-only policy. **Do not kill these processes**, but escalate/note the violation.
+- **v86 no-count-embedding status uncertain:** Not visible in current process list. Verify whether it finished, crashed, or was superseded.
+- **Disk:** `/mnt/nvme0n1p1` remains **~99% full (~58 GB free)**.
+
+### Active runs on A800
+
+| PID | GPU | Task | State | Notes |
+|------|------|------|-------|-------|
+| `2218949` | 6/7 (queued) | v85 post-training eval suite monitor | RUNNING | Will launch v85 test-set eval, fresh no-fallback variable-view eval, and DLT-fallback variable-view eval on the first free GPU. |
+| `2058225` | 7 | v85 random view dropout training | **DONE** | Training finished. |
+| `2203020` | 6 | v86 no-count-embedding ablation | **UNCERTAIN** | Not visible in current process list; verify log `outputs/ablations/v86_no_count_embedding_medium_a800.log`. |
+| — | 6/7 | other-project processes | OCCUPIED | LuxTTS, Mega-ASR, `.venv-cu130-a800` on project GPUs. Do not kill; note violation. |
+| `628743` | 4 | v25 var-view re-eval (DLT fallback) | COMPLETED | S9 k=2/3/4 = 58.18/33.32/116.98 mm; S11 k=2/3/4 = 49.35/25.28/110.58 mm. |
+| — | — | v81 var-view DLT-fallback | COMPLETED | k=2/3 only; output: `outputs/variable_view_fix/variable_view_v81_true_gt_medium_a800_dlt_fallback_k23.{csv,json}`. |
+| — | — | v82 var-view DLT-fallback | COMPLETED | k=2/3/4; output: `outputs/variable_view_fix/variable_view_v82_true_gt_medium_a800_dlt_fallback.{csv,json}`. |
+| `1090542` | 6 | AIST++-only → H36M cross-eval | COMPLETED | S9 98.17 mm, S11 89.70 mm, combined ~93.94 mm. |
+| `2527668` | 7 | MPI-INF-3DHP RTMPose detection | COMPLETED | 16/16 `.npz`; DLT baseline MPJPE 115.09 mm / PA-MPJPE 132.68 mm. |
+| — | 0–3 | VLLM workers | OCCUPIED | Do not touch. |
+
+### Key context
+
+- **Sparse-view problem remains structural:** Even after training with random view dropout, the learned v85 model still fails catastrophically for k<4 (k=2 ~2310 mm, k=3 ~1119 mm). The k=4 result (S9 83.52 / S11 77.07 mm) is weaker than v82 (S9 47.81 / S11 42.36 mm), likely because dropout training degraded full-view performance. Random exposure alone is insufficient; stronger count-conditioning or a dedicated sparse-view head is still needed.
+- **DLT-fallback is the current practical baseline for k<4:** v25/v81/v82 DLT-fallback gives S9 58.18/33.32 mm and S11 49.35/25.28 mm for k=2/3, so any learned sparse-view solution must beat these numbers.
+- **GPU policy violation:** Other-project processes on GPUs 6/7 must be resolved administratively. Do not kill them, but do not launch new MotionFlow jobs on those GPUs until they are free or the violation is cleared.
+
+### Next 3 concrete tasks
+
+1. **Run/queue v85 DLT-fallback variable-view eval.**
+   - The post-training eval monitor (PID `2218949`) should launch this when a GPU is free, but verify it is queued and not blocked by the GPU policy violation.
+   - Compare v85 DLT-fallback k=2/3/4 to v25/v81/v82 DLT-fallback and to the no-fallback numbers.
+   - If k<4 remains catastrophic, design a stronger sparse-view strategy (count embedding alone is not enough; consider sparse-view head or reweighted loss).
+
+2. **Run `scripts/cleanup_a800_safe.sh` dry-run and free disk if safe.**
+   - Disk is at 99% (~58 GB free). Identify removable checkpoints/logs before any new large experiment.
+   - Do not delete anything that belongs to v85/v86 or the running eval suite until results are safely copied.
+
+3. **Sync v2 labels and rerun learned leaderboard once GPU 6/7 are free / violation is cleared.**
+   - Sync `data/h36m_true_gt_v2/` to A800.
+   - Re-run v25, v46, v52, v57, v80, v81, v82, v85, v86 on the corrected true-GT v2 protocol.
+   - Update `docs/results_true_gt_h36m.md` and `docs/paper_draft_icra_cvpr_2027.md` with non-circular numbers.
+
+### Quick verification commands for next agent
+
+```bash
+# Check v85 post-training eval suite monitor
+ssh a800-D "tail -f /mnt/nvme0n1p1/zhangzy/motionflow-multiview-kimiswarm-iter20/outputs/sota_baselines/monitor_v85_then_run_evals.log"
+
+# Check v85 training final status
+ssh a800-D "tail -n 50 /mnt/nvme0n1p1/zhangzy/motionflow-multiview-kimiswarm-iter20/outputs/ablations/v85_random_view_dropout_medium_a800.log"
+
+# Check v85 no-fallback eval result
+ssh a800-D "cat /mnt/nvme0n1p1/zhangzy/motionflow-multiview-kimiswarm-iter20/outputs/variable_view_v85_random_view_dropout_medium_a800.json"
+
+# Check v86 status (log + checkpoint)
+ssh a800-D "ls -l /mnt/nvme0n1p1/zhangzy/motionflow-multiview-kimiswarm-iter20/outputs/ablations/v86_no_count_embedding_medium_a800*"
+ssh a800-D "tail -n 20 /mnt/nvme0n1p1/zhangzy/motionflow-multiview-kimiswarm-iter20/outputs/ablations/v86_no_count_embedding_medium_a800.log"
+
+# Check GPU processes and policy violation
+ssh a800-D "nvidia-smi --query-gpu=index,name,utilization.gpu,memory.used --format=csv"
+ssh a800-D "ps -ef | grep -E 'LuxTTS|Mega-ASR|venv-cu130-a800' | grep -v grep"
+
+# Check disk
+ssh a800-D "df -h /mnt/nvme0n1p1"
+
+# Check v25/v81/v82 DLT-fallback results
+ssh a800-D "cat /mnt/nvme0n1p1/zhangzy/motionflow-multiview-kimiswarm-iter20/outputs/variable_view_fix/variable_view_v25_true_gt_stability_a800_dlt_fallback.json"
+ssh a800-D "cat /mnt/nvme0n1p1/zhangzy/motionflow-multiview-kimiswarm-iter20/outputs/variable_view_fix/variable_view_v82_true_gt_medium_a800_dlt_fallback.json"
+```
 ```

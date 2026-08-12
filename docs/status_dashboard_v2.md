@@ -1,44 +1,59 @@
-# MotionFlow-MultiView Status Dashboard
+# MotionFlow-MultiView A800 Status Dashboard
 
-> Updated: 2026-08-12 ~10:45 UTC
-> GPU policy: A800 GPUs 6/7 only; GPUs 0-5 reserved.
+> Last updated: 2026-08-12 ~15:15 UTC
 
-## Active runs (A800)
+## Active A800 Processes
 
-| GPU | PID(s) | Task | Status | Latest numbers |
-|-----|--------|------|--------|----------------|
-| 6 | 1649421 | v25 stability var-view DLT-fallback | RUNNING | — |
-| 6 | 1649422 | v81 temporal-pose-attention var-view DLT-fallback (k=2,3) | **COMPLETED** | S9 58.18/33.32 mm; S11 49.35/25.28 mm (k=4 not run) |
-| 6 | 1604077 | v82 multi-scale temporal-pose-attention var-view DLT-fallback | **COMPLETED** | S9 58.18/33.32/47.81 mm; S11 49.35/25.28/42.36 mm |
-| 7 | 1653903 | v85 random view dropout medium | RUNNING | Epoch 5 val MPJPE 39.32 mm |
+| PID | GPU | Type | Command | Notes |
+|------|------|------|---------|-------|
+| 2218949 | 6 | v85 no-fallback eval | `experiments/eval_variable_views.py` | Running; outputs for k=2/3/4 exist |
+| 1921455 | 6 | other project | `.venv-cu130-a800` | GPU policy violation |
+| 20857 | 7 | LuxTTS | `/home/LuxTTS/.venv/bin/python3` | GPU policy violation |
+| 20880 | 7 | Mega-ASR | `/home/Mega-ASR/.venv/bin/python3` | GPU policy violation |
+| 1853395 | 7 | other project | `.venv-cu130-a800` | GPU policy violation |
 
-## GPU utilization (0-7)
+## GPU Utilization (0-7)
 
-```
-index, utilization.gpu [%], memory.used [MiB]
-0, 100 %, 76135 MiB  # VLLM
-1, 100 %, 76135 MiB  # VLLM
-2, 100 %, 76135 MiB  # VLLM
-3, 100 %, 76135 MiB  # VLLM
-4, 0 %, 425 MiB      # free
-5, 0 %, 641 MiB      # free
-6, 33 %, 2040 MiB    # v25/v81/v82 evals
-7, 89 %, 46146 MiB   # v85 training
-```
+| GPU | Util | Memory Used | Status |
+|-----|------|-------------|--------|
+| 0 | 0% | 76135 MiB | VLLM (reserved) |
+| 1 | 0% | 76135 MiB | VLLM (reserved) |
+| 2 | 0% | 76135 MiB | VLLM (reserved) |
+| 3 | 0% | 76135 MiB | VLLM (reserved) |
+| 4 | 0% | 673 MiB | other |
+| 5 | 0% | 57847 MiB | VLLM EngineCore (reserved) |
+| 6 | 35% | 1481 MiB | MotionFlow eval + other |
+| 7 | 0% | 13051 MiB | other projects (violation) |
+
+## Latest Results
+
+### v85 no-fallback variable-view eval (complete outputs)
+
+| Subject | k=2 MPJPE@k (mm) | k=3 MPJPE@k (mm) | k=4 MPJPE@k (mm) |
+|---|---:|---:|---:|
+| S9 | 2310.27 | 1119.45 | 83.52 |
+| S11 | 2308.80 | 1118.18 | 77.07 |
+
+- k<4 remains catastrophic (~1100-2300 mm) for the learned v85 model without DLT fallback.
+- k=4 is reasonable (S9 83.52 / S11 77.07 mm) but worse than v82 k=4 (47.81 / 42.36 mm).
+
+### v2 baselines
+
+- DLT (conf-weighted): 25.67 mm
+- RANSAC/conf-DLT: 26.47 mm
 
 ## Disk
 
-- `/mnt/nvme0n1p1`: 99% full, ~42 GB free.
+- `/mnt/nvme0n1p1`: 99% used, ~58 GB free (critical)
 
-## Completed milestones
+## Blockers
 
-- MPI-INF-3DHP RTMPose detection 16/16 done; DLT baseline MPJPE **115.09 mm**, PA-MPJPE **132.68 mm**.
-- AIST++-only fast v2 → H36M cross-eval done: S9 **98.17 mm**, S11 **89.70 mm**, combined **93.94 mm**.
-- v82 var-view DLT-fallback completed with numbers above.
-- GPU policy updated: only GPUs 6/7 used; 4/5 vacated.
+1. GPU 6/7 violations: other projects using MotionFlow-reserved GPUs.
+2. v85 random view dropout did not solve k<4 catastrophic failure.
+3. A800 disk critically low.
 
-## Next actions
+## Next Actions
 
-1. Wait for v25/v81 var-view DLT-fallback JSONs and record k=2/3/4 numbers.
-2. Wait for v85 to finish training, then launch variable-view eval (with/without DLT fallback).
-3. Continue monitoring disk usage; run cleanup if free space drops below 30 GB.
+1. Wait for v85 DLT-fallback eval (if queued) or run it once GPU 6 is free.
+2. Run `scripts/cleanup_a800_safe.sh` dry-run to identify safe deletions.
+3. Sync v2 labels and restart learned leaderboard once GPU 6/7 are free and clean.

@@ -395,6 +395,21 @@ Evaluated the saved A800 checkpoint under the variable-view protocol (`--min_vie
 - Source JSON: `outputs/variable_view_v82_true_gt_medium_a800.json`
 - With all 4 views (k=4) the model reports **~45 mm** on the subset benchmark, comparable to the full 4-view test result of **39.46 mm**. k=2 and k=3 remain catastrophically high (thousands of mm), mirroring the v81 variable-view failure mode.
 
+#### v85 random-view-dropout A800 variable-view MPJPE@k (S9 / S11)
+
+v85 was the first model trained natively with random whole-view dropout (`p=0.3`, `min_views=2`) and active-view-count embedding. The no-fallback variable-view eval ran on GPU 6.
+
+| dataset | k=2 | k=3 | k=4 |
+|---|---:|---:|---:|
+| S9 | **2310.27** | **1119.45** | **83.52** |
+| S11 | **2308.80** | **1118.18** | **77.07** |
+
+- Source JSON: `outputs/variable_view_v85_random_view_dropout_medium_a800_k{2,3,4}.json`
+- Source CSV: `outputs/variable_view_v85_random_view_dropout_medium_a800_k{2,3,4}.csv`
+- **k<4 remains catastrophic** (~1100-2300 mm), even though v85 was trained with random view dropout. The learned model alone still cannot generalise to sparse views.
+- **k=4 is reasonable** (S9 83.52 / S11 77.07 mm) but worse than v82 k=4 (47.81 / 42.36 mm), suggesting the dropout regularisation hurt full-view accuracy.
+- The DLT-fallback evaluation of v85 has not yet run; once available it should be compared to the v25/v81/v82 DLT-fallback numbers (S9 k=2/3/4 = 58.18/33.32/116.98 mm; S11 = 49.35/25.28/110.58 mm).
+
 ### v25 (multiview geometry fusion)
 
 ```bash
@@ -557,7 +572,7 @@ Follow-up runs were launched on A800 after the corrected-validation `view_mask` 
 | `v81_true_gt_h36m_medium_a800` | 4 | `scripts/run_v81_true_gt_h36m_medium_a800.sh` | **completed** | **38.62 mm** @ Epoch 8 | v25 + per-joint temporal pose attention. Completed 8 epochs (no early stop). Test MPJPE **37.83 mm** (S9 42.19 / S11 33.46, stride 13, PA-MPJPE 37.75 mm). Log: `outputs/ablations/v81_true_gt_h36m_medium_a800.log`; test JSON: `outputs/eval_v81_true_gt_h36m_test_a800.json`. |
 | `v82_true_gt_h36m_medium_a800` | 4 | `scripts/run_v82_true_gt_h36m_medium_a800.sh` | **completed** | **39.58 mm** @ Epoch 8 | v81 + multi-scale temporal-pose-attention. Completed 8 epochs. Test MPJPE **39.46 mm** (S9 42.07 / S11 36.84, stride 13, PA-MPJPE 39.94 mm). Log: `outputs/ablations/v82_true_gt_h36m_medium_a800.log`; test JSON: `outputs/eval_v82_true_gt_h36m_test_a800.json`. |
 | `aistpp_only_medium_a800_fast_v2` | 5 | `configs/splits/aist_only_smoke.yaml` / `outputs/ablations/aistpp_only_medium_a800_fast_v2.*` | **completed** | **91.43 mm** @ Epoch 2 | Early-stopped @ Epoch 4. Cross-eval on H36M true-GT S9/S11: **93.94 mm** (S9 98.17 / S11 89.70, stride 1, PA-MPJPE 44.50 mm). Log: `outputs/ablations/aistpp_only_medium_a800_fast_v2.log`; test JSON: `outputs/eval_aistpp_only_medium_a800_fast_v2_h36m_test.json`. |
-| `v85_random_view_dropout_medium_a800` | 7 | `scripts/run_v85_random_view_dropout_medium_a800.sh` | **in progress** | — | Random view dropout (`--use_random_view_dropout_v85 --v85_dropout_prob 0.3 --v85_min_views 2 --v85_use_count_embedding`) to address k<4 sparse-view failure. Log: `outputs/ablations/v85_random_view_dropout_medium_a800.log`. |
+| `v85_random_view_dropout_medium_a800` | 7 | `scripts/run_v85_random_view_dropout_medium_a800.sh` | **completed** | ~37.86 mm | Random view dropout (`--use_random_view_dropout_v85 --v85_dropout_prob 0.3 --v85_min_views 2 --v85_use_count_embedding`). Training finished; no-fallback variable-view eval completed on GPU 6. Log: `outputs/ablations/v85_random_view_dropout_medium_a800.log`. |
 | `v81_var_view_dlt_fallback` | 6/7 | manifest eval | **in progress** | — | Per-dataset DLT-fallback eval for S9/S11; outputs: `outputs/variable_view_fix/variable_view_v81_true_gt_medium_a800_dlt_fallback.*`. |
 | `v82_var_view_dlt_fallback` | 6 | manifest eval | **in progress** | — | DLT-fallback eval on `tmp/h36m_true_gt_val_manifest.txt`; outputs: `outputs/variable_view_fix/variable_view_v82_true_gt_medium_a800_dlt_fallback.*`. |
 | `v25_true_gt_stability_dlt_fallback` | 6 | manifest eval | **in progress** | — | DLT-fallback re-evaluation of v25 stability checkpoint. Output: `outputs/variable_view_fix/variable_view_v25_true_gt_stability_a800_dlt_fallback.*`. |
@@ -606,4 +621,5 @@ bash scripts/run_v80_h36m_true_gt_smoke_local_4090.sh
 1. **True-GT protocol is now reliable**: numbers are in the expected 15–30 mm range, unlike the old circular-label 0.62 mm.
 2. **Iskakov is a strong baseline**: it beats DLT, RANSAC, and all current learned MotionFlow variants on this protocol.
 3. **MotionFlow variants need re-tuning**: v80 reaches 39.98 mm at epoch 4 but then overfits (133.71 mm by epoch 8); v25 reaches **43.93 mm test** and corrected-validation ablations are at **~46.5 mm** epoch 1 (the old 72.80 mm val was inflated by a missing `view_mask`); v57 reaches a true best of 75.16 mm @ epoch 3 but its final reported val is **80.21 mm** and the saved checkpoint corresponds to epoch 2 (81.47 mm). None yet beats the geometric / learnable-triangulation baselines.
-4. **The project now has a real leaderboard**: Iskakov / DLT / RANSAC / v80 / v25 / v57 on a non-circular H36M standard protocol.
+4. **Sparse-view k<4 is still unsolved**: v85, trained with random whole-view dropout, still fails catastrophically at k=2/k=3 (>>1000 mm without DLT fallback). A stronger count-conditioning mechanism or a dedicated sparse-view head is likely needed.
+5. **The project now has a real leaderboard**: Iskakov / DLT / RANSAC / v80 / v25 / v57 / v85 on a non-circular H36M standard protocol.
