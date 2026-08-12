@@ -24,6 +24,8 @@ from .uncertainty_depth_proposal_v27 import UncertaintyDepthProposalTriangulatio
 from .view_conditioned_temporal_attention_v83 import ViewConditionedTemporalAttentionV83
 from .uncertainty_weighted_view_dropout_v84 import UncertaintyWeightedViewDropoutV84
 from .random_view_dropout_v85 import RandomViewDropoutV85
+from .separate_sparse_view_head_v86 import SeparateSparseViewHeadV86
+from .view_count_conditioning_v86 import ViewCountConditioningV86
 
 
 def _safe_inverse(x: torch.Tensor) -> torch.Tensor:
@@ -436,6 +438,17 @@ class MultiViewGeometryFusionV25(nn.Module):
         v85_dropout_prob: float = 0.3,
         v85_min_views: int = 2,
         v85_use_count_embedding: bool = True,
+        # v86 stronger explicit view-count / MLP conditioning
+        use_v86_strong_count_conditioning: bool = False,
+        v86_count_hidden: int = 64,
+        v86_count_n_layers: int = 2,
+        v86_count_dropout: float = 0.1,
+        # v86 separate sparse-view head (dedicated branch for k < n_views)
+        use_v86_separate_sparse_view_head: bool = False,
+        v86_ssv_head_hidden: int = 128,
+        v86_ssv_head_n_layers: int = 2,
+        v86_ssv_head_dropout: float = 0.1,
+        v86_ssv_head_use_count_embedding: bool = True,
    ):
         super().__init__()
         self.d = d
@@ -509,6 +522,33 @@ class MultiViewGeometryFusionV25(nn.Module):
             )
         else:
             self.random_view_dropout_v85 = None
+
+        # Optional v86 stronger explicit view-count token / MLP conditioning.
+        self.use_v86_strong_count_conditioning = use_v86_strong_count_conditioning
+        if self.use_v86_strong_count_conditioning:
+            self.view_count_conditioning_v86 = ViewCountConditioningV86(
+                d=d,
+                n_views=n_views,
+                hidden=v86_count_hidden,
+                n_layers=v86_count_n_layers,
+                dropout=v86_count_dropout,
+            )
+        else:
+            self.view_count_conditioning_v86 = None
+
+        # Optional v86 separate sparse-view head (dedicated branch for k < n_views).
+        self.use_v86_separate_sparse_view_head = use_v86_separate_sparse_view_head
+        if self.use_v86_separate_sparse_view_head:
+            self.separate_sparse_view_head_v86 = SeparateSparseViewHeadV86(
+                d=d,
+                n_views=n_views,
+                hidden=v86_ssv_head_hidden,
+                n_layers=v86_ssv_head_n_layers,
+                dropout=v86_ssv_head_dropout,
+                use_count_embedding=v86_ssv_head_use_count_embedding,
+            )
+        else:
+            self.separate_sparse_view_head_v86 = None
 
         if use_geometry_attention:
             self.geom_attn_layers = nn.ModuleList(
@@ -620,6 +660,10 @@ class MultiViewGeometryFusionV25(nn.Module):
         if self.use_random_view_dropout_v85 and self.random_view_dropout_v85 is not None:
             tokens = self.random_view_dropout_v85.embed_tokens(tokens, view_mask)
 
+        # Optional v86 stronger explicit view-count token / MLP conditioning.
+        if self.use_v86_strong_count_conditioning and self.view_count_conditioning_v86 is not None:
+            tokens = self.view_count_conditioning_v86(tokens, view_mask)
+
         # Optional v83 view-conditioned temporal attention pre-refinement.
         if self.use_view_conditioned_temporal_attention_v83 and self.view_conditioned_temporal_attention_v83 is not None:
             view_reliability = self._compute_view_reliability(
@@ -678,6 +722,26 @@ class MultiViewGeometryFusionV25(nn.Module):
                 pred_3d_ref = self.depth_tri_head(centre, direction, confidence, pred_3d_init, view_mask=view_mask)
         else:
             pred_3d_ref = pred_3d_init
+
+        # Optional v86 separate sparse-view head: route k < n_views to a
+        # dedicated head.  The full-view path is unchanged; only sparse samples
+        # receive the correction, and gradients to the main geometry-fusion
+        # parameters are masked out for those samples.
+        if (
+            self.use_v86_separate_sparse_view_head
+            and self.separate_sparse_view_head_v86 is not None
+        ):
+            active_views = view_mask.sum(dim=-1)  # (B, T)
+            sparse_mask = active_views < self.n_views  # (B, T)
+            if sparse_mask.any():
+                pred_sparse = self.separate_sparse_view_head_v86(
+                    tokens=tokens,
+                    pred_3d_init=pred_3d_init,
+                    view_mask=view_mask,
+                    active_count=active_views,
+                )
+                mask_3d = sparse_mask[:, :, None, None].expand(B, T, J, 3)
+                pred_3d_ref = torch.where(mask_3d, pred_sparse, pred_3d_ref)
 
         geom_loss = self._reprojection_loss(pred_3d_ref, pts, K, R, t, confidence, view_mask)
         return pred_3d_ref, geom_loss + uncertainty_loss

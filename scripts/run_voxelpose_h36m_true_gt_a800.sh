@@ -6,11 +6,19 @@
 #
 #     ssh a800-D 'bash /mnt/nvme0n1p1/zhangzy/motionflow-multiview-kimiswarm-iter20/scripts/run_voxelpose_h36m_true_gt_a800.sh'
 #
-# It performs CPU-only data preparation, clones the Microsoft VoxelPose repo,
-# applies the H36M adapter overlay, and starts training. It exits early if no
-# A800 GPU is free.
+# The script performs CPU-only data preparation, clones the Microsoft VoxelPose
+# repo, applies the H36M adapter overlay, and starts training. It waits until
+# the v85 training (and its post-training eval suite) has finished, then picks
+# the first free A800 GPU that is allowed for this project (GPU 6 or 7).
 #
-# IMPORTANT: Do not run this while another training/evaluation job is active.
+# IMPORTANT: Do not run this while another training/evaluation job is active
+# unless it is the v85 run this script is explicitly queued behind.
+#
+# Queueing behaviour (override via environment variables):
+#   V85_TRAIN_PID      - PID of the v85 random-view-dropout training process
+#                        (default: 2058225)
+#   V85_EVAL_SUITE_PID - PID of the v85 post-training eval-suite monitor
+#                        (default: 2072251)
 
 set -euo pipefail
 
@@ -99,8 +107,34 @@ cd "${VOXELPOSE_DIR}"
 mkdir -p "${VOXELPOSE_DIR}/output" "${VOXELPOSE_DIR}/log"
 
 # ---------------------------------------------------------------------------
-# 5. GPU free-check (training only; prep can run without a GPU)
-# Project policy: only GPUs 6 and 7 may be used.
+# 5. Wait for v85 training and its post-training eval suite to finish.
+#    Project policy: only GPUs 6 and 7 may be used; VoxelPose queues behind v85.
+# ---------------------------------------------------------------------------
+V85_TRAIN_PID="${V85_TRAIN_PID:-2058225}"
+V85_EVAL_SUITE_PID="${V85_EVAL_SUITE_PID:-2072251}"
+
+if [[ -n "${V85_TRAIN_PID}" ]] && ps -p "${V85_TRAIN_PID}" >/dev/null 2>&1; then
+    echo "[5a/6] Waiting for v85 training (PID ${V85_TRAIN_PID}) to finish..."
+    while ps -p "${V85_TRAIN_PID}" >/dev/null 2>&1; do
+        sleep 60
+    done
+    echo "[$(date -Iseconds)] v85 training (PID ${V85_TRAIN_PID}) finished"
+fi
+
+if [[ -n "${V85_EVAL_SUITE_PID}" ]] && ps -p "${V85_EVAL_SUITE_PID}" >/dev/null 2>&1; then
+    echo "[5b/6] Waiting for v85 post-training eval suite (PID ${V85_EVAL_SUITE_PID}) to finish..."
+    while ps -p "${V85_EVAL_SUITE_PID}" >/dev/null 2>&1; do
+        sleep 60
+    done
+    echo "[$(date -Iseconds)] v85 post-training eval suite (PID ${V85_EVAL_SUITE_PID}) finished"
+fi
+
+# Give any child processes a moment to release GPU memory.
+sleep 10
+
+# ---------------------------------------------------------------------------
+# 6. Wait until either GPU 6 or 7 is free (memory used < 1000 MiB).
+#    Project policy: only GPUs 6 and 7 may be used.
 # ---------------------------------------------------------------------------
 select_free_gpu() {
     local i
@@ -115,15 +149,19 @@ select_free_gpu() {
     return 1
 }
 
-FREE_GPU=$(select_free_gpu) || {
-    echo "ERROR: No free GPU on A800 (allowed: 6 or 7). Aborting VoxelPose launch." >&2
-    exit 1
-}
+echo "[5c/6] Waiting for a free GPU on A800 (allowed: 6 or 7)"
+
+while true; do
+    FREE_GPU=$(select_free_gpu) && break
+    echo "[$(date -Iseconds)] No free GPU on A800 (allowed: 6 or 7), waiting..."
+    sleep 60
+done
+
 export CUDA_VISIBLE_DEVICES="${FREE_GPU}"
-echo "[5/6] GPU ${FREE_GPU} is free; CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES}"
+echo "[5c/6] GPU ${FREE_GPU} is free; CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES}"
 
 # ---------------------------------------------------------------------------
-# 6. Launch training
+# 7. Launch training
 # ---------------------------------------------------------------------------
 echo "[6/6] Launching VoxelPose training on A800 GPU ${FREE_GPU}..."
 echo "    config: ${CONFIG}"

@@ -15,7 +15,8 @@ name: voxelpose_h36m_true_gt
 repo:
   url: "https://github.com/microsoft/voxelpose-pytorch.git"
   ref: main
-  dir: tmp/sota_baselines/voxelpose-pytorch
+  # A800 launcher and environment setup clone into models/voxelpose-pytorch.
+  dir: models/voxelpose-pytorch
 
 # Data produced by common_export_h36m_true_gt.py.
 input_pkl: tmp/sota_baselines/h36m_true_gt_baseline_format.pkl

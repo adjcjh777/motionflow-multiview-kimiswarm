@@ -261,6 +261,17 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
         v85_dropout_prob: float = 0.3,
         v85_min_views: int = 2,
         v85_use_count_embedding: bool = True,
+        # v86 stronger explicit view-count / MLP conditioning
+        use_v86_strong_count_conditioning: bool = False,
+        v86_count_hidden: int = 64,
+        v86_count_n_layers: int = 2,
+        v86_count_dropout: float = 0.1,
+        # v86 separate sparse-view head (dedicated branch for k < n_views)
+        use_v86_separate_sparse_view_head: bool = False,
+        v86_ssv_head_hidden: int = 128,
+        v86_ssv_head_n_layers: int = 2,
+        v86_ssv_head_dropout: float = 0.1,
+        v86_ssv_head_use_count_embedding: bool = True,
         use_temporal_geometry_fusion_v26: bool = False,
         v26_temporal_window: int = 3,
         v26_temporal_attention_residual_gate_init: float = 0.0,
@@ -853,6 +864,15 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
                 v85_dropout_prob=v85_dropout_prob,
                 v85_min_views=v85_min_views,
                 v85_use_count_embedding=v85_use_count_embedding,
+                use_v86_strong_count_conditioning=use_v86_strong_count_conditioning,
+                v86_count_hidden=v86_count_hidden,
+                v86_count_n_layers=v86_count_n_layers,
+                v86_count_dropout=v86_count_dropout,
+                use_v86_separate_sparse_view_head=use_v86_separate_sparse_view_head,
+                v86_ssv_head_hidden=v86_ssv_head_hidden,
+                v86_ssv_head_n_layers=v86_ssv_head_n_layers,
+                v86_ssv_head_dropout=v86_ssv_head_dropout,
+                v86_ssv_head_use_count_embedding=v86_ssv_head_use_count_embedding,
             )
         else:
             self.multiview_geometry_fusion_v25 = None

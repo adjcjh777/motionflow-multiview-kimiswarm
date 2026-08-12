@@ -1,6 +1,6 @@
 # v86 No Count Embedding — Experiment Plan
 
-**Status:** Plan ready; launch pending free A800 GPU.  
+**Status:** Plan ready; training and eval scripts added; launch pending free A800 GPU.  
 **Date:** 2026-08-12  
 **Target protocol:** H36M true-GT (S1,5,6,7,8 → S9/S11)  
 **Primary goal:** Isolate the contribution of the v85 active-view-count embedding by disabling it while keeping the random view-dropout augmentation.
@@ -111,7 +111,7 @@ bash scripts/run_v86_no_count_embedding_medium_a800_gpu6.sh
 CUDA_VISIBLE_DEVICES=6 bash scripts/run_v86_no_count_embedding_medium_a800_gpuX.sh
 ```
 
-**Scheduling status (2026-08-12):** v85 random-view-dropout training is currently running on GPU 7 and a no-fallback variable-view eval is running on GPU 6. v86 must wait for one of those GPUs to become free before launching.
+**Scheduling status (2026-08-12 ~12:45 UTC):** v85 random-view-dropout training is running on **GPU 7** (PID `2058225`, Epoch 3 in progress, train loss falling). A split-k no-fallback variable-view eval for v85 is running on **GPU 6** (k=2 in progress, PID `2148515`). Both GPUs 6 and 7 are occupied; v86 must wait for a free slot. Use only GPU 6/7 per project policy.
 
 ---
 
@@ -136,7 +136,17 @@ python experiments/eval_omniview_fusion_v5.py \
 
 ### 4.2 Variable-view test (k=2/3/4)
 
-Create or adapt a variable-view evaluation script that mirrors `scripts/eval_variable_views_v85_random_view_dropout_medium_a800.sh` but points to the v86 checkpoint.  Run with `--var_view_dlt_fallback` so k<4 results that are still catastrophic fall back to direct confidence-weighted DLT.
+Use the v86 variable-view scripts added for this plan:
+
+```bash
+# No-fallback split-k eval (mirrors v85 split-k approach)
+bash scripts/eval_variable_views_v86_no_count_embedding_medium_a800_split_k.sh
+
+# DLT-fallback eval
+bash scripts/eval_variable_views_v86_no_count_embedding_medium_a800_dlt_fallback.sh
+```
+
+Run with `--var_view_dlt_fallback` so k<4 results that are still catastrophic fall back to direct confidence-weighted DLT.
 
 Expected comparison matrix:
 

@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
 # Evaluate the AIST++-only medium fast-v2 checkpoint on the true-GT H36M S9/S11 test set.
 #
-# The checkpoint is produced by scripts/run_aistpp_only_medium_a800.sh (fast v2 variant)
-# at outputs/ablations/aistpp_only_medium_a800_fast_v2.pth.  Run this script only after
-# that training finishes and the checkpoint/config JSON are present.
+# The checkpoint is produced by scripts/run_aistpp_only_medium_a800.sh (fast v2 variant).
+# The trainer saves the final state as aistpp_only_medium_a800_fast_v2_final.pth; a
+# symlink aistpp_only_medium_a800_fast_v2.pth -> ..._final.pth is created so that
+# downstream references resolve.  Run this script only after training finishes and
+# the checkpoint/config JSON are present.
 #
 # Usage
 # -----

@@ -28,9 +28,9 @@ val:
   - data/webbridge/mpi_inf_3dhp_detected_2d/s_02_seq_01_v14_multiview_m.npz
 
 test:
-  - data/webbridge/mpi_inf_3dhp_detected_2d/test_set/TS1_v14_multiview.npz
-  - data/webbridge/mpi_inf_3dhp_detected_2d/test_set/TS2_v14_multiview.npz
-  - data/webbridge/mpi_inf_3dhp_detected_2d/test_set/TS3_v14_multiview.npz
-  - data/webbridge/mpi_inf_3dhp_detected_2d/test_set/TS4_v14_multiview.npz
-  - data/webbridge/mpi_inf_3dhp_detected_2d/test_set/TS5_v14_multiview.npz
-  - data/webbridge/mpi_inf_3dhp_detected_2d/test_set/TS6_v14_multiview.npz
+  - data/webbridge/mpi_inf_3dhp/test_set/TS1_v14_multiview.npz
+  - data/webbridge/mpi_inf_3dhp/test_set/TS2_v14_multiview.npz
+  - data/webbridge/mpi_inf_3dhp/test_set/TS3_v14_multiview.npz
+  - data/webbridge/mpi_inf_3dhp/test_set/TS4_v14_multiview.npz
+  - data/webbridge/mpi_inf_3dhp/test_set/TS5_v14_multiview.npz
+  - data/webbridge/mpi_inf_3dhp/test_set/TS6_v14_multiview.npz

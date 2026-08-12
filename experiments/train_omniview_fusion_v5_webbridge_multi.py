@@ -181,6 +181,17 @@ def build_model_from_args(
         "v85_dropout_prob": getattr(args, "v85_dropout_prob", 0.3),
         "v85_min_views": getattr(args, "v85_min_views", 2),
         "v85_use_count_embedding": getattr(args, "v85_use_count_embedding", True),
+        # v86 stronger explicit view-count / MLP conditioning
+        "use_v86_strong_count_conditioning": getattr(args, "use_v86_strong_count_conditioning", False),
+        "v86_count_hidden": getattr(args, "v86_count_hidden", 64),
+        "v86_count_n_layers": getattr(args, "v86_count_n_layers", 2),
+        "v86_count_dropout": getattr(args, "v86_count_dropout", 0.1),
+        # v86 separate sparse-view head
+        "use_v86_separate_sparse_view_head": getattr(args, "use_v86_separate_sparse_view_head", False),
+        "v86_ssv_head_hidden": getattr(args, "v86_ssv_head_hidden", 128),
+        "v86_ssv_head_n_layers": getattr(args, "v86_ssv_head_n_layers", 2),
+        "v86_ssv_head_dropout": getattr(args, "v86_ssv_head_dropout", 0.1),
+        "v86_ssv_head_use_count_embedding": getattr(args, "v86_ssv_head_use_count_embedding", True),
         "use_uncertainty_depth_proposals_v27": getattr(args, "use_uncertainty_depth_proposals_v27", False),
         "v27_uncertainty_loss_weight": getattr(args, "v27_uncertainty_loss_weight", 0.01),
         "v27_udp_n_mixtures": getattr(args, "v27_udp_n_mixtures", 1),
@@ -2252,6 +2263,18 @@ def parse_args() -> Namespace:
     parser.add_argument("--v85_min_views", type=int, default=2, help="v85 minimum retained views after dropout")
     parser.add_argument("--v85_use_count_embedding", action="store_true", default=True, help="Add v85 active-view-count embedding to ray tokens")
     parser.add_argument("--no_v85_use_count_embedding", dest="v85_use_count_embedding", action="store_false", help="Disable v85 active-view-count embedding")
+    # v86 stronger explicit view-count token / MLP conditioning
+    parser.add_argument("--use_v86_strong_count_conditioning", action="store_true", default=False, help="Use v86 stronger explicit view-count token / MLP conditioning")
+    parser.add_argument("--v86_count_hidden", type=int, default=64, help="Hidden dimension of the v86 count-to-token MLP")
+    parser.add_argument("--v86_count_n_layers", type=int, default=2, help="Number of layers in the v86 count-to-token MLP")
+    parser.add_argument("--v86_count_dropout", type=float, default=0.1, help="Dropout probability in the v86 count-to-token MLP")
+    # v86 separate sparse-view head (dedicated branch for k < n_views)
+    parser.add_argument("--use_v86_separate_sparse_view_head", action="store_true", default=False, help="Use v86 separate sparse-view head for k < n_views")
+    parser.add_argument("--v86_ssv_head_hidden", type=int, default=128, help="Hidden dimension of the v86 sparse-view head MLP")
+    parser.add_argument("--v86_ssv_head_n_layers", type=int, default=2, help="Number of layers in the v86 sparse-view head MLP")
+    parser.add_argument("--v86_ssv_head_dropout", type=float, default=0.1, help="Dropout probability in the v86 sparse-view head MLP")
+    parser.add_argument("--v86_ssv_head_use_count_embedding", action="store_true", default=True, help="Use active-view-count embedding in the v86 sparse-view head")
+    parser.add_argument("--no_v86_ssv_head_use_count_embedding", dest="v86_ssv_head_use_count_embedding", action="store_false", help="Disable active-view-count embedding in the v86 sparse-view head")
     parser.add_argument("--use_uncertainty_depth_proposals_v27", action="store_true", default=False, help="Use v27 uncertainty-aware depth-proposal triangulation head in v25/v26")
     parser.add_argument("--v27_uncertainty_loss_weight", type=float, default=0.01, help="Weight for v27 uncertainty regularisation loss")
     parser.add_argument("--v27_udp_n_mixtures", type=int, default=1, help="Number of Gaussian mixture components for v27 depth proposals (default 1=single Gaussian)")

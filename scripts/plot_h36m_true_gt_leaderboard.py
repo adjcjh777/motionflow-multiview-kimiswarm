@@ -73,19 +73,23 @@ def parse_leaderboard(rows: list, headers: list) -> list[dict]:
                 continue
         raise ValueError(f"Missing column matching {key_candidates}")
 
+    def clean_cell(cell: str) -> str:
+        # Strip markdown bold/italic markers and whitespace
+        return cell.replace("**", "").replace("*", "").strip()
+
     method_idx = find_col(col_map["method"])
     combined_idx = find_col(col_map["combined"])
     s9_idx = find_col(col_map["s9"])
     s11_idx = find_col(col_map["s11"])
 
     for row in rows:
-        method = row[method_idx].strip()
+        method = clean_cell(row[method_idx])
         if not method:
             continue
         try:
-            combined = float(row[combined_idx])
-            s9 = float(row[s9_idx])
-            s11 = float(row[s11_idx])
+            combined = float(clean_cell(row[combined_idx]))
+            s9 = float(clean_cell(row[s9_idx]))
+            s11 = float(clean_cell(row[s11_idx]))
         except (ValueError, IndexError):
             continue
         methods.append({
@@ -101,9 +105,7 @@ def parse_leaderboard(rows: list, headers: list) -> list[dict]:
 def classify_method(method: str) -> str:
     """Return a high-level category for coloring."""
     lower = method.lower()
-    if any(x in lower for x in ["dlc", "dlc", "ransac"]):
-        return "geometric"
-    if "iskakov" in lower:
+    if any(x in lower for x in ["dlt", "ransac", "mvpose", "iskakov"]):
         return "geometric"
     return "learned"
 
