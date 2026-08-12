@@ -1,0 +1,69 @@
+# Mixed-dataset training manifest: H36M true-GT v2 + AIST++ canonical.
+#
+# This is the v2 counterpart of configs/splits/h36m_true_gt_aist_mixed_train_val_a800.yaml.
+# H36M uses the corrected, non-circular true mocap labels from
+# data/h36m_true_gt_v2/ (standard protocol: S1,S5-S8 -> S9/S11).
+# AIST++ uses the canonical multi-view .npz under data/webbridge/aistpp_canonical/.
+#
+# The H36M:AIST train ratio is kept at 5:14 (~26% H36M), matching the v1 mixed
+# ablation so that results are comparable across the corrected labels.
+
+name: H36M True GT v2 + AIST++ Mixed (A800)
+note: |
+  H36M true-GT v2 (S1,5,6,7,8 train; S9,S11 val) mixed with a curated AIST++
+  subset (14 train clips from gBR/gWA genres, 2 val clips from gWA).
+
+train_paths:
+  # H36M true-GT v2 train subjects
+  - data/h36m_true_gt_v2/s_01_acts_02_03_04_05_06_07_08_09_10_11_12_13_14_15_16_multiview_m.npz
+  - data/h36m_true_gt_v2/s_05_acts_02_03_04_05_06_07_08_09_10_11_12_13_14_15_16_multiview_m.npz
+  - data/h36m_true_gt_v2/s_06_acts_02_03_04_05_06_07_08_09_10_11_12_13_14_15_16_multiview_m.npz
+  - data/h36m_true_gt_v2/s_07_acts_02_03_04_05_06_07_08_09_10_11_12_13_14_15_16_multiview_m.npz
+  - data/h36m_true_gt_v2/s_08_acts_02_03_04_05_06_07_08_09_10_11_12_13_14_15_16_multiview_m.npz
+  # AIST++ canonical train clips (gBR + gWA genres)
+  - data/webbridge/aistpp_canonical/gBR_sBM_cAll_d04_mBR0_ch01_multiview.npz
+  - data/webbridge/aistpp_canonical/gBR_sBM_cAll_d04_mBR0_ch02_multiview.npz
+  - data/webbridge/aistpp_canonical/gBR_sBM_cAll_d04_mBR0_ch03_multiview.npz
+  - data/webbridge/aistpp_canonical/gBR_sBM_cAll_d04_mBR0_ch04_multiview.npz
+  - data/webbridge/aistpp_canonical/gBR_sBM_cAll_d04_mBR0_ch05_multiview.npz
+  - data/webbridge/aistpp_canonical/gBR_sBM_cAll_d04_mBR0_ch06_multiview.npz
+  - data/webbridge/aistpp_canonical/gBR_sBM_cAll_d04_mBR0_ch07_multiview.npz
+  - data/webbridge/aistpp_canonical/gBR_sBM_cAll_d04_mBR0_ch08_multiview.npz
+  - data/webbridge/aistpp_canonical/gBR_sBM_cAll_d04_mBR0_ch09_multiview.npz
+  - data/webbridge/aistpp_canonical/gBR_sBM_cAll_d04_mBR0_ch10_multiview.npz
+  - data/webbridge/aistpp_canonical/gBR_sBM_cAll_d04_mBR1_ch01_multiview.npz
+  - data/webbridge/aistpp_canonical/gBR_sBM_cAll_d04_mBR1_ch02_multiview.npz
+  - data/webbridge/aistpp_canonical/gBR_sBM_cAll_d04_mBR1_ch03_multiview.npz
+  - data/webbridge/aistpp_canonical/gBR_sBM_cAll_d04_mBR1_ch04_multiview.npz
+train_names:
+  - h36m
+  - h36m
+  - h36m
+  - h36m
+  - h36m
+  - aist
+  - aist
+  - aist
+  - aist
+  - aist
+  - aist
+  - aist
+  - aist
+  - aist
+  - aist
+  - aist
+  - aist
+  - aist
+  - aist
+val_paths:
+  # H36M true-GT v2 val subjects
+  - data/h36m_true_gt_v2/s_09_acts_02_03_04_05_06_07_08_09_10_11_12_13_14_15_16_multiview_m.npz
+  - data/h36m_true_gt_v2/s_11_acts_02_03_04_05_06_07_08_09_10_11_12_13_14_15_16_multiview_m.npz
+  # AIST++ canonical val clips (gWA genre)
+  - data/webbridge/aistpp_canonical/gWA_sBM_cAll_d25_mWA1_ch03_multiview.npz
+  - data/webbridge/aistpp_canonical/gWA_sBM_cAll_d25_mWA1_ch04_multiview.npz
+val_names:
+  - h36m
+  - h36m
+  - aist
+  - aist

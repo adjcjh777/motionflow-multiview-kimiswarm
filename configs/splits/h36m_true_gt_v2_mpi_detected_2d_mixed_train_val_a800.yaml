@@ -1,0 +1,74 @@
+# Mixed-dataset training manifest: H36M true-GT v2 + MPI-INF-3DHP detected-2D.
+#
+# H36M uses the corrected non-circular true mocap world coordinates from
+# data/h36m_true_gt_v2/ (standard protocol: S1,S5-S8 train; S9/S11 val).
+# MPI-INF-3DHP uses RTMPose detected-2D .npz files in metres from
+# data/webbridge/mpi_inf_3dhp_detected_2d/.
+#
+# Mix ratio is intentionally kept close to the H36M+AIST mixed ablation
+# (5 H36M train files : 14 MPI train files, ~26 % H36M) so results are
+# comparable across mixed-dataset experiments.
+#
+# MPI-INF-3DHP has 14 camera views; H36M has 4. The WebBridge mixed loader
+# pads all inputs to 14 views and maps skeletons to 17 joints.
+
+name: H36M True GT v2 + MPI-INF-3DHP Detected-2D Mixed (A800)
+description: >
+  Mixed WebBridge manifest for v25 H36M true-GT v2 + MPI-INF-3DHP detected-2D.
+  Trains on the standard true-GT protocol plus MPI-INF-3DHP detected-2D
+  sequences. Validation uses H36M true-GT S9/S11 plus MPI-INF-3DHP S2/Seq1.
+  Mix ratio is 5 H36M : 14 MPI train files (~26 % H36M).
+
+train_paths:
+  # H36M true-GT v2 (5 subjects, all actions combined)
+  - data/h36m_true_gt_v2/s_01_acts_02_03_04_05_06_07_08_09_10_11_12_13_14_15_16_multiview_m.npz
+  - data/h36m_true_gt_v2/s_05_acts_02_03_04_05_06_07_08_09_10_11_12_13_14_15_16_multiview_m.npz
+  - data/h36m_true_gt_v2/s_06_acts_02_03_04_05_06_07_08_09_10_11_12_13_14_15_16_multiview_m.npz
+  - data/h36m_true_gt_v2/s_07_acts_02_03_04_05_06_07_08_09_10_11_12_13_14_15_16_multiview_m.npz
+  - data/h36m_true_gt_v2/s_08_acts_02_03_04_05_06_07_08_09_10_11_12_13_14_15_16_multiview_m.npz
+  # MPI-INF-3DHP detected-2D (14 training sequences: S1, S3-S8)
+  - data/webbridge/mpi_inf_3dhp_detected_2d/s_01_seq_01_v14_multiview_m.npz
+  - data/webbridge/mpi_inf_3dhp_detected_2d/s_01_seq_02_v14_multiview_m.npz
+  - data/webbridge/mpi_inf_3dhp_detected_2d/s_03_seq_01_v14_multiview_m.npz
+  - data/webbridge/mpi_inf_3dhp_detected_2d/s_03_seq_02_v14_multiview_m.npz
+  - data/webbridge/mpi_inf_3dhp_detected_2d/s_04_seq_01_v14_multiview_m.npz
+  - data/webbridge/mpi_inf_3dhp_detected_2d/s_04_seq_02_v14_multiview_m.npz
+  - data/webbridge/mpi_inf_3dhp_detected_2d/s_05_seq_01_v14_multiview_m.npz
+  - data/webbridge/mpi_inf_3dhp_detected_2d/s_05_seq_02_v14_multiview_m.npz
+  - data/webbridge/mpi_inf_3dhp_detected_2d/s_06_seq_01_v14_multiview_m.npz
+  - data/webbridge/mpi_inf_3dhp_detected_2d/s_06_seq_02_v14_multiview_m.npz
+  - data/webbridge/mpi_inf_3dhp_detected_2d/s_07_seq_01_v14_multiview_m.npz
+  - data/webbridge/mpi_inf_3dhp_detected_2d/s_07_seq_02_v14_multiview_m.npz
+  - data/webbridge/mpi_inf_3dhp_detected_2d/s_08_seq_01_v14_multiview_m.npz
+  - data/webbridge/mpi_inf_3dhp_detected_2d/s_08_seq_02_v14_multiview_m.npz
+train_names:
+  - h36m
+  - h36m
+  - h36m
+  - h36m
+  - h36m
+  - mpi
+  - mpi
+  - mpi
+  - mpi
+  - mpi
+  - mpi
+  - mpi
+  - mpi
+  - mpi
+  - mpi
+  - mpi
+  - mpi
+  - mpi
+  - mpi
+
+val_paths:
+  # H36M true-GT v2 validation subjects
+  - data/h36m_true_gt_v2/s_09_acts_02_03_04_05_06_07_08_09_10_11_12_13_14_15_16_multiview_m.npz
+  - data/h36m_true_gt_v2/s_11_acts_02_03_04_05_06_07_08_09_10_11_12_13_14_15_16_multiview_m.npz
+  # MPI-INF-3DHP detected-2D validation (S2/Seq1)
+  - data/webbridge/mpi_inf_3dhp_detected_2d/s_02_seq_01_v14_multiview_m.npz
+val_names:
+  - h36m
+  - h36m
+  - mpi

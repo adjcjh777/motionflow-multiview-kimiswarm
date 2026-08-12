@@ -142,6 +142,106 @@ def _merge_per_k_csv(paths: List[str]) -> Dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
+# Per-frame analysis
+# ---------------------------------------------------------------------------
+
+def build_per_frame_analysis(results: Dict[str, Any]) -> Dict[str, Any]:
+    """Build a per-frame summary from metrics containing ``per_frame`` arrays.
+
+    The optional ``per_frame`` field is expected to be a list of frame-wise
+    MPJPE values in millimetres.  When present, this function returns summary
+    statistics (mean, std, min, max, best/worst frame index) for each
+    ``(dataset, k)`` pair.
+    """
+    analysis: Dict[str, Any] = {}
+    for dataset, k_map in results["per_dataset"].items():
+        for k_str, metrics in k_map.items():
+            per_frame = metrics.get("per_frame")
+            if not isinstance(per_frame, (list, tuple)) or not per_frame:
+                continue
+            try:
+                arr = [float(v) for v in per_frame]
+            except (TypeError, ValueError):
+                continue
+            n = len(arr)
+            if n == 0:
+                continue
+            mean = sum(arr) / n
+            variance = sum((x - mean) ** 2 for x in arr) / n
+            analysis.setdefault(dataset, {})[k_str] = {
+                "mean_mm": mean,
+                "std_mm": variance ** 0.5,
+                "min_mm": min(arr),
+                "max_mm": max(arr),
+                "best_frame": int(arr.index(min(arr))),
+                "worst_frame": int(arr.index(max(arr))),
+                "n_frames": n,
+            }
+    return analysis
+
+
+# ---------------------------------------------------------------------------
+# Per-camera analysis
+# ---------------------------------------------------------------------------
+
+def build_per_camera_analysis(results: Dict[str, Any]) -> Dict[str, Any]:
+    """Build per-camera summaries from metrics containing ``subsets``/``per_subset``.
+
+    For each camera index, reports the number of evaluated subsets in which it
+    appears and the mean/min/max MPJPE across those subsets.
+    """
+    analysis: Dict[str, Any] = {}
+    for dataset, k_map in results["per_dataset"].items():
+        for k_str, metrics in k_map.items():
+            subsets = metrics.get("subsets")
+            per_subset = metrics.get("per_subset")
+            if not isinstance(subsets, (list, tuple)) or not isinstance(per_subset, (list, tuple)):
+                continue
+            if len(subsets) != len(per_subset):
+                continue
+            camera_stats: Dict[int, Dict[str, Any]] = {}
+            for subset, sub_metrics in zip(subsets, per_subset):
+                if not isinstance(sub_metrics, dict):
+                    continue
+                mpjpe_val = sub_metrics.get("mpjpe")
+                if mpjpe_val is None:
+                    continue
+                try:
+                    mpjpe_val = float(mpjpe_val)
+                except (TypeError, ValueError):
+                    continue
+                for cam in subset:
+                    if cam not in camera_stats:
+                        camera_stats[cam] = {
+                            "count": 0,
+                            "sum": 0.0,
+                            "min": float("inf"),
+                            "max": 0.0,
+                        }
+                    stats = camera_stats[cam]
+                    stats["count"] += 1
+                    stats["sum"] += mpjpe_val
+                    if mpjpe_val < stats["min"]:
+                        stats["min"] = mpjpe_val
+                    if mpjpe_val > stats["max"]:
+                        stats["max"] = mpjpe_val
+            for cam, stats in camera_stats.items():
+                count = stats["count"]
+                camera_stats[cam] = {
+                    "camera": cam,
+                    "count": count,
+                    "mean_mpjpe_mm": stats["sum"] / count if count > 0 else None,
+                    "min_mpjpe_mm": stats["min"] if count > 0 else None,
+                    "max_mpjpe_mm": stats["max"] if count > 0 else None,
+                }
+            if camera_stats:
+                analysis.setdefault(dataset, {})[k_str] = {
+                    "cameras": {str(c): camera_stats[c] for c in sorted(camera_stats)},
+                }
+    return analysis
+
+
+# ---------------------------------------------------------------------------
 # Analysis
 # ---------------------------------------------------------------------------
 
@@ -258,7 +358,54 @@ def write_csv(comparison: Dict[str, Any], path: str) -> None:
         writer.writerows(rows)
 
 
-def write_markdown(comparison: Dict[str, Any], path: str, baseline_name: str = "v25 DLT-fallback") -> None:
+def _write_per_frame_csv(per_frame: Dict[str, Any], path: str) -> None:
+    """Write per-frame summary to CSV with one row per (dataset, k)."""
+    rows: List[Dict[str, Any]] = []
+    for dataset in sorted(per_frame):
+        for k_str in sorted(per_frame[dataset], key=int):
+            row = dict(per_frame[dataset][k_str])
+            row["dataset"] = dataset
+            row["k"] = int(k_str)
+            rows.append(row)
+    if not rows:
+        return
+    fieldnames = ["dataset", "k", "mean_mm", "std_mm", "min_mm", "max_mm",
+                  "best_frame", "worst_frame", "n_frames"]
+    with open(path, "w", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerows(rows)
+
+
+def _write_per_camera_csv(per_camera: Dict[str, Any], path: str) -> None:
+    """Write per-camera summary to CSV with one row per (dataset, k, camera)."""
+    rows: List[Dict[str, Any]] = []
+    for dataset in sorted(per_camera):
+        for k_str in sorted(per_camera[dataset], key=int):
+            cameras = per_camera[dataset][k_str].get("cameras", {})
+            for cam in sorted(cameras, key=int):
+                info = cameras[cam]
+                rows.append({
+                    "dataset": dataset,
+                    "k": int(k_str),
+                    "camera": info["camera"],
+                    "count": info["count"],
+                    "mean_mpjpe_mm": info["mean_mpjpe_mm"],
+                    "min_mpjpe_mm": info["min_mpjpe_mm"],
+                    "max_mpjpe_mm": info["max_mpjpe_mm"],
+                })
+    if not rows:
+        return
+    fieldnames = ["dataset", "k", "camera", "count", "mean_mpjpe_mm", "min_mpjpe_mm", "max_mpjpe_mm"]
+    with open(path, "w", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerows(rows)
+
+
+def write_markdown(comparison: Dict[str, Any], path: str, baseline_name: str = "v25 DLT-fallback",
+                    per_frame: Optional[Dict[str, Any]] = None,
+                    per_camera: Optional[Dict[str, Any]] = None) -> None:
     lines: List[str] = []
     lines.append("# v85 Sparse-View Analysis vs. Baseline\n")
     lines.append(f"Baseline: **{baseline_name}**\n\n")
@@ -293,6 +440,40 @@ def write_markdown(comparison: Dict[str, Any], path: str, baseline_name: str = "
         v85_str = f"{v85_val:.2f}" if v85_val is not None else "N/A"
         baseline_str = f"{baseline_val:.2f}" if baseline_val is not None else "N/A"
         lines.append(f"| {k_str} | {v85_str:8s} | {baseline_str:13s} |\n")
+
+    if per_frame:
+        lines.append("\n## Per-Frame Analysis\n")
+        lines.append("| dataset | k | mean (mm) | std (mm) | min (mm) | max (mm) | best frame | worst frame |\n")
+        lines.append("|---------|---|-----------|----------|----------|----------|------------|-------------|\n")
+        for dataset in sorted(per_frame):
+            for k_str in sorted(per_frame[dataset], key=int):
+                stats = per_frame[dataset][k_str]
+                lines.append(
+                    f"| {dataset:7s} | {k_str} | "
+                    f"{stats['mean_mm']:9.2f} | "
+                    f"{stats['std_mm']:8.2f} | "
+                    f"{stats['min_mm']:8.2f} | "
+                    f"{stats['max_mm']:8.2f} | "
+                    f"{stats['best_frame']:10d} | "
+                    f"{stats['worst_frame']:11d} |\n"
+                )
+
+    if per_camera:
+        lines.append("\n## Per-Camera Analysis\n")
+        lines.append("| dataset | k | camera | count | mean (mm) | min (mm) | max (mm) |\n")
+        lines.append("|---------|---|--------|-------|-----------|----------|----------|\n")
+        for dataset in sorted(per_camera):
+            for k_str in sorted(per_camera[dataset], key=int):
+                cameras = per_camera[dataset][k_str].get("cameras", {})
+                for cam in sorted(cameras, key=int):
+                    info = cameras[cam]
+                    lines.append(
+                        f"| {dataset:7s} | {k_str} | {info['camera']:6d} | "
+                        f"{info['count']:5d} | "
+                        f"{info['mean_mpjpe_mm']:9.2f} | "
+                        f"{info['min_mpjpe_mm']:8.2f} | "
+                        f"{info['max_mpjpe_mm']:8.2f} |\n"
+                    )
 
     with open(path, "w") as f:
         f.writelines(lines)
@@ -371,6 +552,10 @@ def parse_args() -> argparse.Namespace:
                         help="Disable plot generation")
     parser.add_argument("--baseline_name", type=str, default="v25 DLT-fallback",
                         help="Display name for the baseline in reports")
+    parser.add_argument("--per_frame", action="store_true",
+                        help="Compute per-frame MPJPE statistics from any per-frame arrays")
+    parser.add_argument("--per_camera_analysis", action="store_true",
+                        help="Compute per-camera MPJPE statistics from any subset/per-subset data")
     args = parser.parse_args()
 
     if not args.v85_json and not args.v85_csv:
@@ -395,9 +580,29 @@ def main() -> None:
     csv_path = args.output_csv or str(out_dir / "comparison.csv")
     md_path = args.output_md or str(out_dir / "report.md")
 
+    per_frame: Optional[Dict[str, Any]] = None
+    per_camera: Optional[Dict[str, Any]] = None
+
+    if args.per_frame:
+        per_frame = build_per_frame_analysis(v85_results)
+        if per_frame:
+            write_json(per_frame, str(out_dir / "per_frame.json"))
+            _write_per_frame_csv(per_frame, str(out_dir / "per_frame.csv"))
+            print(f"Per-frame JSON saved to: {out_dir / 'per_frame.json'}")
+            print(f"Per-frame CSV saved to:  {out_dir / 'per_frame.csv'}")
+
+    if args.per_camera_analysis:
+        per_camera = build_per_camera_analysis(v85_results)
+        if per_camera:
+            write_json(per_camera, str(out_dir / "per_camera.json"))
+            _write_per_camera_csv(per_camera, str(out_dir / "per_camera.csv"))
+            print(f"Per-camera JSON saved to: {out_dir / 'per_camera.json'}")
+            print(f"Per-camera CSV saved to:  {out_dir / 'per_camera.csv'}")
+
     write_json(comparison, json_path)
     write_csv(comparison, csv_path)
-    write_markdown(comparison, md_path, baseline_name=args.baseline_name)
+    write_markdown(comparison, md_path, baseline_name=args.baseline_name,
+                    per_frame=per_frame, per_camera=per_camera)
 
     if not args.no_plot:
         plot_path = out_dir / "comparison.png"

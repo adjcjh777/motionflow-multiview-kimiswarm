@@ -57,9 +57,9 @@ v25 stability variable-view evaluation completed on A800 (GPU 4). Results are fo
 | Method | S9 direct (mm) | S11 direct (mm) | Combined direct (mm) | Combined PA-MPJPE (mm) | Notes |
 |---|---:|---:|---:|---:|---|
 | **Iskakov ICCV 2019** | **27.15** | **19.65** | **23.40** | **23.15** | best val epoch 9; run `iskakov_learnable_tri_h36m_true_gt_a800_gpu4` |
-| DLT (confidence-weighted) | 29.54 | 21.81 | **25.67** | 28.05 | frozen reference; `scripts/run_h36m_true_gt_dlt_baseline.py` |
+| DLT (confidence-weighted) | 29.54 | 21.81 | **25.67** | 28.05 | frozen reference; true-GT v2 |
 | **MVPose (zju3dv/mvpose, GT 2D geometry-only)** | **29.19** | **21.54** | **26.06** | **28.32** | Native COCO17 skeleton; body12 subset **31.13 / 34.45 mm** |
-| **RANSAC/conf-DLT (reproducible)** | **29.60** | **21.96** | **26.47** | **28.98** | confidence-weighted 3-view random-subset; see `scripts/run_h36m_true_gt_ransac_baseline.py` |
+| **RANSAC/conf-DLT (reproducible)** | **29.60** | **21.96** | **26.47** | **28.98** | confidence-weighted 3-view random-subset; true-GT v2 |
 | DLT (unweighted) | 32.97 | 24.57 | 28.77 | 32.10 | frozen reference; `scripts/run_h36m_true_gt_dlt_baseline.py --unweighted` |
 | **v25 stability (A800)** | **34.87** | **26.80** | **30.83** | **33.59** | **test** result (stride 1); best val **31.13 mm** @ Epoch 10; early-stopped @ Epoch 12 |
 | **v25 (mixed H36M+AIST++, A800)** | **37.87** | **28.96** | **33.42** | **34.60** | early-stopped Epoch 3; best val **34.94 mm** @ Epoch 1 |
@@ -190,10 +190,11 @@ python scripts/sota_baselines/eval_mvpose_predictions.py \
 
 Computed by `scripts/run_h36m_true_gt_dlt_baseline.py` and `scripts/run_h36m_true_gt_ransac_baseline.py` over the corrected true-GT v2 files in `data/h36m_true_gt_v2/`. The v2 labels were regenerated from the official mocap release with aligned cameras and 2D projections; direct MJE is ~16 mm, confirming they are not circular.
 
-| Method | S9 direct (mm) | S11 direct (mm) | Combined simple (mm) | Combined weighted (mm) | Source |
-|---|---:|---:|---:|---:|---|
-| DLT (confidence-weighted) | 29.54 | 21.81 | **25.67** | 26.38 | `outputs/h36m_true_gt_v2/dlt_baseline_h36m_true_gt_v2.json` |
-| DLT (unweighted) | 32.97 | 24.57 | **28.77** | 29.53 | `outputs/h36m_true_gt_v2/dlt_baseline_h36m_true_gt_v2.json` |
+| Method | S9 direct (mm) | S11 direct (mm) | Combined simple (mm) | Combined weighted (mm) | PA-MPJPE (mm) | Source |
+|---|---:|---:|---:|---:|---:|---|
+| DLT (confidence-weighted) | 29.54 | 21.81 | **25.67** | 26.38 | 28.05 | `outputs/h36m_true_gt_v2/dlt_baseline_h36m_true_gt_v2.json` |
+| DLT (unweighted) | 32.97 | 24.57 | **28.77** | 29.53 | 32.10 | `outputs/h36m_true_gt_v2/dlt_baseline_h36m_true_gt_v2.json` |
+| RANSAC/conf-DLT (reproducible) | 29.60 | 21.96 | **26.47** | 26.47 | 28.98 | `outputs/h36m_true_gt_v2/ransac_dlt_h36m_true_gt_v2.json` |
 
 ```bash
 # v2 confidence-weighted DLT (GPU)

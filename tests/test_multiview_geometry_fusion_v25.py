@@ -372,6 +372,30 @@ def test_random_view_dropout_v85_forward_shape():
     assert torch.allclose(out_eval1, out_eval2, atol=1e-6)
 
 
+def test_v86_strong_count_conditioning_forward_shape():
+    """v86 stronger explicit view-count token should run and produce well-shaped outputs."""
+    module = MultiViewGeometryFusionV25(
+        d=64,
+        n_heads=2,
+        n_views=4,
+        use_v86_strong_count_conditioning=True,
+        v86_count_hidden=64,
+        v86_count_n_layers=2,
+        v86_count_dropout=0.1,
+    )
+    points_2d, K, R, t, pred_3d_init, view_mask = _make_batch()
+
+    module.train()
+    out_train, _ = module(points_2d, K, R, t, pred_3d_init=pred_3d_init, view_mask=view_mask)
+    assert out_train.shape == (2, 3, 17, 3)
+    assert torch.isfinite(out_train).all()
+
+    module.eval()
+    out_eval1, _ = module(points_2d, K, R, t, pred_3d_init=pred_3d_init, view_mask=view_mask)
+    out_eval2, _ = module(points_2d, K, R, t, pred_3d_init=pred_3d_init, view_mask=view_mask)
+    assert torch.allclose(out_eval1, out_eval2, atol=1e-6)
+
+
 def test_outlier_view_detector_forward_shape_and_downweight():
     """The outlier-view detector toggle should run and down-weight a corrupted view."""
     module = MultiViewGeometryFusionV25(
