@@ -83,11 +83,21 @@ def package_submission(npz_path: str, test_root: str, output_mat: str) -> None:
         per_joint_error_cells.append(per_joint_err.T[:, None, :])
         activity_label_cells.append(activity_labels[:, None])
 
+    # Build object arrays explicitly; np.array(..., dtype=object) can try to stack
+    # when the cell contents happen to share leading dimensions, so we must avoid
+    # any implicit broadcasting.
+    pje_cells = np.empty((len(per_joint_error_cells),), dtype=object)
+    act_cells = np.empty((len(activity_label_cells),), dtype=object)
+    for i, cell in enumerate(per_joint_error_cells):
+        pje_cells[i] = cell
+    for i, cell in enumerate(activity_label_cells):
+        act_cells[i] = cell
+
     sio.savemat(
         output_mat,
         {
-            "sequencewise_per_joint_error": np.array(per_joint_error_cells, dtype=object),
-            "sequencewise_activity_labels": np.array(activity_label_cells, dtype=object),
+            "sequencewise_per_joint_error": pje_cells,
+            "sequencewise_activity_labels": act_cells,
         },
         do_compression=True,
     )
