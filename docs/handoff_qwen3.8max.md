@@ -17,6 +17,7 @@
 - **v85 post-training eval suite monitor**（PID `2072251`）和 **VoxelPose auto-launch monitor**（PID `2146696`）正在等待：eval suite monitor 等 v85 训练结束；VoxelPose monitor 等 eval suite monitor 完成。
 - **A800 磁盘仍紧张**：`/mnt/nvme0n1p1` **99% 满**，约 **58 GB** 空闲。
 - **v82/v81/v25 可变视角 DLT-fallback 评估已完成**；MPI 检测与 DLT baseline、AIST++ → H36M 交叉评估均已完成。
+- **数据地基发现关键问题**：`data/h36m_hf/*.npz` 确认循环（direct MJE ≈ 0 mm）；`data/h36m_true_gt/*.npz` 与存储的相机/2D 坐标系不匹配（direct MJE ≈ 16,668 mm）。已准备修正版 converter `scripts/convert_h36m_true_gt_v2.py`，测试文件 `data/h36m_true_gt_v2/s_01_act_02_multiview.npz` 的 direct MJE ≈ 14.5 mm。待 v85 结束后重新生成全部 `.npz` 并重跑排行榜。
 
 ---
 
