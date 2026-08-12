@@ -1,0 +1,21 @@
+# MPI-INF-3DHP detected-2D smoke split.
+# Uses a small subset of `data/webbridge/mpi_inf_3dhp_detected_2d_smoke/`
+# for fast training/validation smoke tests on the detected-2D protocol.
+# Units: meters (_m.npz), skeleton: 28 joints, 14 calibrated views.
+name: MPI-INF-3DHP Detected-2D Smoke
+
+train_paths:
+  - data/webbridge/mpi_inf_3dhp_detected_2d_smoke/s_01_seq_01_v14_multiview_m.npz
+  - data/webbridge/mpi_inf_3dhp_detected_2d_smoke/s_01_seq_02_v14_multiview_m.npz
+  - data/webbridge/mpi_inf_3dhp_detected_2d_smoke/s_03_seq_01_v14_multiview_m.npz
+
+train_names:
+  - mpi
+  - mpi
+  - mpi
+
+val_paths:
+  - data/webbridge/mpi_inf_3dhp_detected_2d_smoke/s_02_seq_01_v14_multiview_m.npz
+
+val_names:
+  - mpi

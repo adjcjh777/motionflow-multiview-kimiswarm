@@ -1,0 +1,97 @@
+# configs/train_v81_true_gt_h36m_medium_a800.yaml
+#
+# Medium-scale A800 training configuration for v81 (v25 + lightweight per-joint
+# temporal pose attention) on the non-circular H36M true-GT standard protocol
+# (S1,5,6,7,8 train -> S9/S11 val).
+#
+# Runner: scripts/run_v81_true_gt_h36m_medium_a800.sh
+# Manifest: configs/splits/h36m_true_gt_standard.yaml
+
+name: v81 true-GT H36M medium A800
+split: configs/splits/h36m_true_gt_standard.yaml
+
+architecture:
+  d: 128
+  residual_hidden: 256
+  n_st_layers: 3
+  graph_num_layers: 1
+  n_joint_layers: 1
+  n_heads: 4
+
+schedule:
+  clip_len: 13
+  epochs: 8
+  batch_size: 16
+  train_samples: 1024
+  val_stride: 20
+  num_workers: 4
+
+optimization:
+  lr: 1.0e-3
+  lr_cosine: true
+  lr_warmup_epochs: 1
+  lr_min: 1.0e-6
+  max_grad_norm: 1.0
+  ema_decay: 0.999
+  early_stopping_patience: 3
+  early_stopping_min_delta: 0.001
+
+v25_geometry_fusion:
+  use_multiview_geometry_fusion_v25: true
+  v25_geom_loss_weight: 0.1
+  v25_use_geometry_attention: true
+  v25_use_learned_depth_triangulation: true
+  v25_use_geometry_bundle_adjustment: true
+  v25_dropout: 0.2
+
+v81_temporal_pose_attention:
+  use_temporal_pose_attention_v81: true
+  v81_temporal_window: 9
+  v81_temporal_residual_gate_init: -6.0
+  v81_temporal_dropout: 0.1
+
+standard_toggles:
+  use_full_precision_dlt: true
+  use_robust_dlt_reweight: true
+  use_irls_reweight: true
+  use_domain_embedding: true
+  use_deformable_cross_view_attention_v18: true
+  use_multiscale_fusion: true
+  use_camera_conditioning: true
+  use_epipolar_bias: true
+  use_context_visibility: true
+  use_skeleton_residual: true
+  use_rotation_correction: true
+  use_entropy_regularization: true
+  attention_entropy_weight: 0.01
+  use_camera_view_embedding: true
+  use_set_view_aggregator: true
+
+variable_view_training:
+  use_variable_view_training: true
+  variable_view_min_views: 2
+  variable_view_max_views: 4
+  variable_view_max_views_start: 4
+  variable_view_curriculum_alpha: 2.0
+  variable_view_permute: true
+  outlier_view_prob: 0.3
+  outlier_view_max_views: 1
+  outlier_view_offset_std: 10.0
+  outlier_view_noise_std: 15.0
+
+loss_weights:
+  pa_loss_weight: 0.5
+  monotonic_loss_weight: 0.1
+  monotonic_margin: 5.0
+  reproj_loss_weight: 0.1
+  reproj_warmup_epochs: 1
+  aleatoric_reproj_loss_weight: 0.1
+
+output:
+  checkpoint: outputs/ablations/v81_true_gt_h36m_medium_a800.pth
+  log: outputs/ablations/v81_true_gt_h36m_medium_a800.log
+
+notes:
+  - v81 ablation: v25 geometry fusion + per-joint temporal pose attention.
+  - Runs on A800 GPU 4 by default (override CUDA_VISIBLE_DEVICES if needed).
+  - Medium recipe: d=128, n_st_layers=3, batch=16, 1024 samples/epoch, 8 epochs.

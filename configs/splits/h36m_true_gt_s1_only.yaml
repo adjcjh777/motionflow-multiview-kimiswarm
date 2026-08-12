@@ -1,0 +1,16 @@
+# Non-circular H36M true-GT split using the old (subject-only) training protocol.
+# Trains on subject 1 only and validates on the standard test subjects S9/S11.
+# Use this split together with configs/splits/h36m_true_gt_s15678.yaml to compare
+# the old training protocol (S1) against the standard training protocol
+# (S1,5,6,7,8) while keeping the validation/test set fixed.
+name: H36M True GT Old Protocol (S1 -> S9/S11)
+train_paths:
+  - data/h36m_true_gt/s_01_acts_02_03_04_05_06_07_08_09_10_11_12_13_14_15_16_multiview_m.npz
+train_names:
+  - h36m
+val_paths:
+  - data/h36m_true_gt/s_09_acts_02_03_04_05_06_07_08_09_10_11_12_13_14_15_16_multiview_m.npz
+  - data/h36m_true_gt/s_11_acts_02_03_04_05_06_07_08_09_10_11_12_13_14_15_16_multiview_m.npz
+val_names:
+  - h36m
+  - h36m

@@ -1,0 +1,54 @@
+name: H36M True GT + AIST++ Mixed (A800 ablation)
+note: Mixed WebBridge manifest for v25 ablation 3. H36M true-GT standard protocol
+  (5 train files) plus a curated subset of AIST++ canonical clips (14 train, 2 val)
+  to keep the H36M:AIST ratio roughly 5:14 (~26% H36M).
+train_paths:
+- data/h36m_true_gt/s_01_acts_02_03_04_05_06_07_08_09_10_11_12_13_14_15_16_multiview_m.npz
+- data/h36m_true_gt/s_05_acts_02_03_04_05_06_07_08_09_10_11_12_13_14_15_16_multiview_m.npz
+- data/h36m_true_gt/s_06_acts_02_03_04_05_06_07_08_09_10_11_12_13_14_15_16_multiview_m.npz
+- data/h36m_true_gt/s_07_acts_02_03_04_05_06_07_08_09_10_11_12_13_14_15_16_multiview_m.npz
+- data/h36m_true_gt/s_08_acts_02_03_04_05_06_07_08_09_10_11_12_13_14_15_16_multiview_m.npz
+- data/webbridge/aistpp_canonical/gBR_sBM_cAll_d04_mBR0_ch01_multiview.npz
+- data/webbridge/aistpp_canonical/gBR_sBM_cAll_d04_mBR0_ch02_multiview.npz
+- data/webbridge/aistpp_canonical/gBR_sBM_cAll_d04_mBR0_ch03_multiview.npz
+- data/webbridge/aistpp_canonical/gBR_sBM_cAll_d04_mBR0_ch04_multiview.npz
+- data/webbridge/aistpp_canonical/gBR_sBM_cAll_d04_mBR0_ch05_multiview.npz
+- data/webbridge/aistpp_canonical/gBR_sBM_cAll_d04_mBR0_ch06_multiview.npz
+- data/webbridge/aistpp_canonical/gBR_sBM_cAll_d04_mBR0_ch07_multiview.npz
+- data/webbridge/aistpp_canonical/gBR_sBM_cAll_d04_mBR0_ch08_multiview.npz
+- data/webbridge/aistpp_canonical/gBR_sBM_cAll_d04_mBR0_ch09_multiview.npz
+- data/webbridge/aistpp_canonical/gBR_sBM_cAll_d04_mBR0_ch10_multiview.npz
+- data/webbridge/aistpp_canonical/gBR_sBM_cAll_d04_mBR1_ch01_multiview.npz
+- data/webbridge/aistpp_canonical/gBR_sBM_cAll_d04_mBR1_ch02_multiview.npz
+- data/webbridge/aistpp_canonical/gBR_sBM_cAll_d04_mBR1_ch03_multiview.npz
+- data/webbridge/aistpp_canonical/gBR_sBM_cAll_d04_mBR1_ch04_multiview.npz
+train_names:
+- h36m
+- h36m
+- h36m
+- h36m
+- h36m
+- aist
+- aist
+- aist
+- aist
+- aist
+- aist
+- aist
+- aist
+- aist
+- aist
+- aist
+- aist
+- aist
+- aist
+val_paths:
+- data/h36m_true_gt/s_09_acts_02_03_04_05_06_07_08_09_10_11_12_13_14_15_16_multiview_m.npz
+- data/h36m_true_gt/s_11_acts_02_03_04_05_06_07_08_09_10_11_12_13_14_15_16_multiview_m.npz
+- data/webbridge/aistpp_canonical/gWA_sBM_cAll_d25_mWA1_ch03_multiview.npz
+- data/webbridge/aistpp_canonical/gWA_sBM_cAll_d25_mWA1_ch04_multiview.npz
+val_names:
+- h36m
+- h36m
+- aist
+- aist

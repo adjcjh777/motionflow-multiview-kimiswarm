@@ -1,0 +1,110 @@
+# configs/ablations/aistpp_only_medium_a800.yaml
+#
+# AIST++-only medium training run for A800.
+# Trains OmniMultiViewFusionV5 (v25 geometry fusion) on the full AIST++
+# canonical multi-view dataset (1,280 train + 64 val clips, 9 views, 17 joints).
+# No H36M data is used, so no domain embedding is required.
+#
+# This is the A800 counterpart of the local AIST++ smoke; it keeps the same
+# medium architecture and v25 hyperparameters as v25_true_gt_mixed_dataset_a800
+# for direct comparison.
+
+name: aistpp_only_medium_a800
+variant: v25-geometry-fusion-aist-only
+version: 25
+description: >
+  Medium-scale AIST++-only training on A800. Uses the WebBridge mixed loader
+  with a single-domain AIST++ manifest to evaluate whether the v25 recipe
+  generalises to a larger, purely dance-motion dataset.
+
+manifest: configs/splits/aistpp_only_train_val_a800.yaml
+script: experiments/train_omniview_fusion_v5_webbridge_multi.py
+
+training:
+  # Architecture (medium scale, single A800 GPU).
+  d: 128
+  residual_hidden: 256
+  n_st_layers: 3
+  graph_num_layers: 1
+  n_joint_layers: 1
+  n_heads: 4
+
+  # Schedule
+  clip_len: 13
+  epochs: 20
+  batch_size: 16
+  train_samples: 4096
+  val_stride: 20
+  num_workers: 4
+
+  # Optimisation
+  lr: 5.0e-4
+  lr_cosine: true
+  lr_warmup_epochs: 2
+  lr_min: 1.0e-6
+  max_grad_norm: 1.0
+  ema_decay: 0.999
+  weight_decay: 1.0e-4
+  early_stopping_patience: 3
+  early_stopping_min_delta: 0.001
+
+  # DLT / reweighting.
+  use_full_precision_dlt: true
+  use_robust_dlt_reweight: true
+  use_irls_reweight: true
+
+  # Standard v5 / v18 / v25 toggles (single domain, so no domain embedding).
+  use_multiscale_fusion: true
+  use_camera_conditioning: true
+  use_epipolar_bias: true
+  use_context_visibility: true
+  use_skeleton_residual: true
+  use_rotation_correction: true
+  use_entropy_regularization: true
+  attention_entropy_weight: 0.01
+  use_camera_view_embedding: true
+  use_set_view_aggregator: true
+  use_deformable_cross_view_attention_v18: true
+
+  # v25 geometry fusion.
+  use_multiview_geometry_fusion_v25: true
+  v25_geom_loss_weight: 0.05
+  v25_dropout: 0.2
+  v25_use_geometry_attention: true
+  v25_use_learned_depth_triangulation: true
+  v25_use_geometry_bundle_adjustment: true
+
+  # Loss weights.
+  pa_loss_weight: 0.5
+  monotonic_loss_weight: 0.1
+  monotonic_margin: 5.0
+  reproj_loss_weight: 0.1
+  reproj_warmup_epochs: 1
+  aleatoric_reproj_loss_weight: 0.1
+
+  # Augmentations.
+  use_variable_view_training: true
+  variable_view_min_views: 2
+  variable_view_max_views: 9
+  variable_view_max_views_start: 4
+  variable_view_curriculum_alpha: 2.0
+  variable_view_permute: true
+  outlier_view_prob: 0.15
+  outlier_view_max_views: 1
+  outlier_view_offset_std: 10.0
+  outlier_view_noise_std: 15.0
+
+safety:
+  target_hardware: a800_gpu4
+  notes: >
+    Runs on A800 GPU 4 by default. GPU 4 is intended to be the next free GPU
+    after v52/v81 test work completes; do not launch until it is free.
+
+output:
+  checkpoint: outputs/ablations/aistpp_only_medium_a800.pth
+  log: outputs/ablations/aistpp_only_medium_a800.log
+
+notes:
+  - "AIST++-only medium run with v25 geometry fusion."
+  - "1,280 train clips + 64 val clips; per-file train_samples=4096."
+  - "Best checkpoint selected by val_MPJPE; variable-view training up to 9 views."

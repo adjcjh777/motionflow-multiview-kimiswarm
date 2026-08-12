@@ -1,0 +1,24 @@
+# Non-circular H36M true-GT split using the standard training protocol.
+# Trains on subjects 1, 5, 6, 7, 8 and validates on the standard test subjects S9/S11.
+# This is equivalent to configs/splits/h36m_true_gt_standard.yaml and is provided
+# under a descriptive name so that old-vs-standard protocol comparisons use the
+# same validation/test set.
+name: H36M True GT Standard Protocol (S1,5,6,7,8 -> S9/S11)
+train_paths:
+  - data/h36m_true_gt/s_01_acts_02_03_04_05_06_07_08_09_10_11_12_13_14_15_16_multiview_m.npz
+  - data/h36m_true_gt/s_05_acts_02_03_04_05_06_07_08_09_10_11_12_13_14_15_16_multiview_m.npz
+  - data/h36m_true_gt/s_06_acts_02_03_04_05_06_07_08_09_10_11_12_13_14_15_16_multiview_m.npz
+  - data/h36m_true_gt/s_07_acts_02_03_04_05_06_07_08_09_10_11_12_13_14_15_16_multiview_m.npz
+  - data/h36m_true_gt/s_08_acts_02_03_04_05_06_07_08_09_10_11_12_13_14_15_16_multiview_m.npz
+train_names:
+  - h36m
+  - h36m
+  - h36m
+  - h36m
+  - h36m
+val_paths:
+  - data/h36m_true_gt/s_09_acts_02_03_04_05_06_07_08_09_10_11_12_13_14_15_16_multiview_m.npz
+  - data/h36m_true_gt/s_11_acts_02_03_04_05_06_07_08_09_10_11_12_13_14_15_16_multiview_m.npz
+val_names:
+  - h36m
+  - h36m

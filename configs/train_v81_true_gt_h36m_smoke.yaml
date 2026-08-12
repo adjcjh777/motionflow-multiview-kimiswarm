@@ -1,0 +1,53 @@
+# configs/train_v81_true_gt_h36m_smoke.yaml
+#
+# Small true-GT H36M smoke configuration for v81 (v25 + lightweight per-joint
+# temporal pose attention). Runs in <= 30 min on the local RTX 4090 for wiring
+# and flag validation.
+#
+# Manifest: configs/splits/h36m_true_gt_standard.yaml
+# Runner:   scripts/run_v81_true_gt_h36m_smoke_local_4090.sh
+
+name: v81 true-GT H36M smoke
+split: configs/splits/h36m_true_gt_standard.yaml
+
+architecture:
+  d: 64
+  residual_hidden: 128
+  n_st_layers: 2
+  graph_num_layers: 1
+  n_joint_layers: 1
+  n_heads: 4
+
+schedule:
+  clip_len: 9
+  epochs: 2
+  batch_size: 4
+  train_samples: 256
+  val_stride: 20
+  num_workers: 0
+
+optimization:
+  lr: 1.0e-3
+  lr_cosine: true
+  lr_warmup_epochs: 1
+  lr_min: 1.0e-6
+  max_grad_norm: 1.0
+  ema_decay: 0.999
+
+v25_geometry_fusion:
+  use_multiview_geometry_fusion_v25: true
+  v25_geom_loss_weight: 0.1
+  v25_use_geometry_attention: true
+  v25_use_learned_depth_triangulation: true
+  v25_use_geometry_bundle_adjustment: true
+  v25_dropout: 0.2
+
+v81_temporal_pose_attention:
+  use_temporal_pose_attention_v81: true
+  v81_temporal_window: 9
+  v81_temporal_residual_gate_init: -6.0
+  v81_temporal_dropout: 0.1
+
+output:
+  checkpoint: outputs/omniview_fusion_v81_true_gt_h36m_smoke_local_4090.pth
+  log: outputs/omniview_fusion_v81_true_gt_h36m_smoke_local_4090.log

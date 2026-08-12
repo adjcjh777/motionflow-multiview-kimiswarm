@@ -30,6 +30,7 @@ monitor_dense_graph_v2_nohup.log
 monitor_dense_graph_v2_status.txt
 tmp_pytest
 C*/
+!configs/
 Standard
 archive_cleanup_*/
 tmp_*.sh

@@ -1,0 +1,178 @@
+# configs/ablations/v80_true_gt_regularization_a800.yaml
+#
+# Ablation: stronger regularisation for v80 (view-reliability weighting) on the
+# H36M true-GT standard protocol, intended for A800-D.
+#
+# Motivation
+# ----------
+# The local RTX 4090 medium run of v80 on true-GT H36M reached a valley of
+# 39.98 mm at epoch 4, then overfit to 133.71 mm by epoch 8
+# (outputs/omniview_fusion_v80_h36m_true_gt_medium.log).  Earlier A800 recipes
+# showed the same pattern: a sharp ~40 mm minimum near epoch 2-4 followed by
+# monotone degradation regardless of lr/wd within the tested range.
+#
+# Diagnosed causes (see docs/v25_v80_failure_analysis.md):
+#   - No weight decay and no early stopping.
+#   - Too few unique training samples per epoch (1024 / ~390 k).
+#   - Aggressive lr (1e-3) with only 1-epoch warmup.
+#   - Strong outlier augmentation (outlier_view_prob 0.3) relative to data size.
+#   - The v80 reliability heads can overfit once their identity gates open.
+#
+# This ablation applies the strongest regularisation levers identified above:
+#   - More samples per epoch (4096 vs 1024) to reduce memorisation.
+#   - Weight decay 2e-4 and early stopping (patience 3, min delta 0.001).
+#   - Lower lr (5e-4) with longer warmup (2 epochs).
+#   - Milder augmentation (outlier_view_prob 0.15).
+#   - Explicit geometry regularisation: bone / joint-limit / temporal-bone losses.
+#   - Slightly reduced v25 geometry loss weight (0.05) and increased dropout (0.2)
+#     to constrain the depth-proposal head.
+#
+# IMPORTANT: This file is documentation/reference for the run script. The
+# training script currently consumes command-line flags, not this YAML.
+
+name: v80_true_gt_regularization_a800
+variant: v80-view-reliability
+version: 80
+description: >
+  Stronger-regularisation v80 ablation for H36M true-GT. Tests whether more
+  samples per epoch, weight decay, early stopping, lower LR, milder
+  augmentation, and explicit bone / joint-limit / temporal-bone constraints can
+  prevent the post-epoch-4 overfit seen in the local medium run.
+
+manifest: configs/splits/h36m_true_gt_standard.yaml
+script: experiments/train_omniview_fusion_v5_webbridge_multi.py
+
+training:
+  # Architecture (v80 medium scale, ~818 k params; fits a single A800 GPU).
+  d: 64
+  residual_hidden: 128
+  n_st_layers: 2
+  graph_num_layers: 1
+  n_joint_layers: 1
+  n_heads: 4
+
+  # Schedule
+  clip_len: 13
+  epochs: 20
+  batch_size: 16
+  train_samples: 4096
+  val_stride: 20
+  num_workers: 4
+
+  # Optimisation
+  lr: 5.0e-4
+  lr_cosine: true
+  lr_warmup_epochs: 2
+  lr_min: 1.0e-6
+  max_grad_norm: 1.0
+  ema_decay: 0.999
+  weight_decay: 2.0e-4
+  early_stopping_patience: 3
+  early_stopping_min_delta: 0.001
+
+  # DLT / reweighting.
+  use_full_precision_dlt: false
+  use_robust_dlt_reweight: false
+  use_irls_reweight: false
+
+  # Standard v5 / v18 toggles.
+  use_domain_embedding: true
+  use_multiscale_fusion: true
+  use_camera_conditioning: true
+  use_epipolar_bias: true
+  use_context_visibility: true
+  use_skeleton_residual: true
+  use_rotation_correction: true
+  use_entropy_regularization: true
+  attention_entropy_weight: 0.01
+  use_camera_view_embedding: true
+  use_set_view_aggregator: true
+  use_deformable_cross_view_attention_v18: true
+
+  # v25 geometry fusion (kept light).
+  use_multiview_geometry_fusion_v25: true
+  v25_geom_loss_weight: 0.05
+  v25_dropout: 0.2
+  v25_use_geometry_attention: true
+  v25_use_learned_depth_triangulation: true
+  v25_use_geometry_bundle_adjustment: true
+
+  # v80 regularising module stack.
+  use_v45_adaptive_geometry_fusion: true
+  v45_adaptive_weight_type: per_view_joint
+  use_v46_sparse_view_generalization: true
+  v46_svg_view_dropout_prob: 0.3
+  v46_svg_min_views: 2
+  v46_svg_use_curriculum: true
+  use_v50_self_evolution_feedback_head: true
+  v50_sefh_hidden: 64
+  v50_sefh_num_layers: 2
+  v50_sefh_dropout: 0.1
+  v50_sefh_identity_init_gate: true
+  v50_sefh_loss_weight: 0.0
+  use_v51_cross_domain_sparse_view_reliability: true
+  v51_cdsvr_hidden: 64
+  v51_cdsvr_num_heads: 4
+  v51_cdsvr_dropout: 0.1
+  v51_cdsvr_use_domain_label: true
+  v51_cdsvr_identity_init_gate: true
+  v51_cdsvr_loss_weight: 0.0
+  use_v52_uncertainty_weighted_triangulation: true
+  v52_uwt_hidden: 64
+  v52_uwt_n_layers: 2
+  v52_uwt_weight_type: per_view_joint
+  v52_uwt_use_geometry_bias: true
+  v52_uwt_use_feature_bias: true
+  v52_uwt_identity_init: true
+  v52_uwt_min_weight: 0.05
+  v52_uwt_loss_weight: 0.01
+  v52_uwt_damping: 0.0001
+  use_v80_view_reliability: true
+  v80_vrbt_hidden: 64
+  v80_vrbt_n_layers: 2
+  v80_vrbt_weight_type: per_view_joint
+  v80_vrbt_use_geometry_bias: true
+  v80_vrbt_use_feature_bias: true
+  v80_vrbt_identity_init: true
+  v80_vrbt_min_weight: 0.05
+
+  # Geometry regularisation (this ablation).
+  bone_loss_weight: 0.05
+  joint_limit_weight: 0.01
+  temporal_bone_weight: 0.005
+
+  # Loss weights.
+  pa_loss_weight: 0.5
+  monotonic_loss_weight: 0.1
+  monotonic_margin: 5.0
+  reproj_loss_weight: 0.1
+  reproj_warmup_epochs: 1
+  aleatoric_reproj_loss_weight: 0.1
+
+  # Augmentations (milder than the medium run).
+  use_variable_view_training: true
+  variable_view_min_views: 2
+  variable_view_max_views: 4
+  variable_view_max_views_start: 4
+  variable_view_curriculum_alpha: 2.0
+  variable_view_permute: true
+  outlier_view_prob: 0.15
+  outlier_view_max_views: 1
+  outlier_view_offset_std: 10.0
+  outlier_view_noise_std: 15.0
+
+safety:
+  target_hardware: a800_single_gpu
+  notes: >
+    Run on a single free A800 GPU (default GPU 4; override with
+    CUDA_VISIBLE_DEVICES). GPU 4/6 are the preferred queue targets. Do not
+    launch if another training run is already active on the chosen GPU.
+
+output:
+  checkpoint: outputs/ablations/v80_true_gt_regularization_a800.pth
+  log: outputs/ablations/v80_true_gt_regularization_a800.log
+
+notes:
+  - "Regularisation ablation for v80 true-GT H36M. Goal: avoid the 133.71 mm post-best overfit seen in the local medium run."
+  - "Best checkpoint is selected by val_MPJPE."
+  - "If GPU 4 is busy, run with: CUDA_VISIBLE_DEVICES=6 bash scripts/run_v80_ablation_true_gt_regularization_a800.sh"

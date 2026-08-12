@@ -1,0 +1,117 @@
+# configs/ablations/v25_true_gt_stability.yaml
+#
+# Stability-focused ablation for the v25 H36M true-GT divergence.
+#
+# Starting from the baseline-fix recipe (v25_true_gt_baseline_fix.yaml), this
+# run tests whether a much lower learning rate, longer warmup, and disabling
+# view permutation during variable-view training can prevent the Epoch 2/3
+# validation MPJPE blow-up.
+#
+# Key differences from v25_true_gt_baseline_fix.yaml:
+#   - lr: 1.0e-4 (was 5.0e-4)
+#   - lr_warmup_epochs: 4 (was 2)
+#   - variable_view_permute: false (was true)
+#
+# If this smoke is stable, the same recipe can be scaled to a full A800 run.
+
+name: v25_true_gt_stability
+variant: v25-geometry-fusion
+version: 25
+description: >
+  Baseline-fix with more conservative optimisation: lower LR, longer warmup,
+  and no view permutation. Designed to test whether the v25 geometry-fusion
+  head can remain stable beyond Epoch 1 on the true-GT H36M protocol.
+
+manifest: configs/splits/h36m_true_gt_standard.yaml
+script: experiments/train_omniview_fusion_v5_webbridge_multi.py
+
+training:
+  # Architecture (medium scale, fits a single local RTX 4090 / one A800 GPU).
+  d: 128
+  residual_hidden: 256
+  n_st_layers: 3
+  graph_num_layers: 1
+  n_joint_layers: 1
+  n_heads: 4
+
+  # Schedule
+  clip_len: 13
+  epochs: 20
+  batch_size: 16
+  train_samples: 4096
+  val_stride: 20
+  num_workers: 0
+
+  # Optimisation: conservative LR/warmup to suppress Epoch 2 divergence.
+  lr: 1.0e-4
+  lr_cosine: true
+  lr_warmup_epochs: 4
+  lr_min: 1.0e-6
+  max_grad_norm: 1.0
+  ema_decay: 0.999
+  weight_decay: 1.0e-4
+  early_stopping_patience: 3
+  early_stopping_min_delta: 0.001
+
+  # DLT / reweighting.
+  use_full_precision_dlt: true
+  use_robust_dlt_reweight: true
+  use_irls_reweight: true
+
+  # Standard v5 / v18 / v25 toggles.
+  use_domain_embedding: true
+  use_multiscale_fusion: true
+  use_camera_conditioning: true
+  use_epipolar_bias: true
+  use_context_visibility: true
+  use_skeleton_residual: true
+  use_rotation_correction: true
+  use_entropy_regularization: true
+  attention_entropy_weight: 0.01
+  use_camera_view_embedding: true
+  use_set_view_aggregator: true
+  use_deformable_cross_view_attention_v18: true
+
+  # v25 geometry fusion.
+  use_multiview_geometry_fusion_v25: true
+  v25_geom_loss_weight: 0.05
+  v25_dropout: 0.2
+  v25_use_geometry_attention: true
+  v25_use_learned_depth_triangulation: true
+  v25_use_geometry_bundle_adjustment: true
+
+  # Loss weights.
+  pa_loss_weight: 0.5
+  monotonic_loss_weight: 0.1
+  monotonic_margin: 5.0
+  reproj_loss_weight: 0.1
+  reproj_warmup_epochs: 1
+  aleatoric_reproj_loss_weight: 0.1
+
+  # Augmentations (H36M has 4 cameras, so cap max views at 4).
+  # NOTE: view permutation is intentionally disabled for this ablation.
+  use_variable_view_training: true
+  variable_view_min_views: 2
+  variable_view_max_views: 4
+  variable_view_max_views_start: 4
+  variable_view_curriculum_alpha: 2.0
+  variable_view_permute: false
+  outlier_view_prob: 0.15
+  outlier_view_max_views: 1
+  outlier_view_offset_std: 10.0
+  outlier_view_noise_std: 15.0
+
+safety:
+  target_hardware: local_rtx_4090_smoke_then_a800
+  notes: >
+    Smoke on the local RTX 4090 first (<= 30 min, 5 epochs). If validation
+    MPJPE stays stable past Epoch 2, launch the full 20-epoch run on a free
+    A800 GPU (4 or 6) using the companion A800 script.
+
+output:
+  checkpoint: outputs/ablations/v25_true_gt_stability.pth
+  log: outputs/ablations/v25_true_gt_stability.log
+
+notes:
+  - "Stability ablation: lower LR (1e-4), longer warmup (4 epochs), no view permutation."
+  - "Best checkpoint selected by val_MPJPE, not the final epoch file."
