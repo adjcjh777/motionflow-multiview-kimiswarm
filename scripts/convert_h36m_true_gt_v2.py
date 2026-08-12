@@ -116,7 +116,7 @@ def convert_h36m_true_gt_v2(
 
     # Convert the mm canonical npz to meters (current project convention).
     out_dir.mkdir(parents=True, exist_ok=True)
-    final_path = out_dir / mm_path.name
+    final_path = out_dir / mm_path.name.replace(".npz", "_m.npz")
     with np.load(mm_path) as data:
         np.savez(
             final_path,
