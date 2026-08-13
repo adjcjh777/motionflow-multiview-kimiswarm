@@ -10,7 +10,7 @@
 set -euo pipefail
 
 REPO="/mnt/nvme0n1p1/zhangzy/motionflow-multiview-kimiswarm-iter20"
-PYTHON="/mnt/nvme0n1p1/zhangzy/motionflow-multiview/.venv/bin/python"
+PYTHON="/mnt/nvme0n1p1/zhangzy/motionflow-multiview-kimiswarm/.venv/bin/python"
 
 CUDA_VISIBLE_DEVICES="${CUDA_VISIBLE_DEVICES:-6}"
 export CUDA_VISIBLE_DEVICES
