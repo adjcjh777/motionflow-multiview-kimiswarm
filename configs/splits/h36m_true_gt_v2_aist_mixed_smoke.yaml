@@ -12,7 +12,7 @@ train_names:
   - aist
 val_paths:
   - data/h36m_true_gt_v2/s_09_acts_02_03_04_05_06_07_08_09_10_11_12_13_14_15_16_multiview_m.npz
-  - data/webbridge/aistpp_canonical/gBR_sBM_cAll_d04_mBR0_ch03_multiview.npz
+  - data/webbridge/aistpp_canonical/gBR_sBM_cAll_d05_mBR1_ch01_multiview.npz
 val_names:
   - h36m
   - aist
