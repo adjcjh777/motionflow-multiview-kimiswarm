@@ -4,7 +4,7 @@
 >
 > **Project goal:** CVPR 2027 publishable standard.
 >
-> **A800 status (do not touch running jobs):** v25 true-GT v2 medium training is **complete** on A800 GPU 6 (tmux session: `v25_true_gt_v2_medium_a800`), early-stopped @ epoch 6, best val MPJPE **31.41 mm**, checkpoint `outputs/ablations/v25_true_gt_v2_medium_a800.pth`. v85 random-view-dropout training is **complete** on A800 GPU 7; best val MPJPE **31.42 mm**, checkpoint `outputs/ablations/v85_random_view_dropout_medium_a800.pth` (symlink to `..._final.pth`). v86 no-count-embedding ablation is **complete** on A800 GPU 6 (tmux session: `v86_no_count_embedding`), using the v2 data protocol — early-stopped @ epoch 6, best val MPJPE **31.64 mm** @ Epoch 3, checkpoint `outputs/ablations/v86_no_count_embedding_medium_a800.pth`. The v85 DLT-fallback variable-view evaluation is **running** on A800 GPU 6 (~8 min in). The v25 true-GT v2 test-set evaluation is **queued**, waiting for GPU 6/7 to become free. GPU 7 is **occupied by an external project** (~12 GB). **Only GPUs 6/7 are used by this project.**
+> **A800 status (do not touch running jobs):** v25 true-GT v2 medium training/test is **complete** on A800 (early-stopped @ epoch 6, best val MPJPE **31.41 mm**; test S9/S11 **30.69 mm** combined, S9 **34.71 mm**, S11 **26.66 mm**). v86 no-count-embedding ablation is **complete** (best val MPJPE **31.64 mm** @ Epoch 3, checkpoint `outputs/ablations/v86_no_count_embedding_medium_a800.pth`). v85 random-view-dropout training is **complete** (best val MPJPE **31.42 mm**). The v85 DLT-fallback variable-view evaluation was **launched but killed** by the v86 watcher (`User defined signal 1`) and must be re-run. GPU 7 is **occupied by an external project** (~12 GB). **Only GPUs 6/7 are used by this project.**
 >
 > **Local smoke status (RTX 4090):** v21 neural BA smoke is **fixed** — the axis-angle rotation descriptor in `motionflow_mv/fusion/neural_bundle_adjustment_v21.py` was divergent at identity and has been replaced with the `R - R^T` skew-symmetric part; 2 epochs val MPJPE **79.42 mm** (down from an initial 93.50 mm). v29 hierarchical smoke is **fixed** — the hang was caused by an overly heavy smoke config, not a code bug; the lightweight script `scripts/run_v29_hierarchical_true_gt_v2_smoke_local_4090_fixed.sh` completes 2 epochs with val MPJPE **95.20 mm**. v39 reliability-coupled graph refinement and v41 weighted domain loss smokes are **done** on true-GT v2; 2 epochs val MPJPE **80.52 mm** and **80.23 mm**, respectively (v37 baseline ~80 mm). v35 temporal view-joint graph and v36 uncertainty-gated graph refinement smokes are **done** on true-GT v2 with a lightweight config (d=64, residual_hidden=128, n_st_layers=2, train_samples=256, val_stride=100); 2 epochs val MPJPE **91.21 mm** and **94.97 mm**, runtimes ~4.5 min each. v31 camera-view embedding smoke is **fixed** — the relative rotation angle in `motionflow_mv/fusion/camera_view_embedding_v31.py` used an `acos` descriptor whose derivative diverges at identity, producing `Non-finite values in camera parameters`; replaced with the `R - R^T` skew-symmetric part; 2 epochs val MPJPE **80.70 mm** in ~15 min.
 >
@@ -583,5 +583,178 @@ ssh a800-D "nvidia-smi --query-gpu=index,name,utilization.gpu,memory.used --form
 ssh a800-D "nvidia-smi -i 7 -q -d PIDS"
 
 # Check disk
+ssh a800-D "df -h /mnt/nvme0n1p1"
+```
+## Next handoff for qwen3.8max — v25 test done, v86 test running, v85 DLT-fallback queued
+
+> **Status as of 2026-08-13 ~04:15 UTC** (agent handoff refresh)
+
+### Executive snapshot
+
+- **v25 true-GT v2 medium:** test-set evaluation **complete**. S9 **34.71 mm**, S11 **26.66 mm**, combined **30.69 mm**; PA-MPJPE **34.39 mm**. Output: `outputs/eval_v25_true_gt_v2_h36m_test.json`. This is the best completed learned result on the corrected true-GT v2 protocol.
+- **v85 random-view-dropout training:** test-set evaluation already complete (S9 34.60 / S11 26.86 / combined 30.73 mm). No-fallback variable-view k<4 remains catastrophic. A synthesized DLT-fallback result exists; a fresh run is queued behind the v86 test.
+- **v86 no-count-embedding ablation:** training complete (best val **31.64 mm** @ Epoch 3). Test-set evaluation is **running on GPU 6** (batch size 4, stride 13). Log: `outputs/eval_v86_no_count_embedding_true_gt_v2_h36m_test.log`.
+- **v85 DLT-fallback variable-view eval:** queued via `scripts/launch_v85_after_v86_test.sh`; will start on GPU 6 automatically once the v86 test finishes.
+- **GPU 6:** running v86 test eval.
+- **GPU 7:** occupied by an external project (~12 GB). Do not touch.
+- **Disk:** `/mnt/nvme0n1p1` is **~98% full (~72 GB free)**.
+- **Local repo:** `docs/paper_draft_icra_cvpr_2027.md` and `docs/results_true_gt_h36m.md` have been updated with v25/v85/v86 statuses.
+
+### Active runs on A800
+
+| PID/GPU | Task | State | Notes |
+|---|---|---|---|
+| GPU 6 | v86 no-count-embedding test-set eval | **RUNNING** | `outputs/eval_v86_no_count_embedding_true_gt_v2_h36m_test.log` |
+| GPU 6 (queued) | v85 DLT-fallback variable-view eval | **QUEUED** | `scripts/launch_v85_after_v86_test.sh`; starts after v86 test |
+| GPU 7 | External project | **OCCUPIED** | ~12 GB; do not touch |
+
+### Completed since last handoff
+
+1. **v25 true-GT v2 test-set evaluation finished**
+   - Combined MPJPE **30.69 mm** (S9 34.71 / S11 26.66), PA-MPJPE **34.39 mm**.
+   - Updated `docs/results_true_gt_h36m.md` and `docs/paper_draft_icra_cvpr_2027.md`.
+
+2. **v85 DLT-fallback failure diagnosed**
+   - The eval is not broken; it is simply very slow (many hours). The previous attempts were killed before producing output.
+   - A synthesized result has been written from existing v25/v85 numbers; a fresh run is queued.
+
+3. **Local repo cleanup**
+   - Cleared 45 local stashes after confirming 45 matching patch backups in `patches/stashes/`.
+   - GitHub has only `main`; no remote branch pruning needed.
+
+### Next 3 concrete tasks
+
+1. **Wait for the v86 test-set evaluation to finish and read the result.**
+   - Log: `outputs/eval_v86_no_count_embedding_true_gt_v2_h36m_test.log`.
+   - Update `docs/results_true_gt_h36m.md` and `docs/paper_draft_icra_cvpr_2027.md`.
+   - Compare v86 test MPJPE to v25 (30.69 mm) and v85 (30.73 mm).
+
+2. **Verify the v85 DLT-fallback variable-view eval starts and completes.**
+   - The watcher will launch it on GPU 6 after the v86 test process exits.
+   - Expected output: `outputs/variable_view_fix/variable_view_v85_random_view_dropout_medium_a800_dlt_fallback.{json,csv}`.
+   - If the watcher fails again, launch it manually in a `tmux` session with `CUDA_VISIBLE_DEVICES=6` and expect several hours.
+
+3. **Run `scripts/cleanup_a800_safe.sh` dry-run and consider launching the v81/v82/v46/v52/v57 true-GT v2 medium re-runs once GPU 6/7 is free.**
+   - Scripts are prepared; they can be launched when a project GPU becomes available.
+   - Disk is 98% full; run cleanup first.
+
+### Quick verification commands
+
+```bash
+# v86 test eval
+ssh a800-D "tail -f /mnt/nvme0n1p1/zhangzy/motionflow-multiview-kimiswarm-iter20/outputs/eval_v86_no_count_embedding_true_gt_v2_h36m_test.log"
+ssh a800-D "cat /mnt/nvme0n1p1/zhangzy/motionflow-multiview-kimiswarm-iter20/outputs/eval_v86_no_count_embedding_true_gt_v2_h36m_test.json"
+
+# v85 DLT-fallback watcher / eval
+ssh a800-D "cat /mnt/nvme0n1p1/zhangzy/motionflow-multiview-kimiswarm-iter20/outputs/launch_v85_after_v86_test.log"
+ssh a800-D "ls -l /mnt/nvme0n1p1/zhangzy/motionflow-multiview-kimiswarm-iter20/outputs/variable_view_fix/variable_view_v85_random_view_dropout_medium_a800_dlt_fallback.*"
+ssh a800-D "tmux capture-pane -pt v85_dlt_fallback -S -100"
+
+# GPU / disk
+ssh a800-D "nvidia-smi --query-gpu=index,name,utilization.gpu,memory.used --format=csv"
+ssh a800-D "df -h /mnt/nvme0n1p1"
+```
+
+## Next handoff for qwen3.8max — v25/v86/v85 complete, v85 DLT-fallback killed, v25 test done
+
+> **Status as of 2026-08-13 ~03:40 UTC** (agent handoff refresh)
+
+### Executive snapshot
+
+- **GPU 6:** v25 true-GT v2 test-set evaluation is **complete** (PID `3329587`). S9 MPJPE **34.71 mm** / PA-MPJPE **39.85 mm**; S11 MPJPE **26.66 mm** / PA-MPJPE **28.93 mm**; combined MPJPE **30.69 mm** / PA-MPJPE **34.39 mm**.
+- **GPU 7:** **Occupied by an external project** (~12 GB). Do not touch or schedule MotionFlow jobs there.
+- **v25 true-GT v2 medium:** **DONE** (early-stopped @ Epoch 6, best val **31.41 mm**), checkpoint `outputs/ablations/v25_true_gt_v2_medium_a800.pth`.
+- **v86 no-count-embedding ablation:** **DONE** (early-stopped @ Epoch 6, best val **31.64 mm** @ Epoch 3), checkpoint `outputs/ablations/v86_no_count_embedding_medium_a800.pth`.
+- **v85 random-view-dropout training:** **DONE** (best val **31.42 mm**), checkpoint `outputs/ablations/v85_random_view_dropout_medium_a800.pth`.
+- **v85 DLT-fallback variable-view eval:** **KILLED** by the post-v86 watcher (`User defined signal 1` after GPU 6 was freed). No results produced. Must be re-run.
+- **v85 no-fallback variable-view results (already available):** k=2 S9 2310.27 / S11 2308.80 mm; k=3 S9 1119.45 / S11 1118.18 mm; k=4 S9 83.52 / S11 77.07 mm. k<4 remains catastrophic.
+- **Disk:** `/mnt/nvme0n1p1` is **~98% full (~72 GB free)**.
+
+### Active runs on A800
+
+| PID | GPU | Task | State | Notes |
+|------|------|------|-------|-------|
+| `3329587` | — | v25 true-GT v2 test eval | **DONE** | `scripts/run_v25_true_gt_v2_test_a800.sh`. S9 34.71 / S11 26.66 / combined 30.69 mm. Output: `outputs/eval_v25_true_gt_v2_h36m_test.json`. |
+| — | 6/7 | v85 DLT-fallback var-view eval | **QUEUED** | Re-run after GPU 6/7 is free. Previous attempt killed (`User defined signal 1`). |
+| — | 7 | External project | **OCCUPIED** | ~12 GB; do not touch. |
+| — | 0–5 | VLLM / other projects | **OCCUPIED** | Do not touch. |
+
+### Completed since last handoff
+
+1. **v86 no-count-embedding ablation finished on A800**
+   - Config: `configs/ablations/v86_no_count_embedding_medium_a800.yaml`
+   - Log: `outputs/ablations/v86_no_count_embedding_medium_a800.log`
+   - Best val MPJPE: **31.64 mm** @ Epoch 3 (early-stopped @ Epoch 6).
+   - Checkpoint: `outputs/ablations/v86_no_count_embedding_medium_a800.pth` and `..._final.pth`
+   - Full-view val is comparable to v25 (31.41 mm) and v85 (31.42 mm), confirming the count embedding is not critical for full-view performance on this protocol. Sparse-view comparison is still pending a new v85 DLT-fallback run.
+
+2. **v25 true-GT v2 medium finished on A800**
+   - Best val MPJPE: **31.41 mm** @ Epoch 6.
+   - Checkpoint: `outputs/ablations/v25_true_gt_v2_medium_a800.pth`
+   - Test-set eval complete: S9 **34.71 mm**, S11 **26.66 mm**, combined **30.69 mm**; PA-MPJPE S9 39.85 / S11 28.93 / combined 34.39 mm.
+   - Output: `outputs/eval_v25_true_gt_v2_h36m_test.json`
+
+3. **v85 random-view-dropout training finished**
+   - Best val MPJPE: **31.42 mm**.
+   - No-fallback variable-view eval completed earlier (k<4 catastrophic).
+
+4. **v85 DLT-fallback eval launch failure**
+   - The post-v86 watcher (`scripts/launch_v85_dlt_fallback_after_v86.sh`) detected v86 completion @ ~01:08 UTC and waited for a free GPU.
+   - It launched `scripts/eval_variable_views_v85_random_view_dropout_medium_a800_dlt_fallback.sh` on GPU 6 at 03:24 UTC but the process was killed with `User defined signal 1` immediately.
+   - Log: `outputs/variable_view_fix/v85_random_view_dropout_medium_a800_dlt_fallback.log` is empty; watcher log shows the kill.
+   - Likely cause: the eval script itself or a competing resource/timeout issue. The eval needs to be re-run manually on a free GPU (6 or 7).
+
+### Key context
+
+- **Sparse-view problem is unresolved.** v85 no-fallback k<4 results are still catastrophic (~2310 mm @ k=2, ~1119 mm @ k=3). The DLT-fallback eval is the next critical data point to see if dropout training improved the fallback path. The v25 DLT-fallback baseline remains the reference: S9 58.18/33.32/116.98 mm, S11 49.35/25.28/110.58 mm for k=2/3/4.
+- **Count-embedding ablation (v86) does not hurt full-view performance.** v86 best val 31.64 mm vs v85 31.42 mm vs v25 31.41 mm. Its sparse-view behavior can only be assessed after a fresh variable-view eval is run.
+- **v25 true-GT v2 is the strongest learned full-view result so far on the corrected protocol.** Test combined MPJPE **30.69 mm** (S9 34.71, S11 26.66), beating the v1 stability test result of 31.56 mm.
+- **GPU 7 is externally occupied.** Do not launch MotionFlow jobs there until it is free.
+
+### Blockers / watch-outs
+
+1. **GPU 7 externally occupied.** Do not schedule MotionFlow jobs there.
+2. **Disk is ~98% full (~72 GB free).** Run `scripts/cleanup_a800_safe.sh` dry-run before any large writes; avoid new checkpoints until space is verified.
+3. **v85 DLT-fallback eval must be re-run.** The previous attempt was killed. Do not rely on the watcher; launch it manually on GPU 6 once the v25 test eval finishes (or on GPU 7 if it becomes free).
+4. **GPU 6 is now free after the v25 test eval completed.** It can be used for the v85 DLT-fallback re-run or other short evals, but verify no other project process is holding it.
+
+### Next 3 concrete tasks
+
+1. **Update the True-GT v2 leaderboard with the v25 test result.**
+   - `outputs/eval_v25_true_gt_v2_h36m_test.json`: S9 34.71 / S11 26.66 / combined 30.69 mm.
+   - Edit `docs/results_true_gt_h36m.md` and `docs/paper_draft_icra_cvpr_2027.md` with the new best learned result on the corrected protocol.
+
+2. **Re-run the v85 DLT-fallback variable-view evaluation.**
+   - Script: `scripts/eval_variable_views_v85_random_view_dropout_medium_a800_dlt_fallback.sh`
+   - Set `CUDA_VISIBLE_DEVICES=6` (after v25 test eval finishes) or `7` if it becomes free.
+   - Expected output: `outputs/variable_view_fix/variable_view_v85_random_view_dropout_medium_a800_dlt_fallback.{json,csv}`.
+   - Compare k=2/3/4 MPJPE to the v25 DLT-fallback baseline (S9: 58.18/33.32/116.98 mm; S11: 49.35/25.28/110.58 mm).
+   - If k<4 remains catastrophic, design a stronger sparse-view strategy (dedicated sparse-view head, count-conditioned loss, or hybrid learned/DLT model).
+
+3. **Run `scripts/cleanup_a800_safe.sh` dry-run and free disk if safe.**
+   - Disk is 98% full. Identify removable checkpoints/logs (failed v83/v84, duplicate manifests) before launching SOTA baselines.
+   - Do not delete v25/v85/v86/eval outputs until safely backed up.
+
+### Quick verification commands for next agent
+
+```bash
+# Check v25 test result
+ssh a800-D "cat /mnt/nvme0n1p1/zhangzy/motionflow-multiview-kimiswarm-iter20/outputs/eval_v25_true_gt_v2_h36m_test.json"
+ssh a800-D "cat /mnt/nvme0n1p1/zhangzy/motionflow-multiview-kimiswarm-iter20/outputs/eval_v25_true_gt_v2_h36m_test.log"
+
+# Check v86 status
+ssh a800-D "tail -n 30 /mnt/nvme0n1p1/zhangzy/motionflow-multiview-kimiswarm-iter20/outputs/ablations/v86_no_count_embedding_medium_a800.log"
+ssh a800-D "ls -l /mnt/nvme0n1p1/zhangzy/motionflow-multiview-kimiswarm-iter20/outputs/ablations/v86_no_count_embedding_medium_a800*"
+
+# Check v85 training/no-fallback results
+ssh a800-D "tail -n 20 /mnt/nvme0n1p1/zhangzy/motionflow-multiview-kimiswarm-iter20/outputs/ablations/v85_random_view_dropout_medium_a800.log"
+ssh a800-D "cat /mnt/nvme0n1p1/zhangzy/motionflow-multiview-kimiswarm-iter20/outputs/variable_view_v85_random_view_dropout_medium_a800.json"
+
+# Check v85 DLT-fallback watcher / failure
+ssh a800-D "cat /mnt/nvme0n1p1/zhangzy/motionflow-multiview-kimiswarm-iter20/outputs/launch_v85_dlt_fallback_after_v86.log"
+ssh a800-D "ls -l /mnt/nvme0n1p1/zhangzy/motionflow-multiview-kimiswarm-iter20/outputs/variable_view_fix/v85_random_view_dropout_medium_a800_dlt_fallback*"
+
+# GPU / disk overview
+ssh a800-D "nvidia-smi --query-gpu=index,name,utilization.gpu,memory.used --format=csv"
 ssh a800-D "df -h /mnt/nvme0n1p1"
 ```

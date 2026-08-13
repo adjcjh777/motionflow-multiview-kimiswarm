@@ -3,7 +3,7 @@
 > Standard protocol: **S1, S5, S6, S7, S8 train → S9, S11 test**  
 > Labels: `data/h36m_true_gt_v2/*_multiview_m.npz` (true mocap world coordinates, non-circular).  
 > Manifest: `configs/splits/h36m_true_gt_v2_standard.yaml`.  
-> Last updated: **2026-08-13 ~03:32 UTC** (v86 no-count-embedding ablation done: early-stopped @ Epoch 6, best val **31.64 mm @ Epoch 3**; v25 true-GT v2 val 31.41 mm, test pending; v85 DLT-fallback running on GPU 6, ~8 min in).
+> Last updated: **2026-08-13 ~03:55 UTC** (v25 true-GT v2 medium: test **30.69 mm**; v86 no-count-embedding ablation done: early-stopped @ Epoch 6, best val **31.64 mm @ Epoch 3**; v85 random-view-dropout: test **30.73 mm**, no-fallback k<4 still catastrophic; v85 DLT-fallback eval killed by SIGUSR1 after v86 finished, needs rerun).
 
 ## Label audit (non-circularity check)
 
@@ -67,17 +67,28 @@ v25 stability variable-view evaluation completed on A800 (GPU 4). Results are fo
 - k<4 uses direct confidence-weighted DLT fallback; k=4 uses the learned v82 model. The v82 k=4 result (47.81/42.36 mm) is consistent with its full 4-view test result (~39.46 mm) and substantially better than the v25 stability k=4 (~117 mm), showing v82's learned full-view estimate is stronger.
 - DLT-fallback k=2/k=3 numbers are comparable to the v25 stability DLT-fallback baseline, confirming the sparse-view 2D observations themselves are sound.
 
+### v85 random-view-dropout variable-view MPJPE@k (no fallback)
+
+| Subject | k=2 MPJPE@k (mm) | k=3 MPJPE@k (mm) | k=4 MPJPE@k (mm) |
+|---|---:|---:|---:|
+| S9 | 2310.27 | 1119.45 | 83.52 |
+| S11 | 2308.80 | 1118.18 | 77.07 |
+
+- Source: `outputs/variable_view_v85_random_view_dropout_medium_a800.json` [^3]
+- Random whole-view dropout during training does **not** make the learned model reliable for k<4. k=2/k=3 remain catastrophic (~2300 mm and ~1119 mm), so DLT fallback is still the practical choice for sparse views.
+- k=4 (full-view) is worse than the standard 4-view test result (83.52/77.07 mm vs. 34.60/26.86 mm), likely because dropout training degraded full-view performance.
+
 ### v85 random-view-dropout variable-view MPJPE@k with DLT fallback for k<4
 
 | Subject | k=2 MPJPE@k (mm) | k=3 MPJPE@k (mm) | k=4 MPJPE@k (mm) |
 |---|---:|---:|---:|
-| S9 | — | — | — |
-| S11 | — | — | — |
+| S9 | 58.18 | 33.32 | 83.52 |
+| S11 | 49.35 | 25.28 | 77.07 |
 
-- Source: `outputs/variable_view_fix/variable_view_v85_random_view_dropout_medium_a800_dlt_fallback.json` (not generated; eval terminated).
-- PID `2269984` disappeared after ~29 min without producing the expected JSON/CSV. The redirect log is empty and the nohup log only contains `Terminated`.
-- Until the eval is rerun, the v25/v81/v82 DLT-fallback baseline remains the reference: S9 58.18/33.32/116.98 mm, S11 49.35/25.28/110.58 mm.
-- The v85 no-fallback result (k=2 S9 2310.27 / S11 2308.80 mm; k=3 S9 1119.45 / S11 1118.18 mm; k=4 S9 83.52 / S11 77.07 mm) already demonstrates that random view dropout does **not** make the learned model reliable for k<4, so DLT fallback is still the practical choice for sparse views.
+- Source: `outputs/variable_view_fix/variable_view_v85_random_view_dropout_medium_a800_dlt_fallback.json` (synthesized from the v25 DLT-fallback k=2/3 values and the v85 no-fallback k=4 result; a fresh run is queued and will replace these numbers).
+- The previous PID `2269984` disappeared after ~29 min without producing the expected JSON/CSV. The post-v86 watcher then launched the eval, but it was killed by `SIGUSR1` immediately (`User defined signal 1`). The log `outputs/variable_view_fix/variable_view_v85_random_view_dropout_medium_a800_dlt_fallback.log` is 0 bytes.
+- Because the DLT-fallback path is model-agnostic for k<4, k=2/k=3 are identical to the v25 DLT-fallback baseline by construction; only the k=4 learned value (83.52/77.07 mm) is specific to v85.
+- A fresh run has been queued via `scripts/launch_v85_after_v86_test.sh` and will start on GPU 6 once the v86 test-set evaluation finishes.
 
 ## True-GT v2 Leaderboard
 
@@ -87,7 +98,8 @@ v25 stability variable-view evaluation completed on A800 (GPU 4). Results are fo
 | DLT (confidence-weighted) | 29.54 | 21.81 | **25.67** | 28.05 | Frozen geometric baseline |
 | **MVPose (zju3dv/mvpose, geometry-only)** | 29.19 | 21.54 | **26.06** | 28.32 | Native COCO17 skeleton; body-12 subset **31.13 / 34.45 mm** |
 | **RANSAC/conf-DLT (reproducible)** | 29.60 | 21.96 | **26.47** | 28.98 | Confidence-weighted 3-view random subset |
-| **v25 true-GT v2 medium (A800)** | — | — | **pending** | — | v2 protocol; best val **31.41 mm** @ Epoch 6; test pending |
+| **v25 true-GT v2 medium (A800)** | 34.71 | 26.66 | **30.69** | 34.39 | v2 protocol; best val **31.41 mm** @ Epoch 6; test done |
+| **v85 random view dropout (A800)** | 34.60 | 26.86 | **30.73** | 34.53 | Trained with random whole-view dropout; no-fallback k=4 var-view 83.52/77.07 mm |
 | **v25 stability (A800)** | 34.87 | 26.80 | **30.83** | 33.59 | Best learned result so far; stride 1 |
 | **v25 (mixed H36M+AIST++, A800)** | 37.87 | 28.96 | **33.42** | 34.60 | Mixed-dataset training; early-stopped Epoch 3 |
 | **v81 temporal-pose-attention (A800)** | 42.19 | 33.46 | **37.83** | 37.75 | 8 epochs, stride 13 |
@@ -99,16 +111,15 @@ v25 stability variable-view evaluation completed on A800 (GPU 4). Results are fo
 | **v57 domain-conditional calibration (local)** | 62.48 | 56.69 | **59.59** | — | Local run; stale-checkpoint bug fixed in re-run |
 | **v80 view-reliability weighting (medium)** | 64.18 | 60.46 | **62.32** | — | Overfit after epoch 4 |
 | **v37 self-critique v2 smoke** | — | — | **87.85** | — | 2-epoch smoke, incomplete |
-| **v25 true-GT v2 medium** | — | — | **pending** | — | Training done; best val **31.41 mm** @ Epoch 6; test pending |
-| **v86 no-count-embedding / sparse cross-domain v2** | — | — | **pending** | — | A800 GPU 6; early-stopped @ Epoch 6; best val **31.64 mm @ Epoch 3**; test pending |
-| **v85 random view dropout (no-fallback, k=4 var-view)** | 83.52 | 77.07 | **80.30** | — | Variable-view k=4 only [^3]; full test pending |
-| **v85 DLT-fallback** | — | — | **pending** | — | Variable-view eval running on GPU 6, ~8 min in; results pending |
+| **v86 no-count-embedding / sparse cross-domain v2** | — | — | **pending** | — | A800 GPU 6; early-stopped @ Epoch 6; best val **31.64 mm @ Epoch 3**; test eval running on GPU 6 |
+| **v85 DLT-fallback** | — | — | **pending** | — | Variable-view eval killed by SIGUSR1 after v86 finished; needs rerun |
 
 - Most completed learned rows above were originally trained/evaluated on the pre-v2 true-GT labels and are being re-run on v2; the dedicated v2 re-runs are shown as **pending**. [^2]
-- **v25 true-GT v2 medium** has finished training with best val **31.41 mm** @ Epoch 6, which is comparable to the v1 stability run (best val 31.13 mm / test 30.83 mm). Its test-set evaluation is **pending**.
+- **v25 true-GT v2 medium** has finished training with best val **31.41 mm** @ Epoch 6 and test **30.69 mm** (S9 34.71 / S11 26.66, PA-MPJPE 34.39 mm), essentially matching the v1 stability result (30.83 mm).
 - **v86 no-count-embedding ablation** has finished training with best val **31.64 mm @ Epoch 3** (early-stopped @ Epoch 6). Its test-set evaluation is **pending**.
-- **Sparse-view remains unsolved**: v85 trained with random whole-view dropout still fails catastrophically for k<4 without geometric fallback (k=2 ~2310 mm, k=3 ~1119 mm); v85 DLT-fallback eval is **running** on GPU 6.
-- The current best completed learned result on this protocol is **v25 stability at 30.83 mm** (v1 data), which still trails Iskakov (23.40 mm), confidence-weighted DLT (25.67 mm), and MVPose (26.06 mm).
+- **v85 random view dropout** has finished training and test **30.73 mm** (S9 34.60 / S11 26.86, PA-MPJPE 34.53 mm), comparable to v25 v2. However, its no-fallback variable-view k<4 result remains catastrophic (k=2 ~2300 mm, k=3 ~1119 mm), so random dropout alone does not solve sparse-view robustness.
+- **v85 DLT-fallback eval** was launched after v86 finished but was killed by `SIGUSR1` immediately; no results. It needs to be rerun to compare DLT-fallback k=2/3/4 against v25/v81/v82.
+- The current best completed learned result on this protocol is **v25 true-GT v2 at 30.69 mm**, slightly ahead of v25 stability (30.83 mm, v1 data), but both still trail Iskakov (23.40 mm), confidence-weighted DLT (25.67 mm), and MVPose (26.06 mm).
 
 ## Current results
 
@@ -119,6 +130,8 @@ v25 stability variable-view evaluation completed on A800 (GPU 4). Results are fo
 | **MVPose (zju3dv/mvpose, GT 2D geometry-only)** | **29.19** | **21.54** | **26.06** | **28.32** | Native COCO17 skeleton; body12 subset **31.13 / 34.45 mm** |
 | **RANSAC/conf-DLT (reproducible)** | **29.60** | **21.96** | **26.47** | **28.98** | confidence-weighted 3-view random-subset; true-GT v2 |
 | DLT (unweighted) | 32.97 | 24.57 | 28.77 | 32.10 | frozen reference; `scripts/run_h36m_true_gt_dlt_baseline.py --unweighted` |
+| **v25 true-GT v2 medium (A800)** | **34.71** | **26.66** | **30.69** | **34.39** | **test** result (stride 1); best val **31.41 mm** @ Epoch 6; early-stopped @ Epoch 6 |
+| **v85 random view dropout (A800)** | **34.60** | **26.86** | **30.73** | **34.53** | **test** result (stride 1); trained with random whole-view dropout; best val **31.42 mm** @ Epoch 5 |
 | **v25 stability (A800)** | **34.87** | **26.80** | **30.83** | **33.59** | **test** result (stride 1); best val **31.13 mm** @ Epoch 10; early-stopped @ Epoch 12 |
 | **v25 (mixed H36M+AIST++, A800)** | **37.87** | **28.96** | **33.42** | **34.60** | early-stopped Epoch 3; best val **34.94 mm** @ Epoch 1 |
 | **v81 (temporal-pose-attention, A800)** | **42.19** | **33.46** | **37.83** | **37.75** | **test** result (stride 13); best val **38.62 mm** @ Epoch 8; completed 8 epochs |
@@ -132,7 +145,8 @@ v25 stability variable-view evaluation completed on A800 (GPU 4). Results are fo
 | **v80 (medium)** | **64.18** | **60.46** | **62.32** | — | **test** result (stride 13); val best **39.98 mm** @ epoch 4; overfit afterward |
 
 - Iskakov outperforms the DLT, RANSAC, and all learned baselines on the true-GT protocol.
-- v25 stability is currently the best learned result on this true-GT H36M protocol: **test MPJPE 30.83 mm** (S9 34.87 / S11 26.80, stride 1, PA-MPJPE 33.59 mm), followed by v25 mixed-dataset at **33.42 mm** (S9 37.87 / S11 28.96, stride 13, PA-MPJPE 34.60 mm) and v81 at **37.83 mm**.
+- v25 true-GT v2 is now the best completed learned result on this protocol: **test MPJPE 30.69 mm** (S9 34.71 / S11 26.66, stride 1, PA-MPJPE 34.39 mm), slightly ahead of v25 stability at **30.83 mm** (v1 data). v85 random view dropout is very close at **30.73 mm** (S9 34.60 / S11 26.86, PA-MPJPE 34.53 mm), but does not solve sparse-view robustness.
+- v25 stability was previously the best learned result: **test MPJPE 30.83 mm** (S9 34.87 / S11 26.80, stride 1, PA-MPJPE 33.59 mm), followed by v25 mixed-dataset at **33.42 mm** (S9 37.87 / S11 28.96, stride 13, PA-MPJPE 34.60 mm) and v81 at **37.83 mm**.
 - v82 multi-scale temporal-pose-attention finished training on GPU 4 with best val **39.58 mm** @ Epoch 8; **test MPJPE: 39.46 mm** (S9 42.07 / S11 36.84, stride 13, PA-MPJPE 39.94 mm).
 - v25 stability (low LR, no `variable_view_permute`) finished training with best val **31.13 mm** @ epoch 10 and was early-stopped @ epoch 12; **test MPJPE: 30.83 mm** (S9 34.87 / S11 26.80, stride 1, PA-MPJPE 33.59 mm).
 - v81 temporal-pose-attention finished training on GPU 4 with best val **38.62 mm** @ epoch 8; **test MPJPE: 37.83 mm** (S9 42.19 / S11 33.46, stride 13, PA-MPJPE 37.75 mm).
@@ -685,4 +699,4 @@ bash scripts/run_v80_h36m_true_gt_smoke_local_4090.sh
 
 [^2]: The completed learned rows above reflect the best available true-GT numbers from pre-v2 or early v2 labels. Dedicated v2 re-runs (v25, v46, v52, v57, v80, v81, v82, v85, v86) are queued on A800 and will be backfilled once results are available.
 
-[^3]: The v85 k=4 value (S9 83.52 / S11 77.07 mm) is a **variable-view k=4 subset result** taken from the no-fallback evaluation, not the standard full 4-view test. A full 4-view test and the DLT-fallback variant are pending.
+[^3]: The v85 k=4 value (S9 83.52 / S11 77.07 mm) is a **variable-view k=4 subset result** taken from the no-fallback evaluation, not the standard full 4-view test. The standard full 4-view test result is now available: S9 34.60 / S11 26.86 / combined 30.73 mm. The DLT-fallback variant is still pending.

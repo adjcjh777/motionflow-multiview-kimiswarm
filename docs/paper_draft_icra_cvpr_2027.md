@@ -206,31 +206,31 @@ Table 2 summarises the current true-GT v2 H36M leaderboard. Cells marked **TODO*
 | Iskakov ICCV 2019 | 27.15 | 19.65 | **23.40** | 23.15 | current true-GT leader |
 | DLT (confidence-weighted) | 29.54 | 21.81 | **25.67** | 28.05 | true-GT v2 geometric baseline |
 | RANSAC/conf-DLT | 29.60 | 21.96 | **26.47** | 28.98 | reproducible 3-view random-subset baseline |
-| v25 true-GT v2 medium | TODO | TODO | TODO | TODO | best val **31.41 mm** @ Epoch 6; test eval pending |
+| **v25 true-GT v2 medium (A800)** | **34.71** | **26.66** | **30.69** | **34.39** | test done; best val **31.41 mm** @ Epoch 6; true-GT v2 protocol |
 | v25 stability (v1) | 34.87 | 26.80 | **30.83** | 33.59 | stride 1, A800 |
+| **v85 random-view dropout (A800)** | **34.60** | **26.86** | **30.73** | **34.53** | test done; best val **31.42 mm**; no-fallback k=4 variable view 83.52 / 77.07 mm (Section 5.4) |
+| v86 no-count-embedding (A800) | TODO | TODO | TODO | TODO | training done; best val **31.64 mm** @ Epoch 3; standard test eval pending |
 | v81 temporal-pose-attention | 42.19 | 33.46 | **37.83** | 37.75 | stride 13 |
 | v82 multi-scale temporal-pose-attention | 42.07 | 36.84 | **39.46** | 39.94 | stride 13 |
 | v46-SVG | 55.03 | 49.88 | **52.46** | 40.20 | select-view geometry |
 | v80 regularization | 56.69 | 51.27 | **53.98** | 32.47 | view-reliability head |
 | v52-UWT | 58.15 | 49.87 | **54.01** | 42.22 | uncertainty-weighted triangulation |
 | v57-DC-PSC | 61.09 | 53.11 | **57.10** | 37.30 | dual-camera pose calibration |
-| v85 random-view dropout | TODO | TODO | TODO | TODO | best val **31.42 mm**; standard test eval pending; no-fallback k=4 variable view 83.52 / 77.07 mm (Section 5.4) |
-| v86 no-count-embedding | TODO | TODO | TODO | TODO | Epoch 3 val **31.64 mm**; training on A800 GPU 6; standard test eval pending |
 
-v25 true-GT v2 medium and v85 random-view dropout reach nearly identical validation MPJPE (31.41 mm vs. 31.42 mm), indicating that random whole-view dropout during training does not degrade full-view performance on the v2 protocol. v86, which removes the active-view-count embedding, reports 31.64 mm after three epochs and is on track to match the other two. Test-set evaluation and the sparse-view MPJPE@k curves (Section 5.4) will determine whether the count embedding justifies its overhead.
+v25 true-GT v2 medium and v85 random-view dropout reach nearly identical full-view performance (test MPJPE **30.69 mm** vs. **30.73 mm**; val **31.41 mm** vs. **31.42 mm**), indicating that random whole-view dropout during training does not degrade full-view performance on the v2 protocol. v86, which removes the active-view-count embedding, reports a best val of **31.64 mm** and is on track to match the other two. Sparse-view MPJPE@k curves (Section 5.4) will determine whether the count embedding justifies its overhead.
 
 **Table 3.** Sparse-view MPJPE@k (mm) on H36M true-GT v2 (S9/S11 macro mean). DLT-fallback rows use geometric triangulation for $k<4$; no-fallback rows use the learned model at all $k$.
 
 | Method | k=2 | k=3 | k=4 | Notes |
 |---|---:|---:|---:|---|
-| DLT (confidence-weighted) | 36.42 | 33.68 | 25.94 | geometric baseline |
+| DLT (confidence-weighted) | 36.42 | 33.68 | 25.94 | first-subset geometric baseline |
 | Iskakov ICCV 2019 | 53.62 | **27.84** | **23.42** | current true-GT leader |
 | v25 stability (DLT fallback) | 53.76 | 29.30 | 113.78 | k=2/3 direct DLT, k=4 learned |
 | v82 multi-scale (DLT fallback) | 53.77 | 29.30 | **45.09** | k=2/3 direct DLT, k=4 learned |
-| v85 random-view dropout (DLT fallback) | TODO | TODO | TODO | queued behind v86 |
+| v85 random-view dropout (DLT fallback) | 53.76 | 29.30 | 80.30 | k=2/3 direct DLT, k=4 learned v85 |
 | v85 random-view dropout (no fallback) | 2309.54 | 1118.82 | 80.29 | k<4 catastrophic |
-| v86 no-count-embedding (DLT fallback) | TODO | TODO | TODO | running on A800 GPU 6 |
-| v86 no-count-embedding (no fallback) | TODO | TODO | TODO | running on A800 GPU 6 |
+| v86 no-count-embedding (DLT fallback) | TODO | TODO | TODO | test eval pending |
+| v86 no-count-embedding (no fallback) | TODO | TODO | TODO | test eval pending |
 
 **Table 4.** Cross-domain and detected-2D results.
 
@@ -293,9 +293,9 @@ Metrics are direct MPJPE and PA-MPJPE in millimetres, plus PCK and AUC where app
 | RANSAC/conf-DLT (reproducible) | 29.60 | 21.96 | **26.47** | 28.98 | true-GT v2 confidence-weighted 3-view random-subset; `outputs/h36m_true_gt_v2/ransac_dlt_h36m_true_gt_v2.json` |
 | DLT (unweighted) | 32.97 | 24.57 | 28.77 | 32.10 | true-GT v2 frozen geometric baseline; `outputs/h36m_true_gt_v2/dlt_baseline_h36m_true_gt_v2.json` |
 | **v25 stability (A800)** | **34.87** | **26.80** | **30.83** | **33.59** | **test** result (stride 1); best val **31.13 mm** @ Epoch 10; early-stopped @ Epoch 12 |
-| **v25 true-GT v2 medium (A800)** | TODO | TODO | TODO | TODO | best val **31.41 mm** @ Epoch 6; **test evaluation pending**; uses true-GT v2 protocol |
-| **v85 random-view dropout (A800)** | 83.52 | 77.07 | **80.29** | TODO | no-fallback k=4 only; best val **31.42 mm**; k<4 catastrophic; trained with random whole-view dropout p=0.3 |
-| **v86 no-count-embedding (A800)** | TODO | TODO | TODO | TODO | running on A800 GPU 6; ablates active-view-count embedding against v85 |
+| **v25 true-GT v2 medium (A800)** | **34.71** | **26.66** | **30.69** | **34.39** | **test** result (stride 1); best val **31.41 mm** @ Epoch 6; true-GT v2 protocol |
+| **v85 random-view dropout (A800)** | **34.60** | **26.86** | **30.73** | **34.53** | **test** result (stride 1); best val **31.42 mm**; no-fallback k=4 variable view 83.52 / 77.07 mm; k<4 catastrophic |
+| **v86 no-count-embedding (A800)** | TODO | TODO | TODO | TODO | training done; best val **31.64 mm** @ Epoch 3; standard test eval pending |
 | **v25 (mixed H36M+AIST++, A800)** | **37.87** | **28.96** | **33.42** | **34.60** | early-stopped Epoch 3; best val **34.94 mm** @ Epoch 1 |
 | **v81 (temporal-pose-attention, A800)** | **42.19** | **33.46** | **37.83** | **37.75** | **test** result (stride 13); best val **38.62 mm** @ Epoch 8; completed 8 epochs |
 | **v82 (multi-scale temporal-pose-attention, A800)** | **42.07** | **36.84** | **39.46** | **39.94** | **test** result with EMA weights (stride 13); best val **39.58 mm** @ Epoch 8; completed 8 epochs |

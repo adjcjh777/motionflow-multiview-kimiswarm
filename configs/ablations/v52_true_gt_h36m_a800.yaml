@@ -20,7 +20,7 @@ description: >
   removes v57 DC-PSC, so v52 UWT is the only new component beyond the
   v45/v46/v50/v51 stack.
 
-manifest: configs/splits/h36m_true_gt_standard.yaml
+manifest: configs/splits/h36m_true_gt_v2_standard.yaml
 script: experiments/train_omniview_fusion_v5_webbridge_multi.py
 
 training:
@@ -163,8 +163,8 @@ safety:
 
   target_hardware: a800_single_gpu
   notes: >
-    Run on a single free A800 GPU (default GPU 4; override with
-    CUDA_VISIBLE_DEVICES). GPU 4/6 are the preferred queue targets. Do not
+    Run on a single free A800 GPU (default GPU 6; override with
+    CUDA_VISIBLE_DEVICES). GPUs 6/7 are the only project GPUs. Do not
     launch if another training run is already active on the chosen GPU.
 
 output:
