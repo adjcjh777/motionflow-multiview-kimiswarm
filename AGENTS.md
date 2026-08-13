@@ -905,10 +905,11 @@ ssh a800-D "df -h /mnt/nvme0n1p1"
 - **MPI-INF-3DHP official test server submission prepared.** New guide `docs/mpi_submission_checklist_and_guide.md`, conversion script `scripts/convert_npz_to_mpi_submission.py`, and verification script `scripts/verify_mpi_submission_format.py` added and smoke-tested with synthetic data.
 - **VoxelPose true-GT v2 prep and GPU-check watcher done on A800 CPU.** Data converted; `scripts/run_voxelpose_true_gt_v2_gpu_check_a800.sh` watcher is waiting for free GPU 6/7. Config `GPUS: '0'` with `CUDA_VISIBLE_DEVICES=6/7` should avoid the old `Invalid device id` bug.
 - **Three-dataset manifest created.** `configs/splits/h36m_true_gt_v2_aist_mpi_mixed_train_val_a800.yaml` with H36M=0, MPI=1, AIST=2; all paths verified.
+- **Three-dataset smoke (H36M + AIST++ + MPI detected-2D) in progress on local RTX 4090.** Config `configs/ablations/v25_three_dataset_mixed_smoke.yaml`, script `scripts/run_v25_three_dataset_mixed_smoke_local_4090.sh`. Training stable, no NaN/crash; final per-domain val_MPJPE pending.
 - **Cleanup dry-run on A800:** no safe-to-delete files found; disk remains **~98% full (~71 GB free)**.
 - **True-GT v2 variable-view manifest and scripts created.** `tmp/h36m_true_gt_v2_val_manifest.txt` plus 7 scripts for v25/v81/v82/v85/v86 (no-fallback and DLT-fallback). All scripts pass `bash -n` and are ready to run once the corresponding checkpoints exist and GPU 6/7 is free.
 - **Paper draft small fixes.** `docs/paper_draft_icra_cvpr_2027.md` throughput unified to `11.8–159.3 clips/s`, AIST++ GPU reference changed to `A800`, Table 3/Table 5 merged and duplicate Table 5 removed.
-- **Uncommitted changes:** Iskakov scripts, v86/v87 configs, MPI submission scripts/docs.
+- **Uncommitted changes:** three-dataset smoke config/script; A800 repo is at a local commit not in origin/main and has many uncommitted modifications—do not sync blindly.
 
 ## Next handoff for qwen3.8max — v81 running, v82 smoke done, chain watcher active
 
