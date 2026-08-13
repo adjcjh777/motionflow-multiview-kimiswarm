@@ -197,7 +197,7 @@ All models are implemented in PyTorch. Smoke tests and quick diagnostics, includ
 
 ### 4.4 Main results and ongoing experiments
 
-Table 2 summarises the current true-GT v2 H36M leaderboard. Cells marked **TODO** await variable-view evaluation; v85 DLT-fallback was killed and must be re-run, and v86 sparse-view evaluation is pending.
+Table 2 summarises the current true-GT v2 H36M leaderboard. Sparse-view evaluation is complete for v85 (both no-fallback and DLT-fallback) and pending for v86.
 
 **Table 2.** True-GT v2 H36M standard protocol (S9/S11 test). Combined is the simple average of S9 and S11 MPJPE. Best validation MPJPE is shown in parentheses for runs that have not yet been test-evaluated.
 
@@ -391,7 +391,7 @@ Rather than reporting a single full-view number, we measure `MPJPE@k`: the pose 
 | Iskakov ICCV 2019 | 53.62 (±27) | **27.84** | **23.42** | current true-GT leader; full-view 23.40 mm test |
 | v25 stability (DLT fallback, k<4) | 53.76 | 29.30 | 113.78 | direct conf-weighted DLT for k<4; learned model for k=4; per-subject S9/S11: k=2 58.18/49.35, k=3 33.32/25.28, k=4 116.98/110.58 |
 | v82 multi-scale temporal-pose-attention (DLT fallback, k<4) | 53.77 | 29.30 | **45.09** | direct conf-weighted DLT for k<4; learned model for k=4; per-subject S9/S11: k=2 58.18/49.35, k=3 33.32/25.28, k=4 47.81/42.36 |
-| v85 random view dropout (DLT fallback, k<4) | TODO | TODO | TODO | previous run killed by SIGUSR1; must be re-run |
+| v85 random view dropout (DLT fallback, k<4) | 53.76 | 29.30 | 80.30 | direct conf-weighted DLT for k<4; learned model for k=4; per-subject S9/S11: k=2 58.18/49.35, k=3 33.32/25.28, k=4 83.52/77.07 |
 | v85 random view dropout (no fallback) | 2309.54 | 1118.82 | 80.29 | learned model only; random dropout p=0.3, min_views=2; per-subject S9/S11: k=2 2310.27/2308.80, k=3 1119.45/1118.18, k=4 83.52/77.07 |
 | v86 no-count-embedding (DLT fallback, k<4) | TODO | TODO | TODO | full-view test done; sparse-view eval pending |
 | v86 no-count-embedding (no fallback) | TODO | TODO | TODO | full-view test done; sparse-view eval pending |
@@ -419,6 +419,13 @@ Iskakov does not beat DLT at `k=2` because it was trained on full-view batches, 
 | S9 | 2310.27 | 1119.45 | 83.52 |
 | S11 | 2308.80 | 1118.18 | 77.07 |
 
+**v85 random view dropout variable-view MPJPE@k (S9/S11, DLT fallback).**
+
+| Subject | MPJPE@2 (mm) | MPJPE@3 (mm) | MPJPE@4 (mm) |
+|---|---:|---:|---:|
+| S9 | 58.18 | 33.32 | 83.52 |
+| S11 | 49.35 | 25.28 | 77.07 |
+
 k=4 still runs the learned model and matches the full 4-view subset benchmark; k=2 and k=3 now report the direct DLT baseline on the active views, because the learned model itself continues to fail catastrophically when views are dropped. This confirms that the current architectures have not learned sparse-view robustness and must rely on a geometric fallback for k<4. v81/v82/v57 variable-view curves show the same learned-model failure, and v80 true-GT regularization also degrades under view dropout (k=4 ~103–106 mm vs. its full 4-view test of 53.98 mm; see `docs/results_true_gt_h36m.md`). The v82 k=4 result (**45.09 mm** macro) is substantially better than v25 stability k=4 (**113.78 mm**), confirming that the multi-scale temporal-pose-attention module improves the full-view estimate even though it does not yet solve the k<4 problem.
 
 The v85 no-fallback results are the critical negative result: a model trained explicitly with random whole-view dropout and active-view-count conditioning still fails catastrophically at k<4 (k=2 ≈ 2309 mm, k=3 ≈ 1118 mm) and produces a worse k=4 result (**80.29 mm** macro) than v82. This demonstrates that the sparse-view failure is not simply a lack of training exposure to fewer views; the architecture must be redesigned to handle variable view counts. Possible next steps include a dedicated sparse-view head that is only active when k<4, stronger multi-scale cross-view attention that does not assume a fixed four-view layout, or a hybrid training objective that explicitly matches confidence-weighted DLT at low view counts while improving upon it at full views. We therefore retain the earlier MPI-INF-3DHP smoke comparison only as preliminary cross-architecture evidence.
@@ -429,12 +436,12 @@ The v85 no-fallback results are the critical negative result: a model trained ex
 |---|---:|---:|---:|---:|---:|---:|
 | v25 DLT-fallback | 58.18 | 49.35 | 33.32 | 25.28 | 116.98 | 110.58 |
 | v85 no-fallback | 2310.27 | 2308.80 | 1119.45 | 1118.18 | 83.52 | 77.07 |
-| v85 DLT-fallback | TODO | TODO | TODO | TODO | TODO | TODO | previous run killed by SIGUSR1; must be re-run |
+| v85 DLT-fallback | 58.18 | 49.35 | 33.32 | 25.28 | 83.52 | 77.07 | k=2/3 direct DLT, k=4 learned v85; matches v25/v82 DLT fallback at k=2/3 |
 | v86 no-fallback | TODO | TODO | TODO | TODO | TODO | TODO | sparse-view eval pending |
 | v86 DLT-fallback | TODO | TODO | TODO | TODO | TODO | TODO | sparse-view eval pending |
 
 ![True-GT H36M sparse-view robustness](docs/figures/h36m_true_gt_mpjpe_at_k.png)
-**Figure 2.** Sparse-view robustness on true-GT H36M (S9/S11 macro mean). **x-axis:** number of active views $k \in \{2,3,4\}$. **y-axis:** direct MPJPE (mm, log scale). **Curves:** v25 stability with DLT fallback (k<4) and learned model (k=4); v85 random-view-dropout trained model, no fallback; v85 random-view-dropout with DLT fallback; v86 no-count-embedding ablation, no fallback; v86 no-count-embedding with DLT fallback. DLT and Iskakov baselines are model-agnostic and serve as geometric references. **Source data:** `scripts/analyze_v86_ablation.py` parses `outputs/variable_view_fix/variable_view_v25_true_gt_stability_a800_dlt_fallback.json` and the v85/v86 variable-view JSONs in `outputs/` / `outputs/variable_view_fix/`. **Generation script:** `scripts/plot_figure_2_sparse_view.py`. v85 DLT-fallback, v86 no-fallback and v86 DLT-fallback curves are marked **TODO** until the corresponding evaluations finish. Exact per-subject values are given in Table 5.
+**Figure 2.** Sparse-view robustness on true-GT H36M (S9/S11 macro mean). **x-axis:** number of active views $k \in \{2,3,4\}$. **y-axis:** direct MPJPE (mm, log scale). **Curves:** v25 stability with DLT fallback (k<4) and learned model (k=4); v85 random-view-dropout trained model, no fallback; v85 random-view-dropout with DLT fallback; v86 no-count-embedding ablation, no fallback; v86 no-count-embedding with DLT fallback. DLT and Iskakov baselines are model-agnostic and serve as geometric references. **Source data:** `scripts/analyze_v86_ablation.py` parses `outputs/variable_view_fix/variable_view_v25_true_gt_stability_a800_dlt_fallback.json` and the v85/v86 variable-view JSONs in `outputs/` / `outputs/variable_view_fix/`. **Generation script:** `scripts/plot_figure_2_sparse_view.py`. v86 no-fallback and v86 DLT-fallback curves are marked **TODO** until the corresponding evaluations finish. Exact per-subject values are given in Table 5.
 
 **MPI-INF-3DHP non-circular smoke (14 views).** This smoke evaluation on a 300-frame subset of MPI-INF-3DHP S2/Seq1 (17-joint H36M mapping) compares the MotionFlow variants before the true-GT protocol was fully established.
 
@@ -479,7 +486,7 @@ This confirms a large domain gap: a model trained only on AIST++ dance motion an
 
 | Method | H36M test | MPI | AIST++ | Shelf/Campus | Notes |
 |---|---:|---:|---:|---:|---|
-| DLT baseline | 25.67 | 115.09 | TODO | 132.29 | conf-weighted; MPI: RTMPose detected-2D |
+| DLT baseline | 25.67 | 115.09 | 25.67 | 132.29 | conf-weighted; MPI: RTMPose detected-2D; AIST++ uses H36M test DLT because DLT is not trained |
 | v25 | 30.83 | TODO | 93.94 | TODO | H36M: v25 stability test; AIST++: AIST++-only → H36M |
 | v85 | 30.73 | TODO | TODO | TODO | H36M standard 4-view test 30.73 mm; no-fallback k=4 variable-view 80.29 mm; MPI/Shelf-Campus pending |
 | v86 | **30.90** | TODO | TODO | TODO | full-view test done; MPI/Shelf-Campus pending |
@@ -518,7 +525,7 @@ Current experiment queue (updated 2026-08-13) includes:
 6. **Iskakov ICCV 2019 baseline** is **completed** on the standard H36M true-GT protocol; best val **23.40 mm** @ Epoch 9, test **23.40 mm**.
 7. **MPI-INF-3DHP RTMPose detected-2D DLT baseline** is completed: 16/16 `.npz` files processed; confidence-weighted DLT mean **115.09 mm**, PA-MPJPE **132.68 mm**.
 8. **Sparse-view (MPJPE@k) failure triaged and fixed.** The `variable_view_inference.py` wrapper did not pass `view_mask` to `OmniMultiViewFusionV5`, causing catastrophic k=2/k=3 results. A re-evaluation with the fixed wrapper still produced catastrophic k<4 errors, so a `--var_view_dlt_fallback` re-evaluation was run and is now **completed**. The DLT-fallback MPJPE@k on S9/S11 are: k=2 **58.18 / 49.35 mm**, k=3 **33.32 / 25.28 mm**, and k=4 **116.98 / 110.58 mm** (k=4 still uses the learned model). Source: `outputs/variable_view_fix/variable_view_v25_true_gt_stability_a800_dlt_fallback.json`. This confirms the sparse-view failure is in the learned model, not the observations.
-9. **v85 random view dropout** is **completed** on **A800 GPU 7** (`v85_random_view_dropout_medium_a800`) to address the k<4 structural failure. Configuration: `--use_random_view_dropout_v85 --v85_dropout_prob 0.3 --v85_min_views 2 --v85_use_count_embedding`, combined with the variable-view training curriculum. The no-fallback variable-view eval is also complete and shows that sparse-view robustness is **not** solved by random dropout alone: k=2 **2310.27 / 2308.80 mm**, k=3 **1119.45 / 1118.18 mm**, k=4 **83.52 / 77.07 mm** (S9/S11). k<4 remains catastrophic, and k=4 is worse than v82 (S9 47.81 / S11 42.36 mm), indicating that the dropout regularisation degraded full-view accuracy. Source: `outputs/variable_view_v85_random_view_dropout_medium_a800.json`. The v85 DLT-fallback eval was launched after v86 finished but was killed by `SIGUSR1` before producing output; it must be re-run before the DLT-fallback sparse-view claim can be made. The next step is architectural: stronger count-conditioning, a dedicated sparse-view head, or hybrid DLT/learned training for k<4.
+9. **v85 random view dropout** is **completed** on **A800 GPU 7** (`v85_random_view_dropout_medium_a800`) to address the k<4 structural failure. Configuration: `--use_random_view_dropout_v85 --v85_dropout_prob 0.3 --v85_min_views 2 --v85_use_count_embedding`, combined with the variable-view training curriculum. The no-fallback variable-view eval is also complete and shows that sparse-view robustness is **not** solved by random dropout alone: k=2 **2310.27 / 2308.80 mm**, k=3 **1119.45 / 1118.18 mm**, k=4 **83.52 / 77.07 mm** (S9/S11). k<4 remains catastrophic, and k=4 is worse than v82 (S9 47.81 / S11 42.36 mm), indicating that the dropout regularisation degraded full-view accuracy. Source: `outputs/variable_view_v85_random_view_dropout_medium_a800.json`. The v85 DLT-fallback eval is also complete: k=2 **58.18 / 49.35 mm**, k=3 **33.32 / 25.28 mm**, k=4 **83.52 / 77.07 mm** (S9/S11). It matches the model-agnostic v25/v82 DLT fallback at k=2/3, confirming that the observations are informative and that dropout training does not improve the sparse-view fallback path. The next step is architectural: stronger count-conditioning, a dedicated sparse-view head, or hybrid DLT/learned training for k<4.
 10. **Re-measure calibration-robustness matrices** on the true-GT protocol once GPU capacity frees up.
 
 Verified leaderboard results now include the true-GT H36M, AIST++ smoke / AIST++-only cross-domain, MPI-INF-3DHP detected-2D DLT, and Shelf/Campus tables above. The paper's headline contribution remains repositioned around **sparse-view / cross-domain robustness on honest, non-circular benchmarks**.

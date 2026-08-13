@@ -464,17 +464,18 @@ v85 was the first model trained natively with random whole-view dropout (`p=0.3`
 - Source CSV: `outputs/variable_view_v85_random_view_dropout_medium_a800_k{2,3,4}.csv`
 - **k<4 remains catastrophic** (~1100-2300 mm), even though v85 was trained with random view dropout. The learned model alone still cannot generalise to sparse views.
 - **k=4 is reasonable** (S9 83.52 / S11 77.07 mm) but worse than v82 k=4 (47.81 / 42.36 mm), suggesting the dropout regularisation hurt full-view accuracy.
-- The DLT-fallback evaluation of v85 has not yet run; once available it should be compared to the v25/v81/v82 DLT-fallback numbers (S9 k=2/3/4 = 58.18/33.32/116.98 mm; S11 = 49.35/25.28/110.58 mm).
+- The DLT-fallback evaluation is now complete: S9 k=2/3/4 = 58.18/33.32/83.52 mm; S11 = 49.35/25.28/77.07 mm. It matches the model-agnostic v25/v81/v82 DLT-fallback numbers at k=2/3 and uses the learned v85 model at k=4. Source: `outputs/variable_view_fix/variable_view_v85_random_view_dropout_medium_a800_dlt_fallback.{json,csv}`.
 
-##### v85 DLT-fallback variable-view MPJPE@k (S9 / S11) — pending
+##### v85 DLT-fallback variable-view MPJPE@k (S9 / S11)
 
 | dataset | k=2 | k=3 | k=4 |
 |---|---:|---:|---:|
-| S9 | **TODO** | **TODO** | **TODO** |
-| S11 | **TODO** | **TODO** | **TODO** |
+| S9 | **58.18** | **33.32** | **83.52** |
+| S11 | **49.35** | **25.28** | **77.07** |
 
-- **Not yet run.** Expected source: `outputs/variable_view_fix/variable_view_v85_random_view_dropout_medium_a800_dlt_fallback.{json,csv}`.
-- This will reveal whether the v85 model's full-view k=4 estimate improves when combined with geometric DLT fallback for k<4, and whether its k<4 numbers match the model-agnostic v25/v81/v82 DLT-fallback baseline.
+- **Source:** `outputs/variable_view_fix/variable_view_v85_random_view_dropout_medium_a800_dlt_fallback.json`.
+- k=2/3 use direct confidence-weighted DLT on the active views, matching the v25/v81/v82 DLT-fallback baseline and confirming the observations are informative for sparse views.
+- k=4 uses the learned v85 model; at 83.52/77.07 mm it is worse than v82 k=4 (47.81/42.36 mm), indicating the dropout regularisation degraded full-view accuracy.
 
 ### v25 (multiview geometry fusion)
 
