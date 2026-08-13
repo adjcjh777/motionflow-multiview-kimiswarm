@@ -629,12 +629,13 @@ ssh a800-D "df -h /mnt/nvme0n1p1"
    - Output: `outputs/variable_view_fix/variable_view_v85_random_view_dropout_medium_a800_dlt_fallback.{json,csv}`.
    - Compare k=2/3/4 to the v25/v81/v82 DLT-fallback baseline.
 
-2. **Run `scripts/cleanup_a800_safe.sh` dry-run before launching any new medium training.**
-   - Disk is 98% full; cleanup recovers little, but run dry-run first.
+2. **v81/v82/v46/v52/v57 true-GT v2 medium re-runs are queued.**
+   - Watcher `scripts/launch_v81_after_v85_dlt_fallback.sh` will launch v81 on the first free GPU 6/7 after v85 DLT-fallback finishes.
+   - Chain watcher `scripts/launch_v82_v46_v52_v57_after_v81.sh` will then sequentially launch v82, v46, v52, and v57.
+   - Do not manually launch these trainings.
 
-3. **v81 true-GT v2 medium training is queued.**
-   - Watcher `scripts/launch_v81_after_v85_dlt_fallback.sh` will automatically launch `scripts/run_v81_true_gt_v2_medium_a800.sh` on the first free GPU 6/7 after the v85 DLT-fallback eval finishes.
-   - After v81 completes, queue v82/v46/v52/v57 similarly.
+3. **Run `scripts/cleanup_a800_safe.sh` dry-run if disk becomes a blocker.**
+   - Disk is 98% full (~72 GB free); the five training runs need only ~0.5 GB, so no immediate cleanup is required.
 
 ### Quick verification commands
 
