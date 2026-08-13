@@ -25,6 +25,7 @@ from .view_conditioned_temporal_attention_v83 import ViewConditionedTemporalAtte
 from .uncertainty_weighted_view_dropout_v84 import UncertaintyWeightedViewDropoutV84
 from .random_view_dropout_v85 import RandomViewDropoutV85
 from .separate_sparse_view_head_v86 import SeparateSparseViewHeadV86
+from .sparse_view_residual_head_v87 import SparseViewResidualHeadV87
 from .view_count_conditioning_v86 import ViewCountConditioningV86
 
 
@@ -449,6 +450,12 @@ class MultiViewGeometryFusionV25(nn.Module):
         v86_ssv_head_n_layers: int = 2,
         v86_ssv_head_dropout: float = 0.1,
         v86_ssv_head_use_count_embedding: bool = True,
+        # v87 sparse-view residual head (per-view residual attention branch)
+        use_v87_sparse_view_residual_head: bool = False,
+        v87_ssvr_head_hidden: int = 128,
+        v87_ssvr_head_n_layers: int = 2,
+        v87_ssvr_head_dropout: float = 0.1,
+        v87_ssvr_head_use_count_embedding: bool = True,
    ):
         super().__init__()
         self.d = d
@@ -549,6 +556,20 @@ class MultiViewGeometryFusionV25(nn.Module):
             )
         else:
             self.separate_sparse_view_head_v86 = None
+
+        # Optional v87 sparse-view residual head (per-view residual attention).
+        self.use_v87_sparse_view_residual_head = use_v87_sparse_view_residual_head
+        if self.use_v87_sparse_view_residual_head:
+            self.sparse_view_residual_head_v87 = SparseViewResidualHeadV87(
+                d=d,
+                n_views=n_views,
+                hidden=v87_ssvr_head_hidden,
+                n_layers=v87_ssvr_head_n_layers,
+                dropout=v87_ssvr_head_dropout,
+                use_count_embedding=v87_ssvr_head_use_count_embedding,
+            )
+        else:
+            self.sparse_view_residual_head_v87 = None
 
         if use_geometry_attention:
             self.geom_attn_layers = nn.ModuleList(
@@ -735,6 +756,25 @@ class MultiViewGeometryFusionV25(nn.Module):
             sparse_mask = active_views < self.n_views  # (B, T)
             if sparse_mask.any():
                 pred_sparse = self.separate_sparse_view_head_v86(
+                    tokens=tokens,
+                    pred_3d_init=pred_3d_init,
+                    view_mask=view_mask,
+                    active_count=active_views,
+                )
+                mask_3d = sparse_mask[:, :, None, None].expand(B, T, J, 3)
+                pred_3d_ref = torch.where(mask_3d, pred_sparse, pred_3d_ref)
+
+        # Optional v87 sparse-view residual head: route k < n_views to a
+        # per-view residual attention branch.  Only sparse samples are modified;
+        # the full-view path is unchanged.
+        if (
+            self.use_v87_sparse_view_residual_head
+            and self.sparse_view_residual_head_v87 is not None
+        ):
+            active_views = view_mask.sum(dim=-1)  # (B, T)
+            sparse_mask = active_views < self.n_views  # (B, T)
+            if sparse_mask.any():
+                pred_sparse = self.sparse_view_residual_head_v87(
                     tokens=tokens,
                     pred_3d_init=pred_3d_init,
                     view_mask=view_mask,

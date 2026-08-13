@@ -272,6 +272,12 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
         v86_ssv_head_n_layers: int = 2,
         v86_ssv_head_dropout: float = 0.1,
         v86_ssv_head_use_count_embedding: bool = True,
+        # v87 sparse-view residual head (per-view residual attention branch)
+        use_v87_sparse_view_residual_head: bool = False,
+        v87_ssvr_head_hidden: int = 128,
+        v87_ssvr_head_n_layers: int = 2,
+        v87_ssvr_head_dropout: float = 0.1,
+        v87_ssvr_head_use_count_embedding: bool = True,
         use_temporal_geometry_fusion_v26: bool = False,
         v26_temporal_window: int = 3,
         v26_temporal_attention_residual_gate_init: float = 0.0,
@@ -873,6 +879,11 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
                 v86_ssv_head_n_layers=v86_ssv_head_n_layers,
                 v86_ssv_head_dropout=v86_ssv_head_dropout,
                 v86_ssv_head_use_count_embedding=v86_ssv_head_use_count_embedding,
+                use_v87_sparse_view_residual_head=use_v87_sparse_view_residual_head,
+                v87_ssvr_head_hidden=v87_ssvr_head_hidden,
+                v87_ssvr_head_n_layers=v87_ssvr_head_n_layers,
+                v87_ssvr_head_dropout=v87_ssvr_head_dropout,
+                v87_ssvr_head_use_count_embedding=v87_ssvr_head_use_count_embedding,
             )
         else:
             self.multiview_geometry_fusion_v25 = None

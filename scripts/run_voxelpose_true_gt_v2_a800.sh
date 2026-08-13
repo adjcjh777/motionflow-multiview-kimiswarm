@@ -27,7 +27,7 @@ REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 # -----------------------------------------------------------------------------
 # Configuration
 # -----------------------------------------------------------------------------
-CONVERT_CONFIG="${REPO_ROOT}/scripts/sota_baselines/voxelpose_h36m_config_v2.yaml"
+CONVERT_CONFIG="${REPO_ROOT}/configs/sota_baselines/voxelpose_h36m_true_gt_v2_prep.yaml"
 RUN_CONFIG="${REPO_ROOT}/configs/sota_baselines/voxelpose_h36m_true_gt_v2.yaml"
 
 VOXELPOSE_DIR="${REPO_ROOT}/models/voxelpose-pytorch"

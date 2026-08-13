@@ -192,6 +192,12 @@ def build_model_from_args(
         "v86_ssv_head_n_layers": getattr(args, "v86_ssv_head_n_layers", 2),
         "v86_ssv_head_dropout": getattr(args, "v86_ssv_head_dropout", 0.1),
         "v86_ssv_head_use_count_embedding": getattr(args, "v86_ssv_head_use_count_embedding", True),
+        # v87 sparse-view residual head (per-view residual attention branch)
+        "use_v87_sparse_view_residual_head": getattr(args, "use_v87_sparse_view_residual_head", False),
+        "v87_ssvr_head_hidden": getattr(args, "v87_ssvr_head_hidden", 128),
+        "v87_ssvr_head_n_layers": getattr(args, "v87_ssvr_head_n_layers", 2),
+        "v87_ssvr_head_dropout": getattr(args, "v87_ssvr_head_dropout", 0.1),
+        "v87_ssvr_head_use_count_embedding": getattr(args, "v87_ssvr_head_use_count_embedding", True),
         "use_uncertainty_depth_proposals_v27": getattr(args, "use_uncertainty_depth_proposals_v27", False),
         "v27_uncertainty_loss_weight": getattr(args, "v27_uncertainty_loss_weight", 0.01),
         "v27_udp_n_mixtures": getattr(args, "v27_udp_n_mixtures", 1),
@@ -2278,6 +2284,13 @@ def parse_args() -> Namespace:
     parser.add_argument("--v86_ssv_head_dropout", type=float, default=0.1, help="Dropout probability in the v86 sparse-view head MLP")
     parser.add_argument("--v86_ssv_head_use_count_embedding", action="store_true", default=True, help="Use active-view-count embedding in the v86 sparse-view head")
     parser.add_argument("--no_v86_ssv_head_use_count_embedding", dest="v86_ssv_head_use_count_embedding", action="store_false", help="Disable active-view-count embedding in the v86 sparse-view head")
+    # v87 sparse-view residual head (per-view residual attention branch)
+    parser.add_argument("--use_v87_sparse_view_residual_head", action="store_true", default=False, help="Use v87 sparse-view residual head for k < n_views")
+    parser.add_argument("--v87_ssvr_head_hidden", type=int, default=128, help="Hidden dimension of the v87 sparse-view residual head MLP")
+    parser.add_argument("--v87_ssvr_head_n_layers", type=int, default=2, help="Number of layers in the v87 sparse-view residual head MLP")
+    parser.add_argument("--v87_ssvr_head_dropout", type=float, default=0.1, help="Dropout probability in the v87 sparse-view residual head MLP")
+    parser.add_argument("--v87_ssvr_head_use_count_embedding", action="store_true", default=True, help="Use active-view-count embedding in the v87 sparse-view residual head")
+    parser.add_argument("--no_v87_ssvr_head_use_count_embedding", dest="v87_ssvr_head_use_count_embedding", action="store_false", help="Disable active-view-count embedding in the v87 sparse-view residual head")
     parser.add_argument("--use_uncertainty_depth_proposals_v27", action="store_true", default=False, help="Use v27 uncertainty-aware depth-proposal triangulation head in v25/v26")
     parser.add_argument("--v27_uncertainty_loss_weight", type=float, default=0.01, help="Weight for v27 uncertainty regularisation loss")
     parser.add_argument("--v27_udp_n_mixtures", type=int, default=1, help="Number of Gaussian mixture components for v27 depth proposals (default 1=single Gaussian)")

@@ -1,0 +1,203 @@
+# Mixed-dataset training manifest: H36M true-GT v2 + AIST++ + MPI-INF-3DHP detected-2D.
+#
+# H36M uses corrected non-circular true mocap world coordinates from
+# data/h36m_true_gt_v2/ (standard protocol: S1,S5-S8 train; S9/S11 val).
+# AIST++ uses canonical multi-view .npz files under data/webbridge/aistpp_canonical/.
+# MPI-INF-3DHP uses RTMPose detected-2D .npz files in metres from
+# data/webbridge/mpi_inf_3dhp_detected_2d/.
+#
+# The manifest is dual-format so it can be consumed both by
+# motionflow_mv/data/split_loader.py (train/val/test keys) and by the
+# WebBridge mixed loader (train_paths/val_paths + train_names/val_names).
+#
+# Stable dataset IDs (matches motionflow_mv.data.webbridge_mixed_dataset.DATASET_IDS):
+#   h36m -> 0
+#   mpi  -> 1
+#   aist -> 2
+
+name: H36M True GT v2 + AIST++ + MPI-INF-3DHP Mixed (A800)
+description: |
+  Three-domain WebBridge manifest for cross-dataset training.
+  Train: H36M true-GT v2 (5 subjects) + AIST++ curated subset (14 clips) +
+         MPI-INF-3DHP detected-2D (14 sequences, S1/S3-S8).
+  Val:   H36M true-GT v2 S9/S11 + AIST++ gWA (2 clips) +
+         MPI-INF-3DHP detected-2D S2/Seq1.
+
+dataset_id_map:
+  h36m: 0
+  mpi: 1
+  aist: 2
+
+# Alias keys for split_loader.py (train/val/test lists of file paths)
+train:
+  - data/h36m_true_gt_v2/s_01_acts_02_03_04_05_06_07_08_09_10_11_12_13_14_15_16_multiview_m.npz
+  - data/h36m_true_gt_v2/s_05_acts_02_03_04_05_06_07_08_09_10_11_12_13_14_15_16_multiview_m.npz
+  - data/h36m_true_gt_v2/s_06_acts_02_03_04_05_06_07_08_09_10_11_12_13_14_15_16_multiview_m.npz
+  - data/h36m_true_gt_v2/s_07_acts_02_03_04_05_06_07_08_09_10_11_12_13_14_15_16_multiview_m.npz
+  - data/h36m_true_gt_v2/s_08_acts_02_03_04_05_06_07_08_09_10_11_12_13_14_15_16_multiview_m.npz
+  - data/webbridge/aistpp_canonical/gBR_sBM_cAll_d04_mBR0_ch01_multiview.npz
+  - data/webbridge/aistpp_canonical/gBR_sBM_cAll_d04_mBR0_ch02_multiview.npz
+  - data/webbridge/aistpp_canonical/gBR_sBM_cAll_d04_mBR0_ch03_multiview.npz
+  - data/webbridge/aistpp_canonical/gBR_sBM_cAll_d04_mBR0_ch04_multiview.npz
+  - data/webbridge/aistpp_canonical/gBR_sBM_cAll_d04_mBR0_ch05_multiview.npz
+  - data/webbridge/aistpp_canonical/gBR_sBM_cAll_d04_mBR0_ch06_multiview.npz
+  - data/webbridge/aistpp_canonical/gBR_sBM_cAll_d04_mBR0_ch07_multiview.npz
+  - data/webbridge/aistpp_canonical/gBR_sBM_cAll_d04_mBR0_ch08_multiview.npz
+  - data/webbridge/aistpp_canonical/gBR_sBM_cAll_d04_mBR0_ch09_multiview.npz
+  - data/webbridge/aistpp_canonical/gBR_sBM_cAll_d04_mBR0_ch10_multiview.npz
+  - data/webbridge/aistpp_canonical/gBR_sBM_cAll_d04_mBR1_ch01_multiview.npz
+  - data/webbridge/aistpp_canonical/gBR_sBM_cAll_d04_mBR1_ch02_multiview.npz
+  - data/webbridge/aistpp_canonical/gBR_sBM_cAll_d04_mBR1_ch03_multiview.npz
+  - data/webbridge/aistpp_canonical/gBR_sBM_cAll_d04_mBR1_ch04_multiview.npz
+  - data/webbridge/mpi_inf_3dhp_detected_2d/s_01_seq_01_v14_multiview_m.npz
+  - data/webbridge/mpi_inf_3dhp_detected_2d/s_01_seq_02_v14_multiview_m.npz
+  - data/webbridge/mpi_inf_3dhp_detected_2d/s_03_seq_01_v14_multiview_m.npz
+  - data/webbridge/mpi_inf_3dhp_detected_2d/s_03_seq_02_v14_multiview_m.npz
+  - data/webbridge/mpi_inf_3dhp_detected_2d/s_04_seq_01_v14_multiview_m.npz
+  - data/webbridge/mpi_inf_3dhp_detected_2d/s_04_seq_02_v14_multiview_m.npz
+  - data/webbridge/mpi_inf_3dhp_detected_2d/s_05_seq_01_v14_multiview_m.npz
+  - data/webbridge/mpi_inf_3dhp_detected_2d/s_05_seq_02_v14_multiview_m.npz
+  - data/webbridge/mpi_inf_3dhp_detected_2d/s_06_seq_01_v14_multiview_m.npz
+  - data/webbridge/mpi_inf_3dhp_detected_2d/s_06_seq_02_v14_multiview_m.npz
+  - data/webbridge/mpi_inf_3dhp_detected_2d/s_07_seq_01_v14_multiview_m.npz
+  - data/webbridge/mpi_inf_3dhp_detected_2d/s_07_seq_02_v14_multiview_m.npz
+  - data/webbridge/mpi_inf_3dhp_detected_2d/s_08_seq_01_v14_multiview_m.npz
+  - data/webbridge/mpi_inf_3dhp_detected_2d/s_08_seq_02_v14_multiview_m.npz
+
+val:
+  - data/h36m_true_gt_v2/s_09_acts_02_03_04_05_06_07_08_09_10_11_12_13_14_15_16_multiview_m.npz
+  - data/h36m_true_gt_v2/s_11_acts_02_03_04_05_06_07_08_09_10_11_12_13_14_15_16_multiview_m.npz
+  - data/webbridge/aistpp_canonical/gWA_sBM_cAll_d25_mWA1_ch03_multiview.npz
+  - data/webbridge/aistpp_canonical/gWA_sBM_cAll_d25_mWA1_ch04_multiview.npz
+  - data/webbridge/mpi_inf_3dhp_detected_2d/s_02_seq_01_v14_multiview_m.npz
+
+test: []
+
+# Detailed keys for the WebBridge mixed loader
+train_paths:
+  - data/h36m_true_gt_v2/s_01_acts_02_03_04_05_06_07_08_09_10_11_12_13_14_15_16_multiview_m.npz
+  - data/h36m_true_gt_v2/s_05_acts_02_03_04_05_06_07_08_09_10_11_12_13_14_15_16_multiview_m.npz
+  - data/h36m_true_gt_v2/s_06_acts_02_03_04_05_06_07_08_09_10_11_12_13_14_15_16_multiview_m.npz
+  - data/h36m_true_gt_v2/s_07_acts_02_03_04_05_06_07_08_09_10_11_12_13_14_15_16_multiview_m.npz
+  - data/h36m_true_gt_v2/s_08_acts_02_03_04_05_06_07_08_09_10_11_12_13_14_15_16_multiview_m.npz
+  - data/webbridge/aistpp_canonical/gBR_sBM_cAll_d04_mBR0_ch01_multiview.npz
+  - data/webbridge/aistpp_canonical/gBR_sBM_cAll_d04_mBR0_ch02_multiview.npz
+  - data/webbridge/aistpp_canonical/gBR_sBM_cAll_d04_mBR0_ch03_multiview.npz
+  - data/webbridge/aistpp_canonical/gBR_sBM_cAll_d04_mBR0_ch04_multiview.npz
+  - data/webbridge/aistpp_canonical/gBR_sBM_cAll_d04_mBR0_ch05_multiview.npz
+  - data/webbridge/aistpp_canonical/gBR_sBM_cAll_d04_mBR0_ch06_multiview.npz
+  - data/webbridge/aistpp_canonical/gBR_sBM_cAll_d04_mBR0_ch07_multiview.npz
+  - data/webbridge/aistpp_canonical/gBR_sBM_cAll_d04_mBR0_ch08_multiview.npz
+  - data/webbridge/aistpp_canonical/gBR_sBM_cAll_d04_mBR0_ch09_multiview.npz
+  - data/webbridge/aistpp_canonical/gBR_sBM_cAll_d04_mBR0_ch10_multiview.npz
+  - data/webbridge/aistpp_canonical/gBR_sBM_cAll_d04_mBR1_ch01_multiview.npz
+  - data/webbridge/aistpp_canonical/gBR_sBM_cAll_d04_mBR1_ch02_multiview.npz
+  - data/webbridge/aistpp_canonical/gBR_sBM_cAll_d04_mBR1_ch03_multiview.npz
+  - data/webbridge/aistpp_canonical/gBR_sBM_cAll_d04_mBR1_ch04_multiview.npz
+  - data/webbridge/mpi_inf_3dhp_detected_2d/s_01_seq_01_v14_multiview_m.npz
+  - data/webbridge/mpi_inf_3dhp_detected_2d/s_01_seq_02_v14_multiview_m.npz
+  - data/webbridge/mpi_inf_3dhp_detected_2d/s_03_seq_01_v14_multiview_m.npz
+  - data/webbridge/mpi_inf_3dhp_detected_2d/s_03_seq_02_v14_multiview_m.npz
+  - data/webbridge/mpi_inf_3dhp_detected_2d/s_04_seq_01_v14_multiview_m.npz
+  - data/webbridge/mpi_inf_3dhp_detected_2d/s_04_seq_02_v14_multiview_m.npz
+  - data/webbridge/mpi_inf_3dhp_detected_2d/s_05_seq_01_v14_multiview_m.npz
+  - data/webbridge/mpi_inf_3dhp_detected_2d/s_05_seq_02_v14_multiview_m.npz
+  - data/webbridge/mpi_inf_3dhp_detected_2d/s_06_seq_01_v14_multiview_m.npz
+  - data/webbridge/mpi_inf_3dhp_detected_2d/s_06_seq_02_v14_multiview_m.npz
+  - data/webbridge/mpi_inf_3dhp_detected_2d/s_07_seq_01_v14_multiview_m.npz
+  - data/webbridge/mpi_inf_3dhp_detected_2d/s_07_seq_02_v14_multiview_m.npz
+  - data/webbridge/mpi_inf_3dhp_detected_2d/s_08_seq_01_v14_multiview_m.npz
+  - data/webbridge/mpi_inf_3dhp_detected_2d/s_08_seq_02_v14_multiview_m.npz
+
+val_paths:
+  - data/h36m_true_gt_v2/s_09_acts_02_03_04_05_06_07_08_09_10_11_12_13_14_15_16_multiview_m.npz
+  - data/h36m_true_gt_v2/s_11_acts_02_03_04_05_06_07_08_09_10_11_12_13_14_15_16_multiview_m.npz
+  - data/webbridge/aistpp_canonical/gWA_sBM_cAll_d25_mWA1_ch03_multiview.npz
+  - data/webbridge/aistpp_canonical/gWA_sBM_cAll_d25_mWA1_ch04_multiview.npz
+  - data/webbridge/mpi_inf_3dhp_detected_2d/s_02_seq_01_v14_multiview_m.npz
+
+train_names:
+  - h36m
+  - h36m
+  - h36m
+  - h36m
+  - h36m
+  - aist
+  - aist
+  - aist
+  - aist
+  - aist
+  - aist
+  - aist
+  - aist
+  - aist
+  - aist
+  - aist
+  - aist
+  - aist
+  - aist
+  - mpi
+  - mpi
+  - mpi
+  - mpi
+  - mpi
+  - mpi
+  - mpi
+  - mpi
+  - mpi
+  - mpi
+  - mpi
+  - mpi
+  - mpi
+  - mpi
+
+val_names:
+  - h36m
+  - h36m
+  - aist
+  - aist
+  - mpi
+
+# Per-path dataset IDs, aligned with train_paths / val_paths.
+# H36M=0, MPI=1, AIST=2
+train_dataset_ids:
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  - 2
+  - 2
+  - 2
+  - 2
+  - 2
+  - 2
+  - 2
+  - 2
+  - 2
+  - 2
+  - 2
+  - 2
+  - 2
+  - 2
+  - 1
+  - 1
+  - 1
+  - 1
+  - 1
+  - 1
+  - 1
+  - 1
+  - 1
+  - 1
+  - 1
+  - 1
+  - 1
+  - 1
+
+val_dataset_ids:
+  - 0
+  - 0
+  - 2
+  - 2
+  - 1
