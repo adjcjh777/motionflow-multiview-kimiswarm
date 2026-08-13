@@ -1,6 +1,6 @@
 # MotionFlow-MultiView A800 Status Dashboard
 
-> Last updated: 2026-08-13 ~02:30 UTC
+> Last updated: 2026-08-13 ~03:32 UTC
 
 ## GitHub / Local repo status
 
@@ -15,8 +15,9 @@
 | PID | GPU | Type | Command / Session | Notes |
 |------|------|------|-------------------|-------|
 | — | 6 | v25 true-GT v2 medium training | tmux `v25_true_gt_v2_medium_a800` | **DONE**; early-stop @ epoch 6; best val **31.41 mm** |
-| — | 6 | v86 no-count-embedding ablation | tmux `v86_no_count_embedding` | **RUNNING**; Epoch 5/20 done, best val **31.64 mm @ Epoch 3** (Epoch 4 43.26 mm → Epoch 5 44.00 mm); Epoch 6 in progress; early stopping expected within 1–2 epochs; v2 protocol; log `outputs/ablations/v86_no_count_embedding_medium_a800.log` |
-| — | 6/7 (post-v86) | v85 DLT-fallback watcher | `scripts/launch_v85_dlt_fallback_after_v86.sh` | **QUEUED**; auto-runs after v86 finishes |
+| — | 6 | v86 no-count-embedding ablation | tmux `v86_no_count_embedding` | **DONE**; early-stopped @ epoch 6; best val **31.64 mm @ Epoch 3**; v2 protocol; log `outputs/ablations/v86_no_count_embedding_medium_a800.log` |
+| — | 6 | v85 DLT-fallback variable-view eval | `outputs/variable_view_fix/variable_view_v85_random_view_dropout_medium_a800_dlt_fallback.*` | **RUNNING**; ~8 min in; auto-started by post-v86 watcher |
+| — | 6/7 | v25 true-GT v2 test-set eval | `outputs/eval_v25_true_gt_v2_medium_a800_h36m_test.*` | **QUEUED**; waiting for free GPU 6/7 |
 | — | 7 | External project | — | **OCCUPIED**; ~12 GB; do not touch |
 
 ## GPU Utilization (0-7)
@@ -29,7 +30,7 @@
 | 3 | 0% | 76135 MiB | VLLM (reserved) |
 | 4 | 0% | 673 MiB | other |
 | 5 | 0% | 57847 MiB | VLLM EngineCore (reserved) |
-| 6 | — | — | MotionFlow v86 training (project GPU) |
+| 6 | — | — | MotionFlow v85 DLT-fallback eval (project GPU) |
 | 7 | — | ~12 GB | External project (GPU policy violation) |
 
 ## Latest Results
@@ -68,7 +69,7 @@
 | S9 | — | — | — |
 | S11 | — | — | — |
 
-- **Queued behind v86.** Watcher `scripts/launch_v85_dlt_fallback_after_v86.sh` will auto-run the eval once v86 training finishes. No results yet.
+- **Running on GPU 6.** Watcher `scripts/launch_v85_dlt_fallback_after_v86.sh` auto-started the eval after v86 finished; ~8 min in. Results pending.
 
 ### Latest val MPJPE (true-GT v2)
 
@@ -76,7 +77,7 @@
 |---------|--------|----------------|-------|
 | v25 true-GT v2 medium | ✅ DONE | **31.41 mm** | @ Epoch 6; test pending |
 | v85 random-view-dropout | ✅ DONE | **31.42 mm** | @ final epoch; no-fallback var-view done |
-| v86 no-count-embedding | 🔄 RUNNING | **31.64 mm** | @ Epoch 3 (best); Epoch 5/20 done (Epoch 4 43.26 mm → Epoch 5 44.00 mm); Epoch 6 in progress; early stopping expected within 1–2 epochs |
+| v86 no-count-embedding | ✅ DONE | **31.64 mm** | @ Epoch 3 (best); early-stopped @ Epoch 6; checkpoint saved |
 
 ### v2 baselines
 
@@ -98,12 +99,11 @@
 ## Blockers
 
 1. GPU 7 occupied by an external project (~12 GB). Do not kill; do not launch MotionFlow jobs there.
-2. v85 DLT-fallback eval is blocked behind v86 training (auto-triggered).
+2. v25 true-GT v2 test-set eval is queued, waiting for GPU 6/7 to become free.
 3. A800 disk critically low.
 
 ## Next Actions
 
-1. Monitor v86 no-count-embedding ablation until completion.
-2. Wait for the v85 DLT-fallback watcher to auto-trigger the eval after v86 finishes.
-3. Run v25 true-GT v2 test-set evaluation on the first free project GPU.
-4. Run `scripts/cleanup_a800_safe.sh` dry-run to identify safe deletions before any new large write.
+1. Monitor v85 DLT-fallback variable-view eval until completion.
+2. Run v25 true-GT v2 test-set evaluation on the first free project GPU.
+3. Run `scripts/cleanup_a800_safe.sh` dry-run to identify safe deletions before any new large write.
