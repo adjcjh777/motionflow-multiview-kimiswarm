@@ -3,7 +3,7 @@
 > Standard protocol: **S1, S5, S6, S7, S8 train → S9, S11 test**  
 > Labels: `data/h36m_true_gt_v2/*_multiview_m.npz` (true mocap world coordinates, non-circular).  
 > Manifest: `configs/splits/h36m_true_gt_v2_standard.yaml`.  
-> Last updated: **2026-08-13 ~02:30 UTC** (v86 no-count-embedding training in progress: Epoch 3/20, val 31.64 mm; v25 true-GT v2 val 31.41 mm; v85 DLT-fallback still pending).
+> Last updated: **2026-08-13 ~03:12 UTC** (v86 no-count-embedding training in progress: Epoch 5/20 done, val 44.00 mm; best 31.64 mm @ Epoch 3; Epoch 6 in progress; early stopping expected within 1–2 epochs; v25 true-GT v2 val 31.41 mm; v85 DLT-fallback still pending).
 
 ## Label audit (non-circularity check)
 
@@ -102,7 +102,7 @@ v25 stability variable-view evaluation completed on A800 (GPU 4). Results are fo
 | **v85 random view dropout (no-fallback, k=4 var-view)** | 83.52 | 77.07 | **80.30** | — | Variable-view k=4 only [^3]; full test pending |
 | **v85 DLT-fallback** | — | — | **pending** | — | Variable-view eval killed; re-run queued |
 | **v25 true-GT v2 medium** | — | — | **pending** | — | Training done; best val **31.41 mm** @ Epoch 6; test pending |
-| **v86 no-count-embedding / sparse cross-domain v2** | — | — | **in training** | — | A800 GPU 6; Epoch 3/20, val **31.64 mm** (Epoch 4 in progress, loss ~6.1) |
+| **v86 no-count-embedding / sparse cross-domain v2** | — | — | **in training** | — | A800 GPU 6; Epoch 5/20 done, best val **31.64 mm @ Epoch 3** (Epoch 4 43.26 mm → Epoch 5 44.00 mm); Epoch 6 in progress; early stopping expected within 1–2 epochs |
 
 - Most completed learned rows above were originally trained/evaluated on the pre-v2 true-GT labels and are being re-run on v2; the dedicated v2 re-runs are shown as **pending**. [^2]
 - **v25 true-GT v2 medium** has finished training with best val **31.41 mm** @ Epoch 6, which is comparable to the v1 stability run (best val 31.13 mm / test 30.83 mm). Its test-set evaluation is **pending**.

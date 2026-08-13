@@ -10,7 +10,7 @@
 - ✅ **remote URL 中的 token 已移除**：当前 remote URL 为不含 token 的 HTTPS URL。
 - ✅ **旧工作树已删除**：`.worktrees/v18_deformable_attention_baseline` 已移除。
 - ✅ **本地轻量标签已删除**：`v25_local_baseline_monitor_commit`、`v25_local_baseline_monitor_v1` 已移除。
-- ✅ **main 分支已 push**：本地 `main`（commit `d2ed343`）已 push 到 GitHub；GitHub 仓库现在包含清理后的状态。
+- ✅ **main 分支已 push**：本地 `main`（commit `8aee08c` 或更新）已 push 到 GitHub；GitHub 仓库现在包含清理后的状态。
 - ⏳ **`patches/stashes/` 中 45 个 stash patch 备份仍保留**，待后续审计或清理。
 
 ---
@@ -96,7 +96,7 @@ D:/WSL_workspace/about_eassys/motionflow-multivie-kimiswarm d2ed343 [main]
 
 ### 1.7 Push 结果
 
-- 本地 `main` 分支已 push 到 GitHub，当前仓库 HEAD 指向 commit `d2ed343`。
+- 本地 `main` 分支已 push 到 GitHub，当前仓库 HEAD 指向 commit `8aee08c`（或更新）。
 - GitHub 远端 `origin/main` 与本地 `main` 一致。
 
 ---
@@ -260,7 +260,7 @@ git tag
 
 ### 步骤 7：push 当前 main 分支到 remote（已完成）
 
-状态：✅ 已执行。本地 `main` 已 push 到 GitHub，远端 `origin/main` 当前指向 commit `d2ed343`。
+状态：✅ 已执行。本地 `main` 已 push 到 GitHub，远端 `origin/main` 当前指向 commit `8aee08c`（或更新）。
 
 如果步骤 1 中在 `main` 分支上创建了新的 commit，并且希望同步到远程：
 

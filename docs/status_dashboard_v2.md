@@ -7,7 +7,7 @@
 - Remote URL token: **removed** — current origin is `https://github.com/adjcjh777/motionflow-multiview-kimiswarm.git`
 - Old worktree `.worktrees/v18_deformable_attention_baseline`: **deleted**
 - Local lightweight tags `v25_local_baseline_monitor_commit` / `v25_local_baseline_monitor_v1`: **deleted**
-- `main` push: **done** — commit `d2ed343` on GitHub
+- `main` push: **done** — commit `8aee08c` (or newer) on GitHub
 - Stash backups in `patches/stashes/`: **45 patches retained** (pending audit)
 
 ## Active A800 Processes
@@ -15,7 +15,7 @@
 | PID | GPU | Type | Command / Session | Notes |
 |------|------|------|-------------------|-------|
 | — | 6 | v25 true-GT v2 medium training | tmux `v25_true_gt_v2_medium_a800` | **DONE**; early-stop @ epoch 6; best val **31.41 mm** |
-| — | 6 | v86 no-count-embedding ablation | tmux `v86_no_count_embedding` | **RUNNING**; Epoch 3/20, best val **31.64 mm**; v2 protocol; log `outputs/ablations/v86_no_count_embedding_medium_a800.log` |
+| — | 6 | v86 no-count-embedding ablation | tmux `v86_no_count_embedding` | **RUNNING**; Epoch 5/20 done, best val **31.64 mm @ Epoch 3** (Epoch 4 43.26 mm → Epoch 5 44.00 mm); Epoch 6 in progress; early stopping expected within 1–2 epochs; v2 protocol; log `outputs/ablations/v86_no_count_embedding_medium_a800.log` |
 | — | 6/7 (post-v86) | v85 DLT-fallback watcher | `scripts/launch_v85_dlt_fallback_after_v86.sh` | **QUEUED**; auto-runs after v86 finishes |
 | — | 7 | External project | — | **OCCUPIED**; ~12 GB; do not touch |
 
@@ -76,7 +76,7 @@
 |---------|--------|----------------|-------|
 | v25 true-GT v2 medium | ✅ DONE | **31.41 mm** | @ Epoch 6; test pending |
 | v85 random-view-dropout | ✅ DONE | **31.42 mm** | @ final epoch; no-fallback var-view done |
-| v86 no-count-embedding | 🔄 RUNNING | **31.64 mm** | @ Epoch 3; Epoch 4 in progress (loss ~6.1) |
+| v86 no-count-embedding | 🔄 RUNNING | **31.64 mm** | @ Epoch 3 (best); Epoch 5/20 done (Epoch 4 43.26 mm → Epoch 5 44.00 mm); Epoch 6 in progress; early stopping expected within 1–2 epochs |
 
 ### v2 baselines
 

@@ -11,7 +11,7 @@
 ## 0. 最新状态（2026-08-13 ~00:41 UTC）
 
 - **v25 true-GT v2 medium 训练已完成。** A800 GPU 6，tmux session `v25_true_gt_v2_medium_a800`。early stopping @ epoch 6，best val MPJPE **31.41 mm**，checkpoint 已保存为 `outputs/ablations/v25_true_gt_v2_medium_a800.pth`。test 评估待做。
-- **v86 no-count-embedding ablation 正在 A800 GPU 6 训练。** tmux session `v86_no_count_embedding`，脚本 `scripts/run_v86_no_count_embedding_medium_a800_gpuX.sh`，使用 v2 数据协议 `configs/splits/h36m_true_gt_v2_standard.yaml`。**已完成 Epoch 3，best val MPJPE 31.64 mm**（Epoch 1 61.79 mm → Epoch 2 36.33 mm → Epoch 3 31.64 mm）；Epoch 4 进行中，loss 约 6.1。当前最佳已接近 v25（31.41 mm）和 v85（31.42 mm）的完成结果，但训练尚未结束，最终数字待定。
+- **v86 no-count-embedding ablation 正在 A800 GPU 6 训练。** tmux session `v86_no_count_embedding`，脚本 `scripts/run_v86_no_count_embedding_medium_a800_gpuX.sh`，使用 v2 数据协议 `configs/splits/h36m_true_gt_v2_standard.yaml`。**已完成 Epoch 5，best val MPJPE 31.64 mm @ Epoch 3**（Epoch 1 61.79 mm → Epoch 2 36.33 mm → Epoch 3 31.64 mm → Epoch 4 43.26 mm → Epoch 5 44.00 mm）；Epoch 6 进行中。由于 Epoch 3 是 best，且 Epoch 4/5 连续恶化，early stopping 预计在接下来的 1–2 个 epoch 内触发。
 - **v85 random-view-dropout 训练已完成。** checkpoint 已创建 symlink `outputs/ablations/v85_random_view_dropout_medium_a800.pth -> ..._final.pth`，best val **31.42 mm**。
 - **v85 DLT-fallback 可变视角评估看守器已启动。** `scripts/launch_v85_dlt_fallback_after_v86.sh` 正在等待 v86 训练完成后，自动在首个可用 GPU（6 或 7）上运行 v85 DLT-fallback 评估。结果待出。
 - **GPU 7 当前被外部项目占用**（约 12 GB 显存）；GPU 6 当前运行 v86。
@@ -37,13 +37,13 @@
   - k=4：S9 **83.52 mm**，S11 **77.07 mm**
 - **v85 DLT-fallback 可变视角评估已终止且未产生输出**。监控显示 PID `2269984` 在约 29 分钟后消失，预期的 JSON/CSV 未生成。redirect log 为空，nohup log 仅显示 `Terminated`，原因不明（可能是外部 kill 或 OOM）。在重新运行前，v25/v81/v82 的 DLT-fallback 基线仍是最新可靠参考：S9 58.18/33.32/116.98 mm，S11 49.35/25.28/110.58 mm。结合 v85 no-fallback 结果，可确认 random view dropout 不能解决 k<4 灾难性失败，DLT-fallback 仍是 k<4 的可靠选择。
 - **v25 true-GT v2 medium 训练已完成**。A800 GPU 6，tmux session: `v25_true_gt_v2_medium_a800`；best val **31.41 mm** @ epoch 6。
-- **v86 no-count-embedding ablation 正在训练中**。已完成 Epoch 3，val MPJPE 进展：61.79 → 36.33 → **31.64 mm**；Epoch 4 进行中，loss ~6.1。该消融用于验证 active-view-count embedding 对稀疏视角的贡献，最终与 v85/v25 对比得出结论。
+- **v86 no-count-embedding ablation 正在训练中**。已完成 Epoch 5，val MPJPE 进展：61.79 → 36.33 → **31.64 mm** → 43.26 → 44.00；Epoch 6 进行中。由于 Epoch 3 是 best，且 Epoch 4/5 连续恶化，early stopping 预计在接下来的 1–2 个 epoch 内触发。该消融用于验证 active-view-count embedding 对稀疏视角的贡献，最终与 v85/v25 对比得出结论。
 - **h36m_true_gt_v2 数据已同步到 A800**。约 **625 MB**，路径 `data/h36m_true_gt_v2/`；对应 manifest `configs/splits/h36m_true_gt_v2_standard.yaml`。
 - **v25/v86 v2 启动脚本已同步到 A800**。见 `scripts/run_v25_true_gt_v2_medium_a800.sh` 与 `scripts/run_v86_no_count_embedding_medium_a800_gpu6.sh`。
 - **A800 磁盘已清理**。从约 99% 降到 **98%**，剩余约 **73 GB**。
 - **GPU 7 被外项目占用**。LuxTTS / Mega-ASR / ComfyUI 占用了 GPU 7，违反项目 GPU 策略；**禁止 kill**，但在此 cleared 之前不得在 GPU 7 启动新任务。
 - **本地 v37 self-critique v2 smoke 正在运行**。RTX 4090，用于快速验证 self-critique 思路。
-- **GitHub / 本地仓库清理已完成**。remote URL 中的 token 已移除（当前为 `https://github.com/adjcjh777/motionflow-multiview-kimiswarm.git`）；旧工作树 `.worktrees/v18_deformable_attention_baseline` 已删除；本地轻量标签 `v25_local_baseline_monitor_commit` 和 `v25_local_baseline_monitor_v1` 已删除；`main` 已 push 到 GitHub（commit `d2ed343`）。`patches/stashes/` 中 45 个 stash patch 备份仍保留，待后续审计。
+- **GitHub / 本地仓库清理已完成**。remote URL 中的 token 已移除（当前为 `https://github.com/adjcjh777/motionflow-multiview-kimiswarm.git`）；旧工作树 `.worktrees/v18_deformable_attention_baseline` 已删除；本地轻量标签 `v25_local_baseline_monitor_commit` 和 `v25_local_baseline_monitor_v1` 已删除；`main` 已 push 到 GitHub（commit `8aee08c` 或更新）。`patches/stashes/` 中 45 个 stash patch 备份仍保留，待后续审计。
 
 ---
 
@@ -52,7 +52,7 @@
 | 机器 | GPU | 任务 | 日志 / 输出 | 状态 | 说明 |
 |------|-----|------|-------------|------|------|
 | A800-D | 6 | v25 true-GT v2 medium training | `outputs/ablations/v25_true_gt_v2_medium_a800.log` | **DONE** | tmux session `v25_true_gt_v2_medium_a800`；early-stop @ epoch 6；best val **31.41 mm**；checkpoint `.pth` 已落盘。test 待测。 |
-| A800-D | 6 | v86 no-count-embedding ablation | `outputs/ablations/v86_no_count_embedding_medium_a800.log` | **RUNNING** | tmux session `v86_no_count_embedding`；v2 协议；**Epoch 3/20 完成，best val 31.64 mm**；Epoch 4 进行中，loss ~6.1。 |
+| A800-D | 6 | v86 no-count-embedding ablation | `outputs/ablations/v86_no_count_embedding_medium_a800.log` | **RUNNING** | tmux session `v86_no_count_embedding`；v2 协议；**Epoch 5/20 完成，best val 31.64 mm @ Epoch 3**（Epoch 4 43.26 mm → Epoch 5 44.00 mm）；Epoch 6 进行中，early stopping 预计 1–2 个 epoch 内触发。 |
 | A800-D | 6/7 (post-v86) | v85 DLT-fallback 可变视角评估看守器 | `outputs/launch_v85_dlt_fallback_after_v86.log` | **RUNNING (watcher)** | `scripts/launch_v85_dlt_fallback_after_v86.sh` 等待 v86 完成后自动启动 v85 DLT-fallback 评估；v86 完成前不占用 GPU 6/7。 |
 | A800-D | 7 | 外项目进程（LuxTTS / Mega-ASR / ComfyUI） | — | **OCCUPIED** | 约 12 GB；违反 GPU 策略；**禁止 kill**，禁止启动新任务。 |
 | Local | 0 | v37 self-critique v2 smoke | `outputs/v37_self_critique_v2_smoke.log`（路径示例） | **DONE** | RTX 4090；val MPJPE **87.85 mm** @ 2 epochs。 |
@@ -144,7 +144,7 @@
 
 ### 4.5 本地 git stash 与 token 审计
 
-- **GitHub 清理已完成**：remote URL 中 token 已移除（当前为 `https://github.com/adjcjh777/motionflow-multiview-kimiswarm.git`）、旧工作树 `.worktrees/v18_deformable_attention_baseline` 与本地轻量标签 `v25_local_baseline_monitor_commit` / `v25_local_baseline_monitor_v1` 已删除；`main` 已 push 到 GitHub（commit `d2ed343`）。
+- **GitHub 清理已完成**：remote URL 中 token 已移除（当前为 `https://github.com/adjcjh777/motionflow-multiview-kimiswarm.git`）、旧工作树 `.worktrees/v18_deformable_attention_baseline` 与本地轻量标签 `v25_local_baseline_monitor_commit` / `v25_local_baseline_monitor_v1` 已删除；`main` 已 push 到 GitHub（commit `8aee08c` 或更新）。
 - 本地仓库当前仍有 **45 条 stash** 备份在 `patches/stashes/`。
 - 部分 stash 可能包含临时写死的 API key / token / 数据库连接串。
 - **在 push 或共享任何补丁之前**，先审计 stash：
@@ -337,5 +337,5 @@ ssh a800-D "cat /mnt/nvme0n1p1/zhangzy/motionflow-multiview-kimiswarm-iter20/out
 - **v86 已启动**：tmux session `v86_no_count_embedding`，GPU 6，v2 协议；不要手动重复启动。
 - **v2 数据是新的标准**：所有新 baseline 必须使用 `data/h36m_true_gt_v2/` + `configs/splits/h36m_true_gt_v2_standard.yaml`。
 - **磁盘 98% 满**：启动新的 medium 训练前，先跑 cleanup dry-run 并确认有 ≥5 GB 余量。
-- **GitHub 清理已完成**：remote URL token、旧工作树、本地轻量标签已清理，`main` 已 push（commit `d2ed343`）。`patches/stashes/` 中 45 个 stash patch 备份仍保留，审计完成前仍谨慎处理其中的敏感信息。
+- **GitHub 清理已完成**：remote URL token、旧工作树、本地轻量标签已清理，`main` 已 push（commit `8aee08c` 或更新）。`patches/stashes/` 中 45 个 stash patch 备份仍保留，审计完成前仍谨慎处理其中的敏感信息。
 - **不要动 A800 只读资源**：`/mnt/nvme0n1p1/zhangzy/projects` 与 `motionflow` Docker 仅可查看，禁止写入/重启。
