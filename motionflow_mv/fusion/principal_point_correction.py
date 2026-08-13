@@ -112,15 +112,15 @@ class PrincipalPointCorrection(nn.Module):
         else:
             raise ValueError("Either feat or x must be provided.")
 
-        import sys, traceback
-        print(f"[DEBUG pp] caller:\n{''.join(traceback.format_stack(limit=5)[:-1])}", file=sys.stderr, flush=True)
-        print(f"[DEBUG pp] K finite={torch.isfinite(K).all().item()} x finite={torch.isfinite(x).all().item() if x is not None else 'n/a'} weights finite={torch.isfinite(weights).all().item() if weights is not None else 'n/a'} pooled finite={torch.isfinite(pooled).all().item()} pooled shape={pooled.shape} min={pooled.min().item() if torch.isfinite(pooled).all() else 'nan'} max={pooled.max().item() if torch.isfinite(pooled).all() else 'nan'}", file=sys.stderr, flush=True)
-        if x is not None:
-            print(f"[DEBUG pp] x sum={x.sum().item()} abs_sum={x.abs().sum().item()}", file=sys.stderr, flush=True)
-        if weights is not None:
-            print(f"[DEBUG pp] weights sum={weights.sum().item()} abs_sum={weights.abs().sum().item()} any_neg={ (weights < 0).any().item()}", file=sys.stderr, flush=True)
+        # import sys, traceback
+        # print(f"[DEBUG pp] caller:\n{''.join(traceback.format_stack(limit=5)[:-1])}", file=sys.stderr, flush=True)
+        # print(f"[DEBUG pp] K finite={torch.isfinite(K).all().item()} x finite={torch.isfinite(x).all().item() if x is not None else 'n/a'} weights finite={torch.isfinite(weights).all().item() if weights is not None else 'n/a'} pooled finite={torch.isfinite(pooled).all().item()} pooled shape={pooled.shape} min={pooled.min().item() if torch.isfinite(pooled).all() else 'nan'} max={pooled.max().item() if torch.isfinite(pooled).all() else 'nan'}", file=sys.stderr, flush=True)
+        # if x is not None:
+        #     print(f"[DEBUG pp] x sum={x.sum().item()} abs_sum={x.abs().sum().item()}", file=sys.stderr, flush=True)
+        # if weights is not None:
+        #     print(f"[DEBUG pp] weights sum={weights.sum().item()} abs_sum={weights.abs().sum().item()} any_neg={ (weights < 0).any().item()}", file=sys.stderr, flush=True)
         out = self.mlp(pooled)
-        print(f"[DEBUG pp] mlp_out finite={torch.isfinite(out).all().item()} out min={out.min().item() if torch.isfinite(out).all() else 'nan'} max={out.max().item() if torch.isfinite(out).all() else 'nan'}", file=sys.stderr, flush=True)
+        # print(f"[DEBUG pp] mlp_out finite={torch.isfinite(out).all().item()} out min={out.min().item() if torch.isfinite(out).all() else 'nan'} max={out.max().item() if torch.isfinite(out).all() else 'nan'}", file=sys.stderr, flush=True)
         delta = out[..., :2] * self.max_offset  # (N, V, 2)
 
         # Build the corrected intrinsics in a functional way to avoid in-place
@@ -203,7 +203,7 @@ class PrincipalPointCorrection(nn.Module):
 
         out = self.fallback_projector(feat)
         wb = self.fallback_projector.weight
-        print(f"[DEBUG _features_from_x] points finite={torch.isfinite(points).all().item()} conf finite={torch.isfinite(conf).all().item()} weights finite={torch.isfinite(weights).all().item() if weights is not None else 'n/a'} p_mean finite={torch.isfinite(p_mean).all().item()} feat finite={torch.isfinite(feat).all().item()} out finite={torch.isfinite(out).all().item()} weight finite={torch.isfinite(wb).all().item()}", file=sys.stderr, flush=True)
+        # print(f"[DEBUG _features_from_x] points finite={torch.isfinite(points).all().item()} conf finite={torch.isfinite(conf).all().item()} weights finite={torch.isfinite(weights).all().item() if weights is not None else 'n/a'} p_mean finite={torch.isfinite(p_mean).all().item()} feat finite={torch.isfinite(feat).all().item()} out finite={torch.isfinite(out).all().item()} weight finite={torch.isfinite(wb).all().item()}", file=sys.stderr, flush=True)
 
         return out
 

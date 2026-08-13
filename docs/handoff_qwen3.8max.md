@@ -43,7 +43,7 @@
 - **A800 磁盘已清理**。从约 99% 降到 **98%**，剩余约 **73 GB**。
 - **GPU 7 被外项目占用**。LuxTTS / Mega-ASR / ComfyUI 占用了 GPU 7，违反项目 GPU 策略；**禁止 kill**，但在此 cleared 之前不得在 GPU 7 启动新任务。
 - **本地 v37 self-critique v2 smoke 正在运行**。RTX 4090，用于快速验证 self-critique 思路。
-- **本地 git 存在 stash 与 token 泄露风险**。当前有 **45 条 stash**，需先审计再操作，避免泄露。
+- **GitHub / 本地仓库清理已完成**。remote URL 中的 token 已移除（当前为 `https://github.com/adjcjh777/motionflow-multiview-kimiswarm.git`）；旧工作树 `.worktrees/v18_deformable_attention_baseline` 已删除；本地轻量标签 `v25_local_baseline_monitor_commit` 和 `v25_local_baseline_monitor_v1` 已删除；`main` 已 push 到 GitHub（commit `d2ed343`）。`patches/stashes/` 中 45 个 stash patch 备份仍保留，待后续审计。
 
 ---
 
@@ -80,10 +80,14 @@
 | v37 self-critique v2 smoke | **DONE** | val MPJPE **87.85 mm** @ 2 epochs | 已归档。 |
 | v21 neural BA v2 smoke | **FIXED** | 修复前初始 **93.50 mm**，修复后 **79.42 mm** @ 2 epochs | 根因：`motionflow_mv/fusion/neural_bundle_adjustment_v21.py` 中轴角旋转描述子在单位阵处导数发散产生 NaN；修复：替换为 `R - R^T` 的反对称部分。 |
 | v29 hierarchical v2 smoke | **FIXED** | val MPJPE **95.20 mm** @ 2 epochs | 原配置过重导致看起来像 hung，并非 bug；改用轻量脚本 `scripts/run_v29_hierarchical_true_gt_v2_smoke_local_4090_fixed.sh`。 |
+| v39 reliability-coupled graph refinement v2 smoke | **DONE** | val MPJPE **80.52 mm** @ 2 epochs | 基于 v37 模板 + v39 flag；`val_stride=50` 控制单 smoke 约 8 min。 |
+| v41 weighted domain loss v2 smoke | **DONE** | val MPJPE **80.23 mm** @ 2 epochs | 基于 v37 模板 + `--domain_loss_weights 1.0,1.5`；`val_stride=50` 控制单 smoke 约 7 min。 |
 
 **说明**：
 - v21 修复涉及文件：`motionflow_mv/fusion/neural_bundle_adjustment_v21.py`。轴角旋转描述子在单位阵 `R = I` 处导数发散，优化第一步即产生 NaN；改用 `R - R^T` 的反对称部分后训练稳定。
 - v29 使用方法：`CUDA_VISIBLE_DEVICES=0 bash scripts/run_v29_hierarchical_true_gt_v2_smoke_local_4090_fixed.sh`。
+- v39 / v41 新 smoke 脚本：`scripts/run_v39_reliability_coupled_graph_refinement_true_gt_v2_smoke_local_4090.sh`、`scripts/run_v41_weighted_domain_loss_true_gt_v2_smoke_local_4090.sh`。
+- 本次 smoke 前禁用了 `motionflow_mv/fusion/principal_point_correction.py` 中的大量 `print` 调试输出，否则单次 smoke 会被日志 I/O 拖慢到 30 min 以上。
 
 ---
 
@@ -134,9 +138,10 @@
 - 若目标是跑在 `h36m_true_gt_v2` 上，**启动前务必确认是否已改为 `configs/splits/h36m_true_gt_v2_standard.yaml`**。
 - v25 v2 脚本 `scripts/run_v25_true_gt_v2_medium_a800.sh` 已明确指向 v2 manifest。
 
-### 4.5 本地 git stash 与 token 泄露风险
+### 4.5 本地 git stash 与 token 审计
 
-- 本地仓库当前有 **45 条 stash**。
+- **GitHub 清理已完成**：remote URL 中 token 已移除（当前为 `https://github.com/adjcjh777/motionflow-multiview-kimiswarm.git`）、旧工作树 `.worktrees/v18_deformable_attention_baseline` 与本地轻量标签 `v25_local_baseline_monitor_commit` / `v25_local_baseline_monitor_v1` 已删除；`main` 已 push 到 GitHub（commit `d2ed343`）。
+- 本地仓库当前仍有 **45 条 stash** 备份在 `patches/stashes/`。
 - 部分 stash 可能包含临时写死的 API key / token / 数据库连接串。
 - **在 push 或共享任何补丁之前**，先审计 stash：
   - 列出所有 stash 并检查内容；
@@ -328,5 +333,5 @@ ssh a800-D "cat /mnt/nvme0n1p1/zhangzy/motionflow-multiview-kimiswarm-iter20/out
 - **v86 已启动**：tmux session `v86_no_count_embedding`，GPU 6，v2 协议；不要手动重复启动。
 - **v2 数据是新的标准**：所有新 baseline 必须使用 `data/h36m_true_gt_v2/` + `configs/splits/h36m_true_gt_v2_standard.yaml`。
 - **磁盘 98% 满**：启动新的 medium 训练前，先跑 cleanup dry-run 并确认有 ≥5 GB 余量。
-- **git stash 含 token 风险**：审计完成前，不要 push 任何来自 stash 的临时 patch 或配置文件。
+- **GitHub 清理已完成**：remote URL token、旧工作树、本地轻量标签已清理，`main` 已 push（commit `d2ed343`）。`patches/stashes/` 中 45 个 stash patch 备份仍保留，审计完成前仍谨慎处理其中的敏感信息。
 - **不要动 A800 只读资源**：`/mnt/nvme0n1p1/zhangzy/projects` 与 `motionflow` Docker 仅可查看，禁止写入/重启。

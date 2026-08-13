@@ -2,6 +2,14 @@
 
 > Last updated: 2026-08-13 ~01:15 UTC
 
+## GitHub / Local repo status
+
+- Remote URL token: **removed** — current origin is `https://github.com/adjcjh777/motionflow-multiview-kimiswarm.git`
+- Old worktree `.worktrees/v18_deformable_attention_baseline`: **deleted**
+- Local lightweight tags `v25_local_baseline_monitor_commit` / `v25_local_baseline_monitor_v1`: **deleted**
+- `main` push: **done** — commit `d2ed343` on GitHub
+- Stash backups in `patches/stashes/`: **45 patches retained** (pending audit)
+
 ## Active A800 Processes
 
 | PID | GPU | Type | Command / Session | Notes |

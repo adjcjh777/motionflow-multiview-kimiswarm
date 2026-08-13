@@ -6,19 +6,27 @@
 >
 > **A800 status (do not touch running jobs):** v25 true-GT v2 medium training is **complete** on A800 GPU 6 (tmux session: `v25_true_gt_v2_medium_a800`), early-stopped @ epoch 6, best val MPJPE **31.41 mm**, checkpoint `outputs/ablations/v25_true_gt_v2_medium_a800.pth`. v85 random-view-dropout training is **complete** on A800 GPU 7; best val MPJPE **31.42 mm**, checkpoint `outputs/ablations/v85_random_view_dropout_medium_a800.pth` (symlink to `..._final.pth`). v86 no-count-embedding ablation is **running** on A800 GPU 6 (tmux session: `v86_no_count_embedding`), using the v2 data protocol. The v85 DLT-fallback variable-view evaluation is **queued behind v86** via the post-v86 watcher `scripts/launch_v85_dlt_fallback_after_v86.sh`; it will **auto-run once v86 training finishes**. GPU 7 is **occupied by an external project** (~12 GB). **Only GPUs 6/7 are used by this project.**
 >
-> **Local smoke status (RTX 4090):** v21 neural BA smoke is **fixed** — the axis-angle rotation descriptor in `motionflow_mv/fusion/neural_bundle_adjustment_v21.py` was divergent at identity and has been replaced with the `R - R^T` skew-symmetric part; 2 epochs val MPJPE **79.42 mm** (down from an initial 93.50 mm). v29 hierarchical smoke is **fixed** — the hang was caused by an overly heavy smoke config, not a code bug; the lightweight script `scripts/run_v29_hierarchical_true_gt_v2_smoke_local_4090_fixed.sh` completes 2 epochs with val MPJPE **95.20 mm**.
+> **Local smoke status (RTX 4090):** v21 neural BA smoke is **fixed** — the axis-angle rotation descriptor in `motionflow_mv/fusion/neural_bundle_adjustment_v21.py` was divergent at identity and has been replaced with the `R - R^T` skew-symmetric part; 2 epochs val MPJPE **79.42 mm** (down from an initial 93.50 mm). v29 hierarchical smoke is **fixed** — the hang was caused by an overly heavy smoke config, not a code bug; the lightweight script `scripts/run_v29_hierarchical_true_gt_v2_smoke_local_4090_fixed.sh` completes 2 epochs with val MPJPE **95.20 mm**. v39 reliability-coupled graph refinement and v41 weighted domain loss smokes are **done** on true-GT v2; 2 epochs val MPJPE **80.52 mm** and **80.23 mm**, respectively (v37 baseline ~80 mm).
 >
 > **Data foundation:** `data/h36m_true_gt_v2/` is the current protocol on A800; the v2 DLT baseline is **25.67 mm** and RANSAC/conf-DLT is **26.47 mm**. Legacy `data/h36m_hf/*.npz` remain circular; do not use them for model selection.
 >
 > **True-GT H36M leaderboard (S9/S11 test):** Iskakov 23.40 mm; conf-DLT 25.67 mm; RANSAC/conf-DLT 26.47 mm; **v25 true-GT v2 medium val 31.41 mm** (test pending); **v25 stability 31.56 mm** (v1); v81 37.83 mm; v82 39.46 mm; v80 53.98 mm; v52 54.01 mm; v57 57.10 mm. v85 no-fallback k=4 was 83.52/77.07 mm; v85 DLT-fallback is queued behind v86. v86 no-count-embedding ablation is running.
 >
 > **CVPR 2027 plan:** 1) Monitor v86 no-count-embedding ablation on GPU 6. 2) Wait for v85 DLT-fallback variable-view eval to auto-run once v86 finishes. 3) Sync/run v2 test-set evaluation for v25 (test MPJPE pending). 4) Run `scripts/cleanup_a800_safe.sh` dry-run before any large write; A800 disk is **~98% full (~72 GB free)**. 5) Rewrite paper around true-GT, sparse-view, and cross-dataset robustness.
+>
+> **Local repo / GitHub cleanup (done):** Remote URL token removed; old worktree `.worktrees/v18_deformable_attention_baseline` deleted; local tags `v25_local_baseline_monitor_commit` and `v25_local_baseline_monitor_v1` deleted; `main` pushed to GitHub as commit `d2ed343`. The 45 stash backups in `patches/stashes/` remain for later audit.
 
 ## Recent local smoke fixes (v21 / v29)
 
 - **v21 neural BA smoke — fixed:** The local RTX 4090 smoke for `neural_bundle_adjustment_v21` was failing with NaN camera parameters. Root cause: the axis-angle rotation descriptor in `motionflow_mv/fusion/neural_bundle_adjustment_v21.py` has a divergent derivative at the identity rotation (`R = I`), producing NaNs in the first optimization step. Fix: replace the descriptor with the skew-symmetric part `R - R^T`. After the fix the smoke completes 2 epochs with val MPJPE dropping from an initial **93.50 mm** to **79.42 mm**.
 - **v29 hierarchical smoke — fixed:** The smoke appeared to hang on the local RTX 4090, but this was not a bug; the original smoke configuration was too heavy for the RTX 4090. A lightweight script `scripts/run_v29_hierarchical_true_gt_v2_smoke_local_4090_fixed.sh` runs cleanly and completes 2 epochs with val MPJPE **95.20 mm**.
 - **Takeaway:** Local smoke failures on RTX 4090 should first be checked for (a) numerical instabilities in rotation parameterizations and (b) config/memory overload before treating them as architecture bugs.
+
+## Additional local v2 smokes (v39 / v41)
+
+- **v39 reliability-coupled graph refinement v2 smoke:** Script `scripts/run_v39_reliability_coupled_graph_refinement_true_gt_v2_smoke_local_4090.sh` on true-GT v2 (`configs/splits/h36m_true_gt_v2_standard.yaml`). 2 epochs val MPJPE **80.52 mm** (v37 baseline ~80 mm). Uses `val_stride=50` for fast turnaround.
+- **v41 weighted domain loss v2 smoke:** Script `scripts/run_v41_weighted_domain_loss_true_gt_v2_smoke_local_4090.sh` on true-GT v2. 2 epochs val MPJPE **80.23 mm**. Uses `val_stride=50` for fast turnaround.
+- **Debug output cleanup:** Disabled noisy `print` statements in `motionflow_mv/fusion/principal_point_correction.py` that were emitting per-call debug lines and slowing smoke runs by an order of magnitude.
 
 ## Current-session update (AIST++ NaN fix / v25 var-view / MPI / dropped v83/v84)
 
