@@ -585,6 +585,72 @@ ssh a800-D "nvidia-smi -i 7 -q -d PIDS"
 # Check disk
 ssh a800-D "df -h /mnt/nvme0n1p1"
 ```
+## Next handoff for qwen3.8max — v25/v86 test done, v85 DLT-fallback running, v2 scripts ready
+
+> **Status as of 2026-08-13 ~04:50 UTC** (agent handoff refresh)
+
+### Executive snapshot
+
+- **v25 true-GT v2 medium:** test **30.69 mm** (S9 34.71 / S11 26.66), PA-MPJPE **34.39 mm**.
+- **v85 random-view dropout:** test **30.73 mm** (S9 34.60 / S11 26.86), PA-MPJPE **34.53 mm**.
+- **v86 no-count-embedding:** test **30.90 mm** (S9 35.02 / S11 26.79), PA-MPJPE **34.50 mm**.
+- **v85 DLT-fallback variable-view eval:** running in tmux `v85_dlt_fallback` on GPU 6; no log output yet, ~35 min elapsed.
+- **v81/v82/v46/v52/v57 true-GT v2 A800 scripts and launch wrappers:** created and synced to A800.
+- **MPI-INF-3DHP test set:** copied to A800 (`data/webbridge/mpi_inf_3dhp/test_set/`).
+- **GPU 7:** occupied by external project (~12 GB). Do not touch.
+- **Disk:** `/mnt/nvme0n1p1` ~98% full (~72 GB free).
+- **GitHub:** `main` pushed (`c52304f`).
+
+### Active runs on A800
+
+| GPU | Task | State | Notes |
+|---|---|---|---|
+| 6 | v85 DLT-fallback variable-view eval | **RUNNING** | tmux `v85_dlt_fallback`; output `outputs/variable_view_fix/variable_view_v85_random_view_dropout_medium_a800_dlt_fallback.{json,csv}` |
+| 7 | External project | **OCCUPIED** | ~12 GB; do not touch |
+
+### Completed since last handoff
+
+1. **v86 test-set evaluation finished**
+   - Combined MPJPE **30.90 mm** (S9 35.02 / S11 26.79), PA-MPJPE **34.50 mm**.
+
+2. **v85 DLT-fallback variable-view eval relaunched**
+   - Running in tmux on GPU 6; expected several hours.
+   - A cron task monitors progress every 15 minutes.
+
+3. **v2 baseline scripts prepared**
+   - `scripts/run_v81/v82/v46/v52/v57_true_gt_v2_medium_a800.sh` and matching `launch_*` wrappers created and synced to A800.
+
+4. **MPI test set copied to A800**
+   - 6 `.npz` files in `data/webbridge/mpi_inf_3dhp/test_set/`.
+
+### Next 3 concrete tasks
+
+1. **Wait for the v85 DLT-fallback variable-view eval to finish and read the result.**
+   - Output: `outputs/variable_view_fix/variable_view_v85_random_view_dropout_medium_a800_dlt_fallback.{json,csv}`.
+   - Compare k=2/3/4 to the v25/v81/v82 DLT-fallback baseline.
+
+2. **Run `scripts/cleanup_a800_safe.sh` dry-run before launching any new medium training.**
+   - Disk is 98% full; cleanup recovers little, but run dry-run first.
+
+3. **Launch the v81/v82/v46/v52/v57 true-GT v2 medium re-runs once GPU 6/7 is free and disk space is verified.**
+   - Use `nohup bash scripts/launch_vXX_true_gt_v2_medium_a800.sh` to queue each run.
+
+### Quick verification commands
+
+```bash
+# v85 DLT-fallback eval
+ssh a800-D "tmux capture-pane -pt v85_dlt_fallback -S -100"
+ssh a800-D "tail -f /mnt/nvme0n1p1/zhangzy/motionflow-multiview-kimiswarm-iter20/outputs/variable_view_fix/variable_view_v85_random_view_dropout_medium_a800_dlt_fallback.log"
+ssh a800-D "cat /mnt/nvme0n1p1/zhangzy/motionflow-multiview-kimiswarm-iter20/outputs/variable_view_fix/variable_view_v85_random_view_dropout_medium_a800_dlt_fallback.json"
+
+# v86 test result
+ssh a800-D "cat /mnt/nvme0n1p1/zhangzy/motionflow-multiview-kimiswarm-iter20/outputs/eval_v86_no_count_embedding_true_gt_v2_h36m_test.json"
+
+# GPU / disk
+ssh a800-D "nvidia-smi --query-gpu=index,name,utilization.gpu,memory.used --format=csv"
+ssh a800-D "df -h /mnt/nvme0n1p1"
+```
+
 ## Next handoff for qwen3.8max — v25/v86 test done, v85 DLT-fallback running
 
 > **Status as of 2026-08-13 ~04:20 UTC** (agent handoff refresh)
