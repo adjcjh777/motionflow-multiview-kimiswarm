@@ -18,9 +18,9 @@ log() {
 # Prefer GPU 6, fallback to 7.
 select_free_gpu() {
     for idx in 6 7; do
-        local used
-        used=$(nvidia-smi --id="${idx}" --query-gpu=memory.used --format=csv,noheader,nounits | tr -d ' ')
-        if [[ "${used}" -lt 1000 ]]; then
+        local proc_count
+        proc_count=$(nvidia-smi --id="${idx}" --query-compute-apps=pid --format=csv,noheader | grep -v "^[[:space:]]*$" | wc -l)
+        if [[ "${proc_count}" -eq 0 ]]; then
             echo "${idx}"
             return 0
         fi
