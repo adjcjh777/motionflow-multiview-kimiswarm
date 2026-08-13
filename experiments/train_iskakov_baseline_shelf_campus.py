@@ -151,6 +151,8 @@ def parse_args() -> argparse.Namespace:
                    help="max val frames used for the frozen DLT references (deterministic stride)")
     p.add_argument("--log_path", default=None)
     p.add_argument("--ckpt_path", default=None)
+    p.add_argument("--metrics_json", default=None,
+                   help="optional path to write a concise metrics JSON with the S9/S11 combined MPJPE")
     p.add_argument("--device", default="cuda")
     return p.parse_args()
 
@@ -445,6 +447,23 @@ def main() -> None:
         json.dump({"args": vars(args), "n_params": n_params, "best": best,
                    "frozen_references": refs, "history": history}, f, indent=2)
     log(f"config/history: {cfg_path}")
+
+    # Optional concise metrics JSON for downstream pipelines.
+    metrics_json_path = Path(args.metrics_json) if args.metrics_json else ckpt_path.with_suffix(".metrics.json")
+    if metrics_json_path:
+        metrics_out = {
+            "protocol": protocol,
+            "s9_s11_combined_mpjpe_mm": float(best["combined_direct_mm"]),
+            "s9_direct_mpjpe_mm": float(best["metrics"]["h36m_s9_direct_mm"]),
+            "s11_direct_mpjpe_mm": float(best["metrics"]["h36m_s11_direct_mm"]),
+            "best_epoch": int(best["epoch"]),
+            "checkpoint": str(ckpt_path),
+        }
+        metrics_json_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(metrics_json_path, "w", encoding="utf-8") as f:
+            json.dump(metrics_out, f, indent=2)
+        log(f"metrics json: {metrics_json_path}")
+
     log_f.close()
 
 

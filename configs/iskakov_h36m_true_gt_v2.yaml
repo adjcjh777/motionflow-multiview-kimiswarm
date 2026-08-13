@@ -31,6 +31,7 @@ ref_max_frames: 2000
 # Outputs
 log_path: outputs/baselines/iskakov_learnable_tri_h36m_true_gt_v2.log
 ckpt_path: outputs/baselines/iskakov_learnable_tri_h36m_true_gt_v2.pth
+metrics_json: outputs/baselines/iskakov_learnable_tri_h36m_true_gt_v2.metrics.json
 
 # MPJPE@k sparse-view evaluation run after the best checkpoint is saved.
 eval:

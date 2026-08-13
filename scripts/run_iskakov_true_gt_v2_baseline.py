@@ -89,6 +89,8 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--device", type=str, default="cuda")
     p.add_argument("--log_path", type=str, default=None)
     p.add_argument("--ckpt_path", type=str, default=None)
+    p.add_argument("--metrics_json", type=str, default=None,
+                   help="path to write a concise metrics JSON with the S9/S11 combined MPJPE")
     return p.parse_args()
 
 
@@ -114,6 +116,8 @@ def build_trainer_command(args: argparse.Namespace) -> list[str]:
         "--ckpt_path", str(ckpt_path),
         "--device", args.device,
     ]
+    if args.metrics_json:
+        cmd.extend(["--metrics_json", str(args.metrics_json)])
     return cmd
 
 

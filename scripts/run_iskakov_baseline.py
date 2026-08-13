@@ -58,6 +58,8 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--patience", type=int, default=None)
     p.add_argument("--train_samples_per_epoch", type=int, default=None)
     p.add_argument("--device", type=str, default=None)
+    p.add_argument("--metrics_json", type=str, default=None,
+                   help="path to write a concise metrics JSON with the S9/S11 combined MPJPE")
     return p.parse_args()
 
 
@@ -143,6 +145,7 @@ def main() -> None:
         "patience": args.patience,
         "train_samples_per_epoch": args.train_samples_per_epoch,
         "device": args.device,
+        "metrics_json": args.metrics_json,
     }
     trainer_cmd = build_trainer_command(flat_cfg, overrides)
 
