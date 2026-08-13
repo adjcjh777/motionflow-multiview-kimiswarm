@@ -59,10 +59,11 @@ class CameraConditionedViewEmbeddingV31(nn.Module):
             nn.ReLU(),
         )
 
-        # Pairwise view-geometry descriptor: baseline, relative rotation angle,
-        # optical-axis cosine.
+        # Pairwise view-geometry descriptor: baseline, relative rotation encoded
+        # via the skew-symmetric part of R (smooth at identity, avoiding the
+        # singular acos/sqrt log map), and optical-axis cosine.
         self.pairwise_mlp = nn.Sequential(
-            nn.Linear(3, pairwise_hidden),
+            nn.Linear(5, pairwise_hidden),
             nn.ReLU(),
             nn.LayerNorm(pairwise_hidden),
             nn.Linear(pairwise_hidden, pairwise_hidden),
@@ -146,18 +147,23 @@ class CameraConditionedViewEmbeddingV31(nn.Module):
         baseline = (C_i - C_j).norm(dim=-1, keepdim=True)
 
         R_rel = torch.matmul(R.transpose(-2, -1).unsqueeze(2), R.unsqueeze(1))
-        trace = (
-            R_rel[..., 0, 0]
-            + R_rel[..., 1, 1]
-            + R_rel[..., 2, 2]
+        # Encode relative rotation by the skew-symmetric part of R_rel.  This is
+        # smooth and well-defined at the identity, avoiding the singular
+        # derivative of acos at cos(angle)=1 (the axis-angle log map).
+        rot_vec = torch.stack(
+            [
+                R_rel[..., 2, 1] - R_rel[..., 1, 2],
+                R_rel[..., 0, 2] - R_rel[..., 2, 0],
+                R_rel[..., 1, 0] - R_rel[..., 0, 1],
+            ],
+            dim=-1,
         )
-        angle = torch.acos(((trace - 1.0) / 2.0).clamp(-1.0, 1.0)).unsqueeze(-1)
 
         optical_axis_i = optical_axis.unsqueeze(2)
         optical_axis_j = optical_axis.unsqueeze(1)
         dot = (optical_axis_i * optical_axis_j).sum(dim=-1, keepdim=True)
 
-        pairwise_feat = torch.cat([baseline, angle, dot], dim=-1)
+        pairwise_feat = torch.cat([baseline, rot_vec, dot], dim=-1)
         pairwise_h = self.pairwise_mlp(pairwise_feat)
 
         N, V = pairwise_h.shape[0], pairwise_h.shape[1]

@@ -84,9 +84,11 @@
 | v41 weighted domain loss v2 smoke | **DONE** | val MPJPE **80.23 mm** @ 2 epochs | 基于 v37 模板 + `--domain_loss_weights 1.0,1.5`；`val_stride=50` 控制单 smoke 约 7 min。 |
 | v35 temporal view-joint graph v2 smoke | **DONE** | val MPJPE **91.21 mm** @ 2 epochs | 轻量配置：d=64, residual_hidden=128, n_st_layers=2, train_samples=256, val_stride=100；运行约 4.5 min。 |
 | v36 uncertainty-gated graph refinement v2 smoke | **DONE** | val MPJPE **94.97 mm** @ 2 epochs | 与 v35 相同轻量配置；运行约 4.5 min。 |
+| v31 camera-view embedding v2 smoke | **FIXED** | val MPJPE **80.70 mm** @ 2 epochs（Epoch 1 94.07 mm → Epoch 2 80.70 mm） | 根因：`motionflow_mv/fusion/camera_view_embedding_v31.py` 中相对旋转角度使用 `acos` 描述子，在单位阵处导数发散产生 NaN；修复：替换为 `R_rel - R_rel^T` 的反对称部分。运行约 15 min。 |
 
 **说明**：
 - v21 修复涉及文件：`motionflow_mv/fusion/neural_bundle_adjustment_v21.py`。轴角旋转描述子在单位阵 `R = I` 处导数发散，优化第一步即产生 NaN；改用 `R - R^T` 的反对称部分后训练稳定。
+- v31 修复涉及文件：`motionflow_mv/fusion/camera_view_embedding_v31.py`。相对旋转角度使用 `angle = acos((trace - 1) / 2)`，在相对旋转为单位阵 `R_rel = I` 处 `acos` 导数发散，产生 `Non-finite values in camera parameters (K, R, t)`；改用相对旋转矩阵的反对称部分 `[r21-r12, r02-r20, r10-r01]`，并将 pairwise MLP 输入维度从 3 改为 5。脚本：`scripts/run_v31_camera_view_embedding_true_gt_v2_smoke_local_4090.sh`。
 - v29 使用方法：`CUDA_VISIBLE_DEVICES=0 bash scripts/run_v29_hierarchical_true_gt_v2_smoke_local_4090_fixed.sh`。
 - v39 / v41 新 smoke 脚本：`scripts/run_v39_reliability_coupled_graph_refinement_true_gt_v2_smoke_local_4090.sh`、`scripts/run_v41_weighted_domain_loss_true_gt_v2_smoke_local_4090.sh`。
 - 本次 smoke 前禁用了 `motionflow_mv/fusion/principal_point_correction.py` 中的大量 `print` 调试输出，否则单次 smoke 会被日志 I/O 拖慢到 30 min 以上。
