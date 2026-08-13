@@ -11,7 +11,7 @@
 > (`docs/results_true_gt_shelf_campus.md`).
 
 **Abstract.**
-Multi-view 3D human pose estimation promises metric body tracking from cheap calibrated cameras, yet many widely used benchmarks rely on labels that are themselves triangulations of the input 2D keypoints. We show that this circular protocol inflates apparent accuracy and conceals a large generalisation gap: on honest, true mocap ground truth, learned triangulation methods can lag behind a simple confidence-weighted DLT baseline. We therefore pivot this paper away from chasing absolute-record MPJPE and toward the properties that matter for real deployment: **sparse-view robustness**, **cross-domain generalisation**, and resilience to imperfect calibration. We present MotionFlow-MultiView, a lightweight geometry-first architecture that combines temporal ray-attention fusion with weighted DLT triangulation and a small residual refinement head. Geometry-based camera positional encoding (CamPE) and a skeleton-aware graph joint relation (GJR) module let a single model transfer across variable camera rigs and datasets without per-dataset pose heads. On true-GT v2 Human3.6M [8], honest absolute MPJPEs for strong baselines fall in the 15–30 mm range; our best learned variant reaches **30.83 mm** test / **31.41 mm** val (v25 stability / v25 true-GT v2 medium), behind Iskakov (**23.40 mm**) and confidence-weighted DLT (**25.67 mm**), with temporal-attention variants v81 and v82 at **37.83 mm** and **39.46 mm**, respectively (Figure 1). Sparse-view evaluation, measured by **MPJPE@k** for k = 2,3,4, shows that current learned models fail catastrophically when fewer than four views are available and must fall back to geometric DLT for k<4 (Figure 2). We also report honest cross-domain numbers for AIST++-only → H36M (**93.94 mm**) [10], the first true detected-2D MPI-INF-3DHP DLT baseline (**115.09 mm**) [9, 11], and Shelf/Campus detected. These results confirm that the remaining challenge is not incremental accuracy on circular leaderboards, but robustness under view scarcity and domain shift. The system runs at **11.8–159.3 clips/s** on an RTX 4090 and is exposed as a pluggable `MultiViewFusionPlugin` inside MotionFlow.
+Multi-view 3D human pose estimation promises metric body tracking from cheap calibrated cameras, yet many widely used benchmarks rely on labels that are themselves triangulations of the input 2D keypoints. We show that this circular protocol inflates apparent accuracy and conceals a large generalisation gap: on honest, true mocap ground truth, learned triangulation methods can lag behind a simple confidence-weighted DLT baseline. We therefore pivot this paper away from chasing absolute-record MPJPE and toward the properties that matter for real deployment: **sparse-view robustness**, **cross-domain generalisation**, and resilience to imperfect calibration. We present MotionFlow-MultiView, a lightweight geometry-first architecture (**11.8–159.3 clips/s** on an RTX 4090) that combines temporal ray-attention fusion with weighted DLT triangulation and a small residual refinement head. Geometry-based camera positional encoding (CamPE) and a skeleton-aware graph joint relation (GJR) module let a single model transfer across variable camera rigs and datasets without per-dataset pose heads. On true-GT v2 Human3.6M [8], honest absolute MPJPEs for strong baselines fall in the 15–30 mm range; our best learned variant reaches **30.83 mm** test / **31.41 mm** val (v25 stability / v25 true-GT v2 medium), behind Iskakov (**23.40 mm**) and confidence-weighted DLT (**25.67 mm**), with temporal-attention variants v81 and v82 at **37.83 mm** and **39.46 mm**, respectively (Figure 1). Sparse-view evaluation, measured by **MPJPE@k** for k = 2,3,4, shows that current learned models fail catastrophically when fewer than four views are available and must fall back to geometric DLT for k<4 (Figure 2). We also report honest cross-domain numbers for AIST++-only → H36M (**93.94 mm**) [10], the first true detected-2D MPI-INF-3DHP DLT baseline (**115.09 mm**) [9, 11], and Shelf/Campus detected. These results confirm that the remaining challenge is not incremental accuracy on circular leaderboards, but robustness under view scarcity and domain shift. The system runs at **11.8–159.3 clips/s** on an RTX 4090 and is exposed as a pluggable `MultiViewFusionPlugin` inside MotionFlow.
 
 ---
 
@@ -219,18 +219,18 @@ Table 2 summarises the current true-GT v2 H36M leaderboard. Sparse-view evaluati
 
 v25 true-GT v2 medium, v85 random-view dropout, and v86 no-count-embedding all reach nearly identical full-view performance (test MPJPE **30.69 mm**, **30.73 mm**, and **30.90 mm**; val **31.41 mm**, **31.42 mm**, and **31.64 mm**), indicating that random whole-view dropout during training does not degrade full-view performance on the v2 protocol and that the active-view-count embedding is unnecessary for the full 4-view task. Sparse-view MPJPE@k curves (Section 5.4) will determine whether the count embedding justifies its overhead.
 
-**Table 3.** Sparse-view MPJPE@k (mm) on H36M true-GT v2 (S9/S11 macro mean). DLT-fallback rows use geometric triangulation for $k<4$; no-fallback rows use the learned model at all $k$.
+**Table 3.** Sparse-view MPJPE@k (mm) on H36M true-GT v2. DLT-fallback rows use geometric triangulation for $k<4$; no-fallback rows use the learned model at all $k$. S9/S11 values are direct MPJPE; mean is the simple macro average of the two subjects. DLT and Iskakov report macro mean only.
 
-| Method | k=2 | k=3 | k=4 | Notes |
-|---|---:|---:|---:|---|
-| DLT (confidence-weighted) | 36.42 | 33.68 | 25.94 | first-subset geometric baseline |
-| Iskakov ICCV 2019 | 53.62 | **27.84** | **23.42** | current true-GT leader |
-| v25 stability (DLT fallback) | 53.76 | 29.30 | 113.78 | k=2/3 direct DLT, k=4 learned |
-| v82 multi-scale (DLT fallback) | 53.77 | 29.30 | **45.09** | k=2/3 direct DLT, k=4 learned |
-| v85 random-view dropout (DLT fallback) | 53.76 | 29.30 | 80.30 | k=2/3 direct DLT, k=4 learned v85 |
-| v85 random-view dropout (no fallback) | 2309.54 | 1118.82 | 80.29 | k<4 catastrophic |
-| v86 no-count-embedding (DLT fallback) | TODO | TODO | TODO | sparse-view eval pending |
-| v86 no-count-embedding (no fallback) | TODO | TODO | TODO | sparse-view eval pending |
+| Method | k=2 S9 | k=2 S11 | k=2 mean | k=3 S9 | k=3 S11 | k=3 mean | k=4 S9 | k=4 S11 | k=4 mean | Notes |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|
+| DLT (confidence-weighted) | — | — | 36.42 | — | — | 33.68 | — | — | 25.94 | geometric baseline; macro only |
+| Iskakov ICCV 2019 | — | — | 53.62 | — | — | **27.84** | — | — | **23.42** | current true-GT leader; macro only |
+| v25 stability (DLT fallback) | 58.18 | 49.35 | 53.76 | 33.32 | 25.28 | 29.30 | 116.98 | 110.58 | 113.78 | k=2/3 direct DLT, k=4 learned |
+| v82 multi-scale (DLT fallback) | 58.18 | 49.35 | 53.77 | 33.32 | 25.28 | 29.30 | 47.81 | 42.36 | **45.09** | k=2/3 direct DLT, k=4 learned |
+| v85 random-view dropout (DLT fallback) | 58.18 | 49.35 | 53.76 | 33.32 | 25.28 | 29.30 | 83.52 | 77.07 | 80.30 | k=2/3 direct DLT, k=4 learned v85 |
+| v85 random-view dropout (no fallback) | 2310.27 | 2308.80 | 2309.54 | 1119.45 | 1118.18 | 1118.82 | 83.52 | 77.07 | 80.29 | k<4 catastrophic |
+| v86 no-count-embedding (DLT fallback) | TODO | TODO | TODO | TODO | TODO | TODO | TODO | TODO | TODO | sparse-view eval pending |
+| v86 no-count-embedding (no fallback) | TODO | TODO | TODO | TODO | TODO | TODO | TODO | TODO | TODO | sparse-view eval pending |
 
 **Table 4.** Cross-domain and detected-2D results.
 
@@ -430,18 +430,8 @@ k=4 still runs the learned model and matches the full 4-view subset benchmark; k
 
 The v85 no-fallback results are the critical negative result: a model trained explicitly with random whole-view dropout and active-view-count conditioning still fails catastrophically at k<4 (k=2 ≈ 2309 mm, k=3 ≈ 1118 mm) and produces a worse k=4 result (**80.29 mm** macro) than v82. This demonstrates that the sparse-view failure is not simply a lack of training exposure to fewer views; the architecture must be redesigned to handle variable view counts. Possible next steps include a dedicated sparse-view head that is only active when k<4, stronger multi-scale cross-view attention that does not assume a fixed four-view layout, or a hybrid training objective that explicitly matches confidence-weighted DLT at low view counts while improving upon it at full views. We therefore retain the earlier MPI-INF-3DHP smoke comparison only as preliminary cross-architecture evidence.
 
-**Table 5.** Sparse-view MPJPE@k (mm) on H36M true-GT v2, split by subject. DLT-fallback rows use geometric triangulation for $k<4$; no-fallback rows use the learned model at all $k$.
-
-| Method | k=2 S9 | k=2 S11 | k=3 S9 | k=3 S11 | k=4 S9 | k=4 S11 |
-|---|---:|---:|---:|---:|---:|---:|
-| v25 DLT-fallback | 58.18 | 49.35 | 33.32 | 25.28 | 116.98 | 110.58 |
-| v85 no-fallback | 2310.27 | 2308.80 | 1119.45 | 1118.18 | 83.52 | 77.07 |
-| v85 DLT-fallback | 58.18 | 49.35 | 33.32 | 25.28 | 83.52 | 77.07 | k=2/3 direct DLT, k=4 learned v85; matches v25/v82 DLT fallback at k=2/3 |
-| v86 no-fallback | TODO | TODO | TODO | TODO | TODO | TODO | sparse-view eval pending |
-| v86 DLT-fallback | TODO | TODO | TODO | TODO | TODO | TODO | sparse-view eval pending |
-
 ![True-GT H36M sparse-view robustness](docs/figures/h36m_true_gt_mpjpe_at_k.png)
-**Figure 2.** Sparse-view robustness on true-GT H36M (S9/S11 macro mean). **x-axis:** number of active views $k \in \{2,3,4\}$. **y-axis:** direct MPJPE (mm, log scale). **Curves:** v25 stability with DLT fallback (k<4) and learned model (k=4); v85 random-view-dropout trained model, no fallback; v85 random-view-dropout with DLT fallback; v86 no-count-embedding ablation, no fallback; v86 no-count-embedding with DLT fallback. DLT and Iskakov baselines are model-agnostic and serve as geometric references. **Source data:** `scripts/analyze_v86_ablation.py` parses `outputs/variable_view_fix/variable_view_v25_true_gt_stability_a800_dlt_fallback.json` and the v85/v86 variable-view JSONs in `outputs/` / `outputs/variable_view_fix/`. **Generation script:** `scripts/plot_figure_2_sparse_view.py`. v86 no-fallback and v86 DLT-fallback curves are marked **TODO** until the corresponding evaluations finish. Exact per-subject values are given in Table 5.
+**Figure 2.** Sparse-view robustness on true-GT H36M (S9/S11 macro mean). **x-axis:** number of active views $k \in \{2,3,4\}$. **y-axis:** direct MPJPE (mm, log scale). **Curves:** v25 stability with DLT fallback (k<4) and learned model (k=4); v85 random-view-dropout trained model, no fallback; v85 random-view-dropout with DLT fallback; v86 no-count-embedding ablation, no fallback; v86 no-count-embedding with DLT fallback. DLT and Iskakov baselines are model-agnostic and serve as geometric references. **Source data:** `scripts/analyze_v86_ablation.py` parses `outputs/variable_view_fix/variable_view_v25_true_gt_stability_a800_dlt_fallback.json` and the v85/v86 variable-view JSONs in `outputs/` / `outputs/variable_view_fix/`. **Generation script:** `scripts/plot_figure_2_sparse_view.py`. v86 no-fallback and v86 DLT-fallback curves are marked **TODO** until the corresponding evaluations finish. Exact values are given in Table 3.
 
 **MPI-INF-3DHP non-circular smoke (14 views).** This smoke evaluation on a 300-frame subset of MPI-INF-3DHP S2/Seq1 (17-joint H36M mapping) compares the MotionFlow variants before the true-GT protocol was fully established.
 
@@ -511,7 +501,7 @@ The perturbation recipe and `IntrinsicCorrection` layer described in Section 3.6
 | 8 | 106.0 | 75.5 |
 | 16 | 100.4 | 159.3 |
 
-A single clip (13 frames, 14 views, 28 joints) takes ~84 ms, and batching increases throughput to ~159 clips/s on an RTX 4090 (torch 2.7.1+cu118, 100 measured iterations after 20 warmup). These timing numbers were refreshed on 2026-08-12 and demonstrate that the architecture is lightweight enough for robotics and immersive-video applications regardless of the ongoing data-foundation repair.
+A single clip (13 frames, 14 views, 28 joints) takes ~84 ms, and batching increases throughput to ~159.3 clips/s on an RTX 4090 (torch 2.7.1+cu118, 100 measured iterations after 20 warmup). These timing numbers were refreshed on 2026-08-12 and demonstrate that the architecture is lightweight enough for robotics and immersive-video applications regardless of the ongoing data-foundation repair.
 
 ### 5.8 Ongoing work and next experiments
 
@@ -521,7 +511,7 @@ Current experiment queue (updated 2026-08-13) includes:
 2. **v25 true-GT v2 medium** completed: best val **31.41 mm** @ Epoch 6, early-stopped @ Epoch 6; test **30.69 mm** (S9 34.71 / S11 26.66, PA-MPJPE 34.39 mm). This is the best v2 learned result so far on the corrected protocol.
 3. **v25 true-GT mixed-dataset training** first run completed with test **33.42 mm** (PA-MPJPE 34.60 mm); a stability relaunch on **A800 GPU 6** diverged at Epoch 3 (`val_MPJPE=481.99 mm`) and was killed. Mixed-dataset training is therefore deprioritised until a structural fix is found.
 4. **v86 no-count-embedding ablation** is **done** on **A800 GPU 6** (`v86_no_count_embedding`). It keeps v85's random whole-view dropout but disables the active-view-count embedding to isolate its contribution to sparse-view robustness. Full-view test: **30.90 mm** (S9 35.02 / S11 26.79, PA-MPJPE 34.50 mm); variable-view evaluation is pending.
-5. **AIST++-only fast v2 training** completed on **A800 GPU 5**, early-stopped @ Epoch 4 with best val **91.43 mm** @ Epoch 2. Zero-shot H36M S9/S11 cross-eval: **93.94 mm** (S9 98.17 / S11 89.70), PA-MPJPE **44.50 mm**.
+5. **AIST++-only fast v2 training** completed on **A800**, early-stopped @ Epoch 4 with best val **91.43 mm** @ Epoch 2. Zero-shot H36M S9/S11 cross-eval: **93.94 mm** (S9 98.17 / S11 89.70), PA-MPJPE **44.50 mm**.
 6. **Iskakov ICCV 2019 baseline** is **completed** on the standard H36M true-GT protocol; best val **23.40 mm** @ Epoch 9, test **23.40 mm**.
 7. **MPI-INF-3DHP RTMPose detected-2D DLT baseline** is completed: 16/16 `.npz` files processed; confidence-weighted DLT mean **115.09 mm**, PA-MPJPE **132.68 mm**.
 8. **Sparse-view (MPJPE@k) failure triaged and fixed.** The `variable_view_inference.py` wrapper did not pass `view_mask` to `OmniMultiViewFusionV5`, causing catastrophic k=2/k=3 results. A re-evaluation with the fixed wrapper still produced catastrophic k<4 errors, so a `--var_view_dlt_fallback` re-evaluation was run and is now **completed**. The DLT-fallback MPJPE@k on S9/S11 are: k=2 **58.18 / 49.35 mm**, k=3 **33.32 / 25.28 mm**, and k=4 **116.98 / 110.58 mm** (k=4 still uses the learned model). Source: `outputs/variable_view_fix/variable_view_v25_true_gt_stability_a800_dlt_fallback.json`. This confirms the sparse-view failure is in the learned model, not the observations.

@@ -1,0 +1,114 @@
+# configs/ablations/v83_true_gt_v2_smoke.yaml
+#
+# Local RTX 4090 smoke for v83 view-conditioned temporal attention on the
+# non-circular H36M true-GT v2 standard protocol.
+
+name: v83_true_gt_v2_smoke
+variant: v83-view-conditioned-temporal-attention
+version: 83
+description: >
+  Smoke test for v83 view-conditioned temporal attention inserted before
+  triangulation inside MultiViewGeometryFusionV25.  Uses the lightweight true-GT
+  v2 smoke recipe (d=64, residual_hidden=128, n_st_layers=2).
+
+manifest: configs/splits/h36m_true_gt_v2_standard.yaml
+script: experiments/train_omniview_fusion_v5_webbridge_multi.py
+
+training:
+  # Architecture (lightweight smoke recipe).
+  d: 64
+  residual_hidden: 128
+  n_st_layers: 2
+  graph_num_layers: 1
+  n_joint_layers: 1
+  n_heads: 4
+
+  # Smoke schedule.
+  clip_len: 9
+  epochs: 2
+  batch_size: 4
+  train_samples: 256
+  val_stride: 20
+  num_workers: 0
+
+  # Optimisation.
+  lr: 1.0e-3
+  lr_cosine: true
+  lr_warmup_epochs: 1
+  lr_min: 1.0e-6
+  max_grad_norm: 1.0
+  ema_decay: 0.999
+  weight_decay: 1.0e-4
+  early_stopping_patience: 3
+  early_stopping_min_delta: 0.001
+
+  # DLT / reweighting.
+  use_full_precision_dlt: true
+  use_robust_dlt_reweight: true
+  use_irls_reweight: true
+
+  # Standard v5 toggles.
+  use_domain_embedding: true
+  use_multiscale_fusion: true
+  use_camera_conditioning: true
+  use_epipolar_bias: true
+  use_context_visibility: true
+  use_skeleton_residual: true
+  use_rotation_correction: true
+  use_entropy_regularization: true
+  attention_entropy_weight: 0.01
+  use_camera_view_embedding: true
+  use_set_view_aggregator: true
+  use_deformable_cross_view_attention_v18: true
+
+  # v25 geometry fusion.
+  use_multiview_geometry_fusion_v25: true
+  v25_geom_loss_weight: 0.1
+  v25_dropout: 0.2
+  v25_use_geometry_attention: true
+  v25_use_learned_depth_triangulation: true
+  v25_use_geometry_bundle_adjustment: true
+
+  # v83 view-conditioned temporal attention.
+  use_view_conditioned_temporal_attention_v83: true
+  v83_d: 64
+  v83_n_heads: 4
+  v83_temporal_window: 9
+  v83_n_layers: 1
+  v83_dropout: 0.1
+  v83_residual_gate_init: -6.0
+  v83_use_view_reliability_bias: true
+
+  # Loss weights.
+  pa_loss_weight: 0.5
+  monotonic_loss_weight: 0.1
+  monotonic_margin: 5.0
+  reproj_loss_weight: 0.1
+  reproj_warmup_epochs: 1
+  aleatoric_reproj_loss_weight: 0.1
+
+  # Variable-view training.
+  use_variable_view_training: true
+  variable_view_min_views: 2
+  variable_view_max_views: 4
+  variable_view_max_views_start: 4
+  variable_view_curriculum_alpha: 2.0
+  variable_view_permute: true
+  outlier_view_prob: 0.3
+  outlier_view_max_views: 1
+  outlier_view_offset_std: 10.0
+  outlier_view_noise_std: 15.0
+
+safety:
+  target_hardware: local_rtx_4090_smoke
+  notes: >
+    Smoke test only (<=30 min).  If validation is stable, scale to the
+    medium A800 recipe.
+
+output:
+  checkpoint: outputs/omniview_fusion_v83_true_gt_v2_h36m_smoke_local_4090.pth
+  log: outputs/omniview_fusion_v83_true_gt_v2_h36m_smoke_local_4090.log
+
+notes:
+  - "v83 true-GT v2 smoke: view-conditioned temporal attention before triangulation."
+  - "Identity-at-init; should not degrade the v25 baseline at start."

@@ -1463,7 +1463,8 @@ def build_compute_loss(args: Namespace):
             )
 
         # When using the mixed loader, padded views must be masked out.  The
-        # dataset_id encodes the source domain (0=H36M/4 views, 1=MPI/14 views).
+        # dataset_id encodes the source domain (0=H36M/4 views, 1=MPI/14 views,
+        # 2=AIST++/9 views).
         if dataset_id is not None:
             B, T, V_full = x.shape[0], x.shape[1], x.shape[2]
             base_view_mask = torch.zeros(B, T, V_full, device=device)
@@ -1472,6 +1473,8 @@ def build_compute_loss(args: Namespace):
                     base_view_mask[i, :, :4] = 1.0
                 elif dataset_id[i].item() == 1:  # MPI-INF-3DHP
                     base_view_mask[i, :, :14] = 1.0
+                elif dataset_id[i].item() == 2:  # AIST++
+                    base_view_mask[i, :, :9] = 1.0
                 else:
                     base_view_mask[i, :, :].fill_(1.0)
             if view_mask is None:
@@ -1506,9 +1509,9 @@ def build_compute_loss(args: Namespace):
             k_max_eff = int(round(k_max_eff))
             k_max_eff = min(args.variable_view_max_views, max(k_max_start, k_max_eff))
             k_max_eff = max(args.variable_view_min_views, min(k_max_eff, V_full))
-            # Domain-aware clamp: H36M has 4 real views, MPI has 14.  WebBridge
-            # and other domains fall back to the full tensor width.
-            domain_real_views = {0: 4, 1: 14}
+            # Domain-aware clamp: H36M has 4 real views, MPI has 14, AIST++ has 9.
+            # WebBridge and other domains fall back to the full tensor width.
+            domain_real_views = {0: 4, 1: 14, 2: 9}
             view_mask = torch.zeros(B, T, V_full, device=device)
             for i in range(B):
                 real_v = V_full
