@@ -82,6 +82,8 @@
 | v29 hierarchical v2 smoke | **FIXED** | val MPJPE **95.20 mm** @ 2 epochs | 原配置过重导致看起来像 hung，并非 bug；改用轻量脚本 `scripts/run_v29_hierarchical_true_gt_v2_smoke_local_4090_fixed.sh`。 |
 | v39 reliability-coupled graph refinement v2 smoke | **DONE** | val MPJPE **80.52 mm** @ 2 epochs | 基于 v37 模板 + v39 flag；`val_stride=50` 控制单 smoke 约 8 min。 |
 | v41 weighted domain loss v2 smoke | **DONE** | val MPJPE **80.23 mm** @ 2 epochs | 基于 v37 模板 + `--domain_loss_weights 1.0,1.5`；`val_stride=50` 控制单 smoke 约 7 min。 |
+| v35 temporal view-joint graph v2 smoke | **DONE** | val MPJPE **91.21 mm** @ 2 epochs | 轻量配置：d=64, residual_hidden=128, n_st_layers=2, train_samples=256, val_stride=100；运行约 4.5 min。 |
+| v36 uncertainty-gated graph refinement v2 smoke | **DONE** | val MPJPE **94.97 mm** @ 2 epochs | 与 v35 相同轻量配置；运行约 4.5 min。 |
 
 **说明**：
 - v21 修复涉及文件：`motionflow_mv/fusion/neural_bundle_adjustment_v21.py`。轴角旋转描述子在单位阵 `R = I` 处导数发散，优化第一步即产生 NaN；改用 `R - R^T` 的反对称部分后训练稳定。

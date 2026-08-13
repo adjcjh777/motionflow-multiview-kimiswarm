@@ -43,17 +43,17 @@ $PYTHON -u experiments/train_omniview_fusion_v5_webbridge_multi.py \
     --v36_ugigr_n_heads 4 \
     --v36_ugigr_uncertainty_hidden 64 \
     --num_workers 0 \
-    --d 128 \
-    --residual_hidden 256 \
-    --n_st_layers 3 \
+    --d 64 \
+    --residual_hidden 128 \
+    --n_st_layers 2 \
     --graph_num_layers 1 \
     --n_joint_layers 1 \
     --n_heads 4 \
     --clip_len 13 \
     --epochs 2 \
     --batch_size 8 \
-    --train_samples 512 \
-    --val_stride 10 \
+    --train_samples 256 \
+    --val_stride 100 \
     --lr 1e-4 \
     --lr_cosine \
     --lr_warmup_epochs 1 \

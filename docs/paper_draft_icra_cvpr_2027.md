@@ -187,7 +187,13 @@ The fusion module is exposed as a `MultiViewFusionPlugin` inside MotionFlow. It 
 
 ### 4.3 Implementation details
 
-All models are implemented in PyTorch. Smoke tests and quick diagnostics run on a local RTX 4090. Medium-schedule true-GT H36M training, AIST++ training, and MPI-INF-3DHP baselines run on an A800 cluster, using **GPUs 6 and 7 only** per project policy. We use the Adam optimiser with weight decay, a cosine learning-rate schedule with linear warmup, gradient clipping, and early stopping on validation PA-MPJPE. Typical medium-schedule settings: batch size 32, peak learning rate $10^{-3}$ to $10^{-4}$, 10–20 epochs. The small residual model uses $d=32$, residual hidden 64, ~66 k parameters; the full model uses $d=64$, residual hidden 128, ~243 k parameters.
+All models are implemented in PyTorch. Smoke tests and quick diagnostics, including recent variants v21, v29, v37, v39, and v41, run on a local NVIDIA RTX 4090. Medium-schedule training for H36M true-GT v2, AIST++, and MPI-INF-3DHP baselines runs on an A800 cluster, using **GPUs 6 and 7 only** per project policy; GPUs 0–5 are reserved for other projects.
+
+**Optimisation.** We use the Adam optimiser with a cosine learning-rate schedule and linear warmup. The medium-schedule H36M runs use batch size 16, peak learning rate $10^{-4}$, cosine decay to $10^{-6}$, 4 epochs of linear warmup, gradient clipping at max-norm 1.0, weight decay $10^{-4}$, and EMA decay 0.999. Early stopping monitors validation PA-MPJPE with patience 3 and minimum delta $10^{-3}$ mm. Training runs for up to 20 epochs; the best validation checkpoint is retained.
+
+**Architecture.** The v25/v85/v86 medium models use $d=128$, residual hidden dimension 256, 3 spatio-temporal layers, 1 graph layer, 1 joint layer, and 4 attention heads. The input clip length is 13 frames.
+
+**Training-configuration differences.** The v25 baseline uses the standard geometry-fusion recipe with variable-view sampling (2–4 views, no permutation) and outlier-view augmentation. v85 adds random whole-view dropout ($p=0.3$, $\text{min\_views}=2$) together with an active-view-count embedding. v86 is identical to v85 except the active-view-count embedding is disabled, isolating its contribution to sparse-view robustness.
 
 ### 4.4 Main results and ongoing experiments
 
@@ -208,10 +214,12 @@ Table 2 summarises the current true-GT v2 H36M leaderboard. Cells marked **TODO*
 | v80 regularization | 56.69 | 51.27 | **53.98** | 32.47 | view-reliability head |
 | v52-UWT | 58.15 | 49.87 | **54.01** | 42.22 | uncertainty-weighted triangulation |
 | v57-DC-PSC | 61.09 | 53.11 | **57.10** | 37.30 | dual-camera pose calibration |
-| v85 random-view dropout | 83.52 | 77.07 | **80.29** | TODO | no-fallback k=4; val best **31.42 mm**; k<4 catastrophic |
-| v86 no-count-embedding | TODO | TODO | TODO | TODO | running on A800 GPU 6; ablates active-view-count embedding |
+| v85 random-view dropout | TODO | TODO | TODO | TODO | best val **31.42 mm**; standard test eval pending; no-fallback k=4 variable view 83.52 / 77.07 mm (Section 5.4) |
+| v86 no-count-embedding | TODO | TODO | TODO | TODO | Epoch 3 val **31.64 mm**; training on A800 GPU 6; standard test eval pending |
 
-**Table 3.** Sparse-view MPJPE@k on H36M true-GT v2 (S9/S11 macro mean). DLT-fallback rows use geometric triangulation for $k<4$; no-fallback rows use the learned model at all $k$.
+v25 true-GT v2 medium and v85 random-view dropout reach nearly identical validation MPJPE (31.41 mm vs. 31.42 mm), indicating that random whole-view dropout during training does not degrade full-view performance on the v2 protocol. v86, which removes the active-view-count embedding, reports 31.64 mm after three epochs and is on track to match the other two. Test-set evaluation and the sparse-view MPJPE@k curves (Section 5.4) will determine whether the count embedding justifies its overhead.
+
+**Table 3.** Sparse-view MPJPE@k (mm) on H36M true-GT v2 (S9/S11 macro mean). DLT-fallback rows use geometric triangulation for $k<4$; no-fallback rows use the learned model at all $k$.
 
 | Method | k=2 | k=3 | k=4 | Notes |
 |---|---:|---:|---:|---|
@@ -376,17 +384,17 @@ Rather than reporting a single full-view number, we measure `MPJPE@k`: the pose 
 
 **True-GT H36M (S9/S11, macro mean).** The `MPJPE@k` numbers below were evaluated deterministically with 50 subsets per `k` for the DLT variants and Iskakov; values are direct MPJPE in mm.
 
-| Method | MPJPE@2 | MPJPE@3 | MPJPE@4 | Notes |
+| Method | MPJPE@2 (mm) | MPJPE@3 (mm) | MPJPE@4 (mm) | Notes |
 |---|---:|---:|---:|---|
 | DLT (unweighted) | 37.19 | 34.86 | 29.15 | frozen geometric baseline |
 | DLT (conf-weighted) | 36.42 | 33.68 | 25.94 | frozen geometric baseline |
 | Iskakov ICCV 2019 | 53.62 (±27) | **27.84** | **23.42** | current true-GT leader; full-view 23.40 mm test |
-| v25 stability (DLT fallback, k<4) | 53.76 | 29.30 | 113.78 | direct conf-weighted DLT for k<4; learned model for k=4; per-subject S9/S11: k=2 58.18/49.35, k=3 33.32/25.28, k=4 116.98/110.58 mm |
-| v82 multi-scale temporal-pose-attention (DLT fallback, k<4) | 53.77 | 29.30 | **45.09** | direct conf-weighted DLT for k<4; learned model for k=4; per-subject S9/S11: k=2 58.18/49.35, k=3 33.32/25.28, k=4 47.81/42.36 mm |
+| v25 stability (DLT fallback, k<4) | 53.76 | 29.30 | 113.78 | direct conf-weighted DLT for k<4; learned model for k=4; per-subject S9/S11: k=2 58.18/49.35, k=3 33.32/25.28, k=4 116.98/110.58 |
+| v82 multi-scale temporal-pose-attention (DLT fallback, k<4) | 53.77 | 29.30 | **45.09** | direct conf-weighted DLT for k<4; learned model for k=4; per-subject S9/S11: k=2 58.18/49.35, k=3 33.32/25.28, k=4 47.81/42.36 |
 | v85 random view dropout (DLT fallback, k<4) | TODO | TODO | TODO | queued behind v86; will compare whether dropout-trained sparse views improve over direct DLT |
-| v85 random view dropout (no fallback) | 2309.54 | 1118.82 | 80.29 | learned model only; random dropout p=0.3, min_views=2; per-subject S9/S11: k=2 2310.27/2308.80, k=3 1119.45/1118.18, k=4 83.52/77.07 mm |
-| v86 no-count-embedding (DLT fallback, k<4) | TODO | TODO | TODO | running on A800 GPU 6; ablates count embedding |
-| v86 no-count-embedding (no fallback) | TODO | TODO | TODO | running on A800 GPU 6; ablates count embedding |
+| v85 random view dropout (no fallback) | 2309.54 | 1118.82 | 80.29 | learned model only; random dropout p=0.3, min_views=2; per-subject S9/S11: k=2 2310.27/2308.80, k=3 1119.45/1118.18, k=4 83.52/77.07 |
+| v86 no-count-embedding (DLT fallback, k<4) | TODO | TODO | TODO | training on A800 GPU 6; Epoch 3 val 31.64 mm; ablates count embedding |
+| v86 no-count-embedding (no fallback) | TODO | TODO | TODO | training on A800 GPU 6; Epoch 3 val 31.64 mm; ablates count embedding |
 
 Iskakov does not beat DLT at `k=2` because it was trained on full-view batches, but for `k ≥ 3` it dominates both DLT variants, with the largest margin at `k=4`. This confirms that the true-GT H36M protocol cleanly separates the baselines and that a learned view-weighting can improve over triangulation once enough views are present.
 
@@ -416,7 +424,7 @@ k=4 still runs the learned model and matches the full 4-view subset benchmark; k
 The v85 no-fallback results are the critical negative result: a model trained explicitly with random whole-view dropout and active-view-count conditioning still fails catastrophically at k<4 (k=2 ≈ 2309 mm, k=3 ≈ 1118 mm) and produces a worse k=4 result (**80.29 mm** macro) than v82. This demonstrates that the sparse-view failure is not simply a lack of training exposure to fewer views; the architecture must be redesigned to handle variable view counts. Possible next steps include a dedicated sparse-view head that is only active when k<4, stronger multi-scale cross-view attention that does not assume a fixed four-view layout, or a hybrid training objective that explicitly matches confidence-weighted DLT at low view counts while improving upon it at full views. We therefore retain the earlier MPI-INF-3DHP smoke comparison only as preliminary cross-architecture evidence.
 
 ![True-GT H36M sparse-view robustness](docs/figures/h36m_true_gt_mpjpe_at_k.png)
-**Figure 2.** Sparse-view MPJPE@k curves on true-GT H36M (S9/S11 macro mean). DLT and Iskakov baselines are model-agnostic; v25/v82 use direct DLT for k<4 and the learned model at k=4. The learned k=4 estimate is improved in v82, but all learned variants still rely on geometric fallback for fewer than four views. v85 no-fallback and v86 curves are pending; v85 DLT-fallback is queued behind the v86 run.
+**Figure 2.** Sparse-view MPJPE@k curves on true-GT H36M (S9/S11 macro mean). DLT and Iskakov baselines are model-agnostic; v25/v82 use direct DLT for k<4 and the learned model at k=4. The learned k=4 estimate is improved in v82, but all learned variants still rely on geometric fallback for fewer than four views. v85 no-fallback numbers are known; v85 DLT-fallback and both v86 curves are pending.
 
 **MPI-INF-3DHP non-circular smoke (14 views).** This smoke evaluation on a 300-frame subset of MPI-INF-3DHP S2/Seq1 (17-joint H36M mapping) compares the MotionFlow variants before the true-GT protocol was fully established.
 
