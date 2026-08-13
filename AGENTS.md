@@ -890,8 +890,11 @@ ssh a800-D "nvidia-smi --query-gpu=index,name,utilization.gpu,memory.used --form
 ssh a800-D "df -h /mnt/nvme0n1p1"
 ```
 
-## Current session update — MVPose 28.47 mm, AIST++ mapping fix, v83 smoke, variable-view v2 scripts
+## Current session update — v81/v82 complete, v46 running, post-chain watcher active
 
+- **v81 true-GT v2 medium completed on A800.** Early-stopped @ Epoch 8, best val MPJPE **44.17 mm**. Test-set eval queued in post-chain watcher.
+- **v82 true-GT v2 medium completed on A800.** v46 true-GT v2 medium is now running on GPU 6.
+- **Post-chain test eval/SOTA watcher active.** `scripts/launch_post_chain_evals_and_sota_a800.sh` is running in tmux `post_chain_evals`; after v82/v46/v52/v57 all finish, it will run v81/v82/v46/v52/v57 test-set evals and v85/v86 variable-view v2 evals on the first free GPU 6/7.
 - **MVPose true-GT v2 baseline completed on A800 CPU.** Combined MPJPE **28.47 mm** (S9 31.73 / S11 23.76 / PA 32.43). Log: `outputs/sota_baselines/mvpose_h36m_true_gt_v2_run.log`; JSON: `outputs/sota_baselines/mvpose_h36m_true_gt_v2_metrics.json`. The launch script `configs/sota_baselines/run_mvpose_h36m_true_gt_v2.sh` had a `REPO_ROOT` path bug that was fixed.
 - **AIST++ view mapping bug fixed in mixed training.** `experiments/train_omniview_fusion_v5_webbridge_multi.py` now registers `dataset_id=2` with 9 real views and masks only the first 9 views for AIST++. Local smoke with the mixed loader ran successfully (val MPJPE 80.16 mm on a minimal 1-epoch smoke).
 - **v83 view-conditioned temporal attention smoke completed locally.** 2 epochs on true-GT v2 smoke: val MPJPE **84.72 mm** → **67.10 mm**. No NaN/crash. Slightly worse than v82 smoke (63.48 mm); tuning v83 hyperparameters before A800 medium is recommended.
