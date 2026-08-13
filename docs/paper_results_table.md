@@ -14,7 +14,7 @@ All numbers below are reported in **millimetres (mm)**. `direct` = mean per-join
 |--------|-------------------------------:|------------------------:|--------------------:|--------------------------:|
 | DLT (unweighted) | 28.77 | 134.43 | 38.11 / 12.66 | **115.09** (PA 132.68) |
 | DLT (confidence-weighted) | **25.67** | 132.29 | **15.93** / 6.52 | **115.09** (PA 132.68) |
-| **MVPose (zju3dv/mvpose, GT 2D geometry-only)** | **26.06** | — | — | — |
+| **MVPose (zju3dv/mvpose, GT 2D geometry-only)** | **28.47** | — | — | — |
 | RANSAC/conf-DLT | 26.47 | — | — | — |
 | Iskakov ICCV 2019 | **23.40** | **128.73** | **29.27** / **9.31** | — |
 | v25 stability (A800) | **30.83** (PA 33.59) | — | — | — |
@@ -44,7 +44,7 @@ Protocol: `S1, S5, S6, S7, S8` train → `S9, S11` test. Labels are true mocap w
 |---|---:|---:|---:|---:|---|
 | Iskakov ICCV 2019 | **23.40** | 27.15 | 19.65 | 23.15 | best epoch 9; current true-GT leader |
 | DLT (confidence-weighted) | **25.67** | 29.54 | 21.81 | 28.05 | frozen geometric reference |
-| **MVPose (zju3dv/mvpose, GT 2D geometry-only)** | **26.06** | 29.19 | 21.54 | 28.32 | SOTA baseline; body-12 subset **31.13 / 34.45 mm** |
+| **MVPose (zju3dv/mvpose, GT 2D geometry-only)** | **28.47** | 31.73 | 23.76 | 32.43 | SOTA baseline on true-GT v2; body-12 subset **35.21 / 39.86 mm** |
 | RANSAC/conf-DLT | **26.47** | 29.60 | 21.96 | 28.98 | reproducible baseline |
 | DLT (unweighted) | 28.77 | 32.97 | 24.57 | 32.10 | frozen geometric reference |
 | **v25 stability (A800)** | **30.83** | 34.87 | 26.80 | 33.59 | best learned result; best val 31.13 @ epoch 10; early-stopped @ epoch 12; stride 1 |

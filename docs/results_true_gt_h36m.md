@@ -96,7 +96,7 @@ v25 stability variable-view evaluation completed on A800 (GPU 4). Results are fo
 |---|---:|---:|---:|---:|---|
 | **Iskakov ICCV 2019** | 27.15 | 19.65 | **23.40** | **23.15** | Reproduced on true-GT v2 |
 | DLT (confidence-weighted) | 29.54 | 21.81 | **25.67** | 28.05 | Frozen geometric baseline |
-| **MVPose (zju3dv/mvpose, geometry-only)** | 29.19 | 21.54 | **26.06** | 28.32 | Native COCO17 skeleton; body-12 subset **31.13 / 34.45 mm** |
+| **MVPose (zju3dv/mvpose, geometry-only)** | 31.73 | 23.76 | **28.47** | 32.43 | Native COCO17 skeleton on true-GT v2; body-12 subset **35.21 / 39.86 mm** |
 | **RANSAC/conf-DLT (reproducible)** | 29.60 | 21.96 | **26.47** | 28.98 | Confidence-weighted 3-view random subset |
 | **v25 true-GT v2 medium (A800)** | 34.71 | 26.66 | **30.69** | 34.39 | v2 protocol; best val **31.41 mm** @ Epoch 6; test done |
 | **v85 random view dropout (A800)** | 34.60 | 26.86 | **30.73** | 34.53 | Trained with random whole-view dropout; no-fallback k=4 var-view 83.52/77.07 mm |
@@ -118,8 +118,8 @@ v25 stability variable-view evaluation completed on A800 (GPU 4). Results are fo
 - **v25 true-GT v2 medium** has finished training with best val **31.41 mm** @ Epoch 6 and test **30.69 mm** (S9 34.71 / S11 26.66, PA-MPJPE 34.39 mm), essentially matching the v1 stability result (30.83 mm).
 - **v86 no-count-embedding ablation** has finished training with best val **31.64 mm @ Epoch 3** (early-stopped @ Epoch 6). Its test-set evaluation is **pending**.
 - **v85 random view dropout** has finished training and test **30.73 mm** (S9 34.60 / S11 26.86, PA-MPJPE 34.53 mm), comparable to v25 v2. However, its no-fallback variable-view k<4 result remains catastrophic (k=2 ~2300 mm, k=3 ~1119 mm), so random dropout alone does not solve sparse-view robustness.
-- **v85 DLT-fallback eval** was launched after v86 finished but was killed by `SIGUSR1` immediately; no results. It needs to be rerun to compare DLT-fallback k=2/3/4 against v25/v81/v82.
-- The current best completed learned result on this protocol is **v25 true-GT v2 at 30.69 mm**, slightly ahead of v25 stability (30.83 mm, v1 data), but both still trail Iskakov (23.40 mm), confidence-weighted DLT (25.67 mm), and MVPose (26.06 mm).
+- **v85 DLT-fallback eval** was relaunched in tmux session `v85_dlt_fallback` on GPU 6 after the v86 test eval finished; expected to take several hours.
+- The current best completed learned result on this protocol is **v25 true-GT v2 at 30.69 mm**, slightly ahead of v25 stability (30.83 mm, v1 data), but both still trail Iskakov (23.40 mm), confidence-weighted DLT (25.67 mm), RANSAC/conf-DLT (26.47 mm), and MVPose (28.47 mm).
 
 ## Current results
 
@@ -127,7 +127,7 @@ v25 stability variable-view evaluation completed on A800 (GPU 4). Results are fo
 |---|---:|---:|---:|---:|---|
 | **Iskakov ICCV 2019** | **27.15** | **19.65** | **23.40** | **23.15** | best val epoch 9; run `iskakov_learnable_tri_h36m_true_gt_a800_gpu4` |
 | DLT (confidence-weighted) | 29.54 | 21.81 | **25.67** | 28.05 | frozen reference; true-GT v2 |
-| **MVPose (zju3dv/mvpose, GT 2D geometry-only)** | **29.19** | **21.54** | **26.06** | **28.32** | Native COCO17 skeleton; body12 subset **31.13 / 34.45 mm** |
+| **MVPose (zju3dv/mvpose, GT 2D geometry-only)** | **31.73** | **23.76** | **28.47** | **32.43** | Native COCO17 skeleton on true-GT v2; body-12 subset **35.21 / 39.86 mm** |
 | **RANSAC/conf-DLT (reproducible)** | **29.60** | **21.96** | **26.47** | **28.98** | confidence-weighted 3-view random-subset; true-GT v2 |
 | DLT (unweighted) | 32.97 | 24.57 | 28.77 | 32.10 | frozen reference; `scripts/run_h36m_true_gt_dlt_baseline.py --unweighted` |
 | **v25 true-GT v2 medium (A800)** | **34.71** | **26.66** | **30.69** | **34.39** | **test** result (stride 1); best val **31.41 mm** @ Epoch 6; early-stopped @ Epoch 6 |
@@ -247,16 +247,15 @@ python scripts/sota_baselines/eval_mvpose_predictions.py \
 
 | Subject | All-17 MPJPE (mm) | All-17 PA-MPJPE (mm) | Body-12 MPJPE (mm) | Body-12 PA-MPJPE (mm) | Frames |
 |---|---:|---:|---:|---:|---:|
-| S9 | **29.19** | **31.90** | **35.33** | **39.10** | 83,759 |
-| S11 | **21.54** | **23.15** | **25.06** | **27.73** | 57,971 |
-| **Combined** | **26.06** | **28.32** | **31.13** | **34.45** | 141,730 |
+| S9 | **31.73** | **36.48** | **39.70** | **44.90** | 83,759 |
+| S11 | **23.76** | **26.58** | **28.73** | **32.58** | 57,971 |
+| **Combined** | **28.47** | **32.43** | **35.21** | **39.86** | 141,730 |
 
-- Source: `outputs/sota_baselines/mvpose_h36m_true_gt_metrics.json`
+- Source: `outputs/sota_baselines/mvpose_h36m_true_gt_v2_metrics.json`
 - The body-12 subset (COCO17 joints 5-16, i.e. shoulders/elbows/wrists/hips/knees/ankles) is
   reported separately because the five COCO17 facial keypoints are approximated from the
   single H36M Head joint and can distort PA-MPJPE.
-- MVPose slightly beats the confidence-weighted DLT baseline on S11 and is within 0.4 mm
-  of DLT on the combined metric (26.06 mm vs. 25.67 mm).
+- MVPose is slightly worse than the confidence-weighted DLT baseline on true-GT v2, with a combined MPJPE of 28.47 mm vs. DLT's 25.67 mm.
 
 ### DLT / RANSAC baselines (true-GT v2)
 
