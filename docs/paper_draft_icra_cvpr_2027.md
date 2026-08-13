@@ -423,8 +423,18 @@ k=4 still runs the learned model and matches the full 4-view subset benchmark; k
 
 The v85 no-fallback results are the critical negative result: a model trained explicitly with random whole-view dropout and active-view-count conditioning still fails catastrophically at k<4 (k=2 ≈ 2309 mm, k=3 ≈ 1118 mm) and produces a worse k=4 result (**80.29 mm** macro) than v82. This demonstrates that the sparse-view failure is not simply a lack of training exposure to fewer views; the architecture must be redesigned to handle variable view counts. Possible next steps include a dedicated sparse-view head that is only active when k<4, stronger multi-scale cross-view attention that does not assume a fixed four-view layout, or a hybrid training objective that explicitly matches confidence-weighted DLT at low view counts while improving upon it at full views. We therefore retain the earlier MPI-INF-3DHP smoke comparison only as preliminary cross-architecture evidence.
 
+**Table 5.** Sparse-view MPJPE@k (mm) on H36M true-GT v2, split by subject. DLT-fallback rows use geometric triangulation for $k<4$; no-fallback rows use the learned model at all $k$.
+
+| Method | k=2 S9 | k=2 S11 | k=3 S9 | k=3 S11 | k=4 S9 | k=4 S11 |
+|---|---:|---:|---:|---:|---:|---:|
+| v25 DLT-fallback | 58.18 | 49.35 | 33.32 | 25.28 | 116.98 | 110.58 |
+| v85 no-fallback | 2310.27 | 2308.80 | 1119.45 | 1118.18 | 83.52 | 77.07 |
+| v85 DLT-fallback | TODO | TODO | TODO | TODO | TODO | TODO |
+| v86 no-fallback | TODO | TODO | TODO | TODO | TODO | TODO |
+| v86 DLT-fallback | TODO | TODO | TODO | TODO | TODO | TODO |
+
 ![True-GT H36M sparse-view robustness](docs/figures/h36m_true_gt_mpjpe_at_k.png)
-**Figure 2.** Sparse-view robustness on true-GT H36M (S9/S11 macro mean). **x-axis:** number of active views $k \in \{2,3,4\}$. **y-axis:** direct MPJPE (mm, log scale). **Curves:** v25 stability with DLT fallback (k<4) and learned model (k=4); v85 random-view-dropout trained model, no fallback; v85 random-view-dropout with DLT fallback; v86 no-count-embedding ablation, no fallback; v86 no-count-embedding with DLT fallback. DLT and Iskakov baselines are model-agnostic and serve as geometric references. **Source data:** `scripts/analyze_v86_ablation.py` parses `outputs/variable_view_fix/variable_view_v25_true_gt_stability_a800_dlt_fallback.json` and the v85/v86 variable-view JSONs in `outputs/` / `outputs/variable_view_fix/`. **Generation script:** `scripts/plot_figure_2_sparse_view.py`. v85 DLT-fallback, v86 no-fallback and v86 DLT-fallback curves are marked **TODO** until the corresponding evaluations finish.
+**Figure 2.** Sparse-view robustness on true-GT H36M (S9/S11 macro mean). **x-axis:** number of active views $k \in \{2,3,4\}$. **y-axis:** direct MPJPE (mm, log scale). **Curves:** v25 stability with DLT fallback (k<4) and learned model (k=4); v85 random-view-dropout trained model, no fallback; v85 random-view-dropout with DLT fallback; v86 no-count-embedding ablation, no fallback; v86 no-count-embedding with DLT fallback. DLT and Iskakov baselines are model-agnostic and serve as geometric references. **Source data:** `scripts/analyze_v86_ablation.py` parses `outputs/variable_view_fix/variable_view_v25_true_gt_stability_a800_dlt_fallback.json` and the v85/v86 variable-view JSONs in `outputs/` / `outputs/variable_view_fix/`. **Generation script:** `scripts/plot_figure_2_sparse_view.py`. v85 DLT-fallback, v86 no-fallback and v86 DLT-fallback curves are marked **TODO** until the corresponding evaluations finish. Exact per-subject values are given in Table 5.
 
 **MPI-INF-3DHP non-circular smoke (14 views).** This smoke evaluation on a 300-frame subset of MPI-INF-3DHP S2/Seq1 (17-joint H36M mapping) compares the MotionFlow variants before the true-GT protocol was fully established.
 
@@ -465,8 +475,17 @@ The geometric baselines are very strong on AIST++: confidence-weighted DLT is be
 
 This confirms a large domain gap: a model trained only on AIST++ dance motion and a 9-camera rig generalises poorly to H36M's 4-view protocol. The error is finite and well above the catastrophic k<4 failure mode, but it is far behind the same model trained on H36M (v25 stability 30.83 mm). Cross-dataset mixing is therefore an active research direction rather than a solved transfer problem, and mixed-dataset training remains deprioritised until a structural fix is found.
 
+**Table 6.** Cross-dataset evaluation (direct MPJPE, mm). H36M test uses the true-GT v2 standard protocol; MPI is RTMPose detected-2D; AIST++ is the AIST++-only → H36M zero-shot cross-eval; Shelf/Campus is the detected benchmark.
+
+| Method | H36M test | MPI | AIST++ | Shelf/Campus | Notes |
+|---|---:|---:|---:|---:|---|
+| DLT baseline | 25.67 | 115.09 | TODO | 132.29 | conf-weighted; MPI: RTMPose detected-2D |
+| v25 | 30.83 | TODO | 93.94 | TODO | H36M: v25 stability test; AIST++: AIST++-only → H36M |
+| v85 | 80.29 | TODO | TODO | TODO | H36M: no-fallback k=4 variable-view; standard test pending |
+| v86 | TODO | TODO | TODO | TODO | training on A800 GPU 6 |
+
 ![Cross-domain generalisation bar chart](docs/figures/cross_domain_generalisation.png)
-**Figure 3.** Cross-domain generalisation. **x-axis:** dataset / protocol (H36M true-GT test, MPI-INF-3DHP detected-2D, AIST++-only → H36M, Shelf/Campus detected). **y-axis:** direct MPJPE (mm). **Bars:** DLT baseline, v25 learned, v85 learned, v86 learned. Left group: true-GT H36M in-domain test results for DLT, Iskakov, and the best MotionFlow variants. Centre group: AIST++-only → H36M zero-shot cross-eval (**93.94 mm**), showing the domain gap between dance-style 9-view captures and everyday 4-view H36M. Right group: MPI-INF-3DHP true detected-2D DLT baseline (**115.09 mm**) and Shelf/Campus detected geometric baselines, establishing honest lower bounds for future learned cross-domain models. **Source data:** `outputs/eval_v25_true_gt_v2_medium_a800_h36m_test.json` (H36M test, TODO), `outputs/mpi_rtmpose_detected_2d/dlt_baseline_detected_2d.json` (MPI), `outputs/eval_aistpp_only_medium_a800_fast_v2_h36m_test.json` (AIST++), and Shelf/Campus outputs from `scripts/run_v25_shelf_campus_eval_a800.sh` / `scripts/run_shelf_campus_true_gt_baseline.py`. **Generation script:** `scripts/plot_figure_3_cross_domain.py`. Numbers above bars marked **TODO** are pending. Exact values are given in Tables 1–4.
+**Figure 3.** Cross-domain generalisation. **x-axis:** dataset / protocol (H36M true-GT test, MPI-INF-3DHP detected-2D, AIST++-only → H36M, Shelf/Campus detected). **y-axis:** direct MPJPE (mm). **Bars:** DLT baseline, v25 learned, v85 learned, v86 learned. Left group: true-GT H36M in-domain test results for DLT, Iskakov, and the best MotionFlow variants. Centre group: AIST++-only → H36M zero-shot cross-eval (**93.94 mm**), showing the domain gap between dance-style 9-view captures and everyday 4-view H36M. Right group: MPI-INF-3DHP true detected-2D DLT baseline (**115.09 mm**) and Shelf/Campus detected geometric baselines, establishing honest lower bounds for future learned cross-domain models. **Source data:** `outputs/eval_v25_true_gt_v2_medium_a800_h36m_test.json` (H36M test, TODO), `outputs/mpi_rtmpose_detected_2d/dlt_baseline_detected_2d.json` (MPI), `outputs/eval_aistpp_only_medium_a800_fast_v2_h36m_test.json` (AIST++), and Shelf/Campus outputs from `scripts/run_v25_shelf_campus_eval_a800.sh` / `scripts/run_shelf_campus_true_gt_baseline.py`. **Generation script:** `scripts/plot_figure_3_cross_domain.py`. Numbers above bars marked **TODO** are pending. Exact values are given in Tables 1–4 and Table 6.
 
 #### 5.5.2 Shelf/Campus detected
 
