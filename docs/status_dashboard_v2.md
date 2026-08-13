@@ -1,6 +1,6 @@
 # MotionFlow-MultiView A800 Status Dashboard
 
-> Last updated: 2026-08-13 ~01:15 UTC
+> Last updated: 2026-08-13 ~02:30 UTC
 
 ## GitHub / Local repo status
 
@@ -15,7 +15,7 @@
 | PID | GPU | Type | Command / Session | Notes |
 |------|------|------|-------------------|-------|
 | — | 6 | v25 true-GT v2 medium training | tmux `v25_true_gt_v2_medium_a800` | **DONE**; early-stop @ epoch 6; best val **31.41 mm** |
-| — | 6 | v86 no-count-embedding ablation | tmux `v86_no_count_embedding` | **RUNNING**; v2 protocol; log `outputs/ablations/v86_no_count_embedding_medium_a800.log` |
+| — | 6 | v86 no-count-embedding ablation | tmux `v86_no_count_embedding` | **RUNNING**; Epoch 3/20, best val **31.64 mm**; v2 protocol; log `outputs/ablations/v86_no_count_embedding_medium_a800.log` |
 | — | 6/7 (post-v86) | v85 DLT-fallback watcher | `scripts/launch_v85_dlt_fallback_after_v86.sh` | **QUEUED**; auto-runs after v86 finishes |
 | — | 7 | External project | — | **OCCUPIED**; ~12 GB; do not touch |
 
@@ -69,6 +69,14 @@
 | S11 | — | — | — |
 
 - **Queued behind v86.** Watcher `scripts/launch_v85_dlt_fallback_after_v86.sh` will auto-run the eval once v86 training finishes. No results yet.
+
+### Latest val MPJPE (true-GT v2)
+
+| Variant | Status | Best val MPJPE | Notes |
+|---------|--------|----------------|-------|
+| v25 true-GT v2 medium | ✅ DONE | **31.41 mm** | @ Epoch 6; test pending |
+| v85 random-view-dropout | ✅ DONE | **31.42 mm** | @ final epoch; no-fallback var-view done |
+| v86 no-count-embedding | 🔄 RUNNING | **31.64 mm** | @ Epoch 3; Epoch 4 in progress (loss ~6.1) |
 
 ### v2 baselines
 

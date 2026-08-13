@@ -1,7 +1,7 @@
 # MotionFlow-MultiView 接力手册（qwen3.8max）
 
 > **目标**：把 H36M 评估协议迁移到非循环的 `h36m_true_gt_v2`，验证 v85 稀疏视角方案，补齐 v86 消融与 v2 leaderboard，向 CVPR 2027 可发表标准推进。  
-> **本次刷新时间**：2026-08-13 ~01:15 UTC  
+> **本次刷新时间**：2026-08-13 ~02:30 UTC  
 > **本地仓库**：`D:/WSL_workspace/about_eassys/motionflow-multivie-kimiswarm`  
 > **A800 训练仓库**：`a800-D:/mnt/nvme0n1p1/zhangzy/motionflow-multiview-kimiswarm-iter20`  
 > **GPU 铁律**：A800 仅 GPU 6/7 可用于本项目；GPU 0–5 严禁使用。
@@ -11,7 +11,7 @@
 ## 0. 最新状态（2026-08-13 ~00:41 UTC）
 
 - **v25 true-GT v2 medium 训练已完成。** A800 GPU 6，tmux session `v25_true_gt_v2_medium_a800`。early stopping @ epoch 6，best val MPJPE **31.41 mm**，checkpoint 已保存为 `outputs/ablations/v25_true_gt_v2_medium_a800.pth`。test 评估待做。
-- **v86 no-count-embedding ablation 已在 A800 GPU 6 启动。** tmux session `v86_no_count_embedding`，脚本 `scripts/run_v86_no_count_embedding_medium_a800_gpuX.sh`，使用 v2 数据协议 `configs/splits/h36m_true_gt_v2_standard.yaml`。结果待出。
+- **v86 no-count-embedding ablation 正在 A800 GPU 6 训练。** tmux session `v86_no_count_embedding`，脚本 `scripts/run_v86_no_count_embedding_medium_a800_gpuX.sh`，使用 v2 数据协议 `configs/splits/h36m_true_gt_v2_standard.yaml`。**已完成 Epoch 3，best val MPJPE 31.64 mm**（Epoch 1 61.79 mm → Epoch 2 36.33 mm → Epoch 3 31.64 mm）；Epoch 4 进行中，loss 约 6.1。当前最佳已接近 v25（31.41 mm）和 v85（31.42 mm）的完成结果，但训练尚未结束，最终数字待定。
 - **v85 random-view-dropout 训练已完成。** checkpoint 已创建 symlink `outputs/ablations/v85_random_view_dropout_medium_a800.pth -> ..._final.pth`，best val **31.42 mm**。
 - **v85 DLT-fallback 可变视角评估看守器已启动。** `scripts/launch_v85_dlt_fallback_after_v86.sh` 正在等待 v86 训练完成后，自动在首个可用 GPU（6 或 7）上运行 v85 DLT-fallback 评估。结果待出。
 - **GPU 7 当前被外部项目占用**（约 12 GB 显存）；GPU 6 当前运行 v86。
@@ -36,8 +36,8 @@
   - k=3：S9 **1119.45 mm**，S11 **1118.18 mm**
   - k=4：S9 **83.52 mm**，S11 **77.07 mm**
 - **v85 DLT-fallback 可变视角评估已终止且未产生输出**。监控显示 PID `2269984` 在约 29 分钟后消失，预期的 JSON/CSV 未生成。redirect log 为空，nohup log 仅显示 `Terminated`，原因不明（可能是外部 kill 或 OOM）。在重新运行前，v25/v81/v82 的 DLT-fallback 基线仍是最新可靠参考：S9 58.18/33.32/116.98 mm，S11 49.35/25.28/110.58 mm。结合 v85 no-fallback 结果，可确认 random view dropout 不能解决 k<4 灾难性失败，DLT-fallback 仍是 k<4 的可靠选择。
-- **v25 true-GT v2 medium 训练已启动**。A800 GPU 6，tmux session: `v25_true_gt_v2_medium_a800`。
-- **v86 no-count-embedding ablation 已由 A800 看守器接管**。看守器 `scripts/launch_v86_after_v25_a800.sh`（PID `2337615`）正在 A800 上等待 v25 完成后自动启动 v86；无需手动 `nohup`。
+- **v25 true-GT v2 medium 训练已完成**。A800 GPU 6，tmux session: `v25_true_gt_v2_medium_a800`；best val **31.41 mm** @ epoch 6。
+- **v86 no-count-embedding ablation 正在训练中**。已完成 Epoch 3，val MPJPE 进展：61.79 → 36.33 → **31.64 mm**；Epoch 4 进行中，loss ~6.1。该消融用于验证 active-view-count embedding 对稀疏视角的贡献，最终与 v85/v25 对比得出结论。
 - **h36m_true_gt_v2 数据已同步到 A800**。约 **625 MB**，路径 `data/h36m_true_gt_v2/`；对应 manifest `configs/splits/h36m_true_gt_v2_standard.yaml`。
 - **v25/v86 v2 启动脚本已同步到 A800**。见 `scripts/run_v25_true_gt_v2_medium_a800.sh` 与 `scripts/run_v86_no_count_embedding_medium_a800_gpu6.sh`。
 - **A800 磁盘已清理**。从约 99% 降到 **98%**，剩余约 **73 GB**。
@@ -52,7 +52,7 @@
 | 机器 | GPU | 任务 | 日志 / 输出 | 状态 | 说明 |
 |------|-----|------|-------------|------|------|
 | A800-D | 6 | v25 true-GT v2 medium training | `outputs/ablations/v25_true_gt_v2_medium_a800.log` | **DONE** | tmux session `v25_true_gt_v2_medium_a800`；early-stop @ epoch 6；best val **31.41 mm**；checkpoint `.pth` 已落盘。test 待测。 |
-| A800-D | 6 | v86 no-count-embedding ablation | `outputs/ablations/v86_no_count_embedding_medium_a800.log` | **RUNNING** | tmux session `v86_no_count_embedding`；v2 协议；结果待出。 |
+| A800-D | 6 | v86 no-count-embedding ablation | `outputs/ablations/v86_no_count_embedding_medium_a800.log` | **RUNNING** | tmux session `v86_no_count_embedding`；v2 协议；**Epoch 3/20 完成，best val 31.64 mm**；Epoch 4 进行中，loss ~6.1。 |
 | A800-D | 6/7 (post-v86) | v85 DLT-fallback 可变视角评估看守器 | `outputs/launch_v85_dlt_fallback_after_v86.log` | **RUNNING (watcher)** | `scripts/launch_v85_dlt_fallback_after_v86.sh` 等待 v86 完成后自动启动 v85 DLT-fallback 评估；v86 完成前不占用 GPU 6/7。 |
 | A800-D | 7 | 外项目进程（LuxTTS / Mega-ASR / ComfyUI） | — | **OCCUPIED** | 约 12 GB；违反 GPU 策略；**禁止 kill**，禁止启动新任务。 |
 | Local | 0 | v37 self-critique v2 smoke | `outputs/v37_self_critique_v2_smoke.log`（路径示例） | **DONE** | RTX 4090；val MPJPE **87.85 mm** @ 2 epochs。 |
