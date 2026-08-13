@@ -17,7 +17,13 @@ find_free_gpu() {
         local util mem procs
         read -r util mem <<< "$(nvidia-smi --id=${gpu} --query-gpu=utilization.gpu,memory.used --format=csv,noheader,nounits 2>/dev/null | tr -d ' ' | tr ',' ' ')"
         procs="$(nvidia-smi --id=${gpu} --query-compute-apps=pid --format=csv,noheader 2>/dev/null | wc -l)"
-        if [[ "${util//%/}:-100" -lt 10 ]] && [[ "${mem//MiB/}:-999999" -lt 1000 ]] && [[ "${procs// /}" -eq 0 ]]; then
+        util="${util//%/}"; util="${util:-100}"
+        mem="${mem//MiB/}"; mem="${mem:-999999}"
+        procs="${procs// /}"
+        if [[ "${util}" =~ ^[0-9]+$ && "${mem}" =~ ^[0-9]+$ && "${procs}" =~ ^[0-9]+$ ]] \
+           && [[ "${util}" -lt 10 ]] \
+           && [[ "${mem}" -lt 1000 ]] \
+           && [[ "${procs}" -eq 0 ]]; then
             echo "${gpu}"
             return 0
         fi
