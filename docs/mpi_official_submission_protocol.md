@@ -63,7 +63,38 @@ Each `TS{i}.mat` contains:
 
 ## How to run the script
 
-### 1. From a trained checkpoint
+### 1. From a trained v5 checkpoint (v25 / v85 / v86)
+
+For OmniMultiViewFusionV5 checkpoints (v25 multi-view geometry fusion, v85 random view dropout, v86 count-embedding ablation, and later variants), use `scripts/prepare_mpi_submission.py`. It reads the training YAML config so the architecture flags exactly match the checkpoint, runs inference on TS1–TS6, and writes the per-sequence `.mat` files.
+
+```bash
+python scripts/prepare_mpi_submission.py \
+    --config configs/ablations/v25_true_gt_v2_medium_a800.yaml \
+    --checkpoint outputs/ablations/v25_true_gt_v2_medium_a800.pth \
+    --method_name v25_true_gt_v2_medium \
+    --device cuda
+```
+
+Output:
+
+```text
+outputs/mpi_submissions/v25_true_gt_v2_medium_a800/
+├── TS1.mat .. TS6.mat
+├── submission.zip
+├── manifest.json
+└── README.txt
+```
+
+To submit from the local WSL checkout to the A800 (default GPU 6, overridable with `--gpu`):
+
+```bash
+bash scripts/run_mpi_submission_a800.sh \
+    --config configs/ablations/v25_true_gt_v2_medium_a800.yaml \
+    --checkpoint outputs/ablations/v25_true_gt_v2_medium_a800.pth \
+    --method_name v25_true_gt_v2_medium
+```
+
+### 2. From a trained OmniMultiViewFusionV2 checkpoint
 
 ```bash
 python scripts/prepare_mpi_official_submission.py \
@@ -78,7 +109,7 @@ python scripts/prepare_mpi_official_submission.py \
 
 This runs `experiments/infer_mpiinf3dhp_test_set_omniview_v2.py` and then packages the result.
 
-### 2. From an existing predictions .npz
+### 3. From an existing predictions .npz
 
 ```bash
 python scripts/prepare_mpi_official_submission.py \
@@ -88,7 +119,7 @@ python scripts/prepare_mpi_official_submission.py \
     --output_zip outputs/mpi_official_submission.zip
 ```
 
-### 3. From DLT triangulation (requires multi-view detected 2D)
+### 4. From DLT triangulation (requires multi-view detected 2D)
 
 ```bash
 python scripts/prepare_mpi_official_submission.py \
@@ -163,3 +194,5 @@ Before sending anything to the maintainers:
 - `docs/mpiinf3dhp_test_set_conversion.md` — converting TS1–TS6 to canonical `.npz`.
 - `scripts/package_mpiinf3dhp_server_submission.py` — helper that builds the local-evaluation `.mat`.
 - `experiments/infer_mpiinf3dhp_test_set_omniview_v2.py` — inference script for OmniMultiViewFusionV2 checkpoints.
+- `scripts/prepare_mpi_submission.py` — inference + packaging for OmniMultiViewFusionV5 checkpoints (v25/v85/v86 etc.).
+- `scripts/run_mpi_submission_a800.sh` — WSL-to-A800 wrapper that syncs the repo and runs `prepare_mpi_submission.py`.

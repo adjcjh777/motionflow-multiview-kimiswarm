@@ -1,22 +1,25 @@
 """Evaluate a v25 OmniMultiViewFusionV5 checkpoint on true-GT H36M test subjects.
 
-The v25 checkpoint trained through the WebBridge mixed loader was saved with
-``n_views=14`` (the mixed loader pads every sample to the largest rig).  H36M
-only has 4 views, so this script loads data with ``WebBridgeCanonical17Dataset``,
+The v25 checkpoint was trained with the WebBridge mixed loader (``n_views=14``).
+H36M only has 4 views, so this script loads data with ``WebBridgeCanonical17Dataset``,
 pads to 14 views, and supplies an explicit ``view_mask`` so the padded views are
 ignored by the model.
 
 Usage
 -----
     python scripts/eval_v25_true_gt_h36m_test.py \
-        --checkpoint outputs/omniview_fusion_v25_h36m_true_gt_medium.pth \
-        --s9 data/h36m_true_gt/s_09_acts_02_03_04_05_06_07_08_09_10_11_12_13_14_15_16_multiview_m.npz \
-        --s11 data/h36m_true_gt/s_11_acts_02_03_04_05_06_07_08_09_10_11_12_13_14_15_16_multiview_m.npz
+        --checkpoint outputs/ablations/v25_true_gt_v2_medium_a800.pth \
+        --config_json outputs/ablations/v25_true_gt_v2_medium_a800.config.json
+
+The script prints per-subject MPJPE / PA-MPJPE and writes the combined result
+to the JSON path given by ``--out_json``. A CSV summary is also written next
+to the JSON file.
 """
 
 from __future__ import annotations
 
 import argparse
+import csv
 import json
 import sys
 from argparse import Namespace
@@ -31,13 +34,13 @@ sys.path.insert(0, str(PROJECT_ROOT))
 
 from motionflow_mv.data.webbridge_mixed_dataset import WebBridgeCanonical17Dataset
 from motionflow_mv.eval.metrics import compute_all_metrics
-from experiments.eval_omniview_fusion_v5_h36m import (
-    build_model,
-    load_checkpoint,
+from motionflow_mv.training.trainer_v2 import EMA
+from experiments.train_omniview_fusion_v5_webbridge_multi import (  # noqa: E402
+    build_model_from_args,
 )
 
 
-def collate_with_mask(batch):
+def _collate_with_mask(batch):
     x = torch.stack([b[0] for b in batch], dim=0)
     y = torch.stack([b[1] for b in batch], dim=0)
     K = torch.stack([b[2] for b in batch], dim=0)
@@ -46,6 +49,32 @@ def collate_with_mask(batch):
     dataset_ids = torch.tensor([b[5] for b in batch], dtype=torch.long)
     view_mask = torch.stack([b[6] for b in batch], dim=0)
     return x, y, K, R, t, dataset_ids, view_mask
+
+
+def _load_checkpoint(model: torch.nn.Module, checkpoint_path: str) -> torch.nn.Module:
+    state = torch.load(checkpoint_path, map_location="cpu", weights_only=False)
+    model_state = state
+    if isinstance(state, dict) and "model" in state:
+        model_state = state["model"]
+    missing, unexpected = model.load_state_dict(model_state, strict=False)
+    if missing:
+        print(f"Checkpoint load: missing keys {missing[:10]}")
+    if unexpected:
+        print(f"Checkpoint load: unexpected keys ignored {unexpected[:10]}")
+
+    # The trainer evaluates with EMA weights; apply the saved EMA shadow if present.
+    ema_state = None
+    if isinstance(state, dict):
+        ema_state = state.get("ema")
+    if ema_state is not None:
+        ema = EMA(model, decay=ema_state.get("decay", 0.999), update_every=ema_state.get("update_every", 1))
+        ema.load_state_dict(ema_state)
+        ema.apply_shadow(model)
+        print("Applied EMA shadow weights for evaluation.")
+    else:
+        print("No EMA state found; using online checkpoint weights.")
+
+    return model
 
 
 def evaluate_subject(
@@ -68,7 +97,7 @@ def evaluate_subject(
         dataset,
         batch_size=batch_size,
         shuffle=False,
-        collate_fn=collate_with_mask,
+        collate_fn=_collate_with_mask,
         num_workers=0,
     )
 
@@ -102,33 +131,72 @@ def evaluate_subject(
     return report, preds, gts
 
 
-def main():
+def _build_model_args(config: Dict[str, Any]) -> Namespace:
+    """Convert a saved training config into the Namespace expected by the trainer builder."""
+    model_args = Namespace(**config)
+    # Defensive defaults for keys that older configs might omit.
+    defaults = {
+        "d": 128,
+        "residual_hidden": 256,
+        "n_st_layers": 3,
+        "graph_num_layers": 1,
+        "n_joint_layers": 1,
+        "n_heads": 4,
+        "epipolar_loss_weight": 0.05,
+        "num_domains": 2,
+        "use_full_precision_dlt": False,
+        "use_robust_dlt_reweight": False,
+        "use_irls_reweight": False,
+        "use_domain_embedding": False,
+    }
+    for key, value in defaults.items():
+        if not hasattr(model_args, key):
+            setattr(model_args, key, value)
+    return model_args
+
+
+def main() -> None:
     parser = argparse.ArgumentParser(
         description="Evaluate v25 checkpoint on true-GT H36M test subjects S9/S11",
     )
     parser.add_argument(
         "--checkpoint",
         type=str,
-        default="outputs/omniview_fusion_v25_h36m_true_gt_medium.pth",
+        default="outputs/ablations/v25_true_gt_v2_medium_a800.pth",
         help="Path to v25 .pth checkpoint",
+    )
+    parser.add_argument(
+        "--config_json",
+        type=str,
+        default=None,
+        help="Path to training config JSON sidecar (default: <checkpoint>.config.json)",
     )
     parser.add_argument(
         "--s9",
         type=str,
-        default="data/h36m_true_gt/s_09_acts_02_03_04_05_06_07_08_09_10_11_12_13_14_15_16_multiview_m.npz",
+        default="data/h36m_true_gt_v2/s_09_acts_02_03_04_05_06_07_08_09_10_11_12_13_14_15_16_multiview_m.npz",
         help="Path to S9 test .npz",
     )
     parser.add_argument(
         "--s11",
         type=str,
-        default="data/h36m_true_gt/s_11_acts_02_03_04_05_06_07_08_09_10_11_12_13_14_15_16_multiview_m.npz",
+        default="data/h36m_true_gt_v2/s_11_acts_02_03_04_05_06_07_08_09_10_11_12_13_14_15_16_multiview_m.npz",
         help="Path to S11 test .npz",
     )
     parser.add_argument("--clip_len", type=int, default=13)
     parser.add_argument("--batch_size", type=int, default=8)
-    parser.add_argument("--val_stride", type=int, default=1)
-    parser.add_argument("--out_json", type=str, default="outputs/eval_v25_true_gt_h36m_test.json")
-    parser.add_argument("--config_json", type=str, default=None, help="Optional path to training config JSON")
+    parser.add_argument(
+        "--val_stride",
+        type=int,
+        default=13,
+        help="Stride for test clips. Use 1 for dense eval, 13 to match prior v25 test reporting.",
+    )
+    parser.add_argument(
+        "--out_json",
+        type=str,
+        default="outputs/eval_v25_true_gt_v2_h36m_test.json",
+        help="Where to write the JSON result",
+    )
     args = parser.parse_args()
 
     torch.manual_seed(42)
@@ -139,22 +207,17 @@ def main():
     config_path = args.config_json or Path(args.checkpoint).with_suffix(".config.json")
     with open(config_path, "r") as f:
         config = json.load(f)
+
     n_views = config.get("n_views", 14)
     j = config.get("j", 17)
     print(f"Checkpoint config: n_views={n_views}, j={j}")
 
-    # build_model expects an argparse.Namespace with architecture flags.
-    # Map a few config keys that differ between the trainer and the eval helper.
-    model_args = Namespace(**config)
-    model_args.entropy_weight = config.get("attention_entropy_weight", 0.01)
-    model_args.adaptive_view_target_k = config.get("adaptive_view_k", 2)
-    model_args.rotation_max_rot_deg = config.get("rotation_max_rot_deg", 2.0)
-    model = build_model(model_args, n_views=n_views, j=j).to(device)
-    load_checkpoint(model, args.checkpoint)
+    model_args = _build_model_args(config)
+    model = build_model_from_args(model_args, n_joints=j, n_views=n_views, device=device)
+    _load_checkpoint(model, args.checkpoint)
     print(f"Loaded checkpoint from {args.checkpoint}")
 
     results: Dict[str, Any] = {}
-
     for name, path in [("S9", args.s9), ("S11", args.s11)]:
         print(f"\nEvaluating {name}: {path}")
         report, preds, gts = evaluate_subject(
@@ -173,15 +236,33 @@ def main():
             "n_frames": preds.shape[0],
         }
 
+    results["combined"] = {
+        "mpjpe_mm": (results["S9"]["mpjpe_mm"] + results["S11"]["mpjpe_mm"]) / 2.0,
+        "pa_mpjpe_mm": (results["S9"]["pa_mpjpe_mm"] + results["S11"]["pa_mpjpe_mm"]) / 2.0,
+    }
+
     print("\n--- Summary ---")
-    for name in ("S9", "S11"):
-        print(f"{name}: MPJPE={results[name]['mpjpe_mm']:.2f}mm  PA-MPJPE={results[name]['pa_mpjpe_mm']:.2f}mm")
+    for name in ("S9", "S11", "combined"):
+        print(
+            f"{name}: MPJPE={results[name]['mpjpe_mm']:.2f}mm  "
+            f"PA-MPJPE={results[name]['pa_mpjpe_mm']:.2f}mm"
+        )
 
     out_path = Path(args.out_json)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     with open(out_path, "w") as f:
         json.dump(results, f, indent=2)
     print(f"Saved results to {out_path}")
+
+    csv_path = out_path.with_suffix(".csv")
+    with open(csv_path, "w", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=["subject", "mpjpe_mm", "pa_mpjpe_mm", "n_frames"])
+        writer.writeheader()
+        for name in ("S9", "S11", "combined"):
+            row = {"subject": name}
+            row.update(results[name])
+            writer.writerow(row)
+    print(f"Saved CSV summary to {csv_path}")
 
 
 if __name__ == "__main__":

@@ -1,0 +1,3918 @@
+diff --git a/experiments/eval_full_metrics.py b/experiments/eval_full_metrics.py
+index 778793f..75b739d 100644
+--- a/experiments/eval_full_metrics.py
++++ b/experiments/eval_full_metrics.py
+@@ -1,332 +1,332 @@
+-"""Generic full-metrics evaluation for the temporal-residual model family.
+-
+-Supports baseline (residual), CamPE, CamPE+GraphJR, and CamPE+Adaptive variants.
+-Outputs MPJPE, PA-MPJPE, PCK@50/100/150, and PCK-AUC in mm.
+-
+-Example
+--------
+-    conda run -n mf python experiments/eval_full_metrics.py \
+-        --model campegraph \
+-        --dataset data/webbridge/mpi_inf_3dhp/s_02_seq_01_v14_multiview_m.npz \
+-        --checkpoint outputs/ray_attention_temporal_residual_campe_graph_mpiinf3dhp.pth \
+-        --clip_len 13 --d 64 --n_temporal_layers 2 --graph_layers 3 --residual_hidden 128
+-"""
+-
+-import argparse
+-import json
+-import sys
+-from pathlib import Path
+-
+-import numpy as np
+-import torch
+-
+-sys.path.insert(0, str(Path(__file__).parent.parent))
+-
+-from motionflow_mv.eval.metrics import compute_all_metrics, summarize_metrics
+-from motionflow_mv.fusion.variable_view_inference import (
+-    prepare_variable_view_input,
+-    VariableViewInferenceWrapper,
+-)
+-from motionflow_mv.fusion.ray_attention_temporal_residual_model import (
+-    RayAttentionFusionModelTemporalResidual,
+-)
+-from motionflow_mv.fusion.ray_attention_temporal_residual_campe_model import (
+-    RayAttentionFusionModelTemporalResidualCamPE,
+-)
+-from motionflow_mv.fusion.ray_attention_temporal_residual_campe_graph_model import (
+-    RayAttentionFusionModelTemporalResidualCamPEGraph,
+-)
+-from motionflow_mv.fusion.ray_attention_temporal_residual_campe_adaptive_model import (
+-    RayAttentionFusionModelTemporalResidualCamPEAdaptive,
+-)
+-from motionflow_mv.fusion.ray_attention_temporal_residual_campe_adaptive_softgate_model import (
+-    RayAttentionFusionModelTemporalResidualCamPEAdaptiveSoftGate,
+-)
+-from motionflow_mv.fusion.ray_attention_temporal_crossview_residual_model import (
+-    RayAttentionFusionModelTemporalCrossviewResidual,
+-)
+-from motionflow_mv.fusion.ray_attention_temporal_crossview_residual_principal_point_model import (
+-    RayAttentionFusionModelTemporalCrossviewResidualPrincipalPoint,
+-)
+-from motionflow_mv.fusion.ray_attention_temporal_crossview_residual_principal_point_visibility_model import (
+-    RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointVisibility,
+-)
+-from motionflow_mv.fusion.ray_attention_temporal_crossview_factorized_residual_principal_point_model import (
+-    RayAttentionFusionModelTemporalCrossviewFactorizedResidualPrincipalPoint,
+-)
+-from motionflow_mv.fusion.ray_attention_temporal_crossview_residual_principal_point_dynamic_gate_model import (
+-    RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointDynamicGate,
+-)
+-from motionflow_mv.fusion.ray_attention_temporal_crossview_residual_principal_point_graph_skeleton_residual_model import (
+-    RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointGraphSkeletonResidual,
+-)
+-from motionflow_mv.fusion.ray_attention_temporal_crossview_residual_principal_point_epipolar_model import (
+-    RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointEpipolar,
+-)
+-from motionflow_mv.fusion.ray_attention_temporal_crossview_residual_principal_point_splat_model import (
+-    RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointSplat,
+-)
+-from motionflow_mv.fusion.ray_attention_temporal_crossview_residual_principal_point_kinematic_chain_model import (
+-    RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointKinematicChain,
+-)
+-from motionflow_mv.fusion.ray_attention_temporal_crossview_residual_principal_point_bayesian_tri_model import (
+-    RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointBayesianTri,
+-    RayAttentionFusionModelBayesianTriV2,
+-)
+-from motionflow_mv.fusion.ray_attention_temporal_crossview_residual_principal_point_epipolar_bias_v2_model import (
+-    RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointEpipolarBiasV2,
+-)
+-from motionflow_mv.fusion.ray_attention_temporal_crossview_residual_camera_conditioned_model import (
+-    RayAttentionFusionModelTemporalCrossviewResidualCameraConditioned,
+-)
+-from motionflow_mv.fusion.ray_attention_hierarchical_view_temporal_joint_residual_principal_point_model import (
+-    RayAttentionFusionModelHierarchicalViewTemporalJointResidualPrincipalPoint,
+-)
+-from motionflow_mv.models.crossview_residual_visibility_v2 import (
+-    CrossviewResidualVisibilityV2,
+-)
+-try:
+-    from motionflow_mv.models.crossview_residual_visibility_uncertainty_v1 import (
+-        CrossviewResidualVisibilityUncertaintyV1,
+-    )
+-except ImportError:  # pragma: no cover
+-    CrossviewResidualVisibilityUncertaintyV1 = None
+-
+-
+-MODEL_CLASSES = {
+-    "residual": RayAttentionFusionModelTemporalResidual,
+-    "campe": RayAttentionFusionModelTemporalResidualCamPE,
+-    "campegraph": RayAttentionFusionModelTemporalResidualCamPEGraph,
+-    "adaptive": RayAttentionFusionModelTemporalResidualCamPEAdaptive,
+-    "adaptive_softgate": RayAttentionFusionModelTemporalResidualCamPEAdaptiveSoftGate,
+-    "crossview_residual": RayAttentionFusionModelTemporalCrossviewResidual,
+-    "crossview_residual_pp": RayAttentionFusionModelTemporalCrossviewResidualPrincipalPoint,
+-    "crossview_residual_pp_visibility": RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointVisibility,
+-    "crossview_residual_pp_visibility_v2": CrossviewResidualVisibilityV2,
+-    "factorized_pp": RayAttentionFusionModelTemporalCrossviewFactorizedResidualPrincipalPoint,
+-    "dynamic_gate_pp": RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointDynamicGate,
+-    "graph_skeleton_residual_pp": RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointGraphSkeletonResidual,
+-    "epipolar_pp": RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointEpipolar,
+-    "splat_pp": RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointSplat,
+-    "kinematic_chain_pp": RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointKinematicChain,
+-    "bayesian_tri_pp": RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointBayesianTri,
+-    "bayesian_tri_v2_pp": RayAttentionFusionModelBayesianTriV2,
+-    "epipolar_bias_v2_pp": RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointEpipolarBiasV2,
+-    "camera_conditioned_pp": RayAttentionFusionModelTemporalCrossviewResidualCameraConditioned,
+-    "hierarchical_view_temporal_joint_pp": RayAttentionFusionModelHierarchicalViewTemporalJointResidualPrincipalPoint,
+-}
+-
+-
+-class TemporalClipDataset(torch.utils.data.Dataset):
+-    """Yield clips (T, V, J, 3) from a canonical .npz sequence."""
+-
+-    def __init__(self, npz_path: str, clip_len: int, stride: int = 1, gt_scale: float = 1.0, camera_scale: float = 1.0):
+-        data = np.load(npz_path)
+-        self.points_2d = torch.from_numpy(data["points_2d"]).float()
+-        self.confidences = torch.from_numpy(data["confidences"]).float()
+-        self.joints_3d = torch.from_numpy(data["joints_3d"]).float() * gt_scale
+-        self.K = torch.from_numpy(data["camera_K"]).float()
+-        self.R = torch.from_numpy(data["camera_R"]).float()
+-        self.t = torch.from_numpy(data["camera_t"]).float() * camera_scale
+-        self.clip_len = clip_len
+-        self.stride = stride
+-        self.total_frames = self.points_2d.shape[0]
+-        self.num_clips = max(1, (self.total_frames - clip_len) // stride + 1)
+-
+-    def __len__(self):
+-        return self.num_clips
+-
+-    def __getitem__(self, idx):
+-        start = idx * self.stride
+-        end = start + self.clip_len
+-        x = torch.cat(
+-            [self.points_2d[start:end], self.confidences[start:end].unsqueeze(-1)],
+-            dim=-1,
+-        )
+-        y = self.joints_3d[start:end]
+-        return x, y, self.K, self.R, self.t
+-
+-
+-def collate_fn(batch):
+-    x = torch.stack([b[0] for b in batch], dim=0)
+-    y = torch.stack([b[1] for b in batch], dim=0)
+-    K = torch.stack([b[2] for b in batch], dim=0)
+-    R = torch.stack([b[3] for b in batch], dim=0)
+-    t = torch.stack([b[4] for b in batch], dim=0)
+-    return x, y, K, R, t
+-
+-
+-def build_model(args, n_views, j):
+-    cls = MODEL_CLASSES[args.model]
+-    kwargs = {
+-        "j": j,
+-        "d": args.d,
+-        "n_views": n_views,
+-    }
+-    if args.model in {"crossview_residual", "crossview_residual_pp", "crossview_residual_pp_visibility", "crossview_residual_pp_visibility_uncertainty_v1", "dynamic_gate_pp", "graph_skeleton_residual_pp", "epipolar_pp", "splat_pp", "kinematic_chain_pp", "bayesian_tri_pp", "bayesian_tri_v2_pp", "epipolar_bias_v2_pp", "camera_conditioned_pp", "hierarchical_view_temporal_joint_pp"}:
+-        kwargs["n_st_layers"] = args.n_st_layers
+-        kwargs["residual_hidden"] = args.residual_hidden
+-    elif args.model == "factorized_pp":
+-        kwargs["n_view_layers"] = args.n_view_layers
+-        kwargs["n_temporal_layers"] = args.n_temporal_layers
+-        kwargs["residual_hidden"] = args.residual_hidden
+-        kwargs["principal_point_hidden"] = 64
+-        kwargs["principal_point_max_offset"] = 20.0
+-    elif args.model != "crossview_residual_pp_visibility_v2":
+-        kwargs["n_temporal_layers"] = args.n_temporal_layers
+-    if args.model == "hierarchical_view_temporal_joint_pp":
+-        kwargs["n_view_groups"] = args.n_view_groups
+-        kwargs["n_view_layers"] = args.n_view_layers
+-        kwargs["n_temporal_layers"] = args.n_temporal_layers
+-        kwargs["n_joint_graph_layers"] = args.n_joint_graph_layers
+-        kwargs["use_skeleton_graph"] = not args.no_skeleton_graph
+-    if args.model in {"residual", "campe", "campegraph", "adaptive"}:
+-        kwargs["residual_hidden"] = args.residual_hidden
+-    if args.model == "campegraph":
+-        kwargs["graph_layers"] = args.graph_layers
+-        # MPI full-skeleton graph is passed via --parents and --symmetry_pairs files.
+-        if args.parents:
+-            kwargs["parents"] = _load_list(args.parents, int)
+-        if args.symmetry_pairs:
+-            kwargs["symmetry_pairs"] = _load_pairs(args.symmetry_pairs)
+-    if args.model == "adaptive":
+-        kwargs["k"] = args.k
+-    if args.model == "adaptive_softgate":
+-        kwargs["target_k"] = args.target_k
+-        kwargs["min_views"] = args.min_views
+-        kwargs["lambda_gate"] = 0.0
+-    if args.model == "crossview_residual_pp_visibility_v2":
+-        kwargs["principal_point_hidden"] = 64
+-        kwargs["principal_point_max_offset"] = 20.0
+-    if args.model == "crossview_residual_pp_visibility_uncertainty_v1":
+-        kwargs["principal_point_hidden"] = 64
+-        kwargs["principal_point_max_offset"] = 20.0
+-    return cls(**kwargs)
+-
+-
+-def _load_list(path, dtype):
+-    with open(path) as f:
+-        return [dtype(x.strip()) for x in f.read().strip().split(",") if x.strip()]
+-
+-
+-def _load_pairs(path):
+-    out = []
+-    with open(path) as f:
+-        for line in f:
+-            line = line.strip()
+-            if not line:
+-                continue
+-            a, b = line.split(",")
+-            out.append((int(a.strip()), int(b.strip())))
+-    return out
+-
+-
+-def evaluate(model, loader, device, model_name: str, source_n_views: int = None):
+-    model.eval()
+-    use_wrapper = source_n_views is not None and source_n_views != loader.dataset.K.shape[0]
+-    if use_wrapper:
+-        model = VariableViewInferenceWrapper(model)
+-    preds, gts = [], []
+-    with torch.no_grad():
+-        for xb, yb, K, R, t in loader:
+-            xb, yb = xb.to(device), yb.to(device)
+-            K, R, t = K.to(device), R.to(device), t.to(device)
+-            if use_wrapper:
+-                # Use all available target views (assumed to be <= source_n_views).
+-                active = xb.shape[2]
+-                pred = model(xb, K=K, R=R, t=t, active_views=active)[0]
+-            else:
+-                out = model(xb, K=K, R=R, t=t)
+-                pred = out[0]
+-                if model_name == "adaptive_softgate":
+-                    pred = out[0]
+-            preds.append(pred.cpu().numpy())
+-            gts.append(yb.cpu().numpy())
+-    preds = np.concatenate(preds, axis=0)  # (N, T, J, 3)
+-    gts = np.concatenate(gts, axis=0)
+-    preds = preds.reshape(-1, preds.shape[-2], 3)  # (N*T, J, 3)
+-    gts = gts.reshape(-1, gts.shape[-2], 3)
+-    return preds, gts
+-
+-
+-def main():
+-    parser = argparse.ArgumentParser()
+-    parser.add_argument("--model", type=str, choices=list(MODEL_CLASSES), required=True)
+-    parser.add_argument("--dataset", type=str, required=True)
+-    parser.add_argument("--checkpoint", type=str, required=True)
+-    parser.add_argument("--clip_len", type=int, default=13)
+-    parser.add_argument("--d", type=int, default=64)
+-    parser.add_argument("--n_temporal_layers", type=int, default=2)
+-    parser.add_argument("--n_st_layers", type=int, default=2,
+-                        help="Number of cross-view spatio-temporal layers for crossview_residual/crossview_residual_pp models")
+-    parser.add_argument("--n_view_layers", type=int, default=2, help="Number of view-level transformer layers for factorized_pp and hierarchical_view_temporal_joint_pp")
+-    parser.add_argument("--n_view_groups", type=int, default=2, help="Number of camera groups for hierarchical_view_temporal_joint_pp")
+-    parser.add_argument("--n_joint_graph_layers", type=int, default=1, help="Number of skeleton-graph layers for hierarchical_view_temporal_joint_pp")
+-    parser.add_argument("--no_skeleton_graph", action="store_true", help="Disable skeleton-graph stage in hierarchical_view_temporal_joint_pp")
+-    parser.add_argument("--residual_hidden", type=int, default=128)
+-    parser.add_argument("--graph_layers", type=int, default=3)
+-    parser.add_argument("--k", type=int, default=4)
+-    parser.add_argument("--target_k", type=int, default=4)
+-    parser.add_argument("--min_views", type=int, default=2)
+-    parser.add_argument("--batch_size", type=int, default=8)
+-    parser.add_argument("--val_stride", type=int, default=1, help="Stride for validation clips (higher = faster)")
+-    parser.add_argument("--gt_scale", type=float, default=1.0)
+-    parser.add_argument("--camera_scale", type=float, default=1.0)
+-    parser.add_argument("--parents", type=str, default=None, help="Path to comma-separated parent list for campegraph")
+-    parser.add_argument("--symmetry_pairs", type=str, default=None, help="Path to symmetry pairs for campegraph")
+-    parser.add_argument("--source_n_views", type=int, default=None, help="Fixed view count of the trained model; enables variable-view inference when target has fewer views")
+-    parser.add_argument("--output_json", type=str, default=None)
+-    args = parser.parse_args()
+-
+-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+-    data = np.load(args.dataset)
+-    n_views = data["camera_K"].shape[0]
+-    j = data["points_2d"].shape[2]
+-
+-    dataset = TemporalClipDataset(args.dataset, args.clip_len, stride=args.val_stride, gt_scale=args.gt_scale, camera_scale=args.camera_scale)
+-    loader = torch.utils.data.DataLoader(
+-        dataset, batch_size=args.batch_size, shuffle=False, collate_fn=collate_fn, num_workers=0
+-    )
+-
+-    source_n_views = args.source_n_views if args.source_n_views is not None else n_views
+-    model = build_model(args, source_n_views, j).to(device)
+-    missing, unexpected = model.load_state_dict(
+-        torch.load(args.checkpoint, map_location="cpu", weights_only=True),
+-        strict=False,
+-    )
+-    if missing:
+-        print(f"Warning: missing keys in checkpoint: {missing[:5]}")
+-    if unexpected:
+-        print(f"Warning: unexpected keys in checkpoint (ignored): {unexpected[:5]}")
+-
+-    preds, gts = evaluate(model, loader, device, args.model, source_n_views=source_n_views)
+-    parents_arr = None
+-    if args.parents:
+-        parents_arr = np.array(_load_list(args.parents, int), dtype=np.int64)
+-    # Convert meters -> mm for metrics.
+-    report = compute_all_metrics(preds * 1000.0, gts * 1000.0, parents=parents_arr)
+-    print(summarize_metrics(report))
+-    print(f"MPJPE: {report['mpjpe']:.2f} mm")
+-    print(f"PA-MPJPE: {report['pa_mpjpe']:.2f} mm")
+-    print(f"PCK@50: {report['pck@50mm']:.4f}")
+-    print(f"PCK@100: {report['pck@100mm']:.4f}")
+-    print(f"PCK@150: {report['pck@150mm']:.4f}")
+-    print(f"PCK-AUC: {report['pck_auc']:.4f}")
+-
+-    if args.output_json:
+-        # Convert numpy arrays to lists for JSON serialization.
+-        serializable = {}
+-        for k, v in report.items():
+-            if isinstance(v, np.ndarray):
+-                serializable[k] = v.tolist()
+-            else:
+-                serializable[k] = float(v)
+-        out_path = Path(args.output_json)
+-        out_path.parent.mkdir(parents=True, exist_ok=True)
+-        with open(out_path, "w") as f:
+-            json.dump(serializable, f, indent=2)
+-        print(f"Saved metrics to {out_path}")
+-
+-
+-if __name__ == "__main__":
+-    main()
++"""Generic full-metrics evaluation for the temporal-residual model family.
++
++Supports baseline (residual), CamPE, CamPE+GraphJR, and CamPE+Adaptive variants.
++Outputs MPJPE, PA-MPJPE, PCK@50/100/150, and PCK-AUC in mm.
++
++Example
++-------
++    conda run -n mf python experiments/eval_full_metrics.py \
++        --model campegraph \
++        --dataset data/webbridge/mpi_inf_3dhp/s_02_seq_01_v14_multiview_m.npz \
++        --checkpoint outputs/ray_attention_temporal_residual_campe_graph_mpiinf3dhp.pth \
++        --clip_len 13 --d 64 --n_temporal_layers 2 --graph_layers 3 --residual_hidden 128
++"""
++
++import argparse
++import json
++import sys
++from pathlib import Path
++
++import numpy as np
++import torch
++
++sys.path.insert(0, str(Path(__file__).parent.parent))
++
++from motionflow_mv.eval.metrics import compute_all_metrics, summarize_metrics
++from motionflow_mv.fusion.variable_view_inference import (
++    prepare_variable_view_input,
++    VariableViewInferenceWrapper,
++)
++from motionflow_mv.fusion.ray_attention_temporal_residual_model import (
++    RayAttentionFusionModelTemporalResidual,
++)
++from motionflow_mv.fusion.ray_attention_temporal_residual_campe_model import (
++    RayAttentionFusionModelTemporalResidualCamPE,
++)
++from motionflow_mv.fusion.ray_attention_temporal_residual_campe_graph_model import (
++    RayAttentionFusionModelTemporalResidualCamPEGraph,
++)
++from motionflow_mv.fusion.ray_attention_temporal_residual_campe_adaptive_model import (
++    RayAttentionFusionModelTemporalResidualCamPEAdaptive,
++)
++from motionflow_mv.fusion.ray_attention_temporal_residual_campe_adaptive_softgate_model import (
++    RayAttentionFusionModelTemporalResidualCamPEAdaptiveSoftGate,
++)
++from motionflow_mv.fusion.ray_attention_temporal_crossview_residual_model import (
++    RayAttentionFusionModelTemporalCrossviewResidual,
++)
++from motionflow_mv.fusion.ray_attention_temporal_crossview_residual_principal_point_model import (
++    RayAttentionFusionModelTemporalCrossviewResidualPrincipalPoint,
++)
++from motionflow_mv.fusion.ray_attention_temporal_crossview_residual_principal_point_visibility_model import (
++    RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointVisibility,
++)
++from motionflow_mv.fusion.ray_attention_temporal_crossview_factorized_residual_principal_point_model import (
++    RayAttentionFusionModelTemporalCrossviewFactorizedResidualPrincipalPoint,
++)
++from motionflow_mv.fusion.ray_attention_temporal_crossview_residual_principal_point_dynamic_gate_model import (
++    RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointDynamicGate,
++)
++from motionflow_mv.fusion.ray_attention_temporal_crossview_residual_principal_point_graph_skeleton_residual_model import (
++    RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointGraphSkeletonResidual,
++)
++from motionflow_mv.fusion.ray_attention_temporal_crossview_residual_principal_point_epipolar_model import (
++    RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointEpipolar,
++)
++from motionflow_mv.fusion.ray_attention_temporal_crossview_residual_principal_point_splat_model import (
++    RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointSplat,
++)
++from motionflow_mv.fusion.ray_attention_temporal_crossview_residual_principal_point_kinematic_chain_model import (
++    RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointKinematicChain,
++)
++from motionflow_mv.fusion.ray_attention_temporal_crossview_residual_principal_point_bayesian_tri_model import (
++    RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointBayesianTri,
++    RayAttentionFusionModelBayesianTriV2,
++)
++from motionflow_mv.fusion.ray_attention_temporal_crossview_residual_principal_point_epipolar_bias_v2_model import (
++    RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointEpipolarBiasV2,
++)
++from motionflow_mv.fusion.ray_attention_temporal_crossview_residual_camera_conditioned_model import (
++    RayAttentionFusionModelTemporalCrossviewResidualCameraConditioned,
++)
++from motionflow_mv.fusion.ray_attention_hierarchical_view_temporal_joint_residual_principal_point_model import (
++    RayAttentionFusionModelHierarchicalViewTemporalJointResidualPrincipalPoint,
++)
++from motionflow_mv.models.crossview_residual_visibility_v2 import (
++    CrossviewResidualVisibilityV2,
++)
++try:
++    from motionflow_mv.models.crossview_residual_visibility_uncertainty_v1 import (
++        CrossviewResidualVisibilityUncertaintyV1,
++    )
++except ImportError:  # pragma: no cover
++    CrossviewResidualVisibilityUncertaintyV1 = None
++
++
++MODEL_CLASSES = {
++    "residual": RayAttentionFusionModelTemporalResidual,
++    "campe": RayAttentionFusionModelTemporalResidualCamPE,
++    "campegraph": RayAttentionFusionModelTemporalResidualCamPEGraph,
++    "adaptive": RayAttentionFusionModelTemporalResidualCamPEAdaptive,
++    "adaptive_softgate": RayAttentionFusionModelTemporalResidualCamPEAdaptiveSoftGate,
++    "crossview_residual": RayAttentionFusionModelTemporalCrossviewResidual,
++    "crossview_residual_pp": RayAttentionFusionModelTemporalCrossviewResidualPrincipalPoint,
++    "crossview_residual_pp_visibility": RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointVisibility,
++    "crossview_residual_pp_visibility_v2": CrossviewResidualVisibilityV2,
++    "factorized_pp": RayAttentionFusionModelTemporalCrossviewFactorizedResidualPrincipalPoint,
++    "dynamic_gate_pp": RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointDynamicGate,
++    "graph_skeleton_residual_pp": RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointGraphSkeletonResidual,
++    "epipolar_pp": RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointEpipolar,
++    "splat_pp": RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointSplat,
++    "kinematic_chain_pp": RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointKinematicChain,
++    "bayesian_tri_pp": RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointBayesianTri,
++    "bayesian_tri_v2_pp": RayAttentionFusionModelBayesianTriV2,
++    "epipolar_bias_v2_pp": RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointEpipolarBiasV2,
++    "camera_conditioned_pp": RayAttentionFusionModelTemporalCrossviewResidualCameraConditioned,
++    "hierarchical_view_temporal_joint_pp": RayAttentionFusionModelHierarchicalViewTemporalJointResidualPrincipalPoint,
++}
++
++
++class TemporalClipDataset(torch.utils.data.Dataset):
++    """Yield clips (T, V, J, 3) from a canonical .npz sequence."""
++
++    def __init__(self, npz_path: str, clip_len: int, stride: int = 1, gt_scale: float = 1.0, camera_scale: float = 1.0):
++        data = np.load(npz_path)
++        self.points_2d = torch.from_numpy(data["points_2d"]).float()
++        self.confidences = torch.from_numpy(data["confidences"]).float()
++        self.joints_3d = torch.from_numpy(data["joints_3d"]).float() * gt_scale
++        self.K = torch.from_numpy(data["camera_K"]).float()
++        self.R = torch.from_numpy(data["camera_R"]).float()
++        self.t = torch.from_numpy(data["camera_t"]).float() * camera_scale
++        self.clip_len = clip_len
++        self.stride = stride
++        self.total_frames = self.points_2d.shape[0]
++        self.num_clips = max(1, (self.total_frames - clip_len) // stride + 1)
++
++    def __len__(self):
++        return self.num_clips
++
++    def __getitem__(self, idx):
++        start = idx * self.stride
++        end = start + self.clip_len
++        x = torch.cat(
++            [self.points_2d[start:end], self.confidences[start:end].unsqueeze(-1)],
++            dim=-1,
++        )
++        y = self.joints_3d[start:end]
++        return x, y, self.K, self.R, self.t
++
++
++def collate_fn(batch):
++    x = torch.stack([b[0] for b in batch], dim=0)
++    y = torch.stack([b[1] for b in batch], dim=0)
++    K = torch.stack([b[2] for b in batch], dim=0)
++    R = torch.stack([b[3] for b in batch], dim=0)
++    t = torch.stack([b[4] for b in batch], dim=0)
++    return x, y, K, R, t
++
++
++def build_model(args, n_views, j):
++    cls = MODEL_CLASSES[args.model]
++    kwargs = {
++        "j": j,
++        "d": args.d,
++        "n_views": n_views,
++    }
++    if args.model in {"crossview_residual", "crossview_residual_pp", "crossview_residual_pp_visibility", "crossview_residual_pp_visibility_uncertainty_v1", "dynamic_gate_pp", "graph_skeleton_residual_pp", "epipolar_pp", "splat_pp", "kinematic_chain_pp", "bayesian_tri_pp", "bayesian_tri_v2_pp", "epipolar_bias_v2_pp", "camera_conditioned_pp", "hierarchical_view_temporal_joint_pp"}:
++        kwargs["n_st_layers"] = args.n_st_layers
++        kwargs["residual_hidden"] = args.residual_hidden
++    elif args.model == "factorized_pp":
++        kwargs["n_view_layers"] = args.n_view_layers
++        kwargs["n_temporal_layers"] = args.n_temporal_layers
++        kwargs["residual_hidden"] = args.residual_hidden
++        kwargs["principal_point_hidden"] = 64
++        kwargs["principal_point_max_offset"] = 20.0
++    elif args.model != "crossview_residual_pp_visibility_v2":
++        kwargs["n_temporal_layers"] = args.n_temporal_layers
++    if args.model == "hierarchical_view_temporal_joint_pp":
++        kwargs["n_view_groups"] = args.n_view_groups
++        kwargs["n_view_layers"] = args.n_view_layers
++        kwargs["n_temporal_layers"] = args.n_temporal_layers
++        kwargs["n_joint_graph_layers"] = args.n_joint_graph_layers
++        kwargs["use_skeleton_graph"] = not args.no_skeleton_graph
++    if args.model in {"residual", "campe", "campegraph", "adaptive"}:
++        kwargs["residual_hidden"] = args.residual_hidden
++    if args.model == "campegraph":
++        kwargs["graph_layers"] = args.graph_layers
++        # MPI full-skeleton graph is passed via --parents and --symmetry_pairs files.
++        if args.parents:
++            kwargs["parents"] = _load_list(args.parents, int)
++        if args.symmetry_pairs:
++            kwargs["symmetry_pairs"] = _load_pairs(args.symmetry_pairs)
++    if args.model == "adaptive":
++        kwargs["k"] = args.k
++    if args.model == "adaptive_softgate":
++        kwargs["target_k"] = args.target_k
++        kwargs["min_views"] = args.min_views
++        kwargs["lambda_gate"] = 0.0
++    if args.model == "crossview_residual_pp_visibility_v2":
++        kwargs["principal_point_hidden"] = 64
++        kwargs["principal_point_max_offset"] = 20.0
++    if args.model == "crossview_residual_pp_visibility_uncertainty_v1":
++        kwargs["principal_point_hidden"] = 64
++        kwargs["principal_point_max_offset"] = 20.0
++    return cls(**kwargs)
++
++
++def _load_list(path, dtype):
++    with open(path) as f:
++        return [dtype(x.strip()) for x in f.read().strip().split(",") if x.strip()]
++
++
++def _load_pairs(path):
++    out = []
++    with open(path) as f:
++        for line in f:
++            line = line.strip()
++            if not line:
++                continue
++            a, b = line.split(",")
++            out.append((int(a.strip()), int(b.strip())))
++    return out
++
++
++def evaluate(model, loader, device, model_name: str, source_n_views: int = None):
++    model.eval()
++    use_wrapper = source_n_views is not None and source_n_views != loader.dataset.K.shape[0]
++    if use_wrapper:
++        model = VariableViewInferenceWrapper(model)
++    preds, gts = [], []
++    with torch.no_grad():
++        for xb, yb, K, R, t in loader:
++            xb, yb = xb.to(device), yb.to(device)
++            K, R, t = K.to(device), R.to(device), t.to(device)
++            if use_wrapper:
++                # Use all available target views (assumed to be <= source_n_views).
++                active = xb.shape[2]
++                pred = model(xb, K=K, R=R, t=t, active_views=active)[0]
++            else:
++                out = model(xb, K=K, R=R, t=t)
++                pred = out[0]
++                if model_name == "adaptive_softgate":
++                    pred = out[0]
++            preds.append(pred.cpu().numpy())
++            gts.append(yb.cpu().numpy())
++    preds = np.concatenate(preds, axis=0)  # (N, T, J, 3)
++    gts = np.concatenate(gts, axis=0)
++    preds = preds.reshape(-1, preds.shape[-2], 3)  # (N*T, J, 3)
++    gts = gts.reshape(-1, gts.shape[-2], 3)
++    return preds, gts
++
++
++def main():
++    parser = argparse.ArgumentParser()
++    parser.add_argument("--model", type=str, choices=list(MODEL_CLASSES), required=True)
++    parser.add_argument("--dataset", type=str, required=True)
++    parser.add_argument("--checkpoint", type=str, required=True)
++    parser.add_argument("--clip_len", type=int, default=13)
++    parser.add_argument("--d", type=int, default=64)
++    parser.add_argument("--n_temporal_layers", type=int, default=2)
++    parser.add_argument("--n_st_layers", type=int, default=2,
++                        help="Number of cross-view spatio-temporal layers for crossview_residual/crossview_residual_pp models")
++    parser.add_argument("--n_view_layers", type=int, default=2, help="Number of view-level transformer layers for factorized_pp and hierarchical_view_temporal_joint_pp")
++    parser.add_argument("--n_view_groups", type=int, default=2, help="Number of camera groups for hierarchical_view_temporal_joint_pp")
++    parser.add_argument("--n_joint_graph_layers", type=int, default=1, help="Number of skeleton-graph layers for hierarchical_view_temporal_joint_pp")
++    parser.add_argument("--no_skeleton_graph", action="store_true", help="Disable skeleton-graph stage in hierarchical_view_temporal_joint_pp")
++    parser.add_argument("--residual_hidden", type=int, default=128)
++    parser.add_argument("--graph_layers", type=int, default=3)
++    parser.add_argument("--k", type=int, default=4)
++    parser.add_argument("--target_k", type=int, default=4)
++    parser.add_argument("--min_views", type=int, default=2)
++    parser.add_argument("--batch_size", type=int, default=8)
++    parser.add_argument("--val_stride", type=int, default=1, help="Stride for validation clips (higher = faster)")
++    parser.add_argument("--gt_scale", type=float, default=1.0)
++    parser.add_argument("--camera_scale", type=float, default=1.0)
++    parser.add_argument("--parents", type=str, default=None, help="Path to comma-separated parent list for campegraph")
++    parser.add_argument("--symmetry_pairs", type=str, default=None, help="Path to symmetry pairs for campegraph")
++    parser.add_argument("--source_n_views", type=int, default=None, help="Fixed view count of the trained model; enables variable-view inference when target has fewer views")
++    parser.add_argument("--output_json", type=str, default=None)
++    args = parser.parse_args()
++
++    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
++    data = np.load(args.dataset)
++    n_views = data["camera_K"].shape[0]
++    j = data["points_2d"].shape[2]
++
++    dataset = TemporalClipDataset(args.dataset, args.clip_len, stride=args.val_stride, gt_scale=args.gt_scale, camera_scale=args.camera_scale)
++    loader = torch.utils.data.DataLoader(
++        dataset, batch_size=args.batch_size, shuffle=False, collate_fn=collate_fn, num_workers=0
++    )
++
++    source_n_views = args.source_n_views if args.source_n_views is not None else n_views
++    model = build_model(args, source_n_views, j).to(device)
++    missing, unexpected = model.load_state_dict(
++        torch.load(args.checkpoint, map_location="cpu", weights_only=True),
++        strict=False,
++    )
++    if missing:
++        print(f"Warning: missing keys in checkpoint: {missing[:5]}")
++    if unexpected:
++        print(f"Warning: unexpected keys in checkpoint (ignored): {unexpected[:5]}")
++
++    preds, gts = evaluate(model, loader, device, args.model, source_n_views=source_n_views)
++    parents_arr = None
++    if args.parents:
++        parents_arr = np.array(_load_list(args.parents, int), dtype=np.int64)
++    # Convert meters -> mm for metrics.
++    report = compute_all_metrics(preds * 1000.0, gts * 1000.0, parents=parents_arr)
++    print(summarize_metrics(report))
++    print(f"MPJPE: {report['mpjpe']:.2f} mm")
++    print(f"PA-MPJPE: {report['pa_mpjpe']:.2f} mm")
++    print(f"PCK@50: {report['pck@50mm']:.4f}")
++    print(f"PCK@100: {report['pck@100mm']:.4f}")
++    print(f"PCK@150: {report['pck@150mm']:.4f}")
++    print(f"PCK-AUC: {report['pck_auc']:.4f}")
++
++    if args.output_json:
++        # Convert numpy arrays to lists for JSON serialization.
++        serializable = {}
++        for k, v in report.items():
++            if isinstance(v, np.ndarray):
++                serializable[k] = v.tolist()
++            else:
++                serializable[k] = float(v)
++        out_path = Path(args.output_json)
++        out_path.parent.mkdir(parents=True, exist_ok=True)
++        with open(out_path, "w") as f:
++            json.dump(serializable, f, indent=2)
++        print(f"Saved metrics to {out_path}")
++
++
++if __name__ == "__main__":
++    main()
+diff --git a/experiments/prepare_h36m_multiview.py b/experiments/prepare_h36m_multiview.py
+index 0f5883e..7276ce8 100644
+--- a/experiments/prepare_h36m_multiview.py
++++ b/experiments/prepare_h36m_multiview.py
+@@ -1,173 +1,173 @@
+-"""Build a small multi-view H36M dataset from the preprocessed keypoint subset.
+-
+-Uses the camera parameters from:
+-    https://github.com/karfly/human36m-camera-parameters
+-and triangulates per-frame 3D joints via DLT to obtain world-coordinate targets.
+-
+-Output example:
+-    data/h36m_hf/s_01_act_02_multiview.npz
+-"""
+-
+-import argparse
+-import json
+-import pickle
+-import zipfile
+-from pathlib import Path
+-
+-import numpy as np
+-
+-import sys
+-sys.path.insert(0, str(Path(__file__).parent.parent))
+-
+-from motionflow_mv.fusion.triangulation import triangulate_dlt
+-from motionflow_mv.calibration.camera import Camera
+-
+-
+-def build_projection_matrix(K, R, t):
+-    Rt = np.concatenate([R, t.reshape(3, 1)], axis=1)
+-    return K @ Rt
+-
+-
+-def triangulate_joints(points_2d, cameras):
+-    """points_2d: (V, J, 2), cameras: list of Camera. Returns (J, 3)."""
+-    V, J, _ = points_2d.shape
+-    P = np.stack([cam.projection_matrix for cam in cameras], axis=0)
+-    X = np.zeros((J, 3), dtype=np.float64)
+-    for j in range(J):
+-        X[j] = triangulate_dlt(points_2d[:, j, :], P)
+-    return X
+-
+-
+-def main():
+-    parser = argparse.ArgumentParser()
+-    parser.add_argument("--subject", type=int, default=1)
+-    parser.add_argument("--actions", type=int, nargs="+", default=[2])
+-    parser.add_argument("--split", type=str, default="train", choices=["train", "test"])
+-    parser.add_argument("--out_dir", type=str, default="data/h36m_hf")
+-    args = parser.parse_args()
+-
+-    with open("data/h36m_hf/camera_params.json") as f:
+-        cam_params = json.load(f)
+-
+-    with zipfile.ZipFile("data/h36m_hf/h36m_sh_conf_cam_source_final.pkl.zip") as z:
+-        with z.open("h36m_sh_conf_cam_source_final.pkl") as f:
+-            data = pickle.load(f)
+-
+-    split_data = data[args.split]
+-
+-    # Group indices by base source (handles both train ``..._cam_XX`` and test
+-    # ``..._ca_XX`` source formats).
+-    import re
+-    from collections import defaultdict
+-    groups = defaultdict(lambda: defaultdict(list))
+-    for i, src in enumerate(split_data["source"]):
+-        # Camera suffix is the last token; the keyword before it is cam/ca.
+-        # Train: s_01_act_02_cam_01 -> base s_01_act_02, cam cam_01
+-        # Test:  s_09_act_02_subact_01_ca_01 -> base s_09_act_02_subact_01, cam ca_01
+-        m = re.match(r"(.+)_(cam|ca)_(\d+)$", src)
+-        if m is None:
+-            raise ValueError(f"Unsupported source format: {src}")
+-        base = m.group(1)
+-        cam = f"{m.group(2)}_{m.group(3)}"
+-        groups[base][cam].append(i)
+-
+-    # Find all base groups for this subject/action.
+-    prefix = f"s_{args.subject:02d}_act_"
+-    candidate_bases = sorted([b for b in groups.keys() if b.startswith(prefix)])
+-    target_bases = []
+-    for a in args.actions:
+-        a_prefix = f"s_{args.subject:02d}_act_{a:02d}"
+-        matches = [b for b in candidate_bases if b.startswith(a_prefix)]
+-        if not matches:
+-            raise ValueError(f"No source found for subject {args.subject} action {a} in {args.split}")
+-        target_bases.extend(matches)
+-
+-    print(f"Found {len(target_bases)} source groups for subject {args.subject} actions {args.actions}")
+-
+-    subject_key = f"S{args.subject}"
+-
+-    # The preprocessed archive stores ``camera_name`` per sample.  In the test
+-    # split this field is noisy, but the physical camera rig is fixed and the
+-    # ordering of source suffixes (``cam_01``/``ca_01`` ... ``cam_04``/``ca_04``)
+-    # is stable across all subjects/actions.  We therefore derive the mapping
+-    # per sub-action from ``camera_name`` and fall back to the stable suffix
+-    # ordering whenever the derived mapping does not agree with it.
+-    canonical_camera_names = ["54138969", "55011271", "58860488", "60457274"]
+-
+-    def camera_name_for_suffix(cam_full: str) -> str:
+-        suffix = cam_full.split("_")[-1]
+-        return {"01": "54138969", "02": "55011271", "03": "58860488", "04": "60457274"}[suffix]
+-
+-    def build_cameras(camera_names):
+-        cams = []
+-        for name in camera_names:
+-            intr = cam_params["intrinsics"][name]["calibration_matrix"]
+-            K = np.array(intr, dtype=np.float64)
+-            ext = cam_params["extrinsics"][subject_key][name]
+-            R = np.array(ext["R"], dtype=np.float64)
+-            t = np.array(ext["t"], dtype=np.float64).reshape(3)
+-            cams.append(Camera(K=K, R=R, t=t))
+-        return cams
+-
+-    canonical_cameras = build_cameras(canonical_camera_names)
+-
+-    def derive_mapping(cams_dict):
+-        cam_full_names = sorted(cams_dict.keys(), key=lambda c: cams_dict[c][0])
+-        return [split_data["camera_name"][cams_dict[cam_full][0]] for cam_full in cam_full_names]
+-
+-    all_p2d = []
+-    all_conf = []
+-    all_j3d = []
+-
+-    for target_base in target_bases:
+-        cams_dict = groups[target_base]
+-        cam_names = sorted(cams_dict.keys(), key=lambda c: cams_dict[c][0])
+-        n_frames = len(cams_dict[cam_names[0]])
+-        print(f"Processing {target_base}: {n_frames} frames")
+-
+-        fixed_names = [camera_name_for_suffix(c) for c in cam_names]
+-        derived_names = derive_mapping(cams_dict)
+-        if derived_names == fixed_names:
+-            current_camera_names = derived_names
+-        else:
+-            current_camera_names = fixed_names
+-
+-        current_cameras = build_cameras(current_camera_names)
+-        perm = [current_camera_names.index(name) for name in canonical_camera_names]
+-
+-        for frame in range(n_frames):
+-            p2d_list = [split_data["joint_2d"][cams_dict[cam][frame]] for cam in cam_names]
+-            conf_list = [split_data["confidence"][cams_dict[cam][frame]].squeeze(-1) for cam in cam_names]
+-            # Reorder to canonical physical camera order.
+-            p2d = np.stack([p2d_list[i] for i in perm], axis=0)
+-            conf = np.stack([conf_list[i] for i in perm], axis=0)
+-            j3d = triangulate_joints(p2d, current_cameras)
+-            all_p2d.append(p2d)
+-            all_conf.append(conf)
+-            all_j3d.append(j3d)
+-
+-    points_2d = np.stack(all_p2d, axis=0)
+-    confidences = np.stack(all_conf, axis=0)
+-    joints_3d = np.stack(all_j3d, axis=0)
+-
+-    print(f"points_2d shape: {points_2d.shape}")
+-    print(f"joints_3d range: {joints_3d.min():.2f} {joints_3d.max():.2f}")
+-
+-    out_dir = Path(args.out_dir)
+-    out_dir.mkdir(parents=True, exist_ok=True)
+-    actions_str = "_".join(f"{a:02d}" for a in args.actions)
+-    out_path = out_dir / f"s_{args.subject:02d}_acts_{actions_str}_multiview.npz"
+-    np.savez(
+-        out_path,
+-        points_2d=points_2d,
+-        confidences=confidences,
+-        joints_3d=joints_3d,
+-        camera_K=np.stack([cam.K for cam in canonical_cameras]),
+-        camera_R=np.stack([cam.R for cam in canonical_cameras]),
+-        camera_t=np.stack([cam.t for cam in canonical_cameras]),
+-    )
+-    print(f"Saved {out_path}")
+-
+-
+-if __name__ == "__main__":
+-    main()
++"""Build a small multi-view H36M dataset from the preprocessed keypoint subset.
++
++Uses the camera parameters from:
++    https://github.com/karfly/human36m-camera-parameters
++and triangulates per-frame 3D joints via DLT to obtain world-coordinate targets.
++
++Output example:
++    data/h36m_hf/s_01_act_02_multiview.npz
++"""
++
++import argparse
++import json
++import pickle
++import zipfile
++from pathlib import Path
++
++import numpy as np
++
++import sys
++sys.path.insert(0, str(Path(__file__).parent.parent))
++
++from motionflow_mv.fusion.triangulation import triangulate_dlt
++from motionflow_mv.calibration.camera import Camera
++
++
++def build_projection_matrix(K, R, t):
++    Rt = np.concatenate([R, t.reshape(3, 1)], axis=1)
++    return K @ Rt
++
++
++def triangulate_joints(points_2d, cameras):
++    """points_2d: (V, J, 2), cameras: list of Camera. Returns (J, 3)."""
++    V, J, _ = points_2d.shape
++    P = np.stack([cam.projection_matrix for cam in cameras], axis=0)
++    X = np.zeros((J, 3), dtype=np.float64)
++    for j in range(J):
++        X[j] = triangulate_dlt(points_2d[:, j, :], P)
++    return X
++
++
++def main():
++    parser = argparse.ArgumentParser()
++    parser.add_argument("--subject", type=int, default=1)
++    parser.add_argument("--actions", type=int, nargs="+", default=[2])
++    parser.add_argument("--split", type=str, default="train", choices=["train", "test"])
++    parser.add_argument("--out_dir", type=str, default="data/h36m_hf")
++    args = parser.parse_args()
++
++    with open("data/h36m_hf/camera_params.json") as f:
++        cam_params = json.load(f)
++
++    with zipfile.ZipFile("data/h36m_hf/h36m_sh_conf_cam_source_final.pkl.zip") as z:
++        with z.open("h36m_sh_conf_cam_source_final.pkl") as f:
++            data = pickle.load(f)
++
++    split_data = data[args.split]
++
++    # Group indices by base source (handles both train ``..._cam_XX`` and test
++    # ``..._ca_XX`` source formats).
++    import re
++    from collections import defaultdict
++    groups = defaultdict(lambda: defaultdict(list))
++    for i, src in enumerate(split_data["source"]):
++        # Camera suffix is the last token; the keyword before it is cam/ca.
++        # Train: s_01_act_02_cam_01 -> base s_01_act_02, cam cam_01
++        # Test:  s_09_act_02_subact_01_ca_01 -> base s_09_act_02_subact_01, cam ca_01
++        m = re.match(r"(.+)_(cam|ca)_(\d+)$", src)
++        if m is None:
++            raise ValueError(f"Unsupported source format: {src}")
++        base = m.group(1)
++        cam = f"{m.group(2)}_{m.group(3)}"
++        groups[base][cam].append(i)
++
++    # Find all base groups for this subject/action.
++    prefix = f"s_{args.subject:02d}_act_"
++    candidate_bases = sorted([b for b in groups.keys() if b.startswith(prefix)])
++    target_bases = []
++    for a in args.actions:
++        a_prefix = f"s_{args.subject:02d}_act_{a:02d}"
++        matches = [b for b in candidate_bases if b.startswith(a_prefix)]
++        if not matches:
++            raise ValueError(f"No source found for subject {args.subject} action {a} in {args.split}")
++        target_bases.extend(matches)
++
++    print(f"Found {len(target_bases)} source groups for subject {args.subject} actions {args.actions}")
++
++    subject_key = f"S{args.subject}"
++
++    # The preprocessed archive stores ``camera_name`` per sample.  In the test
++    # split this field is noisy, but the physical camera rig is fixed and the
++    # ordering of source suffixes (``cam_01``/``ca_01`` ... ``cam_04``/``ca_04``)
++    # is stable across all subjects/actions.  We therefore derive the mapping
++    # per sub-action from ``camera_name`` and fall back to the stable suffix
++    # ordering whenever the derived mapping does not agree with it.
++    canonical_camera_names = ["54138969", "55011271", "58860488", "60457274"]
++
++    def camera_name_for_suffix(cam_full: str) -> str:
++        suffix = cam_full.split("_")[-1]
++        return {"01": "54138969", "02": "55011271", "03": "58860488", "04": "60457274"}[suffix]
++
++    def build_cameras(camera_names):
++        cams = []
++        for name in camera_names:
++            intr = cam_params["intrinsics"][name]["calibration_matrix"]
++            K = np.array(intr, dtype=np.float64)
++            ext = cam_params["extrinsics"][subject_key][name]
++            R = np.array(ext["R"], dtype=np.float64)
++            t = np.array(ext["t"], dtype=np.float64).reshape(3)
++            cams.append(Camera(K=K, R=R, t=t))
++        return cams
++
++    canonical_cameras = build_cameras(canonical_camera_names)
++
++    def derive_mapping(cams_dict):
++        cam_full_names = sorted(cams_dict.keys(), key=lambda c: cams_dict[c][0])
++        return [split_data["camera_name"][cams_dict[cam_full][0]] for cam_full in cam_full_names]
++
++    all_p2d = []
++    all_conf = []
++    all_j3d = []
++
++    for target_base in target_bases:
++        cams_dict = groups[target_base]
++        cam_names = sorted(cams_dict.keys(), key=lambda c: cams_dict[c][0])
++        n_frames = len(cams_dict[cam_names[0]])
++        print(f"Processing {target_base}: {n_frames} frames")
++
++        fixed_names = [camera_name_for_suffix(c) for c in cam_names]
++        derived_names = derive_mapping(cams_dict)
++        if derived_names == fixed_names:
++            current_camera_names = derived_names
++        else:
++            current_camera_names = fixed_names
++
++        current_cameras = build_cameras(current_camera_names)
++        perm = [current_camera_names.index(name) for name in canonical_camera_names]
++
++        for frame in range(n_frames):
++            p2d_list = [split_data["joint_2d"][cams_dict[cam][frame]] for cam in cam_names]
++            conf_list = [split_data["confidence"][cams_dict[cam][frame]].squeeze(-1) for cam in cam_names]
++            # Reorder to canonical physical camera order.
++            p2d = np.stack([p2d_list[i] for i in perm], axis=0)
++            conf = np.stack([conf_list[i] for i in perm], axis=0)
++            j3d = triangulate_joints(p2d, current_cameras)
++            all_p2d.append(p2d)
++            all_conf.append(conf)
++            all_j3d.append(j3d)
++
++    points_2d = np.stack(all_p2d, axis=0)
++    confidences = np.stack(all_conf, axis=0)
++    joints_3d = np.stack(all_j3d, axis=0)
++
++    print(f"points_2d shape: {points_2d.shape}")
++    print(f"joints_3d range: {joints_3d.min():.2f} {joints_3d.max():.2f}")
++
++    out_dir = Path(args.out_dir)
++    out_dir.mkdir(parents=True, exist_ok=True)
++    actions_str = "_".join(f"{a:02d}" for a in args.actions)
++    out_path = out_dir / f"s_{args.subject:02d}_acts_{actions_str}_multiview.npz"
++    np.savez(
++        out_path,
++        points_2d=points_2d,
++        confidences=confidences,
++        joints_3d=joints_3d,
++        camera_K=np.stack([cam.K for cam in canonical_cameras]),
++        camera_R=np.stack([cam.R for cam in canonical_cameras]),
++        camera_t=np.stack([cam.t for cam in canonical_cameras]),
++    )
++    print(f"Saved {out_path}")
++
++
++if __name__ == "__main__":
++    main()
+diff --git a/experiments/train_ray_attention_temporal_crossview_residual_principal_point_mpiinf3dhp.py b/experiments/train_ray_attention_temporal_crossview_residual_principal_point_mpiinf3dhp.py
+index 948a5df..b2982ec 100644
+--- a/experiments/train_ray_attention_temporal_crossview_residual_principal_point_mpiinf3dhp.py
++++ b/experiments/train_ray_attention_temporal_crossview_residual_principal_point_mpiinf3dhp.py
+@@ -1,605 +1,605 @@
+-"""Train RayAttentionFusionModelTemporalCrossviewResidualPrincipalPoint on MPI-INF-3DHP.
+-
+-This script is a thin wrapper around ``train_ray_attention_temporal_crossview_residual_mpiinf3dhp.py``
+-that swaps the model for ``RayAttentionFusionModelTemporalCrossviewResidualPrincipalPoint``, which
+-adds a bounded, learned principal-point correction layer before the cross-view spatio-temporal
+-attention and differentiable triangulation step.  Camera perturbations during training force the
+-principal-point head to learn a meaningful correction.
+-
+-Usage
+------
+-    conda run -n mf python experiments/train_ray_attention_temporal_crossview_residual_principal_point_mpiinf3dhp.py \
+-        --train data/webbridge/mpi_inf_3dhp/s_01_seq_01_v14_multiview_m.npz \
+-               data/webbridge/mpi_inf_3dhp/s_01_seq_02_v14_multiview_m.npz \
+-        --val data/webbridge/mpi_inf_3dhp/s_02_seq_01_v14_multiview_m.npz \
+-        --clip_len 13 --d 32 --residual_hidden 64 --n_st_layers 2 --epochs 10 \
+-        --pp_loss_weight 0.1 --cam_aug_pp 5.0 --cam_aug_focal 0.01
+-"""
+-
+-import argparse
+-import random
+-import sys
+-from pathlib import Path
+-
+-import numpy as np
+-import torch
+-import torch.nn as nn
+-import torch.optim as optim
+-
+-sys.path.insert(0, str(Path(__file__).parent.parent))
+-
+-from motionflow_mv.calibration.perturb import perturb_cameras_with_delta
+-from motionflow_mv.fusion.ray_attention_temporal_crossview_factorized_residual_principal_point_model import (
+-    RayAttentionFusionModelTemporalCrossviewFactorizedResidualPrincipalPoint,
+-)
+-from motionflow_mv.fusion.ray_attention_temporal_crossview_residual_principal_point_model import (
+-    RayAttentionFusionModelTemporalCrossviewResidualPrincipalPoint,
+-)
+-from motionflow_mv.fusion.ray_attention_temporal_crossview_residual_principal_point_graph_model import (
+-    RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointGraph,
+-)
+-from motionflow_mv.losses import reprojection_loss, velocity_loss
+-from motionflow_mv.losses.reprojection_consistency import robust_reprojection_loss
+-from motionflow_mv.losses.view_selection_loss import ViewSelectionLoss
+-from motionflow_mv.fusion.ray_attention_temporal_crossview_residual_principal_point_dynamic_gate_model import (
+-    RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointDynamicGate,
+-)
+-from motionflow_mv.fusion.ray_attention_temporal_crossview_residual_principal_point_graph_skeleton_residual_model import (
+-    RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointGraphSkeletonResidual,
+-)
+-from motionflow_mv.fusion.ray_attention_temporal_crossview_residual_principal_point_epipolar_model import (
+-    RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointEpipolar,
+-)
+-from motionflow_mv.fusion.ray_attention_temporal_crossview_residual_principal_point_splat_model import (
+-    RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointSplat,
+-)
+-from motionflow_mv.fusion.ray_attention_temporal_crossview_residual_principal_point_kinematic_chain_model import (
+-    RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointKinematicChain,
+-)
+-from motionflow_mv.fusion.ray_attention_temporal_crossview_residual_principal_point_crossview_contrast_model import (
+-    RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointCrossViewContrast,
+-)
+-from motionflow_mv.fusion.ray_attention_temporal_crossview_residual_principal_point_bayesian_tri_model import (
+-    RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointBayesianTri,
+-    RayAttentionFusionModelBayesianTriV2,
+-)
+-from motionflow_mv.fusion.ray_attention_temporal_crossview_residual_principal_point_epipolar_bias_v2_model import (
+-    RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointEpipolarBiasV2,
+-)
+-try:
+-    from motionflow_mv.fusion.ray_attention_temporal_crossview_residual_principal_point_epipolar_bias_v2_lite_model import (
+-        RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointEpipolarBiasV2Lite,
+-    )
+-except ImportError:  # pragma: no cover
+-    RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointEpipolarBiasV2Lite = None
+-
+-try:
+-    from motionflow_mv.fusion.ray_attention_temporal_crossview_residual_camera_conditioned_model import (
+-        RayAttentionFusionModelTemporalCrossviewResidualCameraConditioned,
+-    )
+-except ImportError:  # pragma: no cover
+-    RayAttentionFusionModelTemporalCrossviewResidualCameraConditioned = None
+-from motionflow_mv.fusion.ray_attention_hierarchical_view_temporal_joint_residual_principal_point_model import (
+-    RayAttentionFusionModelHierarchicalViewTemporalJointResidualPrincipalPoint,
+-)
+-from motionflow_mv.losses.gaussian_splatting_pose_loss import gaussian_splatting_pose_loss
+-
+-
+-def set_seed(seed: int):
+-    random.seed(seed)
+-    np.random.seed(seed)
+-    torch.manual_seed(seed)
+-    torch.cuda.manual_seed_all(seed)
+-    torch.backends.cudnn.deterministic = True
+-    torch.backends.cudnn.benchmark = False
+-
+-
+-class TemporalClipDataset(torch.utils.data.Dataset):
+-    """Yield clips (T, V, J, 3) from a long canonical .npz sequence."""
+-
+-    def __init__(self, npz_path: str, clip_len: int, stride: int = 1):
+-        data = np.load(npz_path)
+-        self.points_2d = torch.from_numpy(data["points_2d"]).float()  # (T, V, J, 2)
+-        self.confidences = torch.from_numpy(data["confidences"]).float()  # (T, V, J)
+-        self.joints_3d = torch.from_numpy(data["joints_3d"]).float()  # (T, J, 3)
+-        self.K = torch.from_numpy(data["camera_K"]).float()  # (V, 3, 3)
+-        self.R = torch.from_numpy(data["camera_R"]).float()  # (V, 3, 3)
+-        self.t = torch.from_numpy(data["camera_t"]).float()  # (V, 3)
+-
+-        self.clip_len = clip_len
+-        self.stride = stride
+-        self.total_frames = self.points_2d.shape[0]
+-        self.num_clips = max(1, (self.total_frames - self.clip_len) // stride + 1)
+-
+-    def __len__(self):
+-        return self.num_clips
+-
+-    def __getitem__(self, idx):
+-        start = idx * self.stride
+-        end = start + self.clip_len
+-        x = torch.cat(
+-            [self.points_2d[start:end],
+-             self.confidences[start:end].unsqueeze(-1)],
+-            dim=-1,
+-        )  # (T, V, J, 3)
+-        y = self.joints_3d[start:end]  # (T, J, 3)
+-        return x, y, self.K, self.R, self.t
+-
+-
+-class RandomClipDataset(torch.utils.data.Dataset):
+-    """Sample random clips from a sequence; useful for train set augmentation."""
+-
+-    def __init__(self, npz_path: str, clip_len: int, n_samples: int = 2000):
+-        data = np.load(npz_path)
+-        self.points_2d = torch.from_numpy(data["points_2d"]).float()
+-        self.confidences = torch.from_numpy(data["confidences"]).float()
+-        self.joints_3d = torch.from_numpy(data["joints_3d"]).float()
+-        self.K = torch.from_numpy(data["camera_K"]).float()
+-        self.R = torch.from_numpy(data["camera_R"]).float()
+-        self.t = torch.from_numpy(data["camera_t"]).float()
+-        self.clip_len = clip_len
+-        self.n_samples = n_samples
+-        self.total_frames = self.points_2d.shape[0]
+-
+-    def __len__(self):
+-        return self.n_samples
+-
+-    def __getitem__(self, idx):
+-        start = random.randint(0, max(0, self.total_frames - self.clip_len))
+-        end = start + self.clip_len
+-        x = torch.cat(
+-            [self.points_2d[start:end],
+-             self.confidences[start:end].unsqueeze(-1)],
+-            dim=-1,
+-        )
+-        y = self.joints_3d[start:end]
+-        return x, y, self.K, self.R, self.t
+-
+-
+-def collate_fn(batch):
+-    x = torch.stack([b[0] for b in batch], dim=0)
+-    y = torch.stack([b[1] for b in batch], dim=0)
+-    K = torch.stack([b[2] for b in batch], dim=0)
+-    R = torch.stack([b[3] for b in batch], dim=0)
+-    t = torch.stack([b[4] for b in batch], dim=0)
+-    return x, y, K, R, t
+-
+-
+-def augment_clip(x, noise_std: float = 0.5, dropout_rate: float = 0.1,
+-                 outlier_rate: float = 0.02, outlier_scale: float = 100.0,
+-                 view_dropout_rate: float = 0.0, min_views: int = 2,
+-                 view_noise_std: float = 0.0, joint_dropout_rate: float = 0.0):
+-    """Lightweight per-clip augmentation."""
+-    if noise_std > 0:
+-        x[..., :2] = x[..., :2] + torch.randn_like(x[..., :2]) * noise_std
+-    if view_noise_std > 0:
+-        # Per-view independent 2-D Gaussian noise.
+-        x[..., :2] = x[..., :2] + torch.randn_like(x[..., :2]) * view_noise_std
+-    if dropout_rate > 0:
+-        mask = (torch.rand(x.shape[0], x.shape[1], x.shape[2], x.shape[3], device=x.device) > dropout_rate).float()
+-        x[..., 2] = x[..., 2] * mask
+-    if outlier_rate > 0:
+-        outlier_mask = torch.rand(x.shape[0], x.shape[1], x.shape[2], x.shape[3], device=x.device) < outlier_rate
+-        outlier = (torch.rand(x.shape[0], x.shape[1], x.shape[2], x.shape[3], 2, device=x.device) - 0.5) * 2 * outlier_scale
+-        x[..., :2] = torch.where(outlier_mask[..., None], outlier, x[..., :2])
+-    if view_dropout_rate > 0:
+-        B = x.shape[0]
+-        V = x.shape[2]
+-        view_mask = (torch.rand(B, V, device=x.device) > view_dropout_rate).float()  # 1 = keep
+-        for i in range(B):
+-            kept = view_mask[i].nonzero(as_tuple=True)[0]
+-            if kept.numel() < min_views:
+-                dropped = (view_mask[i] == 0).nonzero(as_tuple=True)[0]
+-                needed = min_views - kept.numel()
+-                if needed > 0 and dropped.numel() > 0:
+-                    perm = torch.randperm(dropped.numel())
+-                    extra = dropped[perm[:needed]]
+-                    view_mask[i, extra] = 1.0
+-        x[..., 2] = x[..., 2] * view_mask.view(B, 1, V, 1)
+-    if joint_dropout_rate > 0:
+-        # Randomly zero-out per-joint confidence per view.
+-        joint_mask = (torch.rand(x.shape[0], x.shape[1], x.shape[2], x.shape[3], device=x.device) > joint_dropout_rate).float()
+-        x[..., 2] = x[..., 2] * joint_mask
+-    return x
+-
+-
+-def evaluate(model, loader, device):
+-    model.eval()
+-    total_err = 0.0
+-    total_count = 0
+-    with torch.no_grad():
+-        for xb, yb, K, R, t in loader:
+-            xb, yb = xb.to(device), yb.to(device)
+-            K, R, t = K.to(device), R.to(device), t.to(device)
+-            pred, *_ = model(xb, K=K, R=R, t=t)
+-            err = (pred - yb).norm(dim=-1).mean()
+-            total_err += err.item() * xb.size(0)
+-            total_count += xb.size(0)
+-    return total_err / total_count
+-
+-
+-def main():
+-    parser = argparse.ArgumentParser(description="Train temporal + cross-view ray-attention fusion with residual refinement and principal-point correction on MPI-INF-3DHP")
+-    parser.add_argument("--train", type=str, nargs="+", required=True, help="Train .npz files")
+-    parser.add_argument("--val", type=str, required=True, help="Validation .npz file")
+-    parser.add_argument("--clip_len", type=int, default=13)
+-    parser.add_argument("--d", type=int, default=64)
+-    parser.add_argument("--model_type", type=str, default="temporal", choices=["temporal", "factorized", "dynamic_gate", "graph_joint_relation", "graph_skeleton_residual", "epipolar", "epipolar_bias_v2_pp", "epipolar_bias_v2_lite_pp", "splat", "kinematic_chain", "crossview_contrast", "bayesian_tri", "bayesian_tri_v2", "camera_conditioned_pp", "hierarchical_view_temporal_joint_pp"], help="Backbone type: temporal (time+view), factorized (alternating view/temporal), dynamic_gate (anchor + per-view gate), graph_joint_relation (skeleton-graph attention replacing dense joint attention), graph_skeleton_residual (skeleton-graph residual refiner), epipolar (epipolar-biased weight head), epipolar_bias_v2_pp (epipolar-biased ST transformer v2), epipolar_bias_v2_lite_pp (late-layer epipolar-biased ST transformer v2 lite), splat (Gaussian-splatting pose regularizer), kinematic_chain (kinematic-chain graph refiner), crossview_contrast (cross-view contrastive pose representation), bayesian_tri (uncertainty-aware triangulation with adaptive Gauss-Newton), bayesian_tri_v2 (same as bayesian_tri but with fully batched lstsq DLT), camera_conditioned_pp (camera-parameter-conditioned weight + residual heads), or hierarchical_view_temporal_joint_pp (hierarchical view -> temporal -> skeleton-joint attention)")
+-    parser.add_argument("--n_st_layers", type=int, default=2)
+-    parser.add_argument("--n_view_layers", type=int, default=2)
+-    parser.add_argument("--n_temporal_layers", type=int, default=2)
+-    parser.add_argument("--n_view_groups", type=int, default=2, help="Number of camera groups for hierarchical_view_temporal_joint_pp")
+-    parser.add_argument("--n_joint_graph_layers", type=int, default=1, help="Number of skeleton-graph layers for hierarchical_view_temporal_joint_pp")
+-    parser.add_argument("--residual_hidden", type=int, default=128)
+-    parser.add_argument("--gate_sparsity_weight", type=float, default=0.0, help="Sparsity regulariser weight for the dynamic view gate")
+-    parser.add_argument("--gate_entropy_weight", type=float, default=0.0, help="Entropy regulariser weight for the dynamic view gate")
+-    parser.add_argument("--view_noise_std", type=float, default=0.0, help="Per-view 2D Gaussian noise std (pixels) for dynamic_gate")
+-    parser.add_argument("--joint_dropout_rate", type=float, default=0.0, help="Per-joint confidence dropout rate for dynamic_gate")
+-    parser.add_argument("--principal_point_hidden", type=int, default=64)
+-    parser.add_argument("--principal_point_max_offset", type=float, default=20.0)
+-    parser.add_argument("--epochs", type=int, default=30)
+-    parser.add_argument("--lr", type=float, default=1e-3)
+-    parser.add_argument("--batch_size", type=int, default=8)
+-    parser.add_argument("--train_samples", type=int, default=4000, help="Random clips per train sequence")
+-    parser.add_argument("--val_stride", type=int, default=1, help="Stride for validation clips (higher = faster)")
+-    parser.add_argument("--velocity_loss_weight", type=float, default=0.0, help="Weight for temporal velocity consistency auxiliary loss (requires clip_len >= 2)")
+-    parser.add_argument("--reproj_weight", type=float, default=0.0, help="Weight for reprojection auxiliary loss")
+-    parser.add_argument("--reproj_raw_weight", type=float, default=0.0, help="Weight for robust reprojection loss on the raw triangulated pose")
+-    parser.add_argument("--reproj_refined_weight", type=float, default=0.0, help="Weight for robust reprojection loss on the refined pose")
+-    parser.add_argument("--reproj_robust", action="store_true", help="Use Charbonnier robust reprojection loss instead of MSE")
+-    parser.add_argument("--reproj_mask_dropout", action="store_true", help="Mask zero-confidence joints in reprojection loss")
+-    parser.add_argument("--return_raw_3d", action="store_true", help="Return raw triangulated 3D pose for reprojection supervision")
+-    parser.add_argument("--pp_loss_weight", type=float, default=0.0, help="Weight for principal-point offset supervision loss")
+-    parser.add_argument("--focal_loss_weight", type=float, default=None, help="Weight for focal scale supervision loss (defaults to pp_loss_weight)")
+-    parser.add_argument("--focal_max_scale", type=float, default=0.0, help="Maximum predicted focal-length scale; 0 disables focal correction")
+-    parser.add_argument("--cam_aug_rot", type=float, default=0.5, help="Camera rotation augmentation std in degrees")
+-    parser.add_argument("--cam_aug_trans", type=float, default=0.005, help="Camera translation augmentation std in meters")
+-    parser.add_argument("--cam_aug_focal", type=float, default=0.01, help="Camera focal length augmentation std (relative)")
+-    parser.add_argument("--cam_aug_pp", type=float, default=2.0, help="Camera principal point augmentation std in pixels")
+-    parser.add_argument("--cam_aug_schedule", type=str, default="flat", choices=["flat", "extrinsic_curriculum", "intrinsics_curriculum"], help="Camera augmentation schedule")
+-    parser.add_argument("--cam_aug_ramp_epochs", type=int, default=10, help="Number of epochs over which to ramp extrinsic augmentation for extrinsic_curriculum")
+-    parser.add_argument("--cam_aug_intrinsics_ramp_epochs", type=int, default=5, help="Number of epochs over which to ramp PP/focal augmentation for intrinsics_curriculum")
+-    parser.add_argument("--view_dropout_rate", type=float, default=0.0, help="Probability of dropping an entire camera view during training (0 disables)")
+-    parser.add_argument("--min_views", type=int, default=2, help="Minimum number of views kept when view_dropout_rate > 0")
+-    parser.add_argument("--seed", type=int, default=42)
+-    parser.add_argument("--warm_start", type=str, default=None, help="Path to checkpoint to warm-start from (loads state_dict with strict=False)")
+-    parser.add_argument("--output", type=str, default="outputs/ray_attention_temporal_crossview_residual_principal_point_mpiinf3dhp.pth")
+-    parser.add_argument("--pp_pretrain_epochs", type=int, default=0, help="Number of initial epochs to train only the principal_point_correction head")
+-    parser.add_argument("--splat_loss_weight", type=float, default=0.0, help="Weight for Gaussian-splatting pose regularizer loss (splat model only)")
+-    parser.add_argument("--epipolar_loss_weight", type=float, default=0.0, help="Weight for epipolar consistency auxiliary loss (bayesian_tri model only)")
+-    args = parser.parse_args()
+-
+-    set_seed(args.seed)
+-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+-    print(f"Device: {device}")
+-
+-    train_datasets = []
+-    for tp in args.train:
+-        train_datasets.append(RandomClipDataset(tp, args.clip_len, n_samples=args.train_samples))
+-    train_dataset = torch.utils.data.ConcatDataset(train_datasets)
+-    val_dataset = TemporalClipDataset(args.val, args.clip_len, stride=args.val_stride)
+-
+-    train_loader = torch.utils.data.DataLoader(
+-        train_dataset, batch_size=args.batch_size, shuffle=True, collate_fn=collate_fn, num_workers=0,
+-    )
+-    val_loader = torch.utils.data.DataLoader(
+-        val_dataset, batch_size=args.batch_size, shuffle=False, collate_fn=collate_fn, num_workers=0,
+-    )
+-
+-    sample = np.load(args.train[0])
+-    n_views = sample["camera_K"].shape[0]
+-    j = sample["points_2d"].shape[2]
+-    print(f"n_views={n_views}, j={j}, clip_len={args.clip_len}, d={args.d}, model_type={args.model_type}, "
+-          f"n_st_layers={args.n_st_layers}, n_view_layers={args.n_view_layers}, n_temporal_layers={args.n_temporal_layers}, "
+-          f"residual_hidden={args.residual_hidden}, principal_point_hidden={args.principal_point_hidden}, "
+-          f"principal_point_max_offset={args.principal_point_max_offset}, focal_max_scale={args.focal_max_scale}")
+-
+-    if args.model_type == "dynamic_gate":
+-        model = RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointDynamicGate(
+-            j=j, d=args.d, n_views=n_views, n_st_layers=args.n_st_layers,
+-            residual_hidden=args.residual_hidden,
+-            principal_point_hidden=args.principal_point_hidden,
+-            principal_point_max_offset=args.principal_point_max_offset,
+-            focal_max_scale=args.focal_max_scale,
+-            return_pp_delta=True,
+-            return_raw=args.return_raw_3d or args.reproj_raw_weight > 0.0,
+-            return_gate=True,
+-        ).to(device)
+-    elif args.model_type == "epipolar":
+-        model = RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointEpipolar(
+-            j=j, d=args.d, n_views=n_views, n_st_layers=args.n_st_layers,
+-            residual_hidden=args.residual_hidden,
+-            principal_point_hidden=args.principal_point_hidden,
+-            principal_point_max_offset=args.principal_point_max_offset,
+-            focal_max_scale=args.focal_max_scale,
+-            return_pp_delta=True,
+-        ).to(device)
+-    elif args.model_type == "epipolar_bias_v2_pp":
+-        model = RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointEpipolarBiasV2(
+-            j=j, d=args.d, n_views=n_views, n_st_layers=args.n_st_layers,
+-            residual_hidden=args.residual_hidden,
+-            principal_point_hidden=args.principal_point_hidden,
+-            principal_point_max_offset=args.principal_point_max_offset,
+-            focal_max_scale=args.focal_max_scale,
+-            return_pp_delta=True,
+-        ).to(device)
+-    elif args.model_type == "graph_skeleton_residual":
+-        model = RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointGraphSkeletonResidual(
+-            j=j, d=args.d, n_views=n_views, n_st_layers=args.n_st_layers,
+-            residual_hidden=args.residual_hidden,
+-            principal_point_hidden=args.principal_point_hidden,
+-            principal_point_max_offset=args.principal_point_max_offset,
+-            focal_max_scale=args.focal_max_scale,
+-            return_pp_delta=True,
+-        ).to(device)
+-    elif args.model_type == "bayesian_tri":
+-        model = RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointBayesianTri(
+-            j=j, d=args.d, n_views=n_views, n_st_layers=args.n_st_layers,
+-            residual_hidden=args.residual_hidden,
+-            principal_point_hidden=args.principal_point_hidden,
+-            principal_point_max_offset=args.principal_point_max_offset,
+-            focal_max_scale=args.focal_max_scale,
+-            return_pp_delta=True,
+-            return_covariance=False,
+-        ).to(device)
+-    elif args.model_type == "bayesian_tri_v2":
+-        model = RayAttentionFusionModelBayesianTriV2(
+-            j=j, d=args.d, n_views=n_views, n_st_layers=args.n_st_layers,
+-            residual_hidden=args.residual_hidden,
+-            principal_point_hidden=args.principal_point_hidden,
+-            principal_point_max_offset=args.principal_point_max_offset,
+-            focal_max_scale=args.focal_max_scale,
+-            return_pp_delta=True,
+-            return_covariance=False,
+-        ).to(device)
+-    elif args.model_type == "crossview_contrast":
+-        model = RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointCrossViewContrast(
+-            j=j, d=args.d, n_views=n_views, n_st_layers=args.n_st_layers,
+-            residual_hidden=args.residual_hidden,
+-            principal_point_hidden=args.principal_point_hidden,
+-            principal_point_max_offset=args.principal_point_max_offset,
+-            focal_max_scale=args.focal_max_scale,
+-            return_pp_delta=True,
+-        ).to(device)
+-    elif args.model_type == "kinematic_chain":
+-        model = RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointKinematicChain(
+-            j=j, d=args.d, n_views=n_views, n_st_layers=args.n_st_layers,
+-            residual_hidden=args.residual_hidden,
+-            principal_point_hidden=args.principal_point_hidden,
+-            principal_point_max_offset=args.principal_point_max_offset,
+-            focal_max_scale=args.focal_max_scale,
+-            return_pp_delta=True,
+-        ).to(device)
+-    elif args.model_type == "splat":
+-        model = RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointSplat(
+-            j=j, d=args.d, n_views=n_views, n_st_layers=args.n_st_layers,
+-            residual_hidden=args.residual_hidden,
+-            principal_point_hidden=args.principal_point_hidden,
+-            principal_point_max_offset=args.principal_point_max_offset,
+-            focal_max_scale=args.focal_max_scale,
+-            return_pp_delta=args.pp_loss_weight > 0.0 or args.focal_max_scale > 0.0,
+-            return_covariance=args.splat_loss_weight > 0.0,
+-        ).to(device)
+-    elif args.model_type == "factorized":
+-        model = RayAttentionFusionModelTemporalCrossviewFactorizedResidualPrincipalPoint(
+-            j=j, d=args.d, n_views=n_views,
+-            n_view_layers=args.n_view_layers, n_temporal_layers=args.n_temporal_layers,
+-            residual_hidden=args.residual_hidden,
+-            principal_point_hidden=args.principal_point_hidden,
+-            principal_point_max_offset=args.principal_point_max_offset,
+-            focal_max_scale=args.focal_max_scale,
+-            return_pp_delta=args.pp_loss_weight > 0.0 or args.focal_max_scale > 0.0,
+-            return_raw=args.return_raw_3d or args.reproj_raw_weight > 0.0,
+-        ).to(device)
+-    elif args.model_type == "camera_conditioned_pp":
+-        model = RayAttentionFusionModelTemporalCrossviewResidualCameraConditioned(
+-            j=j, d=args.d, n_views=n_views, n_st_layers=args.n_st_layers,
+-            residual_hidden=args.residual_hidden,
+-            principal_point_hidden=args.principal_point_hidden,
+-            principal_point_max_offset=args.principal_point_max_offset,
+-            focal_max_scale=args.focal_max_scale,
+-            return_pp_delta=args.pp_loss_weight > 0.0 or args.focal_max_scale > 0.0,
+-            return_raw=args.return_raw_3d or args.reproj_raw_weight > 0.0,
+-        ).to(device)
+-    elif args.model_type == "hierarchical_view_temporal_joint_pp":
+-        model = RayAttentionFusionModelHierarchicalViewTemporalJointResidualPrincipalPoint(
+-            j=j, d=args.d, n_views=n_views, n_st_layers=args.n_st_layers,
+-            residual_hidden=args.residual_hidden,
+-            principal_point_hidden=args.principal_point_hidden,
+-            principal_point_max_offset=args.principal_point_max_offset,
+-            focal_max_scale=args.focal_max_scale,
+-            return_pp_delta=True,
+-            return_raw=args.return_raw_3d or args.reproj_raw_weight > 0.0,
+-            n_view_groups=args.n_view_groups,
+-            n_view_layers=args.n_view_layers,
+-            n_temporal_layers=args.n_temporal_layers,
+-            n_joint_graph_layers=args.n_joint_graph_layers,
+-            use_skeleton_graph=True,
+-        ).to(device)
+-    else:
+-        model = RayAttentionFusionModelTemporalCrossviewResidualPrincipalPoint(
+-            j=j, d=args.d, n_views=n_views, n_st_layers=args.n_st_layers,
+-            residual_hidden=args.residual_hidden,
+-            principal_point_hidden=args.principal_point_hidden,
+-            principal_point_max_offset=args.principal_point_max_offset,
+-            focal_max_scale=args.focal_max_scale,
+-            return_pp_delta=args.pp_loss_weight > 0.0 or args.focal_max_scale > 0.0,
+-            return_raw=args.return_raw_3d or args.reproj_raw_weight > 0.0,
+-        ).to(device)
+-    gate_loss_fn = None
+-    if args.model_type == "dynamic_gate":
+-        gate_loss_fn = ViewSelectionLoss(
+-            sparsity_weight=args.gate_sparsity_weight,
+-            entropy_weight=args.gate_entropy_weight,
+-        )
+-    if args.warm_start is not None:
+-        state = torch.load(args.warm_start, map_location="cpu", weights_only=True)
+-        missing, unexpected = model.load_state_dict(state, strict=False)
+-        if missing:
+-            print(f"Warning: missing keys when warm-starting: {missing[:5]}")
+-        if unexpected:
+-            print(f"Warning: unexpected keys when warm-starting (ignored): {unexpected[:5]}")
+-        print(f"Warm-started from {args.warm_start}")
+-    print(f"Model params: {sum(p.numel() for p in model.parameters())}")
+-
+-    optimizer = optim.Adam(model.parameters(), lr=args.lr)
+-    criterion = nn.MSELoss()
+-
+-    best_val = float("inf")
+-    output_path = Path(args.output)
+-    output_path.parent.mkdir(exist_ok=True, parents=True)
+-
+-    # Optional pre-training phase for the principal-point correction head only.
+-    # This prevents the residual MLP from compensating for a spurious constant PP offset
+-    # and forces the PP head to actually learn the inverse perturbation.
+-    if args.pp_pretrain_epochs > 0:
+-        print(f"Pre-training PP correction head for {args.pp_pretrain_epochs} epochs...")
+-        for p in model.parameters():
+-            p.requires_grad = False
+-        for p in model.principal_point_correction.parameters():
+-            p.requires_grad = True
+-        pretrain_optimizer = optim.Adam(model.principal_point_correction.parameters(), lr=args.lr)
+-        for pe in range(1, args.pp_pretrain_epochs + 1):
+-            model.train()
+-            train_loss = 0.0
+-            for xb, yb, K, R, t in train_loader:
+-                xb, yb = xb.to(device), yb.to(device)
+-                K, R, t = K.to(device), R.to(device), t.to(device)
+-                xb = augment_clip(xb, view_dropout_rate=0.0, min_views=args.min_views)
+-                K, R, t, true_pp_delta, true_focal_scale = perturb_cameras_with_delta(
+-                    K, R, t,
+-                    rot_std=0.0,
+-                    trans_std=0.0,
+-                    focal_std=0.0,
+-                    pp_std=args.cam_aug_pp,
+-                )
+-                pretrain_optimizer.zero_grad()
+-                outputs = model(xb, K=K, R=R, t=t)
+-                pred = outputs[0]
+-                pred_pp_delta = outputs[2]
+-                B, T = yb.shape[:2]
+-                true_pp_delta = true_pp_delta.to(device).unsqueeze(1).expand(B, T, -1, -1).reshape(B * T, -1, 2)
+-                loss = criterion(pred_pp_delta, -true_pp_delta)
+-                # Do not add reprojection loss during PP-head pre-training: the
+-                # rest of the model is frozen at random weights, so the
+-                # reprojection term would dominate and drown the PP offset
+-                # supervision.
+-                loss.backward()
+-                pretrain_optimizer.step()
+-                train_loss += loss.item() * xb.size(0)
+-            train_loss /= len(train_loader.dataset)
+-            print(f"  PP pretrain epoch {pe}: loss={train_loss:.6f}")
+-        print("Unfreezing full model for end-to-end training.")
+-        for p in model.parameters():
+-            p.requires_grad = True
+-
+-    for epoch in range(1, args.epochs + 1):
+-        model.train()
+-        train_loss = 0.0
+-        if args.cam_aug_schedule == "extrinsic_curriculum":
+-            ramp = min(1.0, epoch / max(1, args.cam_aug_ramp_epochs))
+-            schedule_rot = args.cam_aug_rot * ramp
+-            schedule_trans = args.cam_aug_trans * ramp
+-            schedule_focal = args.cam_aug_focal
+-            schedule_pp = args.cam_aug_pp
+-        elif args.cam_aug_schedule == "intrinsics_curriculum":
+-            ramp = min(1.0, epoch / max(1, args.cam_aug_intrinsics_ramp_epochs))
+-            schedule_rot = args.cam_aug_rot
+-            schedule_trans = args.cam_aug_trans
+-            schedule_focal = args.cam_aug_focal * ramp
+-            schedule_pp = args.cam_aug_pp * ramp
+-        else:
+-            schedule_rot = args.cam_aug_rot
+-            schedule_trans = args.cam_aug_trans
+-            schedule_focal = args.cam_aug_focal
+-            schedule_pp = args.cam_aug_pp
+-        for xb, yb, K, R, t in train_loader:
+-            xb, yb = xb.to(device), yb.to(device)
+-            K, R, t = K.to(device), R.to(device), t.to(device)
+-            xb = augment_clip(xb, view_dropout_rate=args.view_dropout_rate, min_views=args.min_views,
+-                              view_noise_std=args.view_noise_std, joint_dropout_rate=args.joint_dropout_rate)
+-            K, R, t, true_pp_delta, true_focal_scale = perturb_cameras_with_delta(
+-                K, R, t,
+-                rot_std=schedule_rot,
+-                trans_std=schedule_trans,
+-                focal_std=schedule_focal,
+-                pp_std=schedule_pp,
+-            )
+-            optimizer.zero_grad()
+-            if args.model_type == "crossview_contrast":
+-                outputs = model.forward_with_contrastive_loss(xb, K=K, R=R, t=t)
+-            else:
+-                outputs = model(xb, K=K, R=R, t=t)
+-            pred = outputs[0]
+-            loss = criterion(pred, yb)
+-            if args.model_type == "crossview_contrast":
+-                loss = loss + outputs[-1]
+-            if args.pp_loss_weight > 0.0:
+-                pred_pp_delta = outputs[2]  # (B*T, V, 2)
+-                B, T = yb.shape[:2]
+-                true_pp_delta = true_pp_delta.to(device).unsqueeze(1).expand(B, T, -1, -1).reshape(B * T, -1, 2)
+-                # The correction layer *adds* predicted delta to the perturbed principal point,
+-                # so the target is the negative of the applied offset.
+-                loss = loss + args.pp_loss_weight * criterion(pred_pp_delta, -true_pp_delta)
+-                if args.focal_max_scale > 0.0:
+-                    pred_focal_scale = outputs[3]  # (B*T, V)
+-                    true_focal_scale = true_focal_scale.to(device).squeeze(-1).unsqueeze(1).expand(B, T, -1)
+-                    target_focal_scale = 1.0 / true_focal_scale.reshape(B * T, -1)
+-                    focal_loss_weight = args.focal_loss_weight if args.focal_loss_weight is not None else args.pp_loss_weight
+-                    loss = loss + focal_loss_weight * criterion(pred_focal_scale, target_focal_scale)
+-            if args.model_type == "dynamic_gate":
+-                gate_weights = outputs[-2]  # (B, T, V, J) or (B*T, V, J)
+-                gate_reg_loss = gate_loss_fn(gate_weights)
+-                loss = loss + gate_reg_loss
+-            if args.reproj_weight > 0.0:
+-                points_2d = xb[..., :2]
+-                conf = xb[..., 2]
+-                loss_reproj = reprojection_loss(pred, points_2d, K, R, t, confidences=conf)
+-                loss = loss + args.reproj_weight * loss_reproj
+-            if args.reproj_raw_weight > 0.0 or args.reproj_refined_weight > 0.0:
+-                points_2d = xb[..., :2]
+-                conf = xb[..., 2]
+-                mask = (conf > 0) if args.reproj_mask_dropout else None
+-                loss_type = "charbonnier" if args.reproj_robust else "mse"
+-                if args.reproj_raw_weight > 0.0:
+-                    raw_3d = outputs[-1]
+-                    loss = loss + args.reproj_raw_weight * robust_reprojection_loss(
+-                        raw_3d, points_2d, K, R, t,
+-                        confidences=conf, mask=mask, loss_type=loss_type,
+-                    )
+-                if args.reproj_refined_weight > 0.0:
+-                    loss = loss + args.reproj_refined_weight * robust_reprojection_loss(
+-                        pred, points_2d, K, R, t,
+-                        confidences=conf, mask=mask, loss_type=loss_type,
+-                    )
+-            if args.velocity_loss_weight > 0.0:
+-                loss = loss + args.velocity_loss_weight * velocity_loss(pred, yb)
+-            if args.splat_loss_weight > 0.0:
+-                log_std = outputs[-1]  # (B, T, J, 3)
+-                points_2d = xb[..., :2]
+-                conf = xb[..., 2]
+-                loss_splat = gaussian_splatting_pose_loss(
+-                    pred, points_2d, K, R, t, log_std, confidences=conf,
+-                )
+-                loss = loss + args.splat_loss_weight * loss_splat
+-            if args.model_type in ("bayesian_tri", "bayesian_tri_v2"):
+-                epi_loss = outputs[-1]  # scalar
+-                loss = loss + args.epipolar_loss_weight * epi_loss
+-            loss.backward()
+-            optimizer.step()
+-            train_loss += loss.item() * xb.size(0)
+-        train_loss /= len(train_loader.dataset)
+-
+-        val_err = evaluate(model, val_loader, device)
+-        if val_err < best_val:
+-            best_val = val_err
+-            torch.save(model.state_dict(), output_path)
+-            print(f"Epoch {epoch}: train_loss={train_loss:.6f}, val_MPJPE={val_err*1000:.2f}mm (saved)")
+-        else:
+-            print(f"Epoch {epoch}: train_loss={train_loss:.6f}, val_MPJPE={val_err*1000:.2f}mm")
+-
+-    print(f"Best val MPJPE: {best_val*1000:.2f}mm -> {output_path}")
+-
+-
+-if __name__ == "__main__":
+-    main()
++"""Train RayAttentionFusionModelTemporalCrossviewResidualPrincipalPoint on MPI-INF-3DHP.
++
++This script is a thin wrapper around ``train_ray_attention_temporal_crossview_residual_mpiinf3dhp.py``
++that swaps the model for ``RayAttentionFusionModelTemporalCrossviewResidualPrincipalPoint``, which
++adds a bounded, learned principal-point correction layer before the cross-view spatio-temporal
++attention and differentiable triangulation step.  Camera perturbations during training force the
++principal-point head to learn a meaningful correction.
++
++Usage
++-----
++    conda run -n mf python experiments/train_ray_attention_temporal_crossview_residual_principal_point_mpiinf3dhp.py \
++        --train data/webbridge/mpi_inf_3dhp/s_01_seq_01_v14_multiview_m.npz \
++               data/webbridge/mpi_inf_3dhp/s_01_seq_02_v14_multiview_m.npz \
++        --val data/webbridge/mpi_inf_3dhp/s_02_seq_01_v14_multiview_m.npz \
++        --clip_len 13 --d 32 --residual_hidden 64 --n_st_layers 2 --epochs 10 \
++        --pp_loss_weight 0.1 --cam_aug_pp 5.0 --cam_aug_focal 0.01
++"""
++
++import argparse
++import random
++import sys
++from pathlib import Path
++
++import numpy as np
++import torch
++import torch.nn as nn
++import torch.optim as optim
++
++sys.path.insert(0, str(Path(__file__).parent.parent))
++
++from motionflow_mv.calibration.perturb import perturb_cameras_with_delta
++from motionflow_mv.fusion.ray_attention_temporal_crossview_factorized_residual_principal_point_model import (
++    RayAttentionFusionModelTemporalCrossviewFactorizedResidualPrincipalPoint,
++)
++from motionflow_mv.fusion.ray_attention_temporal_crossview_residual_principal_point_model import (
++    RayAttentionFusionModelTemporalCrossviewResidualPrincipalPoint,
++)
++from motionflow_mv.fusion.ray_attention_temporal_crossview_residual_principal_point_graph_model import (
++    RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointGraph,
++)
++from motionflow_mv.losses import reprojection_loss, velocity_loss
++from motionflow_mv.losses.reprojection_consistency import robust_reprojection_loss
++from motionflow_mv.losses.view_selection_loss import ViewSelectionLoss
++from motionflow_mv.fusion.ray_attention_temporal_crossview_residual_principal_point_dynamic_gate_model import (
++    RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointDynamicGate,
++)
++from motionflow_mv.fusion.ray_attention_temporal_crossview_residual_principal_point_graph_skeleton_residual_model import (
++    RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointGraphSkeletonResidual,
++)
++from motionflow_mv.fusion.ray_attention_temporal_crossview_residual_principal_point_epipolar_model import (
++    RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointEpipolar,
++)
++from motionflow_mv.fusion.ray_attention_temporal_crossview_residual_principal_point_splat_model import (
++    RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointSplat,
++)
++from motionflow_mv.fusion.ray_attention_temporal_crossview_residual_principal_point_kinematic_chain_model import (
++    RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointKinematicChain,
++)
++from motionflow_mv.fusion.ray_attention_temporal_crossview_residual_principal_point_crossview_contrast_model import (
++    RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointCrossViewContrast,
++)
++from motionflow_mv.fusion.ray_attention_temporal_crossview_residual_principal_point_bayesian_tri_model import (
++    RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointBayesianTri,
++    RayAttentionFusionModelBayesianTriV2,
++)
++from motionflow_mv.fusion.ray_attention_temporal_crossview_residual_principal_point_epipolar_bias_v2_model import (
++    RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointEpipolarBiasV2,
++)
++try:
++    from motionflow_mv.fusion.ray_attention_temporal_crossview_residual_principal_point_epipolar_bias_v2_lite_model import (
++        RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointEpipolarBiasV2Lite,
++    )
++except ImportError:  # pragma: no cover
++    RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointEpipolarBiasV2Lite = None
++
++try:
++    from motionflow_mv.fusion.ray_attention_temporal_crossview_residual_camera_conditioned_model import (
++        RayAttentionFusionModelTemporalCrossviewResidualCameraConditioned,
++    )
++except ImportError:  # pragma: no cover
++    RayAttentionFusionModelTemporalCrossviewResidualCameraConditioned = None
++from motionflow_mv.fusion.ray_attention_hierarchical_view_temporal_joint_residual_principal_point_model import (
++    RayAttentionFusionModelHierarchicalViewTemporalJointResidualPrincipalPoint,
++)
++from motionflow_mv.losses.gaussian_splatting_pose_loss import gaussian_splatting_pose_loss
++
++
++def set_seed(seed: int):
++    random.seed(seed)
++    np.random.seed(seed)
++    torch.manual_seed(seed)
++    torch.cuda.manual_seed_all(seed)
++    torch.backends.cudnn.deterministic = True
++    torch.backends.cudnn.benchmark = False
++
++
++class TemporalClipDataset(torch.utils.data.Dataset):
++    """Yield clips (T, V, J, 3) from a long canonical .npz sequence."""
++
++    def __init__(self, npz_path: str, clip_len: int, stride: int = 1):
++        data = np.load(npz_path)
++        self.points_2d = torch.from_numpy(data["points_2d"]).float()  # (T, V, J, 2)
++        self.confidences = torch.from_numpy(data["confidences"]).float()  # (T, V, J)
++        self.joints_3d = torch.from_numpy(data["joints_3d"]).float()  # (T, J, 3)
++        self.K = torch.from_numpy(data["camera_K"]).float()  # (V, 3, 3)
++        self.R = torch.from_numpy(data["camera_R"]).float()  # (V, 3, 3)
++        self.t = torch.from_numpy(data["camera_t"]).float()  # (V, 3)
++
++        self.clip_len = clip_len
++        self.stride = stride
++        self.total_frames = self.points_2d.shape[0]
++        self.num_clips = max(1, (self.total_frames - self.clip_len) // stride + 1)
++
++    def __len__(self):
++        return self.num_clips
++
++    def __getitem__(self, idx):
++        start = idx * self.stride
++        end = start + self.clip_len
++        x = torch.cat(
++            [self.points_2d[start:end],
++             self.confidences[start:end].unsqueeze(-1)],
++            dim=-1,
++        )  # (T, V, J, 3)
++        y = self.joints_3d[start:end]  # (T, J, 3)
++        return x, y, self.K, self.R, self.t
++
++
++class RandomClipDataset(torch.utils.data.Dataset):
++    """Sample random clips from a sequence; useful for train set augmentation."""
++
++    def __init__(self, npz_path: str, clip_len: int, n_samples: int = 2000):
++        data = np.load(npz_path)
++        self.points_2d = torch.from_numpy(data["points_2d"]).float()
++        self.confidences = torch.from_numpy(data["confidences"]).float()
++        self.joints_3d = torch.from_numpy(data["joints_3d"]).float()
++        self.K = torch.from_numpy(data["camera_K"]).float()
++        self.R = torch.from_numpy(data["camera_R"]).float()
++        self.t = torch.from_numpy(data["camera_t"]).float()
++        self.clip_len = clip_len
++        self.n_samples = n_samples
++        self.total_frames = self.points_2d.shape[0]
++
++    def __len__(self):
++        return self.n_samples
++
++    def __getitem__(self, idx):
++        start = random.randint(0, max(0, self.total_frames - self.clip_len))
++        end = start + self.clip_len
++        x = torch.cat(
++            [self.points_2d[start:end],
++             self.confidences[start:end].unsqueeze(-1)],
++            dim=-1,
++        )
++        y = self.joints_3d[start:end]
++        return x, y, self.K, self.R, self.t
++
++
++def collate_fn(batch):
++    x = torch.stack([b[0] for b in batch], dim=0)
++    y = torch.stack([b[1] for b in batch], dim=0)
++    K = torch.stack([b[2] for b in batch], dim=0)
++    R = torch.stack([b[3] for b in batch], dim=0)
++    t = torch.stack([b[4] for b in batch], dim=0)
++    return x, y, K, R, t
++
++
++def augment_clip(x, noise_std: float = 0.5, dropout_rate: float = 0.1,
++                 outlier_rate: float = 0.02, outlier_scale: float = 100.0,
++                 view_dropout_rate: float = 0.0, min_views: int = 2,
++                 view_noise_std: float = 0.0, joint_dropout_rate: float = 0.0):
++    """Lightweight per-clip augmentation."""
++    if noise_std > 0:
++        x[..., :2] = x[..., :2] + torch.randn_like(x[..., :2]) * noise_std
++    if view_noise_std > 0:
++        # Per-view independent 2-D Gaussian noise.
++        x[..., :2] = x[..., :2] + torch.randn_like(x[..., :2]) * view_noise_std
++    if dropout_rate > 0:
++        mask = (torch.rand(x.shape[0], x.shape[1], x.shape[2], x.shape[3], device=x.device) > dropout_rate).float()
++        x[..., 2] = x[..., 2] * mask
++    if outlier_rate > 0:
++        outlier_mask = torch.rand(x.shape[0], x.shape[1], x.shape[2], x.shape[3], device=x.device) < outlier_rate
++        outlier = (torch.rand(x.shape[0], x.shape[1], x.shape[2], x.shape[3], 2, device=x.device) - 0.5) * 2 * outlier_scale
++        x[..., :2] = torch.where(outlier_mask[..., None], outlier, x[..., :2])
++    if view_dropout_rate > 0:
++        B = x.shape[0]
++        V = x.shape[2]
++        view_mask = (torch.rand(B, V, device=x.device) > view_dropout_rate).float()  # 1 = keep
++        for i in range(B):
++            kept = view_mask[i].nonzero(as_tuple=True)[0]
++            if kept.numel() < min_views:
++                dropped = (view_mask[i] == 0).nonzero(as_tuple=True)[0]
++                needed = min_views - kept.numel()
++                if needed > 0 and dropped.numel() > 0:
++                    perm = torch.randperm(dropped.numel())
++                    extra = dropped[perm[:needed]]
++                    view_mask[i, extra] = 1.0
++        x[..., 2] = x[..., 2] * view_mask.view(B, 1, V, 1)
++    if joint_dropout_rate > 0:
++        # Randomly zero-out per-joint confidence per view.
++        joint_mask = (torch.rand(x.shape[0], x.shape[1], x.shape[2], x.shape[3], device=x.device) > joint_dropout_rate).float()
++        x[..., 2] = x[..., 2] * joint_mask
++    return x
++
++
++def evaluate(model, loader, device):
++    model.eval()
++    total_err = 0.0
++    total_count = 0
++    with torch.no_grad():
++        for xb, yb, K, R, t in loader:
++            xb, yb = xb.to(device), yb.to(device)
++            K, R, t = K.to(device), R.to(device), t.to(device)
++            pred, *_ = model(xb, K=K, R=R, t=t)
++            err = (pred - yb).norm(dim=-1).mean()
++            total_err += err.item() * xb.size(0)
++            total_count += xb.size(0)
++    return total_err / total_count
++
++
++def main():
++    parser = argparse.ArgumentParser(description="Train temporal + cross-view ray-attention fusion with residual refinement and principal-point correction on MPI-INF-3DHP")
++    parser.add_argument("--train", type=str, nargs="+", required=True, help="Train .npz files")
++    parser.add_argument("--val", type=str, required=True, help="Validation .npz file")
++    parser.add_argument("--clip_len", type=int, default=13)
++    parser.add_argument("--d", type=int, default=64)
++    parser.add_argument("--model_type", type=str, default="temporal", choices=["temporal", "factorized", "dynamic_gate", "graph_joint_relation", "graph_skeleton_residual", "epipolar", "epipolar_bias_v2_pp", "epipolar_bias_v2_lite_pp", "splat", "kinematic_chain", "crossview_contrast", "bayesian_tri", "bayesian_tri_v2", "camera_conditioned_pp", "hierarchical_view_temporal_joint_pp"], help="Backbone type: temporal (time+view), factorized (alternating view/temporal), dynamic_gate (anchor + per-view gate), graph_joint_relation (skeleton-graph attention replacing dense joint attention), graph_skeleton_residual (skeleton-graph residual refiner), epipolar (epipolar-biased weight head), epipolar_bias_v2_pp (epipolar-biased ST transformer v2), epipolar_bias_v2_lite_pp (late-layer epipolar-biased ST transformer v2 lite), splat (Gaussian-splatting pose regularizer), kinematic_chain (kinematic-chain graph refiner), crossview_contrast (cross-view contrastive pose representation), bayesian_tri (uncertainty-aware triangulation with adaptive Gauss-Newton), bayesian_tri_v2 (same as bayesian_tri but with fully batched lstsq DLT), camera_conditioned_pp (camera-parameter-conditioned weight + residual heads), or hierarchical_view_temporal_joint_pp (hierarchical view -> temporal -> skeleton-joint attention)")
++    parser.add_argument("--n_st_layers", type=int, default=2)
++    parser.add_argument("--n_view_layers", type=int, default=2)
++    parser.add_argument("--n_temporal_layers", type=int, default=2)
++    parser.add_argument("--n_view_groups", type=int, default=2, help="Number of camera groups for hierarchical_view_temporal_joint_pp")
++    parser.add_argument("--n_joint_graph_layers", type=int, default=1, help="Number of skeleton-graph layers for hierarchical_view_temporal_joint_pp")
++    parser.add_argument("--residual_hidden", type=int, default=128)
++    parser.add_argument("--gate_sparsity_weight", type=float, default=0.0, help="Sparsity regulariser weight for the dynamic view gate")
++    parser.add_argument("--gate_entropy_weight", type=float, default=0.0, help="Entropy regulariser weight for the dynamic view gate")
++    parser.add_argument("--view_noise_std", type=float, default=0.0, help="Per-view 2D Gaussian noise std (pixels) for dynamic_gate")
++    parser.add_argument("--joint_dropout_rate", type=float, default=0.0, help="Per-joint confidence dropout rate for dynamic_gate")
++    parser.add_argument("--principal_point_hidden", type=int, default=64)
++    parser.add_argument("--principal_point_max_offset", type=float, default=20.0)
++    parser.add_argument("--epochs", type=int, default=30)
++    parser.add_argument("--lr", type=float, default=1e-3)
++    parser.add_argument("--batch_size", type=int, default=8)
++    parser.add_argument("--train_samples", type=int, default=4000, help="Random clips per train sequence")
++    parser.add_argument("--val_stride", type=int, default=1, help="Stride for validation clips (higher = faster)")
++    parser.add_argument("--velocity_loss_weight", type=float, default=0.0, help="Weight for temporal velocity consistency auxiliary loss (requires clip_len >= 2)")
++    parser.add_argument("--reproj_weight", type=float, default=0.0, help="Weight for reprojection auxiliary loss")
++    parser.add_argument("--reproj_raw_weight", type=float, default=0.0, help="Weight for robust reprojection loss on the raw triangulated pose")
++    parser.add_argument("--reproj_refined_weight", type=float, default=0.0, help="Weight for robust reprojection loss on the refined pose")
++    parser.add_argument("--reproj_robust", action="store_true", help="Use Charbonnier robust reprojection loss instead of MSE")
++    parser.add_argument("--reproj_mask_dropout", action="store_true", help="Mask zero-confidence joints in reprojection loss")
++    parser.add_argument("--return_raw_3d", action="store_true", help="Return raw triangulated 3D pose for reprojection supervision")
++    parser.add_argument("--pp_loss_weight", type=float, default=0.0, help="Weight for principal-point offset supervision loss")
++    parser.add_argument("--focal_loss_weight", type=float, default=None, help="Weight for focal scale supervision loss (defaults to pp_loss_weight)")
++    parser.add_argument("--focal_max_scale", type=float, default=0.0, help="Maximum predicted focal-length scale; 0 disables focal correction")
++    parser.add_argument("--cam_aug_rot", type=float, default=0.5, help="Camera rotation augmentation std in degrees")
++    parser.add_argument("--cam_aug_trans", type=float, default=0.005, help="Camera translation augmentation std in meters")
++    parser.add_argument("--cam_aug_focal", type=float, default=0.01, help="Camera focal length augmentation std (relative)")
++    parser.add_argument("--cam_aug_pp", type=float, default=2.0, help="Camera principal point augmentation std in pixels")
++    parser.add_argument("--cam_aug_schedule", type=str, default="flat", choices=["flat", "extrinsic_curriculum", "intrinsics_curriculum"], help="Camera augmentation schedule")
++    parser.add_argument("--cam_aug_ramp_epochs", type=int, default=10, help="Number of epochs over which to ramp extrinsic augmentation for extrinsic_curriculum")
++    parser.add_argument("--cam_aug_intrinsics_ramp_epochs", type=int, default=5, help="Number of epochs over which to ramp PP/focal augmentation for intrinsics_curriculum")
++    parser.add_argument("--view_dropout_rate", type=float, default=0.0, help="Probability of dropping an entire camera view during training (0 disables)")
++    parser.add_argument("--min_views", type=int, default=2, help="Minimum number of views kept when view_dropout_rate > 0")
++    parser.add_argument("--seed", type=int, default=42)
++    parser.add_argument("--warm_start", type=str, default=None, help="Path to checkpoint to warm-start from (loads state_dict with strict=False)")
++    parser.add_argument("--output", type=str, default="outputs/ray_attention_temporal_crossview_residual_principal_point_mpiinf3dhp.pth")
++    parser.add_argument("--pp_pretrain_epochs", type=int, default=0, help="Number of initial epochs to train only the principal_point_correction head")
++    parser.add_argument("--splat_loss_weight", type=float, default=0.0, help="Weight for Gaussian-splatting pose regularizer loss (splat model only)")
++    parser.add_argument("--epipolar_loss_weight", type=float, default=0.0, help="Weight for epipolar consistency auxiliary loss (bayesian_tri model only)")
++    args = parser.parse_args()
++
++    set_seed(args.seed)
++    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
++    print(f"Device: {device}")
++
++    train_datasets = []
++    for tp in args.train:
++        train_datasets.append(RandomClipDataset(tp, args.clip_len, n_samples=args.train_samples))
++    train_dataset = torch.utils.data.ConcatDataset(train_datasets)
++    val_dataset = TemporalClipDataset(args.val, args.clip_len, stride=args.val_stride)
++
++    train_loader = torch.utils.data.DataLoader(
++        train_dataset, batch_size=args.batch_size, shuffle=True, collate_fn=collate_fn, num_workers=0,
++    )
++    val_loader = torch.utils.data.DataLoader(
++        val_dataset, batch_size=args.batch_size, shuffle=False, collate_fn=collate_fn, num_workers=0,
++    )
++
++    sample = np.load(args.train[0])
++    n_views = sample["camera_K"].shape[0]
++    j = sample["points_2d"].shape[2]
++    print(f"n_views={n_views}, j={j}, clip_len={args.clip_len}, d={args.d}, model_type={args.model_type}, "
++          f"n_st_layers={args.n_st_layers}, n_view_layers={args.n_view_layers}, n_temporal_layers={args.n_temporal_layers}, "
++          f"residual_hidden={args.residual_hidden}, principal_point_hidden={args.principal_point_hidden}, "
++          f"principal_point_max_offset={args.principal_point_max_offset}, focal_max_scale={args.focal_max_scale}")
++
++    if args.model_type == "dynamic_gate":
++        model = RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointDynamicGate(
++            j=j, d=args.d, n_views=n_views, n_st_layers=args.n_st_layers,
++            residual_hidden=args.residual_hidden,
++            principal_point_hidden=args.principal_point_hidden,
++            principal_point_max_offset=args.principal_point_max_offset,
++            focal_max_scale=args.focal_max_scale,
++            return_pp_delta=True,
++            return_raw=args.return_raw_3d or args.reproj_raw_weight > 0.0,
++            return_gate=True,
++        ).to(device)
++    elif args.model_type == "epipolar":
++        model = RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointEpipolar(
++            j=j, d=args.d, n_views=n_views, n_st_layers=args.n_st_layers,
++            residual_hidden=args.residual_hidden,
++            principal_point_hidden=args.principal_point_hidden,
++            principal_point_max_offset=args.principal_point_max_offset,
++            focal_max_scale=args.focal_max_scale,
++            return_pp_delta=True,
++        ).to(device)
++    elif args.model_type == "epipolar_bias_v2_pp":
++        model = RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointEpipolarBiasV2(
++            j=j, d=args.d, n_views=n_views, n_st_layers=args.n_st_layers,
++            residual_hidden=args.residual_hidden,
++            principal_point_hidden=args.principal_point_hidden,
++            principal_point_max_offset=args.principal_point_max_offset,
++            focal_max_scale=args.focal_max_scale,
++            return_pp_delta=True,
++        ).to(device)
++    elif args.model_type == "graph_skeleton_residual":
++        model = RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointGraphSkeletonResidual(
++            j=j, d=args.d, n_views=n_views, n_st_layers=args.n_st_layers,
++            residual_hidden=args.residual_hidden,
++            principal_point_hidden=args.principal_point_hidden,
++            principal_point_max_offset=args.principal_point_max_offset,
++            focal_max_scale=args.focal_max_scale,
++            return_pp_delta=True,
++        ).to(device)
++    elif args.model_type == "bayesian_tri":
++        model = RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointBayesianTri(
++            j=j, d=args.d, n_views=n_views, n_st_layers=args.n_st_layers,
++            residual_hidden=args.residual_hidden,
++            principal_point_hidden=args.principal_point_hidden,
++            principal_point_max_offset=args.principal_point_max_offset,
++            focal_max_scale=args.focal_max_scale,
++            return_pp_delta=True,
++            return_covariance=False,
++        ).to(device)
++    elif args.model_type == "bayesian_tri_v2":
++        model = RayAttentionFusionModelBayesianTriV2(
++            j=j, d=args.d, n_views=n_views, n_st_layers=args.n_st_layers,
++            residual_hidden=args.residual_hidden,
++            principal_point_hidden=args.principal_point_hidden,
++            principal_point_max_offset=args.principal_point_max_offset,
++            focal_max_scale=args.focal_max_scale,
++            return_pp_delta=True,
++            return_covariance=False,
++        ).to(device)
++    elif args.model_type == "crossview_contrast":
++        model = RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointCrossViewContrast(
++            j=j, d=args.d, n_views=n_views, n_st_layers=args.n_st_layers,
++            residual_hidden=args.residual_hidden,
++            principal_point_hidden=args.principal_point_hidden,
++            principal_point_max_offset=args.principal_point_max_offset,
++            focal_max_scale=args.focal_max_scale,
++            return_pp_delta=True,
++        ).to(device)
++    elif args.model_type == "kinematic_chain":
++        model = RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointKinematicChain(
++            j=j, d=args.d, n_views=n_views, n_st_layers=args.n_st_layers,
++            residual_hidden=args.residual_hidden,
++            principal_point_hidden=args.principal_point_hidden,
++            principal_point_max_offset=args.principal_point_max_offset,
++            focal_max_scale=args.focal_max_scale,
++            return_pp_delta=True,
++        ).to(device)
++    elif args.model_type == "splat":
++        model = RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointSplat(
++            j=j, d=args.d, n_views=n_views, n_st_layers=args.n_st_layers,
++            residual_hidden=args.residual_hidden,
++            principal_point_hidden=args.principal_point_hidden,
++            principal_point_max_offset=args.principal_point_max_offset,
++            focal_max_scale=args.focal_max_scale,
++            return_pp_delta=args.pp_loss_weight > 0.0 or args.focal_max_scale > 0.0,
++            return_covariance=args.splat_loss_weight > 0.0,
++        ).to(device)
++    elif args.model_type == "factorized":
++        model = RayAttentionFusionModelTemporalCrossviewFactorizedResidualPrincipalPoint(
++            j=j, d=args.d, n_views=n_views,
++            n_view_layers=args.n_view_layers, n_temporal_layers=args.n_temporal_layers,
++            residual_hidden=args.residual_hidden,
++            principal_point_hidden=args.principal_point_hidden,
++            principal_point_max_offset=args.principal_point_max_offset,
++            focal_max_scale=args.focal_max_scale,
++            return_pp_delta=args.pp_loss_weight > 0.0 or args.focal_max_scale > 0.0,
++            return_raw=args.return_raw_3d or args.reproj_raw_weight > 0.0,
++        ).to(device)
++    elif args.model_type == "camera_conditioned_pp":
++        model = RayAttentionFusionModelTemporalCrossviewResidualCameraConditioned(
++            j=j, d=args.d, n_views=n_views, n_st_layers=args.n_st_layers,
++            residual_hidden=args.residual_hidden,
++            principal_point_hidden=args.principal_point_hidden,
++            principal_point_max_offset=args.principal_point_max_offset,
++            focal_max_scale=args.focal_max_scale,
++            return_pp_delta=args.pp_loss_weight > 0.0 or args.focal_max_scale > 0.0,
++            return_raw=args.return_raw_3d or args.reproj_raw_weight > 0.0,
++        ).to(device)
++    elif args.model_type == "hierarchical_view_temporal_joint_pp":
++        model = RayAttentionFusionModelHierarchicalViewTemporalJointResidualPrincipalPoint(
++            j=j, d=args.d, n_views=n_views, n_st_layers=args.n_st_layers,
++            residual_hidden=args.residual_hidden,
++            principal_point_hidden=args.principal_point_hidden,
++            principal_point_max_offset=args.principal_point_max_offset,
++            focal_max_scale=args.focal_max_scale,
++            return_pp_delta=True,
++            return_raw=args.return_raw_3d or args.reproj_raw_weight > 0.0,
++            n_view_groups=args.n_view_groups,
++            n_view_layers=args.n_view_layers,
++            n_temporal_layers=args.n_temporal_layers,
++            n_joint_graph_layers=args.n_joint_graph_layers,
++            use_skeleton_graph=True,
++        ).to(device)
++    else:
++        model = RayAttentionFusionModelTemporalCrossviewResidualPrincipalPoint(
++            j=j, d=args.d, n_views=n_views, n_st_layers=args.n_st_layers,
++            residual_hidden=args.residual_hidden,
++            principal_point_hidden=args.principal_point_hidden,
++            principal_point_max_offset=args.principal_point_max_offset,
++            focal_max_scale=args.focal_max_scale,
++            return_pp_delta=args.pp_loss_weight > 0.0 or args.focal_max_scale > 0.0,
++            return_raw=args.return_raw_3d or args.reproj_raw_weight > 0.0,
++        ).to(device)
++    gate_loss_fn = None
++    if args.model_type == "dynamic_gate":
++        gate_loss_fn = ViewSelectionLoss(
++            sparsity_weight=args.gate_sparsity_weight,
++            entropy_weight=args.gate_entropy_weight,
++        )
++    if args.warm_start is not None:
++        state = torch.load(args.warm_start, map_location="cpu", weights_only=True)
++        missing, unexpected = model.load_state_dict(state, strict=False)
++        if missing:
++            print(f"Warning: missing keys when warm-starting: {missing[:5]}")
++        if unexpected:
++            print(f"Warning: unexpected keys when warm-starting (ignored): {unexpected[:5]}")
++        print(f"Warm-started from {args.warm_start}")
++    print(f"Model params: {sum(p.numel() for p in model.parameters())}")
++
++    optimizer = optim.Adam(model.parameters(), lr=args.lr)
++    criterion = nn.MSELoss()
++
++    best_val = float("inf")
++    output_path = Path(args.output)
++    output_path.parent.mkdir(exist_ok=True, parents=True)
++
++    # Optional pre-training phase for the principal-point correction head only.
++    # This prevents the residual MLP from compensating for a spurious constant PP offset
++    # and forces the PP head to actually learn the inverse perturbation.
++    if args.pp_pretrain_epochs > 0:
++        print(f"Pre-training PP correction head for {args.pp_pretrain_epochs} epochs...")
++        for p in model.parameters():
++            p.requires_grad = False
++        for p in model.principal_point_correction.parameters():
++            p.requires_grad = True
++        pretrain_optimizer = optim.Adam(model.principal_point_correction.parameters(), lr=args.lr)
++        for pe in range(1, args.pp_pretrain_epochs + 1):
++            model.train()
++            train_loss = 0.0
++            for xb, yb, K, R, t in train_loader:
++                xb, yb = xb.to(device), yb.to(device)
++                K, R, t = K.to(device), R.to(device), t.to(device)
++                xb = augment_clip(xb, view_dropout_rate=0.0, min_views=args.min_views)
++                K, R, t, true_pp_delta, true_focal_scale = perturb_cameras_with_delta(
++                    K, R, t,
++                    rot_std=0.0,
++                    trans_std=0.0,
++                    focal_std=0.0,
++                    pp_std=args.cam_aug_pp,
++                )
++                pretrain_optimizer.zero_grad()
++                outputs = model(xb, K=K, R=R, t=t)
++                pred = outputs[0]
++                pred_pp_delta = outputs[2]
++                B, T = yb.shape[:2]
++                true_pp_delta = true_pp_delta.to(device).unsqueeze(1).expand(B, T, -1, -1).reshape(B * T, -1, 2)
++                loss = criterion(pred_pp_delta, -true_pp_delta)
++                # Do not add reprojection loss during PP-head pre-training: the
++                # rest of the model is frozen at random weights, so the
++                # reprojection term would dominate and drown the PP offset
++                # supervision.
++                loss.backward()
++                pretrain_optimizer.step()
++                train_loss += loss.item() * xb.size(0)
++            train_loss /= len(train_loader.dataset)
++            print(f"  PP pretrain epoch {pe}: loss={train_loss:.6f}")
++        print("Unfreezing full model for end-to-end training.")
++        for p in model.parameters():
++            p.requires_grad = True
++
++    for epoch in range(1, args.epochs + 1):
++        model.train()
++        train_loss = 0.0
++        if args.cam_aug_schedule == "extrinsic_curriculum":
++            ramp = min(1.0, epoch / max(1, args.cam_aug_ramp_epochs))
++            schedule_rot = args.cam_aug_rot * ramp
++            schedule_trans = args.cam_aug_trans * ramp
++            schedule_focal = args.cam_aug_focal
++            schedule_pp = args.cam_aug_pp
++        elif args.cam_aug_schedule == "intrinsics_curriculum":
++            ramp = min(1.0, epoch / max(1, args.cam_aug_intrinsics_ramp_epochs))
++            schedule_rot = args.cam_aug_rot
++            schedule_trans = args.cam_aug_trans
++            schedule_focal = args.cam_aug_focal * ramp
++            schedule_pp = args.cam_aug_pp * ramp
++        else:
++            schedule_rot = args.cam_aug_rot
++            schedule_trans = args.cam_aug_trans
++            schedule_focal = args.cam_aug_focal
++            schedule_pp = args.cam_aug_pp
++        for xb, yb, K, R, t in train_loader:
++            xb, yb = xb.to(device), yb.to(device)
++            K, R, t = K.to(device), R.to(device), t.to(device)
++            xb = augment_clip(xb, view_dropout_rate=args.view_dropout_rate, min_views=args.min_views,
++                              view_noise_std=args.view_noise_std, joint_dropout_rate=args.joint_dropout_rate)
++            K, R, t, true_pp_delta, true_focal_scale = perturb_cameras_with_delta(
++                K, R, t,
++                rot_std=schedule_rot,
++                trans_std=schedule_trans,
++                focal_std=schedule_focal,
++                pp_std=schedule_pp,
++            )
++            optimizer.zero_grad()
++            if args.model_type == "crossview_contrast":
++                outputs = model.forward_with_contrastive_loss(xb, K=K, R=R, t=t)
++            else:
++                outputs = model(xb, K=K, R=R, t=t)
++            pred = outputs[0]
++            loss = criterion(pred, yb)
++            if args.model_type == "crossview_contrast":
++                loss = loss + outputs[-1]
++            if args.pp_loss_weight > 0.0:
++                pred_pp_delta = outputs[2]  # (B*T, V, 2)
++                B, T = yb.shape[:2]
++                true_pp_delta = true_pp_delta.to(device).unsqueeze(1).expand(B, T, -1, -1).reshape(B * T, -1, 2)
++                # The correction layer *adds* predicted delta to the perturbed principal point,
++                # so the target is the negative of the applied offset.
++                loss = loss + args.pp_loss_weight * criterion(pred_pp_delta, -true_pp_delta)
++                if args.focal_max_scale > 0.0:
++                    pred_focal_scale = outputs[3]  # (B*T, V)
++                    true_focal_scale = true_focal_scale.to(device).squeeze(-1).unsqueeze(1).expand(B, T, -1)
++                    target_focal_scale = 1.0 / true_focal_scale.reshape(B * T, -1)
++                    focal_loss_weight = args.focal_loss_weight if args.focal_loss_weight is not None else args.pp_loss_weight
++                    loss = loss + focal_loss_weight * criterion(pred_focal_scale, target_focal_scale)
++            if args.model_type == "dynamic_gate":
++                gate_weights = outputs[-2]  # (B, T, V, J) or (B*T, V, J)
++                gate_reg_loss = gate_loss_fn(gate_weights)
++                loss = loss + gate_reg_loss
++            if args.reproj_weight > 0.0:
++                points_2d = xb[..., :2]
++                conf = xb[..., 2]
++                loss_reproj = reprojection_loss(pred, points_2d, K, R, t, confidences=conf)
++                loss = loss + args.reproj_weight * loss_reproj
++            if args.reproj_raw_weight > 0.0 or args.reproj_refined_weight > 0.0:
++                points_2d = xb[..., :2]
++                conf = xb[..., 2]
++                mask = (conf > 0) if args.reproj_mask_dropout else None
++                loss_type = "charbonnier" if args.reproj_robust else "mse"
++                if args.reproj_raw_weight > 0.0:
++                    raw_3d = outputs[-1]
++                    loss = loss + args.reproj_raw_weight * robust_reprojection_loss(
++                        raw_3d, points_2d, K, R, t,
++                        confidences=conf, mask=mask, loss_type=loss_type,
++                    )
++                if args.reproj_refined_weight > 0.0:
++                    loss = loss + args.reproj_refined_weight * robust_reprojection_loss(
++                        pred, points_2d, K, R, t,
++                        confidences=conf, mask=mask, loss_type=loss_type,
++                    )
++            if args.velocity_loss_weight > 0.0:
++                loss = loss + args.velocity_loss_weight * velocity_loss(pred, yb)
++            if args.splat_loss_weight > 0.0:
++                log_std = outputs[-1]  # (B, T, J, 3)
++                points_2d = xb[..., :2]
++                conf = xb[..., 2]
++                loss_splat = gaussian_splatting_pose_loss(
++                    pred, points_2d, K, R, t, log_std, confidences=conf,
++                )
++                loss = loss + args.splat_loss_weight * loss_splat
++            if args.model_type in ("bayesian_tri", "bayesian_tri_v2"):
++                epi_loss = outputs[-1]  # scalar
++                loss = loss + args.epipolar_loss_weight * epi_loss
++            loss.backward()
++            optimizer.step()
++            train_loss += loss.item() * xb.size(0)
++        train_loss /= len(train_loader.dataset)
++
++        val_err = evaluate(model, val_loader, device)
++        if val_err < best_val:
++            best_val = val_err
++            torch.save(model.state_dict(), output_path)
++            print(f"Epoch {epoch}: train_loss={train_loss:.6f}, val_MPJPE={val_err*1000:.2f}mm (saved)")
++        else:
++            print(f"Epoch {epoch}: train_loss={train_loss:.6f}, val_MPJPE={val_err*1000:.2f}mm")
++
++    print(f"Best val MPJPE: {best_val*1000:.2f}mm -> {output_path}")
++
++
++if __name__ == "__main__":
++    main()
+diff --git a/motionflow_mv/data/webbridge_loader.py b/motionflow_mv/data/webbridge_loader.py
+index 41c6529..5893d7f 100644
+--- a/motionflow_mv/data/webbridge_loader.py
++++ b/motionflow_mv/data/webbridge_loader.py
+@@ -1,720 +1,720 @@
+-"""Canonical WebBridge dataset loader.
+-
+-This module converts publicly accessible multi-view human motion datasets into the
+-project's standard ``.npz`` format used by the ``ray_attention`` training and
+-evaluation pipeline.
+-
+-Supported sources and status:
+-
+-* Human3.6M  – fully supported; requires the Hugging Face preprocessed archive
+-  ``h36m_sh_conf_cam_source_final.pkl.zip`` and ``camera_params.json``.
+-* Shelf/Campus  – fully supported; requires ``calibration.json`` and
+-  ``annotation_3d.json``.
+-* Synthetic/AMASS  – supported via the existing SMPL-based generator; requires
+-  ``smplx`` and the SMPL neutral model.
+-* AIST++  – supported; requires ``keypoints2d``, ``keypoints3d``, ``motions``
+-  and ``cameras`` from the official release.
+-* CMU Panoptic  – stub only; raw dataset not yet present.
+-* 3DPW  – stub only; raw dataset not yet present.
+-
+-The canonical ``.npz`` file contains exactly the following arrays::
+-
+-    points_2d:   (T, V, J, 2)  per-view 2D keypoint detections
+-    confidences: (T, V, J)     detection confidence / visibility
+-    joints_3d:   (T, J, 3)    3D ground-truth joint positions
+-    camera_K:    (V, 3, 3)    intrinsic calibration matrices
+-    camera_R:    (V, 3, 3)    rotation (world-to-camera)
+-    camera_t:    (V, 3)       translation (world-to-camera)
+-
+-Author: research swarm (iter 5)
+-"""
+-
+-import argparse
+-import json
+-import pickle
+-import re
+-import zipfile
+-from collections import defaultdict
+-from pathlib import Path
+-from typing import List, Tuple
+-
+-import numpy as np
+-import scipy.io
+-import torch
+-
+-from ..calibration.camera import Camera
+-from ..fusion.triangulation import triangulate_dlt
+-from .shelf_loader import build_shelf_dataset
+-
+-
+-# -----------------------------------------------------------------------------
+-# Common helpers
+-# -----------------------------------------------------------------------------
+-def _save_canonical_npz(
+-    out_path: Path,
+-    points_2d: np.ndarray,
+-    confidences: np.ndarray,
+-    joints_3d: np.ndarray,
+-    cameras: List[Camera],
+-) -> None:
+-    """Save arrays in the canonical multi-view ``.npz`` format."""
+-    out_path.parent.mkdir(parents=True, exist_ok=True)
+-    np.savez_compressed(
+-        out_path,
+-        points_2d=points_2d,
+-        confidences=confidences,
+-        joints_3d=joints_3d,
+-        camera_K=np.stack([cam.K for cam in cameras], axis=0),
+-        camera_R=np.stack([cam.R for cam in cameras], axis=0),
+-        camera_t=np.stack([cam.t for cam in cameras], axis=0),
+-    )
+-
+-
+-# -----------------------------------------------------------------------------
+-# Human3.6M
+-# -----------------------------------------------------------------------------
+-def _triangulate_joints(points_2d: np.ndarray, cameras: List[Camera]) -> np.ndarray:
+-    """Triangulate (V, J, 2) keypoints using calibrated cameras via DLT."""
+-    V, J, _ = points_2d.shape
+-    P = np.stack([cam.projection_matrix for cam in cameras], axis=0)
+-    X = np.zeros((J, 3), dtype=np.float64)
+-    for j in range(J):
+-        X[j] = triangulate_dlt(points_2d[:, j, :], P)
+-    return X
+-
+-
+-def convert_human36m(
+-    data_root: Path,
+-    subject: int,
+-    actions: List[int],
+-    split: str = "train",
+-    out_dir: Path = Path("data/h36m_hf"),
+-    camera_param_file: str = "camera_params.json",
+-    archive_file: str = "h36m_sh_conf_cam_source_final.pkl.zip",
+-) -> Path:
+-    """Convert the preprocessed Hugging Face Human3.6M subset to canonical ``.npz``.
+-
+-    Args:
+-        data_root: directory containing ``camera_params.json`` and the pkl zip.
+-        subject: subject id, e.g. ``1``.
+-        actions: list of action ids, e.g. ``[2, 3, 4]``.
+-        split: ``"train"`` or ``"test"``.
+-        out_dir: where to write the output ``.npz``.
+-        camera_param_file: name of the camera parameter json file.
+-        archive_file: name of the preprocessed pkl zip archive.
+-
+-    Returns:
+-        Path to the generated ``.npz`` file.
+-    """
+-    data_root = Path(data_root)
+-    cam_path = data_root / camera_param_file
+-    archive_path = data_root / archive_file
+-
+-    if not cam_path.exists():
+-        raise FileNotFoundError(
+-            f"Human3.6M camera parameters not found: {cam_path}\n"
+-            "Download from https://github.com/karfly/human36m-camera-parameters"
+-        )
+-    if not archive_path.exists():
+-        raise FileNotFoundError(
+-            f"Human3.6M preprocessed archive not found: {archive_path}\n"
+-            "Download from CameronSteele/h36m_3dhp on Hugging Face."
+-        )
+-
+-    with open(cam_path) as f:
+-        cam_params = json.load(f)
+-
+-    with zipfile.ZipFile(archive_path) as z:
+-        with z.open("h36m_sh_conf_cam_source_final.pkl") as f:
+-            data = pickle.load(f)
+-
+-    split_data = data[split]
+-    groups = defaultdict(lambda: defaultdict(list))
+-    for i, src in enumerate(split_data["source"]):
+-        # Preserve both ``cam_01`` (train) and ``ca_01`` (test) forms.
+-        base = src.rsplit("_", 1)[0]
+-        cam = src
+-        groups[base][cam].append(i)
+-
+-    prefix = f"s_{subject:02d}_act_"
+-    candidate_bases = sorted([b for b in groups.keys() if b.startswith(prefix)])
+-    target_bases = []
+-    for action in actions:
+-        action_prefix = f"s_{subject:02d}_act_{action:02d}_"
+-        matches = [b for b in candidate_bases if b.startswith(action_prefix)]
+-        if not matches:
+-            raise ValueError(
+-                f"No source found for subject {subject} action {action} in {split}"
+-            )
+-        target_bases.extend(matches)
+-
+-    subject_key = f"S{subject}"
+-
+-    # The preprocessed archive stores ``camera_name`` per sample.  In the test
+-    # split this field is noisy, but the physical camera rig is fixed and the
+-    # ordering of source suffixes (``cam_01``/``ca_01`` ... ``cam_04``/``ca_04``)
+-    # is stable across all subjects/actions.  We therefore derive the mapping
+-    # per sub-action from ``camera_name`` and fall back to the stable suffix
+-    # ordering whenever the derived mapping does not agree with it.
+-    canonical_camera_names = ["54138969", "55011271", "58860488", "60457274"]
+-
+-    def _camera_name_for_suffix(cam_full: str) -> str:
+-        """Map a source suffix to the fixed physical camera id."""
+-        suffix = cam_full.split("_")[-1]
+-        return {"01": "54138969", "02": "55011271", "03": "58860488", "04": "60457274"}[suffix]
+-
+-    def _derive_mapping(cams_dict: dict) -> List[str]:
+-        """Return the physical camera id for each source suffix in cams_dict."""
+-        cam_full_names = sorted(cams_dict.keys(), key=lambda c: cams_dict[c][0])
+-        return [split_data["camera_name"][cams_dict[cam_full][0]] for cam_full in cam_full_names]
+-
+-    def _build_canonical_cameras(camera_names: List[str]) -> List[Camera]:
+-        """Build Camera objects for a list of physical camera ids."""
+-        cams = []
+-        for camera_name in camera_names:
+-            intr = cam_params["intrinsics"][camera_name]["calibration_matrix"]
+-            K = np.array(intr, dtype=np.float64)
+-            ext = cam_params["extrinsics"][subject_key][camera_name]
+-            R = np.array(ext["R"], dtype=np.float64)
+-            t = np.array(ext["t"], dtype=np.float64).reshape(3)
+-            cams.append(Camera(K=K, R=R, t=t))
+-        return cams
+-
+-    canonical_cameras = _build_canonical_cameras(canonical_camera_names)
+-
+-    all_points_2d = []
+-    all_conf = []
+-    all_joints_3d = []
+-
+-    for target_base in target_bases:
+-        cams_dict = groups[target_base]
+-        # Stable source suffix order based on first occurrence in the archive.
+-        cam_full_names = sorted(cams_dict.keys(), key=lambda c: cams_dict[c][0])
+-        n_frames = len(cams_dict[cam_full_names[0]])
+-
+-        # Derive camera mapping for this sub-action and fall back to the fixed
+-        # suffix mapping when the derived one does not match it.
+-        fixed_names = [_camera_name_for_suffix(c) for c in cam_full_names]
+-        derived_names = _derive_mapping(cams_dict)
+-        if derived_names == fixed_names:
+-            current_camera_names = derived_names
+-        else:
+-            current_camera_names = fixed_names
+-
+-        # Build per-view cameras for this sub-action.
+-        current_cameras = _build_canonical_cameras(current_camera_names)
+-
+-        # Determine the permutation that maps the sub-action's view order to the
+-        # canonical physical camera order.
+-        perm = [current_camera_names.index(name) for name in canonical_camera_names]
+-
+-        for frame in range(n_frames):
+-            p2d_list = [split_data["joint_2d"][cams_dict[cam_full][frame]] for cam_full in cam_full_names]
+-            conf_list = [split_data["confidence"][cams_dict[cam_full][frame]].squeeze(-1) for cam_full in cam_full_names]
+-            # Reorder to canonical physical camera order.
+-            p2d = np.stack([p2d_list[i] for i in perm], axis=0)
+-            conf = np.stack([conf_list[i] for i in perm], axis=0)
+-            j3d = _triangulate_joints(p2d, current_cameras)
+-            all_points_2d.append(p2d)
+-            all_conf.append(conf)
+-            all_joints_3d.append(j3d)
+-
+-    points_2d = np.stack(all_points_2d, axis=0)
+-    confidences = np.stack(all_conf, axis=0)
+-    joints_3d = np.stack(all_joints_3d, axis=0)
+-
+-    actions_str = "_".join(f"{a:02d}" for a in actions)
+-    out_path = out_dir / f"s_{subject:02d}_acts_{actions_str}_multiview.npz"
+-    _save_canonical_npz(out_path, points_2d, confidences, joints_3d, canonical_cameras)
+-    return out_path
+-
+-
+-# -----------------------------------------------------------------------------
+-# Shelf / Campus
+-# -----------------------------------------------------------------------------
+-def convert_shelf_campus(
+-    data_root: Path,
+-    out_path: Path,
+-    person_id: int = 0,
+-) -> Path:
+-    """Convert a Shelf/Campus sequence to canonical ``.npz``.
+-
+-    Args:
+-        data_root: path to ``Shelf_Seq1`` or ``Campus_Seq1`` folder.
+-        out_path: destination ``.npz`` path.
+-        person_id: which person to extract.
+-
+-    Returns:
+-        Path to the generated ``.npz`` file.
+-    """
+-    data_root = Path(data_root)
+-    calibration_path = data_root / "calibration.json"
+-    if not calibration_path.exists():
+-        raise FileNotFoundError(
+-            f"Shelf/Campus calibration not found: {calibration_path}\n"
+-            "Download the Shelf/Campus dataset from the official source."
+-        )
+-
+-    points_2d, confidences, joints_3d, cameras = build_shelf_dataset(
+-        data_root, person_id=person_id
+-    )
+-    out_path = Path(out_path)
+-    _save_canonical_npz(out_path, points_2d, confidences, joints_3d, cameras)
+-    return out_path
+-
+-
+-# -----------------------------------------------------------------------------
+-# Synthetic / AMASS
+-# -----------------------------------------------------------------------------
+-def convert_synthetic_amass(
+-    output: Path = Path("outputs/synthetic_multiview_dataset.npz"),
+-    n_sequences: int = 500,
+-    frames_per_seq: int = 30,
+-    n_views: int = 4,
+-    noise_std: float = 0.5,
+-    occlusion_rate: float = 0.1,
+-    outlier_rate: float = 0.02,
+-) -> Path:
+-    """Generate a canonical ``.npz`` from a synthetic SMPL/AMASS rig.
+-
+-    This is a thin wrapper around ``experiments/generate_synthetic_multiview_dataset.py``.
+-    It requires ``smplx`` and the SMPL neutral model at ``data/smpl/SMPL_NEUTRAL.pkl``.
+-
+-    Args:
+-        output: destination ``.npz`` path.
+-        n_sequences: number of sequences to generate.
+-        frames_per_seq: frames per sequence.
+-        n_views: number of calibrated views.
+-        noise_std: standard deviation of 2D keypoint noise.
+-        occlusion_rate: fraction of joints to occlude per view.
+-        outlier_rate: fraction of joints to corrupt as outliers.
+-
+-    Returns:
+-        Path to the generated ``.npz`` file.
+-    """
+-    import subprocess
+-    import sys
+-
+-    output = Path(output)
+-    output.parent.mkdir(parents=True, exist_ok=True)
+-    script = Path("experiments/generate_synthetic_multiview_dataset.py")
+-    if not script.exists():
+-        raise FileNotFoundError(f"Synthetic generator script missing: {script}")
+-
+-    cmd = [
+-        sys.executable,
+-        str(script),
+-        "--n_sequences",
+-        str(n_sequences),
+-        "--frames_per_seq",
+-        str(frames_per_seq),
+-        "--n_views",
+-        str(n_views),
+-        "--noise_std",
+-        str(noise_std),
+-        "--occlusion_rate",
+-        str(occlusion_rate),
+-        "--outlier_rate",
+-        str(outlier_rate),
+-        "--output",
+-        str(output),
+-    ]
+-    subprocess.run(cmd, check=True)
+-    return Path(output)
+-
+-
+-# -----------------------------------------------------------------------------
+-# MPI-INF-3DHP
+-# -----------------------------------------------------------------------------
+-def _parse_mpiinf3dhp_intrinsics(calibration_path: Path) -> List[np.ndarray]:
+-    """Parse the 3x3 intrinsic matrices from the MPI-INF-3DHP calibration file."""
+-    text = calibration_path.read_text()
+-    blocks = re.split(r"\nname\s+\d+", text)
+-    K_list: List[np.ndarray] = []
+-    for block in blocks[1:]:
+-        lines = [line.strip() for line in block.splitlines() if line.strip()]
+-        intrinsic = None
+-        for line in lines:
+-            if line.startswith("intrinsic"):
+-                intrinsic = np.fromstring(line.split("intrinsic", 1)[1], sep=" ")
+-        if intrinsic is None:
+-            continue
+-        K4 = intrinsic.reshape(4, 4)
+-        K_list.append(K4[:3, :3].astype(np.float64))
+-    return K_list
+-
+-
+-def _estimate_mpiinf3dhp_extrinsics(
+-    joints_3d: np.ndarray,
+-    annot3: np.ndarray,
+-    K_list: List[np.ndarray],
+-) -> List[Camera]:
+-    """Estimate world-to-camera extrinsics from per-camera 3D annotations.
+-
+-    ``camera.calibration`` contains intrinsics but the stored extrinsics do not
+-    match the universal 3D ground truth for this sequence.  We recover ``R`` and
+-    ``t`` by aligning ``annot3[v]`` (3D in view v camera space) with
+-    ``joints_3d`` (universal world coordinates) using a rigid Procrustes fit.
+-    Reprojection with the recovered matrices matches ``annot2`` within ~10-20 px.
+-    """
+-    T, V, J, _ = annot3.shape
+-    cameras = []
+-    for v in range(V):
+-        X = torch.from_numpy(joints_3d.reshape(-1, 3)).double()
+-        Y = torch.from_numpy(annot3[:, v, :, :].reshape(-1, 3)).double()
+-        mx = X.mean(dim=0)
+-        my = Y.mean(dim=0)
+-        Xc = X - mx
+-        Yc = Y - my
+-        H = Yc.T @ Xc
+-        U, S, Vt = torch.linalg.svd(H)
+-        R = U @ Vt
+-        if torch.det(R) < 0:
+-            U[:, -1] *= -1
+-            R = U @ Vt
+-        # camera center in world = mean(world) - R^T * mean(camera_space)
+-        C = mx - R.T @ my
+-        t = -R @ C
+-        cameras.append(Camera(K=K_list[v].copy(), R=R.numpy().copy(), t=t.numpy().copy()))
+-    return cameras
+-
+-
+-def convert_mpiinf3dhp(
+-    data_root: Path,
+-    out_path: Path,
+-    n_views: int | None = None,
+-) -> Path:
+-    """Convert an MPI-INF-3DHP subject/sequence folder to canonical ``.npz``.
+-
+-    Expects ``annot.mat`` and ``camera.calibration`` in *data_root*.  The
+-    ``annot.mat`` contains per-view 2D keypoints ``annot2`` (V x frames) and
+-    universal 3D ground truth ``univ_annot3``.  Output is in millimeters.
+-
+-    Args:
+-        data_root: folder containing ``annot.mat`` and ``camera.calibration``.
+-        out_path: destination ``.npz`` path.
+-        n_views: if given, keep only the first ``n_views`` cameras.
+-
+-    Returns:
+-        Path to the generated ``.npz`` file.
+-    """
+-    data_root = Path(data_root)
+-    annot_path = data_root / "annot.mat"
+-    calib_path = data_root / "camera.calibration"
+-    if not annot_path.exists():
+-        raise FileNotFoundError(f"annot.mat not found: {annot_path}")
+-    if not calib_path.exists():
+-        raise FileNotFoundError(f"camera.calibration not found: {calib_path}")
+-
+-    mat = scipy.io.loadmat(annot_path)
+-    # annot2: (V, 1) object array, each cell is (T, J*2)
+-    annot2 = mat["annot2"]
+-    # annot3: (V, 1) object array, each cell is (T, J*3) in camera space.
+-    annot3 = mat["annot3"]
+-    # univ_annot3 is stored as (V, 1) object array where each cell contains the
+-    # same universal 3D ground truth of shape (T, J*3).  Take the first view.
+-    univ_annot3 = mat["univ_annot3"][0, 0]  # (T, J*3)
+-
+-    # Parse intrinsics and estimate extrinsics from the per-camera 3D annotations.
+-    K_list = _parse_mpiinf3dhp_intrinsics(calib_path)
+-    if n_views is not None:
+-        annot2 = annot2[:n_views]
+-        annot3 = annot3[:n_views]
+-        K_list = K_list[:n_views]
+-
+-    # Gather 2D points for each view
+-    points_2d_list = []
+-    for v in range(annot2.shape[0]):
+-        p2d = annot2[v, 0]  # (T, J*2)
+-        T, D = p2d.shape
+-        J = D // 2
+-        p2d = p2d.reshape(T, J, 2)
+-        points_2d_list.append(p2d)
+-    points_2d = np.stack(points_2d_list, axis=1)  # (T, V, J, 2)
+-
+-    T, V, J, _ = points_2d.shape
+-    confidences = np.ones((T, V, J), dtype=np.float32)
+-
+-    # Ground-truth 3D: (T, J*3)
+-    joints_3d = univ_annot3.reshape(T, J, 3)
+-
+-    # Build per-camera 3D array (T, V, J, 3) for extrinsic estimation.
+-    annot3_array = np.stack([annot3[v, 0].reshape(T, J, 3) for v in range(V)], axis=1)
+-    cameras = _estimate_mpiinf3dhp_extrinsics(joints_3d, annot3_array, K_list)
+-
+-    out_path = Path(out_path)
+-    out_path.parent.mkdir(parents=True, exist_ok=True)
+-    _save_canonical_npz(out_path, points_2d, confidences, joints_3d, cameras)
+-    return out_path
+-
+-
+-# -----------------------------------------------------------------------------
+-# AIST++
+-# -----------------------------------------------------------------------------
+-def _rodrigues_to_matrix(rvec: np.ndarray) -> np.ndarray:
+-    """Convert a Rodrigues rotation vector to a 3x3 rotation matrix."""
+-    rvec = np.asarray(rvec, dtype=np.float64).reshape(3)
+-    theta = np.linalg.norm(rvec)
+-    if theta < 1e-8:
+-        return np.eye(3, dtype=np.float64)
+-    k = rvec / theta
+-    K = np.array([[0, -k[2], k[1]], [k[2], 0, -k[0]], [-k[1], k[0], 0]])
+-    return np.eye(3) + np.sin(theta) * K + (1 - np.cos(theta)) * (K @ K)
+-
+-
+-def _load_aistpp_cameras(setting_path: Path) -> List[Camera]:
+-    """Load the 9-camera rig from an AIST++ ``setting_<suffix>.json`` file."""
+-    with open(setting_path) as f:
+-        cams = json.load(f)
+-    cameras = []
+-    for cam in cams:
+-        K = np.array(cam["matrix"], dtype=np.float64)
+-        R = _rodrigues_to_matrix(np.array(cam["rotation"], dtype=np.float64))
+-        t = np.array(cam["translation"], dtype=np.float64).reshape(3)
+-        cameras.append(Camera(K=K, R=R, t=t))
+-    return cameras
+-
+-
+-def _parse_aistpp_mapping(mapping_path: Path) -> dict:
+-    """Parse ``cameras/mapping.txt`` into ``{sequence_name: setting_name}``."""
+-    mapping = {}
+-    with open(mapping_path) as f:
+-        for line in f:
+-            line = line.strip()
+-            if not line:
+-                continue
+-            parts = line.split()
+-            if len(parts) < 2:
+-                continue
+-            seq_name, setting = parts[0], parts[1]
+-            mapping[seq_name] = setting
+-    return mapping
+-
+-
+-def convert_aistpp(
+-    data_root: Path,
+-    out_dir: Path,
+-    split: Path | None = None,
+-    scale_factor: float | None = None,
+-    max_seqs: int | None = None,
+-    use_optim: bool = False,
+-) -> List[Path]:
+-    """Convert AIST++ annotations to canonical ``.npz`` files.
+-
+-    AIST++ stores 3D keypoints and camera translations in the same world
+-    units (commonly centimeters). Use ``scale_factor=0.01`` to write the
+-    canonical arrays in meters.
+-
+-    Args:
+-        data_root: path to the extracted AIST++ annotations. Expected layout::
+-
+-            data_root/
+-              keypoints2d/<seq>.pkl
+-              keypoints3d/<seq>.pkl
+-              motions/<seq>.pkl
+-              cameras/
+-                mapping.txt
+-                setting*.json
+-
+-        out_dir: directory where per-sequence ``.npz`` files are written.
+-        split: optional split file (one sequence name per line). If ``None``,
+-            all sequences found in ``keypoints3d`` are converted.
+-        scale_factor: if given, multiply ``joints_3d`` and camera translations
+-            by this value. ``None`` means no scaling (keep raw AIST++ units).
+-        max_seqs: if given, stop after converting this many sequences (useful
+-            for a quick smoke test).
+-        use_optim: use ``keypoints3d_optim`` instead of ``keypoints3d``.
+-
+-    Returns:
+-        List of paths to generated ``.npz`` files.
+-    """
+-    data_root = Path(data_root)
+-    out_dir = Path(out_dir)
+-    out_dir.mkdir(parents=True, exist_ok=True)
+-
+-    kp2d_dir = data_root / "keypoints2d"
+-    kp3d_dir = data_root / "keypoints3d"
+-    motion_dir = data_root / "motions"
+-    cam_dir = data_root / "cameras"
+-    mapping_path = cam_dir / "mapping.txt"
+-
+-    if not kp2d_dir.exists():
+-        raise FileNotFoundError(f"AIST++ keypoints2d folder not found: {kp2d_dir}")
+-    if not kp3d_dir.exists():
+-        raise FileNotFoundError(f"AIST++ keypoints3d folder not found: {kp3d_dir}")
+-    if not mapping_path.exists():
+-        raise FileNotFoundError(
+-            "AIST++ camera mapping not found. Make sure cameras/mapping.txt exists.\n"
+-            "Download from https://github.com/google/aistplusplus_dataset"
+-        )
+-
+-    mapping = _parse_aistpp_mapping(mapping_path)
+-
+-    if split is not None:
+-        split = Path(split)
+-        with open(split) as f:
+-            seq_names = [line.strip() for line in f if line.strip()]
+-    else:
+-        seq_names = sorted([p.stem for p in kp3d_dir.glob("*.pkl")])
+-
+-    if max_seqs is not None:
+-        seq_names = seq_names[:max_seqs]
+-
+-    out_paths: List[Path] = []
+-    for seq_name in seq_names:
+-        kp2d_path = kp2d_dir / f"{seq_name}.pkl"
+-        kp3d_path = kp3d_dir / f"{seq_name}.pkl"
+-        motion_path = motion_dir / f"{seq_name}.pkl"
+-
+-        if not kp2d_path.exists() or not kp3d_path.exists():
+-            continue
+-
+-        with open(kp2d_path, "rb") as f:
+-            kp2d_data = pickle.load(f)
+-        with open(kp3d_path, "rb") as f:
+-            kp3d_data = pickle.load(f)
+-
+-        key2d = kp2d_data["keypoints2d"]  # (V, T, J, 3)
+-        if key2d.ndim == 3:
+-            key2d = key2d[np.newaxis, ...]
+-
+-        # AIST++ stores (V, T, J, 3); canonical is (T, V, J, 2/1).
+-        points_2d = np.transpose(key2d[..., :2], (1, 0, 2, 3)).astype(np.float32)
+-        confidences = np.transpose(key2d[..., 2], (1, 0, 2)).astype(np.float32)
+-
+-        if use_optim and "keypoints3d_optim" in kp3d_data:
+-            joints_3d = kp3d_data["keypoints3d_optim"]
+-        else:
+-            joints_3d = kp3d_data["keypoints3d"]
+-        joints_3d = joints_3d.astype(np.float64)
+-
+-        if scale_factor is not None:
+-            joints_3d = joints_3d * scale_factor
+-
+-        setting_name = mapping.get(seq_name)
+-        if setting_name is None:
+-            raise ValueError(f"No camera setting found for sequence {seq_name}")
+-        setting_path = cam_dir / f"{setting_name}.json"
+-        if not setting_path.exists():
+-            raise FileNotFoundError(f"Camera setting file missing: {setting_path}")
+-
+-        cameras = _load_aistpp_cameras(setting_path)
+-        if scale_factor is not None:
+-            # Camera translation must also be scaled to match the scaled 3D points.
+-            for cam in cameras:
+-                cam.t = cam.t * scale_factor
+-
+-        out_path = out_dir / f"{seq_name}_multiview.npz"
+-        _save_canonical_npz(out_path, points_2d, confidences, joints_3d, cameras)
+-        out_paths.append(out_path)
+-
+-    return out_paths
+-
+-
+-# -----------------------------------------------------------------------------
+-# Stubs for datasets not yet present
+-# -----------------------------------------------------------------------------
+-
+-def convert_panoptic(
+-    data_root: Path,
+-    out_path: Path,
+-    **kwargs,
+-) -> Path:
+-    """Stub for CMU Panoptic conversion.
+-
+-    The dataset is not yet bundled with this project. When available, this
+-    function will map Panoptic's COCO19 skeleton and HD camera calibration to the
+-    canonical ``.npz`` format.
+-    """
+-    raise NotImplementedError(
+-        "CMU Panoptic converter is a stub.\n"
+-        "Download the dataset from http://domedb.perception.cs.cmu.edu/ "
+-        "and implement the loader before calling this function."
+-    )
+-
+-
+-def convert_3dpw(
+-    data_root: Path,
+-    out_path: Path,
+-    **kwargs,
+-) -> Path:
+-    """Stub for 3DPW conversion.
+-
+-    3DPW is single-camera plus IMU and therefore not a direct multi-view source.
+-    When used, this function will project SMPL joints from the provided camera or
+-    treat each frame as a single-view validation sample.
+-    """
+-    raise NotImplementedError(
+-        "3DPW converter is a stub.\n"
+-        "Download the dataset from https://3dpw.imt.uni-luebeck.de/ "
+-        "and implement the loader before calling this function."
+-    )
+-
+-
+-# -----------------------------------------------------------------------------
+-# CLI
+-# -----------------------------------------------------------------------------
+-_CONVERTERS = {
+-    "human36m": convert_human36m,
+-    "shelf": convert_shelf_campus,
+-    "campus": convert_shelf_campus,
+-    "mpiinf3dhp": convert_mpiinf3dhp,
+-    "aistpp": convert_aistpp,
+-    "synthetic": convert_synthetic_amass,
+-    "panoptic": convert_panoptic,
+-    "3dpw": convert_3dpw,
+-}
+-
+-
+-def main():
+-    parser = argparse.ArgumentParser(
+-        description="Convert a WebBridge dataset to the canonical multi-view npz format."
+-    )
+-    parser.add_argument(
+-        "dataset",
+-        type=str,
+-        choices=list(_CONVERTERS.keys()),
+-        help="Which dataset to convert.",
+-    )
+-    parser.add_argument("--data_root", type=Path, required=True)
+-    parser.add_argument("--out", type=Path, required=True)
+-    parser.add_argument("--subject", type=int, default=1)
+-    parser.add_argument("--actions", type=int, nargs="+", default=[2])
+-    parser.add_argument("--split", type=str, default="train", choices=["train", "test"])
+-    parser.add_argument("--person_id", type=int, default=0)
+-    parser.add_argument("--n_views", type=int, default=None, help="MPI-INF-3DHP: keep only first N cameras.")
+-    parser.add_argument("--split_file", type=Path, default=None, help="AIST++: text file with one sequence name per line.")
+-    parser.add_argument("--max_seqs", type=int, default=None, help="AIST++: convert at most N sequences.")
+-    parser.add_argument("--scale_factor", type=float, default=None, help="AIST++: scale 3D points/cameras by this factor (e.g. 0.01 for meters).")
+-    parser.add_argument("--meters", action="store_true", help="AIST++: alias for --scale_factor 0.01 (raw AIST++ units are usually centimeters).")
+-    args = parser.parse_args()
+-
+-    if args.dataset == "human36m":
+-        convert_human36m(
+-            data_root=args.data_root,
+-            subject=args.subject,
+-            actions=args.actions,
+-            split=args.split,
+-            out_dir=args.out.parent,
+-        )
+-    elif args.dataset in {"shelf", "campus"}:
+-        convert_shelf_campus(data_root=args.data_root, out_path=args.out, person_id=args.person_id)
+-    elif args.dataset == "mpiinf3dhp":
+-        convert_mpiinf3dhp(data_root=args.data_root, out_path=args.out, n_views=args.n_views)
+-    elif args.dataset == "aistpp":
+-        scale_factor = 0.01 if args.meters else args.scale_factor
+-        convert_aistpp(
+-            data_root=args.data_root,
+-            out_dir=args.out,
+-            split=args.split_file,
+-            scale_factor=scale_factor,
+-            max_seqs=args.max_seqs,
+-        )
+-    else:
+-        _CONVERTERS[args.dataset](data_root=args.data_root, out_path=args.out)
+-
+-    print(f"Saved canonical npz to {args.out}")
+-
+-
+-if __name__ == "__main__":
+-    main()
++"""Canonical WebBridge dataset loader.
++
++This module converts publicly accessible multi-view human motion datasets into the
++project's standard ``.npz`` format used by the ``ray_attention`` training and
++evaluation pipeline.
++
++Supported sources and status:
++
++* Human3.6M  – fully supported; requires the Hugging Face preprocessed archive
++  ``h36m_sh_conf_cam_source_final.pkl.zip`` and ``camera_params.json``.
++* Shelf/Campus  – fully supported; requires ``calibration.json`` and
++  ``annotation_3d.json``.
++* Synthetic/AMASS  – supported via the existing SMPL-based generator; requires
++  ``smplx`` and the SMPL neutral model.
++* AIST++  – supported; requires ``keypoints2d``, ``keypoints3d``, ``motions``
++  and ``cameras`` from the official release.
++* CMU Panoptic  – stub only; raw dataset not yet present.
++* 3DPW  – stub only; raw dataset not yet present.
++
++The canonical ``.npz`` file contains exactly the following arrays::
++
++    points_2d:   (T, V, J, 2)  per-view 2D keypoint detections
++    confidences: (T, V, J)     detection confidence / visibility
++    joints_3d:   (T, J, 3)    3D ground-truth joint positions
++    camera_K:    (V, 3, 3)    intrinsic calibration matrices
++    camera_R:    (V, 3, 3)    rotation (world-to-camera)
++    camera_t:    (V, 3)       translation (world-to-camera)
++
++Author: research swarm (iter 5)
++"""
++
++import argparse
++import json
++import pickle
++import re
++import zipfile
++from collections import defaultdict
++from pathlib import Path
++from typing import List, Tuple
++
++import numpy as np
++import scipy.io
++import torch
++
++from ..calibration.camera import Camera
++from ..fusion.triangulation import triangulate_dlt
++from .shelf_loader import build_shelf_dataset
++
++
++# -----------------------------------------------------------------------------
++# Common helpers
++# -----------------------------------------------------------------------------
++def _save_canonical_npz(
++    out_path: Path,
++    points_2d: np.ndarray,
++    confidences: np.ndarray,
++    joints_3d: np.ndarray,
++    cameras: List[Camera],
++) -> None:
++    """Save arrays in the canonical multi-view ``.npz`` format."""
++    out_path.parent.mkdir(parents=True, exist_ok=True)
++    np.savez_compressed(
++        out_path,
++        points_2d=points_2d,
++        confidences=confidences,
++        joints_3d=joints_3d,
++        camera_K=np.stack([cam.K for cam in cameras], axis=0),
++        camera_R=np.stack([cam.R for cam in cameras], axis=0),
++        camera_t=np.stack([cam.t for cam in cameras], axis=0),
++    )
++
++
++# -----------------------------------------------------------------------------
++# Human3.6M
++# -----------------------------------------------------------------------------
++def _triangulate_joints(points_2d: np.ndarray, cameras: List[Camera]) -> np.ndarray:
++    """Triangulate (V, J, 2) keypoints using calibrated cameras via DLT."""
++    V, J, _ = points_2d.shape
++    P = np.stack([cam.projection_matrix for cam in cameras], axis=0)
++    X = np.zeros((J, 3), dtype=np.float64)
++    for j in range(J):
++        X[j] = triangulate_dlt(points_2d[:, j, :], P)
++    return X
++
++
++def convert_human36m(
++    data_root: Path,
++    subject: int,
++    actions: List[int],
++    split: str = "train",
++    out_dir: Path = Path("data/h36m_hf"),
++    camera_param_file: str = "camera_params.json",
++    archive_file: str = "h36m_sh_conf_cam_source_final.pkl.zip",
++) -> Path:
++    """Convert the preprocessed Hugging Face Human3.6M subset to canonical ``.npz``.
++
++    Args:
++        data_root: directory containing ``camera_params.json`` and the pkl zip.
++        subject: subject id, e.g. ``1``.
++        actions: list of action ids, e.g. ``[2, 3, 4]``.
++        split: ``"train"`` or ``"test"``.
++        out_dir: where to write the output ``.npz``.
++        camera_param_file: name of the camera parameter json file.
++        archive_file: name of the preprocessed pkl zip archive.
++
++    Returns:
++        Path to the generated ``.npz`` file.
++    """
++    data_root = Path(data_root)
++    cam_path = data_root / camera_param_file
++    archive_path = data_root / archive_file
++
++    if not cam_path.exists():
++        raise FileNotFoundError(
++            f"Human3.6M camera parameters not found: {cam_path}\n"
++            "Download from https://github.com/karfly/human36m-camera-parameters"
++        )
++    if not archive_path.exists():
++        raise FileNotFoundError(
++            f"Human3.6M preprocessed archive not found: {archive_path}\n"
++            "Download from CameronSteele/h36m_3dhp on Hugging Face."
++        )
++
++    with open(cam_path) as f:
++        cam_params = json.load(f)
++
++    with zipfile.ZipFile(archive_path) as z:
++        with z.open("h36m_sh_conf_cam_source_final.pkl") as f:
++            data = pickle.load(f)
++
++    split_data = data[split]
++    groups = defaultdict(lambda: defaultdict(list))
++    for i, src in enumerate(split_data["source"]):
++        # Preserve both ``cam_01`` (train) and ``ca_01`` (test) forms.
++        base = src.rsplit("_", 1)[0]
++        cam = src
++        groups[base][cam].append(i)
++
++    prefix = f"s_{subject:02d}_act_"
++    candidate_bases = sorted([b for b in groups.keys() if b.startswith(prefix)])
++    target_bases = []
++    for action in actions:
++        action_prefix = f"s_{subject:02d}_act_{action:02d}_"
++        matches = [b for b in candidate_bases if b.startswith(action_prefix)]
++        if not matches:
++            raise ValueError(
++                f"No source found for subject {subject} action {action} in {split}"
++            )
++        target_bases.extend(matches)
++
++    subject_key = f"S{subject}"
++
++    # The preprocessed archive stores ``camera_name`` per sample.  In the test
++    # split this field is noisy, but the physical camera rig is fixed and the
++    # ordering of source suffixes (``cam_01``/``ca_01`` ... ``cam_04``/``ca_04``)
++    # is stable across all subjects/actions.  We therefore derive the mapping
++    # per sub-action from ``camera_name`` and fall back to the stable suffix
++    # ordering whenever the derived mapping does not agree with it.
++    canonical_camera_names = ["54138969", "55011271", "58860488", "60457274"]
++
++    def _camera_name_for_suffix(cam_full: str) -> str:
++        """Map a source suffix to the fixed physical camera id."""
++        suffix = cam_full.split("_")[-1]
++        return {"01": "54138969", "02": "55011271", "03": "58860488", "04": "60457274"}[suffix]
++
++    def _derive_mapping(cams_dict: dict) -> List[str]:
++        """Return the physical camera id for each source suffix in cams_dict."""
++        cam_full_names = sorted(cams_dict.keys(), key=lambda c: cams_dict[c][0])
++        return [split_data["camera_name"][cams_dict[cam_full][0]] for cam_full in cam_full_names]
++
++    def _build_canonical_cameras(camera_names: List[str]) -> List[Camera]:
++        """Build Camera objects for a list of physical camera ids."""
++        cams = []
++        for camera_name in camera_names:
++            intr = cam_params["intrinsics"][camera_name]["calibration_matrix"]
++            K = np.array(intr, dtype=np.float64)
++            ext = cam_params["extrinsics"][subject_key][camera_name]
++            R = np.array(ext["R"], dtype=np.float64)
++            t = np.array(ext["t"], dtype=np.float64).reshape(3)
++            cams.append(Camera(K=K, R=R, t=t))
++        return cams
++
++    canonical_cameras = _build_canonical_cameras(canonical_camera_names)
++
++    all_points_2d = []
++    all_conf = []
++    all_joints_3d = []
++
++    for target_base in target_bases:
++        cams_dict = groups[target_base]
++        # Stable source suffix order based on first occurrence in the archive.
++        cam_full_names = sorted(cams_dict.keys(), key=lambda c: cams_dict[c][0])
++        n_frames = len(cams_dict[cam_full_names[0]])
++
++        # Derive camera mapping for this sub-action and fall back to the fixed
++        # suffix mapping when the derived one does not match it.
++        fixed_names = [_camera_name_for_suffix(c) for c in cam_full_names]
++        derived_names = _derive_mapping(cams_dict)
++        if derived_names == fixed_names:
++            current_camera_names = derived_names
++        else:
++            current_camera_names = fixed_names
++
++        # Build per-view cameras for this sub-action.
++        current_cameras = _build_canonical_cameras(current_camera_names)
++
++        # Determine the permutation that maps the sub-action's view order to the
++        # canonical physical camera order.
++        perm = [current_camera_names.index(name) for name in canonical_camera_names]
++
++        for frame in range(n_frames):
++            p2d_list = [split_data["joint_2d"][cams_dict[cam_full][frame]] for cam_full in cam_full_names]
++            conf_list = [split_data["confidence"][cams_dict[cam_full][frame]].squeeze(-1) for cam_full in cam_full_names]
++            # Reorder to canonical physical camera order.
++            p2d = np.stack([p2d_list[i] for i in perm], axis=0)
++            conf = np.stack([conf_list[i] for i in perm], axis=0)
++            j3d = _triangulate_joints(p2d, current_cameras)
++            all_points_2d.append(p2d)
++            all_conf.append(conf)
++            all_joints_3d.append(j3d)
++
++    points_2d = np.stack(all_points_2d, axis=0)
++    confidences = np.stack(all_conf, axis=0)
++    joints_3d = np.stack(all_joints_3d, axis=0)
++
++    actions_str = "_".join(f"{a:02d}" for a in actions)
++    out_path = out_dir / f"s_{subject:02d}_acts_{actions_str}_multiview.npz"
++    _save_canonical_npz(out_path, points_2d, confidences, joints_3d, canonical_cameras)
++    return out_path
++
++
++# -----------------------------------------------------------------------------
++# Shelf / Campus
++# -----------------------------------------------------------------------------
++def convert_shelf_campus(
++    data_root: Path,
++    out_path: Path,
++    person_id: int = 0,
++) -> Path:
++    """Convert a Shelf/Campus sequence to canonical ``.npz``.
++
++    Args:
++        data_root: path to ``Shelf_Seq1`` or ``Campus_Seq1`` folder.
++        out_path: destination ``.npz`` path.
++        person_id: which person to extract.
++
++    Returns:
++        Path to the generated ``.npz`` file.
++    """
++    data_root = Path(data_root)
++    calibration_path = data_root / "calibration.json"
++    if not calibration_path.exists():
++        raise FileNotFoundError(
++            f"Shelf/Campus calibration not found: {calibration_path}\n"
++            "Download the Shelf/Campus dataset from the official source."
++        )
++
++    points_2d, confidences, joints_3d, cameras = build_shelf_dataset(
++        data_root, person_id=person_id
++    )
++    out_path = Path(out_path)
++    _save_canonical_npz(out_path, points_2d, confidences, joints_3d, cameras)
++    return out_path
++
++
++# -----------------------------------------------------------------------------
++# Synthetic / AMASS
++# -----------------------------------------------------------------------------
++def convert_synthetic_amass(
++    output: Path = Path("outputs/synthetic_multiview_dataset.npz"),
++    n_sequences: int = 500,
++    frames_per_seq: int = 30,
++    n_views: int = 4,
++    noise_std: float = 0.5,
++    occlusion_rate: float = 0.1,
++    outlier_rate: float = 0.02,
++) -> Path:
++    """Generate a canonical ``.npz`` from a synthetic SMPL/AMASS rig.
++
++    This is a thin wrapper around ``experiments/generate_synthetic_multiview_dataset.py``.
++    It requires ``smplx`` and the SMPL neutral model at ``data/smpl/SMPL_NEUTRAL.pkl``.
++
++    Args:
++        output: destination ``.npz`` path.
++        n_sequences: number of sequences to generate.
++        frames_per_seq: frames per sequence.
++        n_views: number of calibrated views.
++        noise_std: standard deviation of 2D keypoint noise.
++        occlusion_rate: fraction of joints to occlude per view.
++        outlier_rate: fraction of joints to corrupt as outliers.
++
++    Returns:
++        Path to the generated ``.npz`` file.
++    """
++    import subprocess
++    import sys
++
++    output = Path(output)
++    output.parent.mkdir(parents=True, exist_ok=True)
++    script = Path("experiments/generate_synthetic_multiview_dataset.py")
++    if not script.exists():
++        raise FileNotFoundError(f"Synthetic generator script missing: {script}")
++
++    cmd = [
++        sys.executable,
++        str(script),
++        "--n_sequences",
++        str(n_sequences),
++        "--frames_per_seq",
++        str(frames_per_seq),
++        "--n_views",
++        str(n_views),
++        "--noise_std",
++        str(noise_std),
++        "--occlusion_rate",
++        str(occlusion_rate),
++        "--outlier_rate",
++        str(outlier_rate),
++        "--output",
++        str(output),
++    ]
++    subprocess.run(cmd, check=True)
++    return Path(output)
++
++
++# -----------------------------------------------------------------------------
++# MPI-INF-3DHP
++# -----------------------------------------------------------------------------
++def _parse_mpiinf3dhp_intrinsics(calibration_path: Path) -> List[np.ndarray]:
++    """Parse the 3x3 intrinsic matrices from the MPI-INF-3DHP calibration file."""
++    text = calibration_path.read_text()
++    blocks = re.split(r"\nname\s+\d+", text)
++    K_list: List[np.ndarray] = []
++    for block in blocks[1:]:
++        lines = [line.strip() for line in block.splitlines() if line.strip()]
++        intrinsic = None
++        for line in lines:
++            if line.startswith("intrinsic"):
++                intrinsic = np.fromstring(line.split("intrinsic", 1)[1], sep=" ")
++        if intrinsic is None:
++            continue
++        K4 = intrinsic.reshape(4, 4)
++        K_list.append(K4[:3, :3].astype(np.float64))
++    return K_list
++
++
++def _estimate_mpiinf3dhp_extrinsics(
++    joints_3d: np.ndarray,
++    annot3: np.ndarray,
++    K_list: List[np.ndarray],
++) -> List[Camera]:
++    """Estimate world-to-camera extrinsics from per-camera 3D annotations.
++
++    ``camera.calibration`` contains intrinsics but the stored extrinsics do not
++    match the universal 3D ground truth for this sequence.  We recover ``R`` and
++    ``t`` by aligning ``annot3[v]`` (3D in view v camera space) with
++    ``joints_3d`` (universal world coordinates) using a rigid Procrustes fit.
++    Reprojection with the recovered matrices matches ``annot2`` within ~10-20 px.
++    """
++    T, V, J, _ = annot3.shape
++    cameras = []
++    for v in range(V):
++        X = torch.from_numpy(joints_3d.reshape(-1, 3)).double()
++        Y = torch.from_numpy(annot3[:, v, :, :].reshape(-1, 3)).double()
++        mx = X.mean(dim=0)
++        my = Y.mean(dim=0)
++        Xc = X - mx
++        Yc = Y - my
++        H = Yc.T @ Xc
++        U, S, Vt = torch.linalg.svd(H)
++        R = U @ Vt
++        if torch.det(R) < 0:
++            U[:, -1] *= -1
++            R = U @ Vt
++        # camera center in world = mean(world) - R^T * mean(camera_space)
++        C = mx - R.T @ my
++        t = -R @ C
++        cameras.append(Camera(K=K_list[v].copy(), R=R.numpy().copy(), t=t.numpy().copy()))
++    return cameras
++
++
++def convert_mpiinf3dhp(
++    data_root: Path,
++    out_path: Path,
++    n_views: int | None = None,
++) -> Path:
++    """Convert an MPI-INF-3DHP subject/sequence folder to canonical ``.npz``.
++
++    Expects ``annot.mat`` and ``camera.calibration`` in *data_root*.  The
++    ``annot.mat`` contains per-view 2D keypoints ``annot2`` (V x frames) and
++    universal 3D ground truth ``univ_annot3``.  Output is in millimeters.
++
++    Args:
++        data_root: folder containing ``annot.mat`` and ``camera.calibration``.
++        out_path: destination ``.npz`` path.
++        n_views: if given, keep only the first ``n_views`` cameras.
++
++    Returns:
++        Path to the generated ``.npz`` file.
++    """
++    data_root = Path(data_root)
++    annot_path = data_root / "annot.mat"
++    calib_path = data_root / "camera.calibration"
++    if not annot_path.exists():
++        raise FileNotFoundError(f"annot.mat not found: {annot_path}")
++    if not calib_path.exists():
++        raise FileNotFoundError(f"camera.calibration not found: {calib_path}")
++
++    mat = scipy.io.loadmat(annot_path)
++    # annot2: (V, 1) object array, each cell is (T, J*2)
++    annot2 = mat["annot2"]
++    # annot3: (V, 1) object array, each cell is (T, J*3) in camera space.
++    annot3 = mat["annot3"]
++    # univ_annot3 is stored as (V, 1) object array where each cell contains the
++    # same universal 3D ground truth of shape (T, J*3).  Take the first view.
++    univ_annot3 = mat["univ_annot3"][0, 0]  # (T, J*3)
++
++    # Parse intrinsics and estimate extrinsics from the per-camera 3D annotations.
++    K_list = _parse_mpiinf3dhp_intrinsics(calib_path)
++    if n_views is not None:
++        annot2 = annot2[:n_views]
++        annot3 = annot3[:n_views]
++        K_list = K_list[:n_views]
++
++    # Gather 2D points for each view
++    points_2d_list = []
++    for v in range(annot2.shape[0]):
++        p2d = annot2[v, 0]  # (T, J*2)
++        T, D = p2d.shape
++        J = D // 2
++        p2d = p2d.reshape(T, J, 2)
++        points_2d_list.append(p2d)
++    points_2d = np.stack(points_2d_list, axis=1)  # (T, V, J, 2)
++
++    T, V, J, _ = points_2d.shape
++    confidences = np.ones((T, V, J), dtype=np.float32)
++
++    # Ground-truth 3D: (T, J*3)
++    joints_3d = univ_annot3.reshape(T, J, 3)
++
++    # Build per-camera 3D array (T, V, J, 3) for extrinsic estimation.
++    annot3_array = np.stack([annot3[v, 0].reshape(T, J, 3) for v in range(V)], axis=1)
++    cameras = _estimate_mpiinf3dhp_extrinsics(joints_3d, annot3_array, K_list)
++
++    out_path = Path(out_path)
++    out_path.parent.mkdir(parents=True, exist_ok=True)
++    _save_canonical_npz(out_path, points_2d, confidences, joints_3d, cameras)
++    return out_path
++
++
++# -----------------------------------------------------------------------------
++# AIST++
++# -----------------------------------------------------------------------------
++def _rodrigues_to_matrix(rvec: np.ndarray) -> np.ndarray:
++    """Convert a Rodrigues rotation vector to a 3x3 rotation matrix."""
++    rvec = np.asarray(rvec, dtype=np.float64).reshape(3)
++    theta = np.linalg.norm(rvec)
++    if theta < 1e-8:
++        return np.eye(3, dtype=np.float64)
++    k = rvec / theta
++    K = np.array([[0, -k[2], k[1]], [k[2], 0, -k[0]], [-k[1], k[0], 0]])
++    return np.eye(3) + np.sin(theta) * K + (1 - np.cos(theta)) * (K @ K)
++
++
++def _load_aistpp_cameras(setting_path: Path) -> List[Camera]:
++    """Load the 9-camera rig from an AIST++ ``setting_<suffix>.json`` file."""
++    with open(setting_path) as f:
++        cams = json.load(f)
++    cameras = []
++    for cam in cams:
++        K = np.array(cam["matrix"], dtype=np.float64)
++        R = _rodrigues_to_matrix(np.array(cam["rotation"], dtype=np.float64))
++        t = np.array(cam["translation"], dtype=np.float64).reshape(3)
++        cameras.append(Camera(K=K, R=R, t=t))
++    return cameras
++
++
++def _parse_aistpp_mapping(mapping_path: Path) -> dict:
++    """Parse ``cameras/mapping.txt`` into ``{sequence_name: setting_name}``."""
++    mapping = {}
++    with open(mapping_path) as f:
++        for line in f:
++            line = line.strip()
++            if not line:
++                continue
++            parts = line.split()
++            if len(parts) < 2:
++                continue
++            seq_name, setting = parts[0], parts[1]
++            mapping[seq_name] = setting
++    return mapping
++
++
++def convert_aistpp(
++    data_root: Path,
++    out_dir: Path,
++    split: Path | None = None,
++    scale_factor: float | None = None,
++    max_seqs: int | None = None,
++    use_optim: bool = False,
++) -> List[Path]:
++    """Convert AIST++ annotations to canonical ``.npz`` files.
++
++    AIST++ stores 3D keypoints and camera translations in the same world
++    units (commonly centimeters). Use ``scale_factor=0.01`` to write the
++    canonical arrays in meters.
++
++    Args:
++        data_root: path to the extracted AIST++ annotations. Expected layout::
++
++            data_root/
++              keypoints2d/<seq>.pkl
++              keypoints3d/<seq>.pkl
++              motions/<seq>.pkl
++              cameras/
++                mapping.txt
++                setting*.json
++
++        out_dir: directory where per-sequence ``.npz`` files are written.
++        split: optional split file (one sequence name per line). If ``None``,
++            all sequences found in ``keypoints3d`` are converted.
++        scale_factor: if given, multiply ``joints_3d`` and camera translations
++            by this value. ``None`` means no scaling (keep raw AIST++ units).
++        max_seqs: if given, stop after converting this many sequences (useful
++            for a quick smoke test).
++        use_optim: use ``keypoints3d_optim`` instead of ``keypoints3d``.
++
++    Returns:
++        List of paths to generated ``.npz`` files.
++    """
++    data_root = Path(data_root)
++    out_dir = Path(out_dir)
++    out_dir.mkdir(parents=True, exist_ok=True)
++
++    kp2d_dir = data_root / "keypoints2d"
++    kp3d_dir = data_root / "keypoints3d"
++    motion_dir = data_root / "motions"
++    cam_dir = data_root / "cameras"
++    mapping_path = cam_dir / "mapping.txt"
++
++    if not kp2d_dir.exists():
++        raise FileNotFoundError(f"AIST++ keypoints2d folder not found: {kp2d_dir}")
++    if not kp3d_dir.exists():
++        raise FileNotFoundError(f"AIST++ keypoints3d folder not found: {kp3d_dir}")
++    if not mapping_path.exists():
++        raise FileNotFoundError(
++            "AIST++ camera mapping not found. Make sure cameras/mapping.txt exists.\n"
++            "Download from https://github.com/google/aistplusplus_dataset"
++        )
++
++    mapping = _parse_aistpp_mapping(mapping_path)
++
++    if split is not None:
++        split = Path(split)
++        with open(split) as f:
++            seq_names = [line.strip() for line in f if line.strip()]
++    else:
++        seq_names = sorted([p.stem for p in kp3d_dir.glob("*.pkl")])
++
++    if max_seqs is not None:
++        seq_names = seq_names[:max_seqs]
++
++    out_paths: List[Path] = []
++    for seq_name in seq_names:
++        kp2d_path = kp2d_dir / f"{seq_name}.pkl"
++        kp3d_path = kp3d_dir / f"{seq_name}.pkl"
++        motion_path = motion_dir / f"{seq_name}.pkl"
++
++        if not kp2d_path.exists() or not kp3d_path.exists():
++            continue
++
++        with open(kp2d_path, "rb") as f:
++            kp2d_data = pickle.load(f)
++        with open(kp3d_path, "rb") as f:
++            kp3d_data = pickle.load(f)
++
++        key2d = kp2d_data["keypoints2d"]  # (V, T, J, 3)
++        if key2d.ndim == 3:
++            key2d = key2d[np.newaxis, ...]
++
++        # AIST++ stores (V, T, J, 3); canonical is (T, V, J, 2/1).
++        points_2d = np.transpose(key2d[..., :2], (1, 0, 2, 3)).astype(np.float32)
++        confidences = np.transpose(key2d[..., 2], (1, 0, 2)).astype(np.float32)
++
++        if use_optim and "keypoints3d_optim" in kp3d_data:
++            joints_3d = kp3d_data["keypoints3d_optim"]
++        else:
++            joints_3d = kp3d_data["keypoints3d"]
++        joints_3d = joints_3d.astype(np.float64)
++
++        if scale_factor is not None:
++            joints_3d = joints_3d * scale_factor
++
++        setting_name = mapping.get(seq_name)
++        if setting_name is None:
++            raise ValueError(f"No camera setting found for sequence {seq_name}")
++        setting_path = cam_dir / f"{setting_name}.json"
++        if not setting_path.exists():
++            raise FileNotFoundError(f"Camera setting file missing: {setting_path}")
++
++        cameras = _load_aistpp_cameras(setting_path)
++        if scale_factor is not None:
++            # Camera translation must also be scaled to match the scaled 3D points.
++            for cam in cameras:
++                cam.t = cam.t * scale_factor
++
++        out_path = out_dir / f"{seq_name}_multiview.npz"
++        _save_canonical_npz(out_path, points_2d, confidences, joints_3d, cameras)
++        out_paths.append(out_path)
++
++    return out_paths
++
++
++# -----------------------------------------------------------------------------
++# Stubs for datasets not yet present
++# -----------------------------------------------------------------------------
++
++def convert_panoptic(
++    data_root: Path,
++    out_path: Path,
++    **kwargs,
++) -> Path:
++    """Stub for CMU Panoptic conversion.
++
++    The dataset is not yet bundled with this project. When available, this
++    function will map Panoptic's COCO19 skeleton and HD camera calibration to the
++    canonical ``.npz`` format.
++    """
++    raise NotImplementedError(
++        "CMU Panoptic converter is a stub.\n"
++        "Download the dataset from http://domedb.perception.cs.cmu.edu/ "
++        "and implement the loader before calling this function."
++    )
++
++
++def convert_3dpw(
++    data_root: Path,
++    out_path: Path,
++    **kwargs,
++) -> Path:
++    """Stub for 3DPW conversion.
++
++    3DPW is single-camera plus IMU and therefore not a direct multi-view source.
++    When used, this function will project SMPL joints from the provided camera or
++    treat each frame as a single-view validation sample.
++    """
++    raise NotImplementedError(
++        "3DPW converter is a stub.\n"
++        "Download the dataset from https://3dpw.imt.uni-luebeck.de/ "
++        "and implement the loader before calling this function."
++    )
++
++
++# -----------------------------------------------------------------------------
++# CLI
++# -----------------------------------------------------------------------------
++_CONVERTERS = {
++    "human36m": convert_human36m,
++    "shelf": convert_shelf_campus,
++    "campus": convert_shelf_campus,
++    "mpiinf3dhp": convert_mpiinf3dhp,
++    "aistpp": convert_aistpp,
++    "synthetic": convert_synthetic_amass,
++    "panoptic": convert_panoptic,
++    "3dpw": convert_3dpw,
++}
++
++
++def main():
++    parser = argparse.ArgumentParser(
++        description="Convert a WebBridge dataset to the canonical multi-view npz format."
++    )
++    parser.add_argument(
++        "dataset",
++        type=str,
++        choices=list(_CONVERTERS.keys()),
++        help="Which dataset to convert.",
++    )
++    parser.add_argument("--data_root", type=Path, required=True)
++    parser.add_argument("--out", type=Path, required=True)
++    parser.add_argument("--subject", type=int, default=1)
++    parser.add_argument("--actions", type=int, nargs="+", default=[2])
++    parser.add_argument("--split", type=str, default="train", choices=["train", "test"])
++    parser.add_argument("--person_id", type=int, default=0)
++    parser.add_argument("--n_views", type=int, default=None, help="MPI-INF-3DHP: keep only first N cameras.")
++    parser.add_argument("--split_file", type=Path, default=None, help="AIST++: text file with one sequence name per line.")
++    parser.add_argument("--max_seqs", type=int, default=None, help="AIST++: convert at most N sequences.")
++    parser.add_argument("--scale_factor", type=float, default=None, help="AIST++: scale 3D points/cameras by this factor (e.g. 0.01 for meters).")
++    parser.add_argument("--meters", action="store_true", help="AIST++: alias for --scale_factor 0.01 (raw AIST++ units are usually centimeters).")
++    args = parser.parse_args()
++
++    if args.dataset == "human36m":
++        convert_human36m(
++            data_root=args.data_root,
++            subject=args.subject,
++            actions=args.actions,
++            split=args.split,
++            out_dir=args.out.parent,
++        )
++    elif args.dataset in {"shelf", "campus"}:
++        convert_shelf_campus(data_root=args.data_root, out_path=args.out, person_id=args.person_id)
++    elif args.dataset == "mpiinf3dhp":
++        convert_mpiinf3dhp(data_root=args.data_root, out_path=args.out, n_views=args.n_views)
++    elif args.dataset == "aistpp":
++        scale_factor = 0.01 if args.meters else args.scale_factor
++        convert_aistpp(
++            data_root=args.data_root,
++            out_dir=args.out,
++            split=args.split_file,
++            scale_factor=scale_factor,
++            max_seqs=args.max_seqs,
++        )
++    else:
++        _CONVERTERS[args.dataset](data_root=args.data_root, out_path=args.out)
++
++    print(f"Saved canonical npz to {args.out}")
++
++
++if __name__ == "__main__":
++    main()
+diff --git a/motionflow_mv/losses/__init__.py b/motionflow_mv/losses/__init__.py
+index 28c48e6..bfa4e4e 100644
+--- a/motionflow_mv/losses/__init__.py
++++ b/motionflow_mv/losses/__init__.py
+@@ -1,23 +1,23 @@
+-"""Reusable loss functions for multi-view pose training."""
+-
+-from .bone_length import bone_length_loss
+-from .canonical_skeleton_loss import canonical_skeleton_loss
+-from .focal_calibration_loss import focal_calibration_loss
+-from .gaussian_splatting_pose_loss import gaussian_splatting_pose_loss
+-from .masked_view_completion import masked_view_completion_loss
+-from .multiperson_association_loss import MultiPersonAssociationLoss
+-from .reprojection import reprojection_loss
+-from .velocity import velocity_loss, velocity_l1_loss
+-from .visibility_supervision_loss import visibility_supervision_loss
+-
+-__all__ = [
+-    "bone_length_loss",
+-    "canonical_skeleton_loss",
+-    "focal_calibration_loss",
+-    "gaussian_splatting_pose_loss",
+-    "masked_view_completion_loss",
+-    "reprojection_loss",
+-    "velocity_loss",
+-    "velocity_l1_loss",
+-    "visibility_supervision_loss",
+-]
++"""Reusable loss functions for multi-view pose training."""
++
++from .bone_length import bone_length_loss
++from .canonical_skeleton_loss import canonical_skeleton_loss
++from .focal_calibration_loss import focal_calibration_loss
++from .gaussian_splatting_pose_loss import gaussian_splatting_pose_loss
++from .masked_view_completion import masked_view_completion_loss
++from .multiperson_association_loss import MultiPersonAssociationLoss
++from .reprojection import reprojection_loss
++from .velocity import velocity_loss, velocity_l1_loss
++from .visibility_supervision_loss import visibility_supervision_loss
++
++__all__ = [
++    "bone_length_loss",
++    "canonical_skeleton_loss",
++    "focal_calibration_loss",
++    "gaussian_splatting_pose_loss",
++    "masked_view_completion_loss",
++    "reprojection_loss",
++    "velocity_loss",
++    "velocity_l1_loss",
++    "visibility_supervision_loss",
++]
+diff --git a/scripts/validate_h36m_corrected.py b/scripts/validate_h36m_corrected.py
+index 8a844a3..10982cc 100644
+--- a/scripts/validate_h36m_corrected.py
++++ b/scripts/validate_h36m_corrected.py
+@@ -1,91 +1,91 @@
+-"""Validate generated Human3.6M canonical .npz files.
+-
+-Computes for each file:
+-* mean/max reprojection error (px)
+-* self-consistency MPJPE between stored joints_3d and a fresh DLT triangulation
+-"""
+-
+-import argparse
+-import json
+-from pathlib import Path
+-
+-import numpy as np
+-
+-import sys
+-sys.path.insert(0, str(Path(__file__).parent.parent))
+-
+-from motionflow_mv.calibration.camera import Camera
+-from motionflow_mv.fusion.triangulation import triangulate_dlt
+-
+-
+-def validate_file(npz_path: Path) -> dict:
+-    npz = np.load(npz_path)
+-    points_2d = npz["points_2d"]
+-    joints_3d = npz["joints_3d"]
+-    camera_K = npz["camera_K"]
+-    camera_R = npz["camera_R"]
+-    camera_t = npz["camera_t"]
+-
+-    T, V, J, _ = points_2d.shape
+-    cameras = [Camera(K=camera_K[v], R=camera_R[v], t=camera_t[v]) for v in range(V)]
+-    P = np.stack([cam.projection_matrix for cam in cameras], axis=0)
+-
+-    reproj_errors = []
+-    mpjpe_errors = []
+-    for t in range(T):
+-        p2d = points_2d[t]
+-        X_stored = joints_3d[t]
+-
+-        # reprojection
+-        err = 0.0
+-        for v, cam in enumerate(cameras):
+-            X_cam = (cam.R @ X_stored.T + cam.t.reshape(3, 1)).T
+-            proj = (cam.K @ X_cam.T).T
+-            proj = proj[:, :2] / proj[:, 2:3]
+-            err += np.linalg.norm(proj - p2d[v], axis=-1).mean()
+-        reproj_errors.append(err / V)
+-
+-        # fresh DLT vs stored
+-        X_dlt = np.zeros((J, 3), dtype=np.float64)
+-        for j in range(J):
+-            X_dlt[j] = triangulate_dlt(p2d[:, j, :], P)
+-        mpjpe_errors.append(np.linalg.norm(X_dlt - X_stored, axis=-1).mean())
+-
+-    return {
+-        "frames": T,
+-        "mean_reproj_px": float(np.mean(reproj_errors)),
+-        "max_reproj_px": float(np.max(reproj_errors)),
+-        "mean_mpjpe_mm": float(np.mean(mpjpe_errors)),
+-        "max_mpjpe_mm": float(np.max(mpjpe_errors)),
+-    }
+-
+-
+-def main():
+-    parser = argparse.ArgumentParser()
+-    parser.add_argument("--dir", type=str, default="data/webbridge/h36m_corrected")
+-    parser.add_argument("--subjects", type=int, nargs="+", default=[9, 11])
+-    args = parser.parse_args()
+-
+-    base = Path(args.dir)
+-    if not base.exists():
+-        raise FileNotFoundError(base)
+-
+-    rows = []
+-    for subj in args.subjects:
+-        for npz_path in sorted(base.glob(f"s_{subj:02d}_acts_*_multiview.npz")):
+-            metrics = validate_file(npz_path)
+-            row = {"file": npz_path.name, **metrics}
+-            rows.append(row)
+-            print(json.dumps(row))
+-
+-    if rows:
+-        print("\nSummary:")
+-        print(f"  files: {len(rows)}")
+-        print(f"  mean reprojection: {np.mean([r['mean_reproj_px'] for r in rows]):.2f} px")
+-        print(f"  max reprojection:  {np.max([r['max_reproj_px'] for r in rows]):.2f} px")
+-        print(f"  mean MPJPE:        {np.mean([r['mean_mpjpe_mm'] for r in rows]):.6f} mm")
+-        print(f"  max MPJPE:         {np.max([r['max_mpjpe_mm'] for r in rows]):.6f} mm")
+-
+-
+-if __name__ == "__main__":
+-    main()
++"""Validate generated Human3.6M canonical .npz files.
++
++Computes for each file:
++* mean/max reprojection error (px)
++* self-consistency MPJPE between stored joints_3d and a fresh DLT triangulation
++"""
++
++import argparse
++import json
++from pathlib import Path
++
++import numpy as np
++
++import sys
++sys.path.insert(0, str(Path(__file__).parent.parent))
++
++from motionflow_mv.calibration.camera import Camera
++from motionflow_mv.fusion.triangulation import triangulate_dlt
++
++
++def validate_file(npz_path: Path) -> dict:
++    npz = np.load(npz_path)
++    points_2d = npz["points_2d"]
++    joints_3d = npz["joints_3d"]
++    camera_K = npz["camera_K"]
++    camera_R = npz["camera_R"]
++    camera_t = npz["camera_t"]
++
++    T, V, J, _ = points_2d.shape
++    cameras = [Camera(K=camera_K[v], R=camera_R[v], t=camera_t[v]) for v in range(V)]
++    P = np.stack([cam.projection_matrix for cam in cameras], axis=0)
++
++    reproj_errors = []
++    mpjpe_errors = []
++    for t in range(T):
++        p2d = points_2d[t]
++        X_stored = joints_3d[t]
++
++        # reprojection
++        err = 0.0
++        for v, cam in enumerate(cameras):
++            X_cam = (cam.R @ X_stored.T + cam.t.reshape(3, 1)).T
++            proj = (cam.K @ X_cam.T).T
++            proj = proj[:, :2] / proj[:, 2:3]
++            err += np.linalg.norm(proj - p2d[v], axis=-1).mean()
++        reproj_errors.append(err / V)
++
++        # fresh DLT vs stored
++        X_dlt = np.zeros((J, 3), dtype=np.float64)
++        for j in range(J):
++            X_dlt[j] = triangulate_dlt(p2d[:, j, :], P)
++        mpjpe_errors.append(np.linalg.norm(X_dlt - X_stored, axis=-1).mean())
++
++    return {
++        "frames": T,
++        "mean_reproj_px": float(np.mean(reproj_errors)),
++        "max_reproj_px": float(np.max(reproj_errors)),
++        "mean_mpjpe_mm": float(np.mean(mpjpe_errors)),
++        "max_mpjpe_mm": float(np.max(mpjpe_errors)),
++    }
++
++
++def main():
++    parser = argparse.ArgumentParser()
++    parser.add_argument("--dir", type=str, default="data/webbridge/h36m_corrected")
++    parser.add_argument("--subjects", type=int, nargs="+", default=[9, 11])
++    args = parser.parse_args()
++
++    base = Path(args.dir)
++    if not base.exists():
++        raise FileNotFoundError(base)
++
++    rows = []
++    for subj in args.subjects:
++        for npz_path in sorted(base.glob(f"s_{subj:02d}_acts_*_multiview.npz")):
++            metrics = validate_file(npz_path)
++            row = {"file": npz_path.name, **metrics}
++            rows.append(row)
++            print(json.dumps(row))
++
++    if rows:
++        print("\nSummary:")
++        print(f"  files: {len(rows)}")
++        print(f"  mean reprojection: {np.mean([r['mean_reproj_px'] for r in rows]):.2f} px")
++        print(f"  max reprojection:  {np.max([r['max_reproj_px'] for r in rows]):.2f} px")
++        print(f"  mean MPJPE:        {np.mean([r['mean_mpjpe_mm'] for r in rows]):.6f} mm")
++        print(f"  max MPJPE:         {np.max([r['max_mpjpe_mm'] for r in rows]):.6f} mm")
++
++
++if __name__ == "__main__":
++    main()

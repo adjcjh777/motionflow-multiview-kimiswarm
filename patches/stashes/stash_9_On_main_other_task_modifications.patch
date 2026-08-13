@@ -1,0 +1,513 @@
+diff --git a/.github/PULL_REQUEST_TEMPLATE.md b/.github/PULL_REQUEST_TEMPLATE.md
+index bac6290..1b65326 100644
+--- a/.github/PULL_REQUEST_TEMPLATE.md
++++ b/.github/PULL_REQUEST_TEMPLATE.md
+@@ -18,6 +18,7 @@ Briefly describe the purpose of this pull request and the experiment/model chang
+ - [ ] Results summary (metrics, runtime, GPU):
+ - [ ] Comparison against baseline:
+ - [ ] No regression in existing tests / benchmarks
++- [ ] GitHub smoke tests pass locally (`bash scripts/run_github_smoke_tests.sh`)
+ 
+ ## Experiment Context
+ 
+diff --git a/.github/workflows/smoke_tests.yml b/.github/workflows/smoke_tests.yml
+new file mode 100644
+index 0000000..323c36b
+--- /dev/null
++++ b/.github/workflows/smoke_tests.yml
+@@ -0,0 +1,38 @@
++name: Smoke Tests
++
++on:
++  push:
++    branches: [main]
++  pull_request:
++    branches: [main]
++
++jobs:
++  smoke:
++    runs-on: ubuntu-latest
++    strategy:
++      matrix:
++        python-version: ["3.10"]
++
++    steps:
++      - uses: actions/checkout@v4
++
++      - name: Set up Python ${{ matrix.python-version }}
++        uses: actions/setup-python@v5
++        with:
++          python-version: ${{ matrix.python-version }}
++          cache: "pip"
++
++      - name: Install CPU torch + dependencies
++        run: |
++          python -m pip install --upgrade pip
++          # Install CPU-only torch so the CUDA wheel in requirements.txt is skipped.
++          pip install torch --index-url https://download.pytorch.org/whl/cpu
++          # Install remaining requirements, ignoring the pinned torch wheel.
++          sed '/^torch==/d' requirements.txt > /tmp/requirements-ci.txt
++          pip install -r /tmp/requirements-ci.txt
++
++      - name: Run smoke tests
++        run: |
++          export PYTHONPATH=$PWD
++          pytest tests/test_multiview_geometry_fusion_v25.py -q
++          pytest tests/test_auto_eval_when_ready.py -q
+diff --git a/experiments/train_omniview_fusion_v5_webbridge_multi.py b/experiments/train_omniview_fusion_v5_webbridge_multi.py
+index c3ba611..9dbca29 100644
+--- a/experiments/train_omniview_fusion_v5_webbridge_multi.py
++++ b/experiments/train_omniview_fusion_v5_webbridge_multi.py
+@@ -108,6 +108,7 @@ def build_model_from_args(
+         # v17/v18 toggles
+         "use_cross_view_transformer_v17": getattr(args, "use_cross_view_transformer_v17", False),
+         "use_deformable_cross_view_attention_v18": getattr(args, "use_deformable_cross_view_attention_v18", False),
++        "deformable_attention_use_topk_st": getattr(args, "deformable_attention_use_topk_st", False),
+         # v19 toggles
+         "use_temporal_perceiver_v19": getattr(args, "use_temporal_perceiver_v19", False),
+         # v20 toggles
+diff --git a/motionflow_mv/fusion/deformable_cross_view_attention.py b/motionflow_mv/fusion/deformable_cross_view_attention.py
+index 482f423..943e79b 100644
+--- a/motionflow_mv/fusion/deformable_cross_view_attention.py
++++ b/motionflow_mv/fusion/deformable_cross_view_attention.py
+@@ -37,6 +37,11 @@ class DeformableCrossViewAttention(nn.Module):
+         Temperature for converting epipolar distances to additive logits.
+     dropout:
+         Dropout probability on the output projection.
++    use_topk_straight_through:
++        If ``True``, use a hard top-k mask in the forward pass and back-propagate
++        through the re-normalised soft weights (straight-through estimator).  If
++        ``False`` (default), keep the fully differentiable soft attention used by
++        v25/v26 production runs.
+     """
+ 
+     def __init__(
+@@ -47,6 +52,7 @@ class DeformableCrossViewAttention(nn.Module):
+         n_samples: int = 2,
+         epipolar_temperature: float = 10.0,
+         dropout: float = 0.0,
++        use_topk_straight_through: bool = False,
+     ):
+         super().__init__()
+         if d % n_heads != 0:
+@@ -57,6 +63,7 @@ class DeformableCrossViewAttention(nn.Module):
+         self.n_views = n_views
+         self.n_samples = n_samples
+         self.epipolar_temperature = epipolar_temperature
++        self.use_topk_straight_through = use_topk_straight_through
+         self.head_dim = d // n_heads
+ 
+         self.qkv = nn.Linear(d, 3 * d)
+@@ -172,8 +179,29 @@ class DeformableCrossViewAttention(nn.Module):
+         # Soft attention weights over all key views (fully differentiable).
+         weights = F.softmax(logits / F.softplus(self.tau).clamp_min(1e-3), dim=3)
+ 
++        # Optional sparse top-k sampling with a straight-through estimator.
++        # Forward uses a hard, re-normalised top-k mask; backward flows through
++        # the re-normalised soft weights inside the selected subset.
++        if self.use_topk_straight_through and V > 1:
++            k = min(self.n_samples, V)
++            if k < V:
++                topk_idx = torch.topk(weights, k, dim=3).indices  # (N, H, V_q, k, J)
++                hard_mask = torch.zeros_like(weights).scatter_(3, topk_idx, 1.0)
++                # Forward: uniform average over selected key views.
++                hard_weights = hard_mask / hard_mask.sum(dim=3, keepdim=True).clamp_min(1e-8)
++                # Backward path: re-normalised soft weights inside the top-k set.
++                masked_soft = weights * hard_mask
++                denom = masked_soft.sum(dim=3, keepdim=True).clamp_min(1e-8)
++                masked_soft = masked_soft / denom
++                # Straight-through: forward uses hard_weights, backward uses masked_soft.
++                sparse_weights = hard_weights + (masked_soft - masked_soft.detach())
++            else:
++                sparse_weights = weights
++        else:
++            sparse_weights = weights
++
+         # Aggregate values: output shape (N, V_q, J, H, Dh).
+-        out = torch.einsum("nhvkj,nvjhd->nvjhd", weights, v)
++        out = torch.einsum("nhvkj,nvjhd->nvjhd", sparse_weights, v)
+ 
+         # Restore view dimension ordering and apply output projection.
+         out = out.reshape(N, V, J, d)
+@@ -204,10 +232,13 @@ if __name__ == "__main__":
+     t = torch.zeros(N, V, 3)
+     points_2d = torch.randn(N, V, J, 2) * 100.0
+ 
+-    module = DeformableCrossViewAttention(d=d, n_heads=4, n_views=V, n_samples=2)
+-    out = module(x, K, R, t, points_2d)
+-    assert out.shape == x.shape
+-    loss = out.sum()
+-    loss.backward()
+-    assert any(p.grad is not None for p in module.parameters())
++    for use_topk in (False, True):
++        module = DeformableCrossViewAttention(
++            d=d, n_heads=4, n_views=V, n_samples=2, use_topk_straight_through=use_topk
++        )
++        out = module(x, K, R, t, points_2d)
++        assert out.shape == x.shape
++        loss = out.sum()
++        loss.backward()
++        assert any(p.grad is not None for p in module.parameters())
+     print("DeformableCrossViewAttention CPU smoke test passed")
+diff --git a/motionflow_mv/fusion/diffusion_pose_refiner_v20.py b/motionflow_mv/fusion/diffusion_pose_refiner_v20.py
+index ff788ac..31400bf 100644
+--- a/motionflow_mv/fusion/diffusion_pose_refiner_v20.py
++++ b/motionflow_mv/fusion/diffusion_pose_refiner_v20.py
+@@ -272,7 +272,8 @@ class DiffusionPoseRefinerV20(nn.Module):
+ 
+         if train_targets_flat is not None:
+             # Training with targets: predict noise and return diffusion loss + a
+-            # deterministic refinement from a randomly sampled timestep.
++            # single-step differentiable refinement so gradients can flow back to
++            # the backbone through the refined pose.
+             residual_target = train_targets_flat - pose_init_flat
+             residual_target = torch.clamp(residual_target, -self.max_residual, self.max_residual)
+             B_local = pose_init_flat.shape[0]
+@@ -284,8 +285,13 @@ class DiffusionPoseRefinerV20(nn.Module):
+             predicted_noise = self._denoise_step(noisy_residual, t_train, cond)
+             loss = F.mse_loss(predicted_noise, noise)
+ 
+-            # Also return a deterministic refinement using the mean predictor.
+-            refined = self._sample(pose_init_flat, feat_flat)
++            # Single-step residual estimate from the same noisy sample.  This keeps
++            # the output differentiable and avoids the torch.no_grad() DDPM sampler.
++            sqrt_alpha_t = self.sqrt_alphas_cumprod[t_train].view(-1, 1, 1)
++            sqrt_one_minus_alpha_t = self.sqrt_one_minus_alphas_cumprod[t_train].view(-1, 1, 1)
++            predicted_residual = (noisy_residual - sqrt_one_minus_alpha_t * predicted_noise) / sqrt_alpha_t
++            predicted_residual = torch.clamp(predicted_residual, -self.max_residual, self.max_residual)
++            refined = pose_init_flat + predicted_residual
+             if pose_init.dim() == 4:
+                 refined = refined.reshape(orig_shape)
+             return refined, loss
+diff --git a/motionflow_mv/fusion/omniview_fusion_v5.py b/motionflow_mv/fusion/omniview_fusion_v5.py
+index 0e63a84..682a470 100644
+--- a/motionflow_mv/fusion/omniview_fusion_v5.py
++++ b/motionflow_mv/fusion/omniview_fusion_v5.py
+@@ -128,6 +128,7 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
+         use_perceiver_aggregator: bool = False,
+         use_cross_view_transformer_v17: bool = False,
+         use_deformable_cross_view_attention_v18: bool = False,
++        deformable_attention_use_topk_st: bool = False,
+         use_temporal_perceiver_v19: bool = False,
+         use_diffusion_refiner_v20: bool = False,
+         use_neural_bundle_adjustment_v21: bool = False,
+@@ -292,6 +293,7 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
+             self.cross_view_transformer_v17 = None
+ 
+         self.use_deformable_cross_view_attention_v18 = use_deformable_cross_view_attention_v18
++        self.deformable_attention_use_topk_st = deformable_attention_use_topk_st
+         if self.use_deformable_cross_view_attention_v18:
+             self.deformable_cross_view_attention_v18 = DeformableCrossViewAttention(
+                 d=d,
+@@ -300,15 +302,18 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
+                 n_samples=max(2, n_views // 2),
+                 epipolar_temperature=10.0,
+                 dropout=0.1,
++                use_topk_straight_through=deformable_attention_use_topk_st,
+             )
+         else:
+             self.deformable_cross_view_attention_v18 = None
+ 
+         self.use_temporal_perceiver_v19 = use_temporal_perceiver_v19
+         if self.use_temporal_perceiver_v19:
++            # Richer per-frame tokens: triangulated 3D pose + view-pooled ST features.
++            # This gives the perceiver both geometric and appearance/context cues.
+             self.temporal_perceiver_refiner_v19 = TemporalPerceiverRefiner(
+                 j=self.j,
+-                in_dim=3,
++                in_dim=3 + self.d,
+                 d=64,
+                 n_latents=32,
+                 n_layers=2,
+@@ -512,6 +517,7 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
+         t: torch.Tensor = None,
+         view_mask: Optional[torch.Tensor] = None,
+         domain_id: Optional[torch.Tensor] = None,
++        target_3d: Optional[torch.Tensor] = None,
+     ) -> Tuple[torch.Tensor, ...]:
+         squeeze_output = False
+         if x.dim() == 4:
+@@ -521,6 +527,15 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
+         B, T, V, J, _ = x.shape
+         device = x.device
+ 
++        # Normalize target shape to (B, T, J, 3) if provided.
++        if target_3d is not None:
++            if target_3d.dim() == 3:
++                target_3d = target_3d.unsqueeze(1)
++            elif target_3d.dim() == 4:
++                pass
++            else:
++                raise ValueError("target_3d must have shape (B, J, 3) or (B, T, J, 3)")
++
+         # Defensive: input data may contain NaN/Inf for occluded/missing joints.
+         # Replace them with finite placeholders while keeping the confidence channel
+         # (used downstream for masking) intact.
+@@ -866,16 +881,14 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
+ 
+         # Residual refinement head (deterministic MLP or diffusion-based v20).
+         if self.use_diffusion_refiner_v20 and self.diffusion_refiner_v20 is not None:
+-            if self.training:
+-                t_diff = torch.randint(
+-                    0,
+-                    self.num_diffusion_steps,
+-                    (pred_3d_gn.shape[0],),
+-                    device=device,
+-                )
+-                pred_3d = self.diffusion_refiner_v20(
+-                    pred_3d_gn, feat=feat_pooled, t=t_diff
++            if self.training and target_3d is not None:
++                # During training, use the true target to compute the diffusion
++                # loss and a differentiable single-step refinement.
++                target_3d_flat = target_3d.view(B * T, J, 3)
++                pred_3d, diff_loss = self.diffusion_refiner_v20(
++                    pred_3d_gn, feat=feat_pooled, train_targets=target_3d_flat
+                 )
++                epi_loss = epi_loss + diff_loss
+             else:
+                 pred_3d = self.diffusion_refiner_v20(pred_3d_gn, feat=feat_pooled)
+         else:
+@@ -915,8 +928,14 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
+ 
+         # Optional v19 temporal Perceiver refinement on the final per-frame 3D poses.
+         if self.use_temporal_perceiver_v19 and self.temporal_perceiver_refiner_v19 is not None:
+-            residual_v19 = self.temporal_perceiver_refiner_v19(pred_3d)
+-            pred_3d = pred_3d + residual_v19
++            # Rich per-frame tokens: triangulated 3D pose + view-pooled ST features.
++            # The pooled features provide visibility/appearance context beyond the
++            # bare 3-D coordinates, helping the perceiver correct occluded frames.
++            feat_pooled = feat.view(B, T, V, J, self.d).mean(dim=2)  # (B, T, J, d)
++            perceiver_input = torch.cat([pred_3d, feat_pooled], dim=-1)  # (B, T, J, 3+d)
++            pred_3d = self.temporal_perceiver_refiner_v19(
++                perceiver_input, baseline_3d=pred_3d
++            )
+ 
+         # Optional v28 physical-space alignment.
+         if self.use_physical_space_alignment_v28 and self.physical_space_alignment_v28 is not None:
+diff --git a/motionflow_mv/fusion/physical_space_alignment_v28.py b/motionflow_mv/fusion/physical_space_alignment_v28.py
+index ed3d0ce..513f740 100644
+--- a/motionflow_mv/fusion/physical_space_alignment_v28.py
++++ b/motionflow_mv/fusion/physical_space_alignment_v28.py
+@@ -14,7 +14,17 @@ import torch.nn as nn
+ 
+ 
+ class PhysicalSpaceAlignmentV28(nn.Module):
+-    """Learned physical-space alignment refiner.
++    """Conservative learned physical-space alignment refiner.
++
++    The refiner is intentionally constrained so it cannot catastrophically
++    override the upstream 3D pose estimate:
++
++    * The MLP output is bounded by ``tanh`` to ``[-1, 1]`` and then scaled by
++      ``max_residual`` (meters), so each joint can move at most a few cm.
++    * The global residual scale is bounded with a sigmoid and initialised near
++      zero, making the module start as a no-op and grow only when helpful.
++    * LayerNorm and dropout are added inside the MLP to improve stability and
++      reduce over-fitting on small local datasets.
+ 
+     Parameters
+     ----------
+@@ -22,39 +32,66 @@ class PhysicalSpaceAlignmentV28(nn.Module):
+         Number of joints.
+     hidden:
+         Hidden dimension of the residual MLP.
++    max_residual:
++        Maximum per-joint correction in meters.
++    dropout:
++        Dropout probability in the residual MLP.
+     """
+ 
+-    def __init__(self, j: int, hidden: int = 64):
++    def __init__(
++        self,
++        j: int,
++        hidden: int = 64,
++        max_residual: float = 0.05,
++        dropout: float = 0.1,
++    ):
+         super().__init__()
+         self.j = j
++        self.max_residual = max_residual
+         self.gravity_dir = nn.Parameter(torch.tensor([0.0, 1.0, 0.0]), requires_grad=False)
+ 
+         self.refiner = nn.Sequential(
+             nn.Linear(6, hidden),
++            nn.LayerNorm(hidden),
+             nn.ReLU(),
++            nn.Dropout(dropout),
+             nn.Linear(hidden, hidden),
++            nn.LayerNorm(hidden),
+             nn.ReLU(),
++            nn.Dropout(dropout),
+             nn.Linear(hidden, 3),
++            nn.Tanh(),
+         )
+-        # Identity at init: residual is zero.
+-        for p in self.refiner[-1].parameters():
++        # Identity at init: residual is zero (Tanh(0) = 0).
++        for p in self.refiner[-2].parameters():
+             nn.init.zeros_(p)
+ 
+-        self.residual_scale = nn.Parameter(torch.tensor(0.0))
++        # Bounded scale in (0, 1).  Initialise to a tiny value so v28 starts as no-op.
++        self.residual_logit = nn.Parameter(torch.tensor(-6.0))
++
++    @property
++    def residual_scale(self) -> torch.Tensor:
++        """Bounded global residual scale in (0, 1)."""
++        return torch.sigmoid(self.residual_logit)
+ 
+     def forward(
+         self,
+         X: torch.Tensor,
+         gravity_dir: Optional[torch.Tensor] = None,
+-    ) -> torch.Tensor:
++        return_reg_loss: bool = False,
++    ) -> torch.Tensor | tuple[torch.Tensor, torch.Tensor]:
+         """Refine pose with physical-space constraints.
+ 
+         Args:
+             X: (B, T, J, 3) predicted 3D joints.
+             gravity_dir: optional (3,) gravity direction. Defaults to (0, 1, 0).
++            return_reg_loss: If True, also return an L2 regulariser on the
++                applied residual.
+ 
+         Returns:
+             X_aligned: (B, T, J, 3) refined 3D joints.
++            If ``return_reg_loss`` is True, returns a tuple
++            ``(X_aligned, reg_loss)`` where ``reg_loss`` is a scalar.
+         """
+         if gravity_dir is None:
+             gravity_dir = self.gravity_dir
+@@ -65,8 +102,17 @@ class PhysicalSpaceAlignmentV28(nn.Module):
+         g = g.view(1, 1, 1, 3).expand(B, T, J, -1)
+ 
+         feat = torch.cat([X, g], dim=-1)
+-        residual = self.refiner(feat)
+-        return X + self.residual_scale * residual
++        raw_residual = self.refiner(feat)  # (B, T, J, 3), in [-1, 1]
++        residual = self.max_residual * raw_residual
++        scale = self.residual_scale
++        X_aligned = X + scale * residual
++
++        if not return_reg_loss:
++            return X_aligned
++
++        applied = scale * residual
++        reg_loss = applied.pow(2).mean()
++        return X_aligned, reg_loss
+ 
+ 
+ def floor_loss(
+@@ -74,25 +120,45 @@ def floor_loss(
+     floor_height: torch.Tensor,
+     foot_joint_indices: list[int],
+     gravity_dir: Optional[torch.Tensor] = None,
++    floor_quantile: float = 0.05,
+ ) -> torch.Tensor:
+     """Soft hinge loss penalising foot joints below the floor plane.
+ 
++    The floor height is estimated robustly per frame as the lower quantile of
++    the selected foot joints along the gravity direction.  This is more stable
++    than using a single global minimum over the whole batch.
++
+     Args:
+         X: (B, T, J, 3) 3D joints.
+         floor_height: scalar or (B, T) tensor of floor heights along gravity.
++            Kept for backward compatibility; the actual floor is estimated
++            from the foot joints.
+         foot_joint_indices: list of foot joint indices.
+         gravity_dir: optional (3,) gravity direction. Defaults to (0, 1, 0).
++        floor_quantile: quantile used to estimate the floor height from foot
++            joints (default 0.05).
+ 
+     Returns:
+         Scalar loss.
+     """
++    del floor_height  # unused; kept for backward-compatible signatures
+     if gravity_dir is None:
+         gravity_dir = torch.tensor([0.0, 1.0, 0.0], device=X.device, dtype=X.dtype)
+     g = gravity_dir / (gravity_dir.norm() + 1e-8)
+     # Project joints onto gravity axis.
+     h = torch.einsum("btjc,c->btj", X, g)
+     feet = h[:, :, foot_joint_indices]
+-    violation = (floor_height - feet).clamp(min=0.0)
++
++    # Robust per-frame floor height: lower quantile over feet.
++    n_feet = feet.shape[-1]
++    if n_feet > 1:
++        k = max(1, int(floor_quantile * n_feet))
++        floor_h, _ = torch.topk(feet, k, dim=-1, largest=False)
++        floor_h = floor_h[..., -1]  # (B, T)
++    else:
++        floor_h = feet[..., 0]
++
++    violation = (floor_h.unsqueeze(-1) - feet).clamp(min=0.0)
+     return violation.mean()
+ 
+ 
+diff --git a/motionflow_mv/fusion/temporal_geometry_fusion_v26.py b/motionflow_mv/fusion/temporal_geometry_fusion_v26.py
+index 239e767..8c09a39 100644
+--- a/motionflow_mv/fusion/temporal_geometry_fusion_v26.py
++++ b/motionflow_mv/fusion/temporal_geometry_fusion_v26.py
+@@ -61,6 +61,7 @@ class TemporalGeometryAttention(nn.Module):
+         n_views: int,
+         temporal_window: int = 3,
+         dropout: float = 0.1,
++        residual_gate_init: float = 0.0,
+     ):
+         super().__init__()
+         if d % n_heads != 0:
+diff --git a/scripts/run_github_smoke_tests.sh b/scripts/run_github_smoke_tests.sh
+new file mode 100644
+index 0000000..951d7be
+--- /dev/null
++++ b/scripts/run_github_smoke_tests.sh
+@@ -0,0 +1,24 @@
++#!/usr/bin/env bash
++# Local smoke-test runner for the GitHub Actions smoke-test workflow.
++#
++# Mirrors the commands in .github/workflows/smoke_tests.yml so that the same
++# test subset can be validated quickly on the local RTX 4090 (or any WSL/CPU
++# environment) before pushing.
++#
++# Usage:
++#     bash scripts/run_github_smoke_tests.sh
++
++set -euo pipefail
++
++ROOT="$(cd "$(dirname "$0")/.." && pwd)"
++export PYTHONPATH="$ROOT"
++
++echo "==> Running GitHub smoke tests from $ROOT"
++
++echo "==> pytest tests/test_multiview_geometry_fusion_v25.py -q"
++pytest "$ROOT/tests/test_multiview_geometry_fusion_v25.py" -q
++
++echo "==> pytest tests/test_auto_eval_when_ready.py -q"
++pytest "$ROOT/tests/test_auto_eval_when_ready.py" -q
++
++echo "==> All GitHub smoke tests passed."
+diff --git a/scripts/run_v25_small_local_4090.sh b/scripts/run_v25_small_local_4090.sh
+index f113a14..cf3ae84 100644
+--- a/scripts/run_v25_small_local_4090.sh
++++ b/scripts/run_v25_small_local_4090.sh
+@@ -6,6 +6,9 @@ CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-0}
+ PYTHON=${PYTHON:-python}
+ OUTPUT=${OUTPUT:-outputs/omniview_fusion_v25_geometry_fusion_small_local_4090.pth}
+ LOG=${LOG:-outputs/omniview_fusion_v25_geometry_fusion_small_local_4090.log}
++EPOCHS=${EPOCHS:-20}
++TRAIN_SAMPLES=${TRAIN_SAMPLES:-500}
++BATCH_SIZE=${BATCH_SIZE:-16}
+ 
+ $PYTHON -u experiments/train_omniview_fusion_v5_webbridge_multi.py \
+     --use_mixed_loader \
+@@ -23,7 +26,7 @@ $PYTHON -u experiments/train_omniview_fusion_v5_webbridge_multi.py \
+     --num_workers 0 \
+     --d 128 --residual_hidden 256 --n_st_layers 3 \
+     --graph_num_layers 1 --n_joint_layers 1 --n_heads 4 \
+-    --epochs 20 --batch_size 16 --train_samples 500 --val_stride 10 \
++    --epochs $EPOCHS --batch_size $BATCH_SIZE --train_samples $TRAIN_SAMPLES --val_stride 10 \
+     --lr 1e-3 --lr_cosine --lr_warmup_epochs 3 --lr_min 1e-6 \
+     --max_grad_norm 1.0 --ema_decay 0.999 \
+     --use_multiscale_fusion true --use_camera_conditioning true --use_epipolar_bias true \

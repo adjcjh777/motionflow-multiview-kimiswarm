@@ -1,0 +1,189 @@
+diff --git a/experiments/train_ray_attention_temporal_crossview_residual_principal_point_mpiinf3dhp.py b/experiments/train_ray_attention_temporal_crossview_residual_principal_point_mpiinf3dhp.py
+index c3fb6aa..04abce5 100644
+--- a/experiments/train_ray_attention_temporal_crossview_residual_principal_point_mpiinf3dhp.py
++++ b/experiments/train_ray_attention_temporal_crossview_residual_principal_point_mpiinf3dhp.py
+@@ -36,8 +36,12 @@ from motionflow_mv.fusion.ray_attention_temporal_crossview_residual_principal_po
+     RayAttentionFusionModelTemporalCrossviewResidualPrincipalPoint,
+ )
+ from motionflow_mv.losses import reprojection_loss, velocity_loss
++from motionflow_mv.losses.physics_informed_dynamics import PhysicsInformedSkeletonDynamicsLoss
+ from motionflow_mv.losses.reprojection_consistency import robust_reprojection_loss
+ from motionflow_mv.losses.view_selection_loss import ViewSelectionLoss
++from motionflow_mv.fusion.ray_attention_temporal_crossview_residual_principal_point_physics_model import (
++    RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointPhysics,
++)
+ from motionflow_mv.fusion.ray_attention_temporal_crossview_residual_principal_point_dynamic_gate_model import (
+     RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointDynamicGate,
+ )
+@@ -50,6 +54,9 @@ from motionflow_mv.fusion.ray_attention_temporal_crossview_residual_principal_po
+ from motionflow_mv.fusion.ray_attention_temporal_crossview_residual_principal_point_splat_model import (
+     RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointSplat,
+ )
++from motionflow_mv.fusion.ray_attention_temporal_crossview_residual_principal_point_splat_v2_model import (
++    RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointSplatV2,
++)
+ from motionflow_mv.fusion.ray_attention_temporal_crossview_residual_principal_point_kinematic_chain_model import (
+     RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointKinematicChain,
+ )
+@@ -210,7 +217,7 @@ def main():
+     parser.add_argument("--val", type=str, required=True, help="Validation .npz file")
+     parser.add_argument("--clip_len", type=int, default=13)
+     parser.add_argument("--d", type=int, default=64)
+-    parser.add_argument("--model_type", type=str, default="temporal", choices=["temporal", "factorized", "dynamic_gate", "graph_skeleton_residual", "epipolar", "epipolar_bias_v2_pp", "splat", "kinematic_chain", "crossview_contrast", "bayesian_tri", "camera_conditioned_pp", "hierarchical_view_temporal_joint_pp"], help="Backbone type: temporal (time+view), factorized (alternating view/temporal), dynamic_gate (anchor + per-view gate), graph_skeleton_residual (skeleton-graph residual refiner), epipolar (epipolar-biased weight head), epipolar_bias_v2_pp (epipolar-biased ST transformer v2), splat (Gaussian-splatting pose regularizer), kinematic_chain (kinematic-chain graph refiner), crossview_contrast (cross-view contrastive pose representation), bayesian_tri (uncertainty-aware triangulation with adaptive Gauss-Newton), camera_conditioned_pp (camera-parameter-conditioned weight + residual heads), or hierarchical_view_temporal_joint_pp (hierarchical view -> temporal -> skeleton-joint attention)")
++    parser.add_argument("--model_type", type=str, default="temporal", choices=["temporal", "factorized", "dynamic_gate", "graph_skeleton_residual", "epipolar", "epipolar_bias_v2_pp", "splat", "kinematic_chain", "crossview_contrast", "bayesian_tri", "camera_conditioned_pp", "hierarchical_view_temporal_joint_pp", "physics"], help="Backbone type: temporal (time+view), factorized (alternating view/temporal), dynamic_gate (anchor + per-view gate), graph_skeleton_residual (skeleton-graph residual refiner), epipolar (epipolar-biased weight head), epipolar_bias_v2_pp (epipolar-biased ST transformer v2), splat (Gaussian-splatting pose regularizer), kinematic_chain (kinematic-chain graph refiner), crossview_contrast (cross-view contrastive pose representation), bayesian_tri (uncertainty-aware triangulation with adaptive Gauss-Newton), camera_conditioned_pp (camera-parameter-conditioned weight + residual heads), hierarchical_view_temporal_joint_pp (hierarchical view -> temporal -> skeleton-joint attention), or physics (anchor + temporal skeleton dynamics refiner + physics-informed prior)")
+     parser.add_argument("--n_st_layers", type=int, default=2)
+     parser.add_argument("--n_view_layers", type=int, default=2)
+     parser.add_argument("--n_temporal_layers", type=int, default=2)
+@@ -253,6 +260,11 @@ def main():
+     parser.add_argument("--pp_pretrain_epochs", type=int, default=0, help="Number of initial epochs to train only the principal_point_correction head")
+     parser.add_argument("--splat_loss_weight", type=float, default=0.0, help="Weight for Gaussian-splatting pose regularizer loss (splat model only)")
+     parser.add_argument("--epipolar_loss_weight", type=float, default=0.0, help="Weight for epipolar consistency auxiliary loss (bayesian_tri model only)")
++    parser.add_argument("--physics_loss_weight", type=float, default=0.0, help="Weight for the physics-informed skeleton dynamics prior (physics model only)")
++    parser.add_argument("--physics_loss_bone_weight", type=float, default=1.0, help="Bone-length temporal variance term weight inside the physics prior")
++    parser.add_argument("--physics_loss_jerk_weight", type=float, default=0.1, help="Jerk smoothness term weight inside the physics prior")
++    parser.add_argument("--physics_loss_contact_weight", type=float, default=0.5, help="Ground-contact term weight inside the physics prior (disabled if 0)")
++    parser.add_argument("--physics_loss_com_weight", type=float, default=0.2, help="Center-of-mass stability term weight inside the physics prior")
+     args = parser.parse_args()
+ 
+     set_seed(args.seed)
+@@ -392,6 +404,16 @@ def main():
+             n_joint_graph_layers=args.n_joint_graph_layers,
+             use_skeleton_graph=True,
+         ).to(device)
++    elif args.model_type == "physics":
++        model = RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointPhysics(
++            j=j, d=args.d, n_views=n_views, n_st_layers=args.n_st_layers,
++            residual_hidden=args.residual_hidden,
++            principal_point_hidden=args.principal_point_hidden,
++            principal_point_max_offset=args.principal_point_max_offset,
++            focal_max_scale=args.focal_max_scale,
++            return_pp_delta=args.pp_loss_weight > 0.0 or args.focal_max_scale > 0.0,
++            return_raw=args.return_raw_3d or args.reproj_raw_weight > 0.0,
++        ).to(device)
+     else:
+         model = RayAttentionFusionModelTemporalCrossviewResidualPrincipalPoint(
+             j=j, d=args.d, n_views=n_views, n_st_layers=args.n_st_layers,
+diff --git a/motionflow_mv/data/mixed_dataset.py b/motionflow_mv/data/mixed_dataset.py
+index 80097a8..3d43739 100644
+--- a/motionflow_mv/data/mixed_dataset.py
++++ b/motionflow_mv/data/mixed_dataset.py
+@@ -20,7 +20,7 @@ from typing import Dict, List, Optional, Sequence, Tuple
+ 
+ import numpy as np
+ import torch
+-from torch.utils.data import ConcatDataset, DataLoader, Dataset
++from torch.utils.data import ConcatDataset, DataLoader, Dataset, Sampler
+ 
+ 
+ # Canonical dimensions inferred from MPI-INF-3DHP (the largest dataset).
+@@ -51,6 +51,62 @@ def _pad_cameras(camera_K: np.ndarray, camera_R: np.ndarray, camera_t: np.ndarra
+     return K_pad, R_pad, t_pad
+ 
+ 
++class DatasetBalancedSampler(Sampler):
++    """Sample equally from each sub-dataset inside a :class:`ConcatDataset`.
++
++    Parameters
++    ----------
++    dataset_lengths:
++        Number of samples in each sub-dataset.
++    samples_per_dataset:
++        How many samples to draw from each sub-dataset per epoch.  If ``None``,
++        defaults to the length of the largest sub-dataset (with replacement
++        for smaller datasets).
++    replacement:
++        If ``True`` (default), smaller datasets are oversampled so that every
++        epoch contains the same number of samples from each dataset.  If
++        ``False``, the epoch size is capped at the smallest sub-dataset and
++        all samples are drawn without replacement.
++    seed:
++        Optional seed for reproducibility.
++    """
++
++    def __init__(
++        self,
++        dataset_lengths: Sequence[int],
++        samples_per_dataset: Optional[int] = None,
++        replacement: bool = True,
++        seed: Optional[int] = None,
++    ):
++        self.dataset_lengths = list(dataset_lengths)
++        if any(n <= 0 for n in self.dataset_lengths):
++            raise ValueError("All dataset lengths must be positive.")
++
++        max_len = max(self.dataset_lengths)
++        self.samples_per_dataset = samples_per_dataset if samples_per_dataset is not None else max_len
++        self.replacement = replacement
++
++        if not replacement:
++            self.samples_per_dataset = min(self.samples_per_dataset, min(self.dataset_lengths))
++
++        self._rng = np.random.default_rng(seed)
++
++    def __len__(self) -> int:
++        return self.samples_per_dataset * len(self.dataset_lengths)
++
++    def __iter__(self):
++        indices = []
++        offset = 0
++        for length in self.dataset_lengths:
++            if self.replacement:
++                sample_idx = self._rng.integers(0, length, size=self.samples_per_dataset)
++            else:
++                sample_idx = self._rng.choice(length, size=self.samples_per_dataset, replace=False)
++            indices.extend(offset + sample_idx)
++            offset += length
++        return iter(indices)
++
++
+ class MixedDataset(Dataset):
+     """Yield padded clips from a canonical ``.npz`` and tag them by dataset id.
+ 
+diff --git a/motionflow_mv/losses/gaussian_splatting_pose_loss.py b/motionflow_mv/losses/gaussian_splatting_pose_loss.py
+index 057871c..3e456c0 100644
+--- a/motionflow_mv/losses/gaussian_splatting_pose_loss.py
++++ b/motionflow_mv/losses/gaussian_splatting_pose_loss.py
+@@ -43,6 +43,7 @@ def gaussian_splatting_pose_loss(
+     confidences: torch.Tensor = None,
+     eps: float = 1e-4,
+     trace_weight: float = 1e-4,
++    log_std_view: torch.Tensor = None,
+ ) -> torch.Tensor:
+     """Negative log-likelihood of 2-D observations under projected 3-D Gaussians.
+ 
+@@ -66,6 +67,10 @@ def gaussian_splatting_pose_loss(
+         Small constant for numerical stability.
+     trace_weight:
+         Weight for the covariance-trace regularizer.
++    log_std_view: (B, T, V, J, 3), optional
++        Residual log standard deviations per view/joint.  If provided, the
++        per-view std is ``exp(log_std + log_std_view)``, allowing the model to
++        adapt the projected covariance per camera.
+ 
+     Returns
+     -------
+@@ -113,12 +118,20 @@ def gaussian_splatting_pose_loss(
+     # Chain rule with rotation.
+     J = J_uv @ R_exp  # (B, T, V, J, 2, 3)
+ 
+-    # 3-D covariance from predicted log std.
+-    std = log_std.exp().clamp(min=0.01, max=10.0)  # (B, T, J, 3)
+-    Sigma_3d = torch.diag_embed(std ** 2)  # (B, T, J, 3, 3)
++    # 3-D covariance from predicted log std (and optional per-view residual).
++    if log_std_view is not None:
++        log_std_total = log_std.unsqueeze(2) + log_std_view  # (B, T, V, J, 3)
++        std = log_std_total.exp().clamp(min=0.01, max=10.0)  # (B, T, V, J, 3)
++        Sigma_3d = torch.diag_embed(std ** 2)  # (B, T, V, J, 3, 3)
++    else:
++        std = log_std.exp().clamp(min=0.01, max=10.0)  # (B, T, J, 3)
++        Sigma_3d = torch.diag_embed(std ** 2)  # (B, T, J, 3, 3)
+ 
+     # Project to 2-D.
+-    Sigma_2d = J @ Sigma_3d.unsqueeze(2) @ J.transpose(-2, -1)
++    if log_std_view is not None:
++        Sigma_2d = J @ Sigma_3d @ J.transpose(-2, -1)
++    else:
++        Sigma_2d = J @ Sigma_3d.unsqueeze(2) @ J.transpose(-2, -1)
+     Sigma_2d = Sigma_2d + eps * torch.eye(2, device=Sigma_2d.device, dtype=Sigma_2d.dtype).view(
+         1, 1, 1, 1, 2, 2
+     )

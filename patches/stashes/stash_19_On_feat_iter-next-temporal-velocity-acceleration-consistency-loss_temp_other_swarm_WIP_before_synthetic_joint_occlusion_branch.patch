@@ -1,0 +1,114 @@
+diff --git a/experiments/train_ray_attention_temporal_crossview_residual_principal_point_mpiinf3dhp.py b/experiments/train_ray_attention_temporal_crossview_residual_principal_point_mpiinf3dhp.py
+index 948a5df..cc79137 100644
+--- a/experiments/train_ray_attention_temporal_crossview_residual_principal_point_mpiinf3dhp.py
++++ b/experiments/train_ray_attention_temporal_crossview_residual_principal_point_mpiinf3dhp.py
+@@ -83,6 +83,11 @@ from motionflow_mv.fusion.ray_attention_hierarchical_view_temporal_joint_residua
+     RayAttentionFusionModelHierarchicalViewTemporalJointResidualPrincipalPoint,
+ )
+ from motionflow_mv.losses.gaussian_splatting_pose_loss import gaussian_splatting_pose_loss
++from experiments.prototypes.ema import (
++    EMA,
++    load_checkpoint_with_ema,
++    save_checkpoint_with_ema,
++)
+ 
+ 
+ def set_seed(seed: int):
+@@ -267,6 +272,10 @@ def main():
+     parser.add_argument("--pp_pretrain_epochs", type=int, default=0, help="Number of initial epochs to train only the principal_point_correction head")
+     parser.add_argument("--splat_loss_weight", type=float, default=0.0, help="Weight for Gaussian-splatting pose regularizer loss (splat model only)")
+     parser.add_argument("--epipolar_loss_weight", type=float, default=0.0, help="Weight for epipolar consistency auxiliary loss (bayesian_tri model only)")
++    parser.add_argument("--ema_decay", type=float, default=0.0, help="EMA decay; 0 disables EMA (disabled by default)")
++    parser.add_argument("--ema_start_epoch", type=int, default=1, help="1-indexed epoch at which to start EMA updates")
++    parser.add_argument("--ema_eval_shadow", action="store_true", help="Evaluate using EMA shadow weights (disabled by default)")
++    parser.add_argument("--resume", type=str, default=None, help="Resume from an EMA checkpoint produced by save_checkpoint_with_ema")
+     args = parser.parse_args()
+ 
+     set_seed(args.seed)
+@@ -434,6 +443,8 @@ def main():
+         )
+     if args.warm_start is not None:
+         state = torch.load(args.warm_start, map_location="cpu", weights_only=True)
++        if isinstance(state, dict) and "model" in state:
++            state = state["model"]
+         missing, unexpected = model.load_state_dict(state, strict=False)
+         if missing:
+             print(f"Warning: missing keys when warm-starting: {missing[:5]}")
+@@ -442,6 +453,11 @@ def main():
+         print(f"Warm-started from {args.warm_start}")
+     print(f"Model params: {sum(p.numel() for p in model.parameters())}")
+ 
++    ema = None
++    if args.ema_decay > 0.0:
++        ema = EMA(model, decay=args.ema_decay, start_epoch=args.ema_start_epoch)
++        print(f"EMA enabled (decay={args.ema_decay}, start_epoch={args.ema_start_epoch})")
++
+     optimizer = optim.Adam(model.parameters(), lr=args.lr)
+     criterion = nn.MSELoss()
+ 
+@@ -449,10 +465,21 @@ def main():
+     output_path = Path(args.output)
+     output_path.parent.mkdir(exist_ok=True, parents=True)
+ 
++    start_epoch = 1
++    if args.resume is not None:
++        resumed_epoch, resumed_best = load_checkpoint_with_ema(
++            args.resume, model, ema=ema, optimizer=optimizer, strict=False,
++        )
++        if resumed_epoch is not None:
++            start_epoch = resumed_epoch + 1
++        if resumed_best is not None:
++            best_val = resumed_best
++        print(f"Resumed from {args.resume} at epoch {resumed_epoch}, best_val={resumed_best}")
++
+     # Optional pre-training phase for the principal-point correction head only.
+     # This prevents the residual MLP from compensating for a spurious constant PP offset
+     # and forces the PP head to actually learn the inverse perturbation.
+-    if args.pp_pretrain_epochs > 0:
++    if args.pp_pretrain_epochs > 0 and args.resume is None:
+         print(f"Pre-training PP correction head for {args.pp_pretrain_epochs} epochs...")
+         for p in model.parameters():
+             p.requires_grad = False
+@@ -493,7 +520,7 @@ def main():
+         for p in model.parameters():
+             p.requires_grad = True
+ 
+-    for epoch in range(1, args.epochs + 1):
++    for epoch in range(start_epoch, args.epochs + 1):
+         model.train()
+         train_loss = 0.0
+         if args.cam_aug_schedule == "extrinsic_curriculum":
+@@ -587,13 +614,32 @@ def main():
+                 loss = loss + args.epipolar_loss_weight * epi_loss
+             loss.backward()
+             optimizer.step()
++            if ema is not None and epoch >= ema.start_epoch:
++                ema.update(model)
+             train_loss += loss.item() * xb.size(0)
+         train_loss /= len(train_loader.dataset)
+ 
+-        val_err = evaluate(model, val_loader, device)
++        if ema is not None and args.ema_eval_shadow and epoch >= ema.start_epoch:
++            ema.apply_shadow(model)
++            try:
++                val_err = evaluate(model, val_loader, device)
++            finally:
++                ema.restore(model)
++        else:
++            val_err = evaluate(model, val_loader, device)
+         if val_err < best_val:
+             best_val = val_err
+             torch.save(model.state_dict(), output_path)
++            if ema is not None:
++                ema.apply_shadow(model)
++                try:
++                    ema_output_path = output_path.with_name(output_path.stem + "_ema" + output_path.suffix)
++                    save_checkpoint_with_ema(
++                        ema_output_path, model, ema=ema, optimizer=optimizer,
++                        epoch=epoch, best_val=best_val,
++                    )
++                finally:
++                    ema.restore(model)
+             print(f"Epoch {epoch}: train_loss={train_loss:.6f}, val_MPJPE={val_err*1000:.2f}mm (saved)")
+         else:
+             print(f"Epoch {epoch}: train_loss={train_loss:.6f}, val_MPJPE={val_err*1000:.2f}mm")

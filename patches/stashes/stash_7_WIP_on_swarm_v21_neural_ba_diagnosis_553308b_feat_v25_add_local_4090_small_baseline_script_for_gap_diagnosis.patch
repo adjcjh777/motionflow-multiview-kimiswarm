@@ -1,0 +1,591 @@
+diff --git a/.github/PULL_REQUEST_TEMPLATE.md b/.github/PULL_REQUEST_TEMPLATE.md
+index bac6290..1b65326 100644
+--- a/.github/PULL_REQUEST_TEMPLATE.md
++++ b/.github/PULL_REQUEST_TEMPLATE.md
+@@ -18,6 +18,7 @@ Briefly describe the purpose of this pull request and the experiment/model chang
+ - [ ] Results summary (metrics, runtime, GPU):
+ - [ ] Comparison against baseline:
+ - [ ] No regression in existing tests / benchmarks
++- [ ] GitHub smoke tests pass locally (`bash scripts/run_github_smoke_tests.sh`)
+ 
+ ## Experiment Context
+ 
+diff --git a/configs/architecture_paper_story_v25_smoke.yaml b/configs/architecture_paper_story_v25_smoke.yaml
+new file mode 100644
+index 0000000..32c32d0
+--- /dev/null
++++ b/configs/architecture_paper_story_v25_smoke.yaml
+@@ -0,0 +1,54 @@
++# Paper-story ablation smoke test for the v25 architecture.
++#
++# This config deliberately uses a tiny model (d=32, n_st_layers=1) so that
++# the smoke test completes in seconds on the local RTX 4090 or CPU.  The
++# ablations toggle only the headline v25 geometry-fusion modules; all other
++# flags are held constant.
++#
++# Run with:
++#   python experiments/architecture_paper_story_v25_ablation.py
++
++base:
++  j: 17
++  d: 32
++  n_views: 4
++  n_heads: 2
++  n_joint_layers: 0
++  n_st_layers: 1
++  max_temporal_len: 64
++  residual_hidden: 64
++  graph_num_layers: 1
++
++  # Camera / multi-scale / attention stack (kept constant across variants).
++  use_multiscale_fusion: true
++  use_camera_conditioning: true
++  use_epipolar_bias: true
++  use_context_visibility: true
++  use_skeleton_residual: true
++  use_rotation_correction: true
++  use_entropy_regularization: true
++  use_camera_view_embedding: true
++  use_set_view_aggregator: true
++  use_deformable_cross_view_attention_v18: true
++
++  # v25 geometry fusion (enabled in the full variant).
++  use_multiview_geometry_fusion_v25: true
++  v25_use_geometry_attention: true
++  v25_use_learned_depth_triangulation: true
++  v25_use_geometry_bundle_adjustment: true
++  v25_geom_loss_weight: 0.1
++
++variants:
++  - name: v25_full
++
++  - name: v25_no_geom_attn
++    v25_use_geometry_attention: false
++
++  - name: v25_no_depth
++    v25_use_learned_depth_triangulation: false
++
++  - name: v25_no_geoba
++    v25_use_geometry_bundle_adjustment: false
++
++  - name: v25_no_geometry_fusion
++    use_multiview_geometry_fusion_v25: false
+diff --git a/docs/paper_outline_v25_icra_cvpr_2027.md b/docs/paper_outline_v25_icra_cvpr_2027.md
+index 71336f5..dd0ad70 100644
+--- a/docs/paper_outline_v25_icra_cvpr_2027.md
++++ b/docs/paper_outline_v25_icra_cvpr_2027.md
+@@ -145,6 +145,8 @@ L = L_3D_MSE + λ_reproj·L_reproj + λ_epi·L_epi + λ_cheir·L_cheir + λ_dept
+ | v25 w/o GeoBA | Value of analytic camera refinement | v25 no-geoba |
+ | v25 full | Geometry-first fusion | v25 |
+ 
++**Reproducible smoke ablation harness:** `experiments/architecture_paper_story_v25_ablation.py` (driven by `configs/architecture_paper_story_v25_smoke.yaml`) instantiates each variant on synthetic calibrated data, reports parameter count, forward latency, and a prediction-delta metric, and writes the table/charts to `outputs/architecture_paper_story/`.  Run it on the local RTX 4090 before training to verify the v25 toggles are wired correctly.
++
+ ### 6.4 Robustness and calibration tests
+ - 2D keypoint Gaussian noise.
+ - Random joint occlusion.
+diff --git a/experiments/architecture_paper_story_v25_ablation.py b/experiments/architecture_paper_story_v25_ablation.py
+new file mode 100644
+index 0000000..d4b315c
+--- /dev/null
++++ b/experiments/architecture_paper_story_v25_ablation.py
+@@ -0,0 +1,255 @@
++"""Paper-story ablation smoke test for the v25 architecture.
++
++Instantiates ``OmniMultiViewFusionV5`` with the v25 geometry-fusion stack and
++ablates the three headline v25 modules:
++
++* geometry-aware cross-view attention
++* learned depth-proposal triangulation
++* geometry bundle adjustment (GeoBA)
++
++Each variant is run on synthetic calibrated data and a small reproducible
++ablation table + bar chart are written to ``outputs/architecture_paper_story/``.
++
++Intended as a smoke test on the local RTX 4090 (or CPU fallback) that can be
++re-run whenever the v25 architecture is modified.
++
++Usage
++-----
++    python experiments/architecture_paper_story_v25_ablation.py \
++        --config configs/architecture_paper_story_v25_smoke.yaml \
++        --output_dir outputs/architecture_paper_story
++"""
++
++from __future__ import annotations
++
++import argparse
++import sys
++import time
++from pathlib import Path
++
++import matplotlib
++matplotlib.use("Agg")
++import matplotlib.pyplot as plt  # noqa: E402
++import numpy as np  # noqa: E402
++import torch  # noqa: E402
++import yaml  # noqa: E402
++
++
++REPO_ROOT = Path(__file__).resolve().parents[1]
++sys.path.insert(0, str(REPO_ROOT))
++
++
++def _make_synthetic_data(cameras, *, B: int, T: int, J: int, device: torch.device, noise_std: float = 1.0):
++    """Return a synthetic (input, target_3d) pair in world coordinates.
++
++    The 3D target is projected through the provided cameras, Gaussian noise is
++    added in pixels, and confidences are set to 1.
++    """
++    V = len(cameras)
++    # Random 3D joints in a ~1 m cube around the origin.
++    target_3d = (torch.rand(B, T, J, 3, device=device) - 0.5) * 1.0
++    Xh = torch.cat([target_3d, torch.ones(B, T, J, 1, device=device)], dim=-1)
++
++    points_2d = []
++    for cam in cameras:
++        P = torch.from_numpy(cam.projection_matrix).float().to(device)  # (3, 4)
++        x_hom = Xh @ P.T  # (B, T, J, 3)
++        x_hom = x_hom[..., :2] / (x_hom[..., 2:3] + 1e-6)
++        x_hom = x_hom + torch.randn_like(x_hom) * noise_std
++        points_2d.append(x_hom)
++
++    points_2d = torch.stack(points_2d, dim=2)  # (B, T, V, J, 2)
++    confidences = torch.ones(B, T, V, J, device=device)
++    x = torch.cat([points_2d, confidences.unsqueeze(-1)], dim=-1)  # (B, T, V, J, 3)
++    return x, target_3d
++
++
++def _build_model_kwargs(base: dict, variant: dict) -> dict:
++    kwargs = dict(base)
++    for k, v in variant.items():
++        if k == "name":
++            continue
++        kwargs[k] = v
++    return kwargs
++
++
++def _mpjpe_mm(pred: torch.Tensor, target: torch.Tensor) -> float:
++    """Return MPJPE in millimetres (assuming coordinates are in metres)."""
++    return (pred - target).norm(dim=-1).mean().item() * 1000.0
++
++
++def _measure_forward(model, x, cameras, device, n_iters: int = 3):
++    """Measure average forward latency in milliseconds."""
++    # Warm-up
++    for _ in range(2):
++        with torch.no_grad():
++            _ = model(x, cameras=cameras)
++
++    if device.type == "cuda":
++        start = torch.cuda.Event(enable_timing=True)
++        end = torch.cuda.Event(enable_timing=True)
++        start.record()
++        for _ in range(n_iters):
++            with torch.no_grad():
++                _ = model(x, cameras=cameras)
++        end.record()
++        torch.cuda.synchronize()
++        ms = start.elapsed_time(end) / n_iters
++    else:
++        t0 = time.perf_counter()
++        for _ in range(n_iters):
++            with torch.no_grad():
++                _ = model(x, cameras=cameras)
++        ms = (time.perf_counter() - t0) * 1000.0 / n_iters
++    return ms
++
++
++def _generate_bar_chart(results, output_path: Path, metric_key: str, title: str, ylabel: str):
++    names = [r["name"] for r in results]
++    values = [r[metric_key] for r in results]
++
++    fig, ax = plt.subplots(figsize=(8, 5))
++    bars = ax.bar(names, values, color="steelblue")
++    bars[0].set_color("darkorange")  # highlight full model
++    ax.set_ylabel(ylabel)
++    ax.set_title(title)
++    ax.tick_params(axis="x", rotation=30)
++    fig.tight_layout()
++    fig.savefig(output_path, dpi=200, bbox_inches="tight")
++    plt.close(fig)
++
++
++def _write_markdown_table(results, output_path: Path):
++    lines = [
++        "# v25 Architecture Component Ablation (smoke test)\n\n",
++        "| Variant | geometry_attention | learned_depth | GeoBA | Params | Forward (ms) | ",
++        "Δ to full (mm) | Proxy MPJPE (mm) |\n",
++        "|---|---|---|---|---:|---:|---:|---:|\n",
++    ]
++    for r in results:
++        lines.append(
++            f"| {r['name']} | {r['geometry_attention']} | {r['learned_depth']} | {r['geoba']} | "
++            f"{r['params']:,} | {r['forward_ms']:.2f} | {r['delta_mm']:.2f} | {r['proxy_mpjpe_mm']:.2f} |\n"
++        )
++    lines.append(
++        "\n**Note:** The v25 geometry-fusion modules are intentionally identity at "
++        "initialization (warm-startable).  Consequently the prediction delta to "
++        "the full model is near zero before training.  This harness is meant as a "
++        "reproducible scaffold; re-run it after training for meaningful ablation "
++        "numbers.\n"
++    )
++    output_path.write_text("".join(lines), encoding="utf-8")
++
++
++def main():
++    parser = argparse.ArgumentParser(description="v25 architecture ablation smoke test")
++    parser.add_argument("--config", type=str, default="configs/architecture_paper_story_v25_smoke.yaml")
++    parser.add_argument("--output_dir", type=str, default="outputs/architecture_paper_story")
++    parser.add_argument("--device", type=str, default=None)
++    parser.add_argument("--B", type=int, default=2)
++    parser.add_argument("--T", type=int, default=3)
++    parser.add_argument("--J", type=int, default=17)
++    parser.add_argument("--noise_std", type=float, default=1.0)
++    args = parser.parse_args()
++
++    if args.device is None:
++        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
++    else:
++        device = torch.device(args.device)
++
++    config_path = Path(args.config)
++    with config_path.open("r", encoding="utf-8") as f:
++        cfg = yaml.safe_load(f)
++
++    base = cfg["base"]
++    n_views = base["n_views"]
++
++    # Imports are local so the script fails fast if dependencies are missing.
++    from motionflow_mv.fusion.omniview_fusion_v5 import (  # noqa: E402
++        OmniMultiViewFusionV5,
++        _make_cameras,
++    )
++
++    cameras = _make_cameras(n_views)
++    x, target_3d = _make_synthetic_data(
++        cameras, B=args.B, T=args.T, J=args.J, device=device, noise_std=args.noise_std
++    )
++
++    output_dir = Path(args.output_dir)
++    output_dir.mkdir(parents=True, exist_ok=True)
++
++    results = []
++    full_pred = None
++
++    for variant in cfg["variants"]:
++        kwargs = _build_model_kwargs(base, variant)
++        name = variant.get("name", "unnamed")
++
++        torch.manual_seed(42)
++        model = OmniMultiViewFusionV5(**kwargs).to(device)
++        model.eval()
++
++        with torch.no_grad():
++            out = model(x, cameras=cameras)
++        pred = out[0]
++
++        if full_pred is None:
++            full_pred = pred
++            delta_mm = 0.0
++        else:
++            delta_mm = _mpjpe_mm(pred, full_pred)
++
++        params = sum(p.numel() for p in model.parameters())
++        forward_ms = _measure_forward(model, x, cameras, device, n_iters=3)
++        proxy_mpjpe_mm = _mpjpe_mm(pred, target_3d)
++
++        results.append(
++            {
++                "name": name,
++                "geometry_attention": kwargs.get("v25_use_geometry_attention", False),
++                "learned_depth": kwargs.get("v25_use_learned_depth_triangulation", False),
++                "geoba": kwargs.get("v25_use_geometry_bundle_adjustment", False),
++                "params": params,
++                "forward_ms": forward_ms,
++                "delta_mm": delta_mm,
++                "proxy_mpjpe_mm": proxy_mpjpe_mm,
++            }
++        )
++
++    _generate_bar_chart(
++        results,
++        output_dir / "v25_ablation_delta.png",
++        metric_key="delta_mm",
++        title="v25 architecture ablation: prediction delta to full model",
++        ylabel="Δ MPJPE to full model (mm)",
++    )
++    _generate_bar_chart(
++        results,
++        output_dir / "v25_ablation_proxy_mpjpe.png",
++        metric_key="proxy_mpjpe_mm",
++        title="v25 architecture ablation: proxy MPJPE (random weights)",
++        ylabel="Proxy MPJPE (mm)",
++    )
++    _generate_bar_chart(
++        results,
++        output_dir / "v25_ablation_params.png",
++        metric_key="params",
++        title="v25 architecture ablation: parameter count",
++        ylabel="Number of parameters",
++    )
++
++    md_path = output_dir / "v25_ablation_table.md"
++    _write_markdown_table(results, md_path)
++
++    print(f"Device: {device}")
++    print(f"Results written to: {output_dir}")
++    print(f"Markdown table: {md_path}")
++    for r in results:
++        print(
++            f"  {r['name']:<25} params={r['params']:,}  fwd={r['forward_ms']:.2f} ms  "
++            f"delta={r['delta_mm']:.2f} mm  proxy={r['proxy_mpjpe_mm']:.2f} mm"
++        )
++
++
++if __name__ == "__main__":
++    main()
+diff --git a/experiments/train_omniview_fusion_v5_webbridge_multi.py b/experiments/train_omniview_fusion_v5_webbridge_multi.py
+index c3ba611..3ac3f92 100644
+--- a/experiments/train_omniview_fusion_v5_webbridge_multi.py
++++ b/experiments/train_omniview_fusion_v5_webbridge_multi.py
+@@ -928,6 +928,8 @@ def build_compute_loss(args: Namespace):
+             model_kwargs_forward["view_mask"] = view_mask
+         if args.use_domain_embedding and dataset_id is not None:
+             model_kwargs_forward["domain_id"] = dataset_id
++        if args.use_diffusion_refiner_v20:
++            model_kwargs_forward["target_3d"] = y
+         out = model(x, K=K_aug, R=R_aug, t=t_aug, **model_kwargs_forward)
+         pred_3d = out[0]
+         weights = out[1]
+diff --git a/scripts/auto_eval_when_ready.py b/scripts/auto_eval_when_ready.py
+index 17072c5..92679a3 100755
+--- a/scripts/auto_eval_when_ready.py
++++ b/scripts/auto_eval_when_ready.py
+@@ -35,6 +35,8 @@ DEFAULT_LOG_DIR = ROOT / "outputs"
+ DEFAULT_LOG_GLOB = "omniview_fusion_v*.log"
+ DEFAULT_GPU = 0
+ DEFAULT_POLL_INTERVAL = 60
++DEFAULT_OVERFIT_PATIENCE = 3
++DEFAULT_OVERFIT_MIN_EPOCHS = 5
+ LOCK_FILE = Path("/tmp/motionflow_auto_eval_py.lock")
+ 
+ 
+@@ -92,6 +94,66 @@ def last_val_mpjpe(log_path: Path) -> Optional[float]:
+     return float(matches[-1]) if matches else None
+ 
+ 
++def extract_val_mpjpe_series(log_path: Path) -> List[float]:
++    """Return all validation MPJPE values in chronological order."""
++    try:
++        text = log_path.read_text(errors="ignore")
++    except FileNotFoundError:
++        return []
++    return [float(m) for m in re.findall(r"val_MPJPE=([\d.]+)mm", text)]
++
++
++def best_epoch_info(log_path: Path) -> Tuple[Optional[int], Optional[float]]:
++    """Return (epoch_index, best_val_mpjpe) from the log, 0-based.
++
++    Returns (None, None) when no val_MPJPE lines are present.
++    """
++    series = extract_val_mpjpe_series(log_path)
++    if not series:
++        return None, None
++    best_idx = min(range(len(series)), key=series.__getitem__)
++    return best_idx, series[best_idx]
++
++
++def detect_overfitting(
++    log_path: Path,
++    patience: int = DEFAULT_OVERFIT_PATIENCE,
++    min_epochs: int = DEFAULT_OVERFIT_MIN_EPOCHS,
++) -> Tuple[bool, int]:
++    """Detect whether validation MPJPE is rising monotonically.
++
++    Args:
++        log_path: training log to analyse.
++        patience: number of consecutive increasing val_MPJPE epochs required
++                  to flag overfitting.
++        min_epochs: require at least this many validation epochs before
++                    overfit detection activates (avoids early noise).
++
++    Returns:
++        (is_overfitting, epochs_since_best)
++    """
++    series = extract_val_mpjpe_series(log_path)
++    if len(series) < max(patience + 1, min_epochs):
++        return False, 0
++
++    best_idx, _ = best_epoch_info(log_path)
++    if best_idx is None:
++        return False, 0
++
++    epochs_since_best = len(series) - 1 - best_idx
++
++    # Count consecutive increases at the tail of the series.
++    consecutive_increases = 0
++    for i in range(len(series) - 1, 0, -1):
++        if series[i] > series[i - 1]:
++            consecutive_increases += 1
++        else:
++            break
++
++    is_overfitting = consecutive_increases >= patience
++    return is_overfitting, epochs_since_best
++
++
+ def map_to_fullscale_script(experiment_name: str) -> Optional[Path]:
+     """Map an experiment name like 'omniview_fusion_v13_temporal' to its full-scale script."""
+     script_dir = ROOT / "scripts"
+@@ -183,150 +245,4 @@ def run_fullscale(experiment: Experiment, gpu: int, dry_run: bool) -> bool:
+     """Launch the matching full-scale run in a detached tmux session."""
+     script = map_to_fullscale_script(experiment.name)
+     if script is None:
+-        _log(f"[{experiment.name}] No fullscale script found; skipping launch.")
+-        return False
+-
+-    session_name = f"{experiment.name}_fullscale_a800"
+-    cmd = [
+-        "tmux", "new-session", "-d", "-s", session_name, "-n", "main",
+-        f"source .venv/bin/activate && CUDA_VISIBLE_DEVICES={gpu} bash {script}",
+-    ]
+-
+-    _log(f"[{experiment.name}] Launching fullscale run in tmux session '{session_name}' on GPU {gpu}: {script}")
+-    if dry_run:
+-        _log(f"[{experiment.name}] DRY-RUN: would launch {' '.join(cmd)}")
+-        return True
+-
+-    try:
+-        _run(cmd, cwd=ROOT)
+-        _log(f"[{experiment.name}] Fullscale tmux session '{session_name}' started.")
+-        return True
+-    except subprocess.CalledProcessError as exc:
+-        _log(f"[{experiment.name}] Failed to start fullscale tmux session: {exc.stderr}")
+-        return False
+-
+-
+-def process_experiment(experiment: Experiment, args: argparse.Namespace) -> bool:
+-    """Process a single experiment; returns True if it was handled."""
+-    if not is_ready(experiment.log_path):
+-        return False
+-
+-    best = best_val_mpjpe(experiment.log_path)
+-    last = last_val_mpjpe(experiment.log_path)
+-    _log(f"[{experiment.name}] Detected completed baseline (best={best}mm, last={last}mm).")
+-
+-    if not args.skip_eval:
+-        if not run_eval(experiment, args.eval_command, args.dry_run):
+-            return False
+-
+-    if not args.skip_fullscale:
+-        if not run_fullscale(experiment, args.gpu, args.dry_run):
+-            return False
+-
+-    if not args.dry_run:
+-        mark_done(experiment.log_path)
+-    return True
+-
+-
+-def acquire_lock(lock_file: Path) -> bool:
+-    """Attempt to acquire the singleton lock; returns True on success."""
+-    try:
+-        if lock_file.exists():
+-            try:
+-                pid = int(lock_file.read_text().strip())
+-                try:
+-                    os.kill(pid, 0)
+-                    return False
+-                except (ProcessLookupError, ValueError):
+-                    lock_file.unlink()
+-            except ValueError:
+-                lock_file.unlink()
+-        lock_file.write_text(str(os.getpid()))
+-        return True
+-    except Exception as exc:
+-        _log(f"Lock acquisition failed: {exc}")
+-        return False
+-
+-
+-def release_lock(lock_file: Path) -> None:
+-    try:
+-        lock_file.unlink()
+-    except FileNotFoundError:
+-        pass
+-
+-
+-def build_parser() -> argparse.ArgumentParser:
+-    parser = argparse.ArgumentParser(
+-        description="Auto-evaluate completed baselines and launch full-scale runs."
+-    )
+-    parser.add_argument("--log-dir", type=Path, default=DEFAULT_LOG_DIR,
+-                        help=f"Directory containing training logs (default: {DEFAULT_LOG_DIR})")
+-    parser.add_argument("--log-glob", type=str, default=DEFAULT_LOG_GLOB,
+-                        help=f"Glob pattern for training logs (default: {DEFAULT_LOG_GLOB})")
+-    parser.add_argument("--poll-interval", type=int, default=DEFAULT_POLL_INTERVAL,
+-                        help=f"Poll interval in seconds (default: {DEFAULT_POLL_INTERVAL})")
+-    parser.add_argument("--gpu", type=int, default=DEFAULT_GPU,
+-                        help=f"GPU index for full-scale runs (default: {DEFAULT_GPU})")
+-    parser.add_argument("--eval-command", type=str, default=None,
+-                        help="Custom shell command to run for evaluation. Overrides script discovery.")
+-    parser.add_argument("--skip-eval", action="store_true", help="Skip the evaluation step.")
+-    parser.add_argument("--skip-fullscale", action="store_true", help="Skip the full-scale launch step.")
+-    parser.add_argument("--once", action="store_true", help="Run a single polling cycle and exit.")
+-    parser.add_argument("--dry-run", action="store_true",
+-                        help="Log actions but do not launch eval or fullscale runs.")
+-    parser.add_argument("--json-summary", type=Path, default=None,
+-                        help="If given, write a JSON summary of the polling results to this path.")
+-    parser.add_argument("--lock-file", type=Path, default=LOCK_FILE,
+-                        help=f"Path to the singleton lock file (default: {LOCK_FILE})")
+-    return parser
+-
+-
+-def poll(args: argparse.Namespace) -> Dict[str, object]:
+-    """Run one polling cycle and return a summary dict."""
+-    experiments = discover_experiments(args.log_dir, args.log_glob)
+-    summary: Dict[str, object] = {
+-        "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S"),
+-        "log_dir": str(args.log_dir),
+-        "scanned": len(experiments),
+-        "processed": [],
+-        "skipped": [],
+-    }
+-
+-    for experiment in experiments:
+-        if is_ready(experiment.log_path):
+-            summary["processed"].append(experiment.name)
+-            process_experiment(experiment, args)
+-        else:
+-            summary["skipped"].append(experiment.name)
+-
+-    if args.json_summary:
+-        args.json_summary.parent.mkdir(parents=True, exist_ok=True)
+-        args.json_summary.write_text(json.dumps(summary, indent=2))
+-
+-    return summary
+-
+-
+-def main(argv: Optional[List[str]] = None) -> int:
+-    parser = build_parser()
+-    args = parser.parse_args(argv)
+-
+-    if not acquire_lock(args.lock_file):
+-        _log("Another auto_eval_when_ready.py is already running; exiting.")
+-        return 0
+-
+-    try:
+-        _log("Auto-eval monitor started. dry_run=%s once=%s" % (args.dry_run, args.once))
+-        while True:
+-            poll(args)
+-            if args.once:
+-                _log("Single-shot complete; exiting.")
+-                break
+-            time.sleep(args.poll_interval)
+-    finally:
+-        release_lock(args.lock_file)
+-
+-    return 0
+-
+-
+-if __name__ == "__main__":
+-    sys.exit(main())
++        _log(f"[{experiment.name

@@ -1,0 +1,234 @@
+diff --git a/experiments/train_ray_attention_temporal_crossview_residual_principal_point_mpiinf3dhp.py b/experiments/train_ray_attention_temporal_crossview_residual_principal_point_mpiinf3dhp.py
+index c3fb6aa..35dad2d 100644
+--- a/experiments/train_ray_attention_temporal_crossview_residual_principal_point_mpiinf3dhp.py
++++ b/experiments/train_ray_attention_temporal_crossview_residual_principal_point_mpiinf3dhp.py
+@@ -309,6 +309,15 @@ def main():
+             focal_max_scale=args.focal_max_scale,
+             return_pp_delta=True,
+         ).to(device)
++    elif args.model_type == "graph_joint_relation":
++        model = RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointGraph(
++            j=j, d=args.d, n_views=n_views, n_st_layers=args.n_st_layers,
++            residual_hidden=args.residual_hidden,
++            principal_point_hidden=args.principal_point_hidden,
++            principal_point_max_offset=args.principal_point_max_offset,
++            focal_max_scale=args.focal_max_scale,
++            return_pp_delta=True,
++        ).to(device)
+     elif args.model_type == "graph_skeleton_residual":
+         model = RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointGraphSkeletonResidual(
+             j=j, d=args.d, n_views=n_views, n_st_layers=args.n_st_layers,
+diff --git a/motionflow_mv/data/mixed_dataset.py b/motionflow_mv/data/mixed_dataset.py
+index 80097a8..9c1f219 100644
+--- a/motionflow_mv/data/mixed_dataset.py
++++ b/motionflow_mv/data/mixed_dataset.py
+@@ -20,7 +20,7 @@ from typing import Dict, List, Optional, Sequence, Tuple
+ 
+ import numpy as np
+ import torch
+-from torch.utils.data import ConcatDataset, DataLoader, Dataset
++from torch.utils.data import ConcatDataset, DataLoader, Dataset, Sampler
+ 
+ 
+ # Canonical dimensions inferred from MPI-INF-3DHP (the largest dataset).
+@@ -51,6 +51,66 @@ def _pad_cameras(camera_K: np.ndarray, camera_R: np.ndarray, camera_t: np.ndarra
+     return K_pad, R_pad, t_pad
+ 
+ 
++class DatasetBalancedSampler(Sampler):
++    """Sample equally from each sub-dataset inside a :class:`ConcatDataset`.
++
++    Parameters
++    ----------
++    dataset_lengths:
++        Number of samples in each sub-dataset.
++    samples_per_dataset:
++        How many samples to draw from each sub-dataset per epoch.  If ``None``,
++        defaults to the length of the largest sub-dataset (with replacement
++        for smaller datasets).
++    replacement:
++        If ``True`` (default), smaller datasets are oversampled with
++        replacement so that every epoch contains the same number of samples
++        from each dataset.  If ``False``, the epoch size is capped at the
++        smallest sub-dataset and all samples are drawn without replacement.
++    seed:
++        Optional seed for reproducibility.
++    """
++
++    def __init__(
++        self,
++        dataset_lengths: Sequence[int],
++        samples_per_dataset: Optional[int] = None,
++        replacement: bool = True,
++        seed: Optional[int] = None,
++    ):
++        self.dataset_lengths = list(dataset_lengths)
++        if any(n <= 0 for n in self.dataset_lengths):
++            raise ValueError("All dataset lengths must be positive.")
++
++        max_len = max(self.dataset_lengths)
++        self.samples_per_dataset = samples_per_dataset if samples_per_dataset is not None else max_len
++        self.replacement = replacement
++
++        if not replacement:
++            self.samples_per_dataset = min(self.samples_per_dataset, min(self.dataset_lengths))
++
++        self.seed = seed
++        self._rng = np.random.default_rng(seed)
++
++    def __len__(self) -> int:
++        return self.samples_per_dataset * len(self.dataset_lengths)
++
++    def __iter__(self):
++        if self.seed is not None:
++            self._rng = np.random.default_rng(self.seed + self.epoch)
++        indices = []
++        offset = 0
++        for length in self.dataset_lengths:
++            if self.replacement:
++                sample_idx = self._rng.integers(0, length, size=self.samples_per_dataset)
++            else:
++                sample_idx = self._rng.choice(length, size=self.samples_per_dataset, replace=False)
++            indices.extend(offset + sample_idx)
++            offset += length
++        self.epoch = getattr(self, "epoch", 0) + 1
++        return iter(indices)
++
++
+ class MixedDataset(Dataset):
+     """Yield padded clips from a canonical ``.npz`` and tag them by dataset id.
+ 
+diff --git a/motionflow_mv/fusion/__init__.py b/motionflow_mv/fusion/__init__.py
+index 2d7167a..7a1367e 100644
+--- a/motionflow_mv/fusion/__init__.py
++++ b/motionflow_mv/fusion/__init__.py
+@@ -22,6 +22,10 @@ from .ray_attention_temporal_crossview_residual_principal_point_adaptive_window_
+     RayAttentionTemporalCrossviewResidualPrincipalPointAdaptiveWindowPyramidFusionModule,
+     register_ray_attention_temporal_crossview_residual_principal_point_adaptive_window_pyramid_fusion_module,
+ )
++from .ray_attention_temporal_crossview_residual_camera_conditioned_module import (
++    RayAttentionTemporalCrossviewResidualCameraConditionedFusionModule,
++    register_ray_attention_temporal_crossview_residual_camera_conditioned_fusion_module,
++)
+ # Optional iter15 ablation: learnable camera-centric coordinate transform.
+ # from .ray_attention_temporal_crossview_residual_principal_point_camera_centric_module import (
+ #     RayAttentionTemporalCrossviewResidualPrincipalPointCameraCentricFusionModule,
+@@ -38,6 +42,7 @@ register_ray_attention_temporal_residual_fusion_module()
+ register_ray_attention_temporal_crossview_residual_principal_point_fusion_module()
+ register_ray_attention_temporal_crossview_residual_principal_point_spatial_pyramid_fusion_module()
+ register_ray_attention_temporal_crossview_residual_principal_point_adaptive_window_pyramid_fusion_module()
++register_ray_attention_temporal_crossview_residual_camera_conditioned_fusion_module()
+ # register_ray_attention_temporal_crossview_residual_principal_point_camera_centric_fusion_module()
+ 
+ __all__ = [
+diff --git a/motionflow_mv/fusion/ray_attention_temporal_crossview_residual_principal_point_physics_model.py b/motionflow_mv/fusion/ray_attention_temporal_crossview_residual_principal_point_physics_model.py
+index dfbad66..5c298b7 100644
+--- a/motionflow_mv/fusion/ray_attention_temporal_crossview_residual_principal_point_physics_model.py
++++ b/motionflow_mv/fusion/ray_attention_temporal_crossview_residual_principal_point_physics_model.py
+@@ -116,35 +116,22 @@ class RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointPhysics(
+             x = x.unsqueeze(1)
+             squeeze_output = True
+ 
+-        B, T, V, J, _ = x.shape
+-
+-        # Re-use the anchor forward by forcing return_raw=True internally so we
+-        # can apply the dynamics refiner on top of both raw and refined outputs.
+-        parent_return_raw = self.return_raw
+-        self.return_raw = True
++        # Re-use the anchor forward with the same return flags so that
++        # auxiliary outputs (pp_delta, focal scale, raw triangulation, etc.)
++        # are preserved for the training harness.
+         out = super().forward(x, cameras=cameras, K=K, R=R, t=t)
+-        self.return_raw = parent_return_raw
+-
+         if isinstance(out, tuple):
+-            pred_3d, weights, pred_3d_raw = out[:3]
++            out = list(out)
+         else:
+-            pred_3d = out
+-            weights = None
++            out = [out]
+ 
+         # Dynamics residual is computed on the refined trajectory and added to it.
++        pred_3d = out[0]
+         dynamics_delta = self._dynamics_residual(pred_3d)
+-        pred_3d = pred_3d + dynamics_delta
++        out[0] = pred_3d + dynamics_delta
+ 
+         if squeeze_output:
+-            pred_3d = pred_3d.squeeze(1)
+-            if weights is not None:
+-                weights = weights.squeeze(1)
+-
+-        if self.return_raw:
+-            if weights is None:
+-                return pred_3d, pred_3d_raw.squeeze(1) if squeeze_output else pred_3d_raw
+-            return pred_3d, weights, pred_3d_raw.squeeze(1) if squeeze_output else pred_3d_raw
+-
+-        if weights is not None:
+-            return pred_3d, weights
+-        return pred_3d
++            for i in range(len(out)):
++                out[i] = out[i].squeeze(1)
++
++        return tuple(out)
+diff --git a/motionflow_mv/fusion/triangulation.py b/motionflow_mv/fusion/triangulation.py
+index 7b53f99..d3dcc9f 100644
+--- a/motionflow_mv/fusion/triangulation.py
++++ b/motionflow_mv/fusion/triangulation.py
+@@ -101,3 +101,55 @@ def triangulate_confidence_weighted(points_2d: np.ndarray, proj_matrices: np.nda
+         (3,) triangulated point.
+     """
+     return triangulate_dlt(points_2d, proj_matrices, weights=confidences)
++
++
++def triangulate_dlt_batched_lstsq(
++    points_2d: torch.Tensor,
++    proj_matrices: torch.Tensor,
++    weights: torch.Tensor | None = None,
++) -> torch.Tensor:
++    """Fully batched weighted DLT triangulation using ``torch.linalg.lstsq``.
++
++    Solves all (batch, joint) pairs in a single batched least-squares call,
++    avoiding the per-joint Python loop used in ``triangulate_dlt_torch``.
++
++    Args:
++        points_2d: (N, V, J, 2) tensor of 2D keypoints.
++        proj_matrices: (N, V, 3, 4) or (V, 3, 4) projection matrices.
++        weights: optional (N, V, J) non-negative weights.
++
++    Returns:
++        X: (N, J, 3) triangulated 3D points.
++    """
++    if points_2d.dim() != 4:
++        raise ValueError(f"points_2d must be 4-D (N, V, J, 2), got shape {points_2d.shape}")
++
++    N, V, J, _ = points_2d.shape
++    if proj_matrices.dim() == 3:
++        proj_matrices = proj_matrices.unsqueeze(0).expand(N, -1, -1, -1)
++
++    if weights is None:
++        weights = torch.ones(N, V, J, device=points_2d.device, dtype=points_2d.dtype)
++    else:
++        weights = weights.reshape(N, V, J)
++
++    A_rows = []
++    for v in range(V):
++        P = proj_matrices[:, v, :, :]  # (N, 3, 4)
++        x = points_2d[:, v, :, 0]  # (N, J)
++        y = points_2d[:, v, :, 1]  # (N, J)
++        row_x = x[..., None] * P[:, 2:3, :] - P[:, 0:1, :]  # (N, J, 4)
++        row_y = y[..., None] * P[:, 2:3, :] - P[:, 1:2, :]
++        A_view = torch.stack([row_x, row_y], dim=2)  # (N, J, 2, 4)
++
++        w = weights[:, v, :].unsqueeze(-1).unsqueeze(-1)  # (N, J, 1, 1)
++        A_view = A_view * torch.sqrt(w + 1e-6)
++        A_rows.append(A_view)
++
++    A = torch.cat(A_rows, dim=2)  # (N, J, 2V, 4)
++    A3 = A[..., :3]  # (N, J, 2V, 3)
++    b = -A[..., 3:]  # (N, J, 2V, 1)
++
++    # Batched least-squares over (N, J) independent 3x3 systems.
++    X, *_ = torch.linalg.lstsq(A3, b)
++    return X.squeeze(-1)  # (N, J, 3)

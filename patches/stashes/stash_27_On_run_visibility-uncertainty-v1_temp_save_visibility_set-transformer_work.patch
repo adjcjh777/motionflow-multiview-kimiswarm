@@ -1,0 +1,87 @@
+diff --git a/experiments/train_ray_attention_temporal_crossview_residual_principal_point_mpiinf3dhp.py b/experiments/train_ray_attention_temporal_crossview_residual_principal_point_mpiinf3dhp.py
+index 948a5df..9c44ed8 100644
+--- a/experiments/train_ray_attention_temporal_crossview_residual_principal_point_mpiinf3dhp.py
++++ b/experiments/train_ray_attention_temporal_crossview_residual_principal_point_mpiinf3dhp.py
+@@ -82,6 +82,9 @@ except ImportError:  # pragma: no cover
+ from motionflow_mv.fusion.ray_attention_hierarchical_view_temporal_joint_residual_principal_point_model import (
+     RayAttentionFusionModelHierarchicalViewTemporalJointResidualPrincipalPoint,
+ )
++from motionflow_mv.fusion.ray_attention_set_transformer_crossview_residual_principal_point_model import (
++    RayAttentionFusionModelSetTransformerCrossviewResidualPrincipalPoint,
++)
+ from motionflow_mv.losses.gaussian_splatting_pose_loss import gaussian_splatting_pose_loss
+ 
+ 
+@@ -224,7 +227,9 @@ def main():
+     parser.add_argument("--val", type=str, required=True, help="Validation .npz file")
+     parser.add_argument("--clip_len", type=int, default=13)
+     parser.add_argument("--d", type=int, default=64)
+-    parser.add_argument("--model_type", type=str, default="temporal", choices=["temporal", "factorized", "dynamic_gate", "graph_joint_relation", "graph_skeleton_residual", "epipolar", "epipolar_bias_v2_pp", "epipolar_bias_v2_lite_pp", "splat", "kinematic_chain", "crossview_contrast", "bayesian_tri", "bayesian_tri_v2", "camera_conditioned_pp", "hierarchical_view_temporal_joint_pp"], help="Backbone type: temporal (time+view), factorized (alternating view/temporal), dynamic_gate (anchor + per-view gate), graph_joint_relation (skeleton-graph attention replacing dense joint attention), graph_skeleton_residual (skeleton-graph residual refiner), epipolar (epipolar-biased weight head), epipolar_bias_v2_pp (epipolar-biased ST transformer v2), epipolar_bias_v2_lite_pp (late-layer epipolar-biased ST transformer v2 lite), splat (Gaussian-splatting pose regularizer), kinematic_chain (kinematic-chain graph refiner), crossview_contrast (cross-view contrastive pose representation), bayesian_tri (uncertainty-aware triangulation with adaptive Gauss-Newton), bayesian_tri_v2 (same as bayesian_tri but with fully batched lstsq DLT), camera_conditioned_pp (camera-parameter-conditioned weight + residual heads), or hierarchical_view_temporal_joint_pp (hierarchical view -> temporal -> skeleton-joint attention)")
++    parser.add_argument("--model_type", type=str, default="temporal", choices=["temporal", "factorized", "dynamic_gate", "graph_joint_relation", "graph_skeleton_residual", "epipolar", "epipolar_bias_v2_pp", "epipolar_bias_v2_lite_pp", "splat", "kinematic_chain", "crossview_contrast", "bayesian_tri", "bayesian_tri_v2", "camera_conditioned_pp", "hierarchical_view_temporal_joint_pp", "set_transformer_pp"], help="Backbone type: temporal (time+view), factorized (alternating view/temporal), dynamic_gate (anchor + per-view gate), graph_joint_relation (skeleton-graph attention replacing dense joint attention), graph_skeleton_residual (skeleton-graph residual refiner), epipolar (epipolar-biased weight head), epipolar_bias_v2_pp (epipolar-biased ST transformer v2), epipolar_bias_v2_lite_pp (late-layer epipolar-biased ST transformer v2 lite), splat (Gaussian-splatting pose regularizer), kinematic_chain (kinematic-chain graph refiner), crossview_contrast (cross-view contrastive pose representation), bayesian_tri (uncertainty-aware triangulation with adaptive Gauss-Newton), bayesian_tri_v2 (same as bayesian_tri but with fully batched lstsq DLT), camera_conditioned_pp (camera-parameter-conditioned weight + residual heads), hierarchical_view_temporal_joint_pp (hierarchical view -> temporal -> skeleton-joint attention), or set_transformer_pp (Set Transformer ISAB view pooling)")
++    parser.add_argument("--n_inducing_points", type=int, default=16, help="Number of inducing points for set_transformer_pp")
++    parser.add_argument("--n_isab_layers", type=int, default=2, help="Number of ISAB+temporal blocks for set_transformer_pp")
+     parser.add_argument("--n_st_layers", type=int, default=2)
+     parser.add_argument("--n_view_layers", type=int, default=2)
+     parser.add_argument("--n_temporal_layers", type=int, default=2)
+@@ -323,6 +328,15 @@ def main():
+             focal_max_scale=args.focal_max_scale,
+             return_pp_delta=True,
+         ).to(device)
++    elif args.model_type == "fast_epipolar_bias_v2_pp":
++        model = RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointFastEpipolarBiasV2PP(
++            j=j, d=args.d, n_views=n_views, n_st_layers=args.n_st_layers,
++            residual_hidden=args.residual_hidden,
++            principal_point_hidden=args.principal_point_hidden,
++            principal_point_max_offset=args.principal_point_max_offset,
++            focal_max_scale=args.focal_max_scale,
++            return_pp_delta=True,
++        ).to(device)
+     elif args.model_type == "graph_skeleton_residual":
+         model = RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointGraphSkeletonResidual(
+             j=j, d=args.d, n_views=n_views, n_st_layers=args.n_st_layers,
+diff --git a/motionflow_mv/fusion/__init__.py b/motionflow_mv/fusion/__init__.py
+index 2d7167a..14179d5 100644
+--- a/motionflow_mv/fusion/__init__.py
++++ b/motionflow_mv/fusion/__init__.py
+@@ -10,6 +10,11 @@ from .ray_attention_temporal_residual_module import (
+     RayAttentionTemporalResidualFusionModule,
+     register_ray_attention_temporal_residual_fusion_module,
+ )
++from .multiscale_temporal_residual_model import (
++    MultiScaleTemporalResidualModel,
++    MultiScaleTemporalResidualFusionModule,
++    register_multiscale_temporal_residual_fusion_module,
++)
+ from .ray_attention_temporal_crossview_residual_principal_point_module import (
+     RayAttentionTemporalCrossviewResidualPrincipalPointFusionModule,
+     register_ray_attention_temporal_crossview_residual_principal_point_fusion_module,
+@@ -22,6 +27,10 @@ from .ray_attention_temporal_crossview_residual_principal_point_adaptive_window_
+     RayAttentionTemporalCrossviewResidualPrincipalPointAdaptiveWindowPyramidFusionModule,
+     register_ray_attention_temporal_crossview_residual_principal_point_adaptive_window_pyramid_fusion_module,
+ )
++from .ray_attention_set_transformer_crossview_residual_principal_point_module import (
++    RayAttentionSetTransformerCrossviewResidualPrincipalPointFusionModule,
++    register_set_transformer_crossview_residual_principal_point_fusion_module,
++)
+ # Optional iter15 ablation: learnable camera-centric coordinate transform.
+ # from .ray_attention_temporal_crossview_residual_principal_point_camera_centric_module import (
+ #     RayAttentionTemporalCrossviewResidualPrincipalPointCameraCentricFusionModule,
+@@ -35,9 +44,11 @@ register_residual_refiner_fusion_module()
+ register_temporal_refiner_fusion_module()
+ register_ray_attention_fusion_module()
+ register_ray_attention_temporal_residual_fusion_module()
++register_multiscale_temporal_residual_fusion_module()
+ register_ray_attention_temporal_crossview_residual_principal_point_fusion_module()
+ register_ray_attention_temporal_crossview_residual_principal_point_spatial_pyramid_fusion_module()
+ register_ray_attention_temporal_crossview_residual_principal_point_adaptive_window_pyramid_fusion_module()
++register_set_transformer_crossview_residual_principal_point_fusion_module()
+ # register_ray_attention_temporal_crossview_residual_principal_point_camera_centric_fusion_module()
+ 
+ __all__ = [
+@@ -51,4 +62,6 @@ __all__ = [
+     "TemporalRefinerFusion",
+     "FusionModuleRegistry",
+     "FUSION_REGISTRY",
++    "MultiScaleTemporalResidualModel",
++    "MultiScaleTemporalResidualFusionModule",
+ ]

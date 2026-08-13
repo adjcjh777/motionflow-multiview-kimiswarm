@@ -112,6 +112,11 @@ corrected H36M true-GT protocol:
 - `scripts/sota_baselines/voxelpose_h36m_true_gt_a800_overlay/`
 - `docs/sota_voxelpose_h36m_setup.md`
 
+True-GT v2 protocol (corrected, non-circular labels):
+
+- `configs/sota_baselines/voxelpose_h36m_true_gt_v2.yaml`
+- `scripts/run_voxelpose_true_gt_v2_a800.sh`
+
 These files are ready to launch once an A800 GPU is free and the old PyTorch
 environment issue is resolved. See `docs/sota_voxelpose_h36m_setup.md` for the
 environment requirements, joint mapping, and run instructions.

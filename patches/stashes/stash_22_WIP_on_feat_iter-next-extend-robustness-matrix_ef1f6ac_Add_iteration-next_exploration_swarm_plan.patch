@@ -1,0 +1,42 @@
+diff --git a/experiments/train_ray_attention_temporal_crossview_residual_principal_point_mpiinf3dhp.py b/experiments/train_ray_attention_temporal_crossview_residual_principal_point_mpiinf3dhp.py
+index 948a5df..15749ef 100644
+--- a/experiments/train_ray_attention_temporal_crossview_residual_principal_point_mpiinf3dhp.py
++++ b/experiments/train_ray_attention_temporal_crossview_residual_principal_point_mpiinf3dhp.py
+@@ -29,6 +29,11 @@ import torch.optim as optim
+ sys.path.insert(0, str(Path(__file__).parent.parent))
+ 
+ from motionflow_mv.calibration.perturb import perturb_cameras_with_delta
++from motionflow_mv.fusion.prototypes.trainer_optim_utils import (
++    AMPContext,
++    build_lr_scheduler,
++    clip_gradients,
++)
+ from motionflow_mv.fusion.ray_attention_temporal_crossview_factorized_residual_principal_point_model import (
+     RayAttentionFusionModelTemporalCrossviewFactorizedResidualPrincipalPoint,
+ )
+@@ -239,6 +244,11 @@ def main():
+     parser.add_argument("--principal_point_max_offset", type=float, default=20.0)
+     parser.add_argument("--epochs", type=int, default=30)
+     parser.add_argument("--lr", type=float, default=1e-3)
++    parser.add_argument("--lr_warmup_epochs", type=int, default=0, help="Linear warmup epochs before cosine decay (0 disables warmup)")
++    parser.add_argument("--lr_cosine", action="store_true", help="Use cosine LR schedule (with optional warmup) instead of constant LR")
++    parser.add_argument("--lr_min", type=float, default=0.0, help="Minimum LR at the end of cosine annealing")
++    parser.add_argument("--grad_clip_norm", type=float, default=0.0, help="Global gradient clipping max norm (0 disables)")
++    parser.add_argument("--amp", action="store_true", help="Enable Automatic Mixed Precision (CUDA only)")
+     parser.add_argument("--batch_size", type=int, default=8)
+     parser.add_argument("--train_samples", type=int, default=4000, help="Random clips per train sequence")
+     parser.add_argument("--val_stride", type=int, default=1, help="Stride for validation clips (higher = faster)")
+@@ -443,6 +453,13 @@ def main():
+     print(f"Model params: {sum(p.numel() for p in model.parameters())}")
+ 
+     optimizer = optim.Adam(model.parameters(), lr=args.lr)
++    scheduler = build_lr_scheduler(
++        optimizer,
++        total_epochs=args.epochs,
++        warmup_epochs=args.lr_warmup_epochs if args.lr_cosine else 0,
++        eta_min=args.lr_min if args.lr_cosine else 0.0,
++    ) if args.lr_cosine else None
++    amp_context = AMPContext(enabled=args.amp, device=device)
+     criterion = nn.MSELoss()
+ 
+     best_val = float("inf")

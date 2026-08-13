@@ -1,0 +1,51 @@
+diff --git a/experiments/train_ray_attention_temporal_crossview_residual_principal_point_mpiinf3dhp.py b/experiments/train_ray_attention_temporal_crossview_residual_principal_point_mpiinf3dhp.py
+index 948a5df..e3036a1 100644
+--- a/experiments/train_ray_attention_temporal_crossview_residual_principal_point_mpiinf3dhp.py
++++ b/experiments/train_ray_attention_temporal_crossview_residual_principal_point_mpiinf3dhp.py
+@@ -29,6 +29,10 @@ import torch.optim as optim
+ sys.path.insert(0, str(Path(__file__).parent.parent))
+ 
+ from motionflow_mv.calibration.perturb import perturb_cameras_with_delta
++from motionflow_mv.calibration.camera_perturbation_curriculum import (
++    extended_camera_perturbation_schedule,
++    schedule_from_args,
++)
+ from motionflow_mv.fusion.ray_attention_temporal_crossview_factorized_residual_principal_point_model import (
+     RayAttentionFusionModelTemporalCrossviewFactorizedResidualPrincipalPoint,
+ )
+@@ -474,18 +478,23 @@ def main():
+                     pp_std=args.cam_aug_pp,
+                 )
+                 pretrain_optimizer.zero_grad()
+-                outputs = model(xb, K=K, R=R, t=t)
+-                pred = outputs[0]
+-                pred_pp_delta = outputs[2]
+-                B, T = yb.shape[:2]
+-                true_pp_delta = true_pp_delta.to(device).unsqueeze(1).expand(B, T, -1, -1).reshape(B * T, -1, 2)
+-                loss = criterion(pred_pp_delta, -true_pp_delta)
+-                # Do not add reprojection loss during PP-head pre-training: the
+-                # rest of the model is frozen at random weights, so the
+-                # reprojection term would dominate and drown the PP offset
+-                # supervision.
+-                loss.backward()
+-                pretrain_optimizer.step()
++                with amp_context:
++                    outputs = model(xb, K=K, R=R, t=t)
++                    pred = outputs[0]
++                    pred_pp_delta = outputs[2]
++                    B, T = yb.shape[:2]
++                    true_pp_delta = true_pp_delta.to(device).unsqueeze(1).expand(B, T, -1, -1).reshape(B * T, -1, 2)
++                    loss = criterion(pred_pp_delta, -true_pp_delta)
++                    # Do not add reprojection loss during PP-head pre-training: the
++                    # rest of the model is frozen at random weights, so the
++                    # reprojection term would dominate and drown the PP offset
++                    # supervision.
++                scaled_loss = amp_context.scale(loss)
++                scaled_loss.backward()
++                amp_context.unscale(pretrain_optimizer)
++                clip_gradients(model, args.grad_clip_norm)
++                amp_context.step(pretrain_optimizer)
++                amp_context.update()
+                 train_loss += loss.item() * xb.size(0)
+             train_loss /= len(train_loader.dataset)
+             print(f"  PP pretrain epoch {pe}: loss={train_loss:.6f}")

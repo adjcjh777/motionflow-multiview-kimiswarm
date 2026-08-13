@@ -1,0 +1,29 @@
+diff --git a/experiments/train_ray_attention_temporal_crossview_residual_principal_point_mpiinf3dhp.py b/experiments/train_ray_attention_temporal_crossview_residual_principal_point_mpiinf3dhp.py
+index c3fb6aa..82efdf7 100644
+--- a/experiments/train_ray_attention_temporal_crossview_residual_principal_point_mpiinf3dhp.py
++++ b/experiments/train_ray_attention_temporal_crossview_residual_principal_point_mpiinf3dhp.py
+@@ -210,7 +210,7 @@ def main():
+     parser.add_argument("--val", type=str, required=True, help="Validation .npz file")
+     parser.add_argument("--clip_len", type=int, default=13)
+     parser.add_argument("--d", type=int, default=64)
+-    parser.add_argument("--model_type", type=str, default="temporal", choices=["temporal", "factorized", "dynamic_gate", "graph_skeleton_residual", "epipolar", "epipolar_bias_v2_pp", "splat", "kinematic_chain", "crossview_contrast", "bayesian_tri", "camera_conditioned_pp", "hierarchical_view_temporal_joint_pp"], help="Backbone type: temporal (time+view), factorized (alternating view/temporal), dynamic_gate (anchor + per-view gate), graph_skeleton_residual (skeleton-graph residual refiner), epipolar (epipolar-biased weight head), epipolar_bias_v2_pp (epipolar-biased ST transformer v2), splat (Gaussian-splatting pose regularizer), kinematic_chain (kinematic-chain graph refiner), crossview_contrast (cross-view contrastive pose representation), bayesian_tri (uncertainty-aware triangulation with adaptive Gauss-Newton), camera_conditioned_pp (camera-parameter-conditioned weight + residual heads), or hierarchical_view_temporal_joint_pp (hierarchical view -> temporal -> skeleton-joint attention)")
++    parser.add_argument("--model_type", type=str, default="temporal", choices=["temporal", "factorized", "dynamic_gate", "graph_skeleton_residual", "epipolar", "epipolar_bias_v2_pp", "splat", "splatv2", "kinematic_chain", "crossview_contrast", "bayesian_tri", "camera_conditioned_pp", "hierarchical_view_temporal_joint_pp"], help="Backbone type: temporal (time+view), factorized (alternating view/temporal), dynamic_gate (anchor + per-view gate), graph_skeleton_residual (skeleton-graph residual refiner), epipolar (epipolar-biased weight head), epipolar_bias_v2_pp (epipolar-biased ST transformer v2), splat (Gaussian-splatting pose regularizer), splatv2 (splat + per-view covariance residual), kinematic_chain (kinematic-chain graph refiner), crossview_contrast (cross-view contrastive pose representation), bayesian_tri (uncertainty-aware triangulation with adaptive Gauss-Newton), camera_conditioned_pp (camera-parameter-conditioned weight + residual heads), or hierarchical_view_temporal_joint_pp (hierarchical view -> temporal -> skeleton-joint attention)")
+     parser.add_argument("--n_st_layers", type=int, default=2)
+     parser.add_argument("--n_view_layers", type=int, default=2)
+     parser.add_argument("--n_temporal_layers", type=int, default=2)
+diff --git a/motionflow_mv/models/__init__.py b/motionflow_mv/models/__init__.py
+index 1500e37..f50c4ab 100644
+--- a/motionflow_mv/models/__init__.py
++++ b/motionflow_mv/models/__init__.py
+@@ -36,6 +36,11 @@ except ImportError:  # pragma: no cover
+     MPI_INF_3DHP_28_PARENTS = None  # type: ignore
+     MPI_INF_3DHP_28_SYMMETRY_PAIRS = None  # type: ignore
+ 
++try:
++    from .distilled_student_principal_point_model import DistilledStudentPrincipalPointModel
++except ImportError:  # pragma: no cover
++    DistilledStudentPrincipalPointModel = None  # type: ignore
++
+ __all__ = [
+     "CrossviewResidualUncertaintyModel",
+     "CrossviewResidualVisibilityV2",

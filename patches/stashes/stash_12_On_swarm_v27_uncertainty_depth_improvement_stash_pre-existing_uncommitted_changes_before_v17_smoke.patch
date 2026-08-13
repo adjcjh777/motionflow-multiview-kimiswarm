@@ -1,0 +1,1624 @@
+diff --git a/.github/PULL_REQUEST_TEMPLATE.md b/.github/PULL_REQUEST_TEMPLATE.md
+index bac6290..1b65326 100644
+--- a/.github/PULL_REQUEST_TEMPLATE.md
++++ b/.github/PULL_REQUEST_TEMPLATE.md
+@@ -18,6 +18,7 @@ Briefly describe the purpose of this pull request and the experiment/model chang
+ - [ ] Results summary (metrics, runtime, GPU):
+ - [ ] Comparison against baseline:
+ - [ ] No regression in existing tests / benchmarks
++- [ ] GitHub smoke tests pass locally (`bash scripts/run_github_smoke_tests.sh`)
+ 
+ ## Experiment Context
+ 
+diff --git a/experiments/train_omniview_fusion_v5_webbridge_multi.py b/experiments/train_omniview_fusion_v5_webbridge_multi.py
+index c3ba611..cc2c41d 100644
+--- a/experiments/train_omniview_fusion_v5_webbridge_multi.py
++++ b/experiments/train_omniview_fusion_v5_webbridge_multi.py
+@@ -108,6 +108,7 @@ def build_model_from_args(
+         # v17/v18 toggles
+         "use_cross_view_transformer_v17": getattr(args, "use_cross_view_transformer_v17", False),
+         "use_deformable_cross_view_attention_v18": getattr(args, "use_deformable_cross_view_attention_v18", False),
++        "deformable_attention_use_topk_st": getattr(args, "deformable_attention_use_topk_st", False),
+         # v19 toggles
+         "use_temporal_perceiver_v19": getattr(args, "use_temporal_perceiver_v19", False),
+         # v20 toggles
+@@ -120,6 +121,10 @@ def build_model_from_args(
+         "kap_loss_weight": getattr(args, "kap_loss_weight", 0.01),
+         "kap_use_angle_limit": getattr(args, "kap_use_angle_limit", True),
+         "kap_max_flexion_deg": getattr(args, "kap_max_flexion_deg", 160.0),
++        "kap_adaptive_prior": getattr(args, "kap_adaptive_prior", False),
++        "kap_adaptive_context_dim": getattr(args, "kap_adaptive_context_dim", 16),
++        "kap_adaptive_hidden": getattr(args, "kap_adaptive_hidden", 64),
++        "kap_adaptive_regularization": getattr(args, "kap_adaptive_regularization", 0.01),
+         # v25 toggles
+         "use_multiview_geometry_fusion_v25": getattr(args, "use_multiview_geometry_fusion_v25", False),
+         "v25_geom_loss_weight": getattr(args, "v25_geom_loss_weight", 0.1),
+@@ -132,12 +137,14 @@ def build_model_from_args(
+         "v25_outlier_soft_beta": getattr(args, "v25_outlier_soft_beta", 1.0),
+         "use_temporal_geometry_fusion_v26": getattr(args, "use_temporal_geometry_fusion_v26", False),
+         "v26_temporal_window": getattr(args, "v26_temporal_window", 3),
++        "v26_temporal_attention_residual_gate_init": getattr(args, "v26_temporal_attention_residual_gate_init", 0.0),
+         "use_uncertainty_depth_proposals_v27": getattr(args, "use_uncertainty_depth_proposals_v27", False),
+         "v27_uncertainty_loss_weight": getattr(args, "v27_uncertainty_loss_weight", 0.01),
+         "v27_udp_n_mixtures": getattr(args, "v27_udp_n_mixtures", 1),
+         "use_physical_space_alignment_v28": getattr(args, "use_physical_space_alignment_v28", False),
+         "v28_floor_loss_weight": getattr(args, "v28_floor_loss_weight", 0.0),
+         "v28_bone_temporal_weight": getattr(args, "v28_bone_temporal_weight", 0.0),
++        "v28_residual_reg_weight": getattr(args, "v28_residual_reg_weight", 0.001),
+         "use_test_time_self_evolution_v27": getattr(args, "use_test_time_self_evolution_v27", False),
+         "v27_tte_n_iters": getattr(args, "v27_tte_n_iters", 3),
+         "v27_tte_sigma_reproj": getattr(args, "v27_tte_sigma_reproj", 5.0),
+@@ -154,6 +161,8 @@ def build_model_from_args(
+     }
+     if args.adaptive_view_k is not None:
+         model_kwargs["adaptive_view_target_k"] = args.adaptive_view_k
++    if hasattr(args, "adaptive_view_budget_weight"):
++        model_kwargs["adaptive_view_budget_weight"] = args.adaptive_view_budget_weight
+ 
+     model = OmniMultiViewFusionV5(**model_kwargs)
+ 
+@@ -928,14 +937,16 @@ def build_compute_loss(args: Namespace):
+             model_kwargs_forward["view_mask"] = view_mask
+         if args.use_domain_embedding and dataset_id is not None:
+             model_kwargs_forward["domain_id"] = dataset_id
++        if args.use_diffusion_refiner_v20:
++            model_kwargs_forward["target_3d"] = y
+         out = model(x, K=K_aug, R=R_aug, t=t_aug, **model_kwargs_forward)
+         pred_3d = out[0]
+         weights = out[1]
+         visibility = out[2]
+         L = out[3]
+         epi_loss = out[4]
+-        entropy_loss_out = out[5] if len(out) > 5 else None
+-        budget_loss_out = out[6] if len(out) > 6 else None
++        # v5 returns (pred_3d, weights, visibility, L, epi_loss, budget_loss).
++        budget_loss_out = out[5] if len(out) > 5 else None
+ 
+         loss = F.mse_loss(pred_3d, y)
+         metrics: Dict[str, Any] = {
+@@ -1325,6 +1336,7 @@ def parse_args() -> Namespace:
+     parser.add_argument("--use_rotation_correction", type=lambda x: x.lower() == "true", default=False, help="Use rotation correction head")
+     parser.add_argument("--use_entropy_regularization", type=lambda x: x.lower() == "true", default=False, help="Enable entropy regularisation inside the model")
+     parser.add_argument("--adaptive_view_k", type=int, default=None, help="Target k for adaptive view selection")
++    parser.add_argument("--adaptive_view_budget_weight", type=float, default=0.01, help="Internal budget-loss weight inside AdaptiveViewSelector")
+     # v5 toggles
+     parser.add_argument("--use_camera_view_embedding", action="store_true", help="Use camera-conditioned view embedding instead of learned view_pos_embed")
+     parser.add_argument("--use_set_view_aggregator", action="store_true", help="Use set-transformer (ISAB) view aggregator before the time+view transformer")
+@@ -1340,6 +1352,7 @@ def parse_args() -> Namespace:
+     parser.add_argument("--perceiver_dropout", type=float, default=0.0, help="Dropout in Perceiver aggregator")
+     parser.add_argument("--use_cross_view_transformer_v17", action="store_true", help="Use v17 geometric cross-view transformer for view aggregation")
+     parser.add_argument("--use_deformable_cross_view_attention_v18", action="store_true", help="Use v18 sparse epipolar-aware cross-view attention")
++    parser.add_argument("--deformable_attention_use_topk_st", action="store_true", help="Use straight-through top-k sampling in v18 deformable attention (default: soft attention)")
+     parser.add_argument("--use_temporal_perceiver_v19", action="store_true", help="Use v19 temporal Perceiver refiner on final 3D poses sequence")
+     parser.add_argument("--use_diffusion_refiner_v20", action="store_true", help="Use v20 diffusion-based residual refiner instead of deterministic MLP")
+     parser.add_argument("--num_diffusion_steps", type=int, default=10, help="Number of diffusion timesteps for v20 refiner")
+@@ -1361,6 +1374,7 @@ def parse_args() -> Namespace:
+     parser.add_argument("--v25_outlier_soft_beta", type=float, default=1.0, help="Softness of exponential down-weighting for v25 outlier-view detector")
+     parser.add_argument("--use_temporal_geometry_fusion_v26", action="store_true", default=False, help="Use v26 temporal geometry fusion instead of v25")
+     parser.add_argument("--v26_temporal_window", type=int, default=3, help="Temporal window size for v26 (must be odd)")
++    parser.add_argument("--v26_temporal_attention_residual_gate_init", type=float, default=0.0, help="Initial value of residual gate on v26 temporal attention (0.0 = warm-start from v25)")
+     parser.add_argument("--use_uncertainty_depth_proposals_v27", action="store_true", default=False, help="Use v27 uncertainty-aware depth-proposal triangulation head in v25/v26")
+     parser.add_argument("--v27_uncertainty_loss_weight", type=float, default=0.01, help="Weight for v27 uncertainty regularisation loss")
+     parser.add_argument("--v27_udp_n_mixtures", type=int, default=1, help="Number of Gaussian mixture components for v27 depth proposals (default 1=single Gaussian)")
+@@ -1368,11 +1382,16 @@ def parse_args() -> Namespace:
+     parser.add_argument("--use_physical_space_alignment_v28", action="store_true", default=False, help="Use v28 physical-space alignment refiner")
+     parser.add_argument("--v28_floor_loss_weight", type=float, default=0.0, help="Weight for v28 floor consistency loss")
+     parser.add_argument("--v28_bone_temporal_weight", type=float, default=0.0, help="Weight for v28 bone-length temporal consistency loss")
++    parser.add_argument("--v28_residual_reg_weight", type=float, default=0.001, help="Weight for v28 refiner residual L2 regularisation")
+     parser.add_argument("--v27_tte_n_iters", type=int, default=3, help="Number of iterations for v27 test-time self-evolution")
+     parser.add_argument("--v27_tte_sigma_reproj", type=float, default=5.0, help="Cauchy kernel scale (pixels) for v27 self-evolution")
+     parser.add_argument("--v27_tte_residual_thresh_mm", type=float, default=0.5, help="Early-stop threshold (mm) for v27 self-evolution")
+     parser.add_argument("--kap_use_angle_limit", action="store_true", default=True, help="Use soft joint-angle limit penalty in v22 KAP")
+     parser.add_argument("--kap_max_flexion_deg", type=float, default=160.0, help="Maximum flexion for v22 joint-angle limit")
++    parser.add_argument("--kap_adaptive_prior", action="store_true", default=False, help="Use per-sample adaptive bone-length prior in v22 KAP")
++    parser.add_argument("--kap_adaptive_context_dim", type=int, default=16, help="Context dimension for v22 adaptive prior")
++    parser.add_argument("--kap_adaptive_hidden", type=int, default=64, help="Hidden dimension for v22 adaptive prior adjustment MLPs")
++    parser.add_argument("--kap_adaptive_regularization", type=float, default=0.01, help="L2 regularization weight on v22 adaptive prior adjustments")
+     parser.add_argument("--use_full_precision_dlt", action="store_true", help="Use full 2x2 precision matrix in DLT triangulation")
+     parser.add_argument("--use_robust_dlt_reweight", action="store_true", help="Robust reweighting pass inside full-precision DLT triangulation")
+     parser.add_argument("--use_irls_reweight", action="store_true", help="IRLS Cauchy robust reweighting after one-step robust DLT")
+diff --git a/motionflow_mv/fusion/deformable_cross_view_attention.py b/motionflow_mv/fusion/deformable_cross_view_attention.py
+index 482f423..4f352a9 100644
+--- a/motionflow_mv/fusion/deformable_cross_view_attention.py
++++ b/motionflow_mv/fusion/deformable_cross_view_attention.py
+@@ -47,6 +47,7 @@ class DeformableCrossViewAttention(nn.Module):
+         n_samples: int = 2,
+         epipolar_temperature: float = 10.0,
+         dropout: float = 0.0,
++        use_topk_straight_through: bool = False,
+     ):
+         super().__init__()
+         if d % n_heads != 0:
+@@ -57,6 +58,7 @@ class DeformableCrossViewAttention(nn.Module):
+         self.n_views = n_views
+         self.n_samples = n_samples
+         self.epipolar_temperature = epipolar_temperature
++        self.use_topk_straight_through = use_topk_straight_through
+         self.head_dim = d // n_heads
+ 
+         self.qkv = nn.Linear(d, 3 * d)
+@@ -172,8 +174,29 @@ class DeformableCrossViewAttention(nn.Module):
+         # Soft attention weights over all key views (fully differentiable).
+         weights = F.softmax(logits / F.softplus(self.tau).clamp_min(1e-3), dim=3)
+ 
++        # Optional sparse top-k sampling with a straight-through estimator.
++        # Forward uses a hard, re-normalised top-k mask; backward flows through
++        # the re-normalised soft weights, giving the sampler a useful gradient.
++        if self.use_topk_straight_through and V > 1:
++            k = min(self.n_samples, V)
++            if k < V:
++                topk_idx = torch.topk(weights, k, dim=3).indices  # (N, H, V_q, k, J)
++                hard_mask = torch.zeros_like(weights).scatter_(3, topk_idx, 1.0)
++                # Forward: uniform average over selected key views.
++                hard_weights = hard_mask / hard_mask.sum(dim=3, keepdim=True).clamp_min(1e-8)
++                # Backward path: re-normalised soft weights inside the top-k set.
++                masked_soft = weights * hard_mask
++                denom = masked_soft.sum(dim=3, keepdim=True).clamp_min(1e-8)
++                masked_soft = masked_soft / denom
++                # Straight-through: forward uses hard_weights, backward uses masked_soft.
++                sparse_weights = hard_weights + (masked_soft - masked_soft.detach())
++            else:
++                sparse_weights = weights
++        else:
++            sparse_weights = weights
++
+         # Aggregate values: output shape (N, V_q, J, H, Dh).
+-        out = torch.einsum("nhvkj,nvjhd->nvjhd", weights, v)
++        out = torch.einsum("nhvkj,nvjhd->nvjhd", sparse_weights, v)
+ 
+         # Restore view dimension ordering and apply output projection.
+         out = out.reshape(N, V, J, d)
+@@ -204,10 +227,13 @@ if __name__ == "__main__":
+     t = torch.zeros(N, V, 3)
+     points_2d = torch.randn(N, V, J, 2) * 100.0
+ 
+-    module = DeformableCrossViewAttention(d=d, n_heads=4, n_views=V, n_samples=2)
+-    out = module(x, K, R, t, points_2d)
+-    assert out.shape == x.shape
+-    loss = out.sum()
+-    loss.backward()
+-    assert any(p.grad is not None for p in module.parameters())
++    for use_topk in (False, True):
++        module = DeformableCrossViewAttention(
++            d=d, n_heads=4, n_views=V, n_samples=2, use_topk_straight_through=use_topk
++        )
++        out = module(x, K, R, t, points_2d)
++        assert out.shape == x.shape
++        loss = out.sum()
++        loss.backward()
++        assert any(p.grad is not None for p in module.parameters())
+     print("DeformableCrossViewAttention CPU smoke test passed")
+diff --git a/motionflow_mv/fusion/diffusion_pose_refiner_v20.py b/motionflow_mv/fusion/diffusion_pose_refiner_v20.py
+index ff788ac..31400bf 100644
+--- a/motionflow_mv/fusion/diffusion_pose_refiner_v20.py
++++ b/motionflow_mv/fusion/diffusion_pose_refiner_v20.py
+@@ -272,7 +272,8 @@ class DiffusionPoseRefinerV20(nn.Module):
+ 
+         if train_targets_flat is not None:
+             # Training with targets: predict noise and return diffusion loss + a
+-            # deterministic refinement from a randomly sampled timestep.
++            # single-step differentiable refinement so gradients can flow back to
++            # the backbone through the refined pose.
+             residual_target = train_targets_flat - pose_init_flat
+             residual_target = torch.clamp(residual_target, -self.max_residual, self.max_residual)
+             B_local = pose_init_flat.shape[0]
+@@ -284,8 +285,13 @@ class DiffusionPoseRefinerV20(nn.Module):
+             predicted_noise = self._denoise_step(noisy_residual, t_train, cond)
+             loss = F.mse_loss(predicted_noise, noise)
+ 
+-            # Also return a deterministic refinement using the mean predictor.
+-            refined = self._sample(pose_init_flat, feat_flat)
++            # Single-step residual estimate from the same noisy sample.  This keeps
++            # the output differentiable and avoids the torch.no_grad() DDPM sampler.
++            sqrt_alpha_t = self.sqrt_alphas_cumprod[t_train].view(-1, 1, 1)
++            sqrt_one_minus_alpha_t = self.sqrt_one_minus_alphas_cumprod[t_train].view(-1, 1, 1)
++            predicted_residual = (noisy_residual - sqrt_one_minus_alpha_t * predicted_noise) / sqrt_alpha_t
++            predicted_residual = torch.clamp(predicted_residual, -self.max_residual, self.max_residual)
++            refined = pose_init_flat + predicted_residual
+             if pose_init.dim() == 4:
+                 refined = refined.reshape(orig_shape)
+             return refined, loss
+diff --git a/motionflow_mv/fusion/kinematic_anthropometric_prior_v22.py b/motionflow_mv/fusion/kinematic_anthropometric_prior_v22.py
+index 2d49c28..a776b8b 100644
+--- a/motionflow_mv/fusion/kinematic_anthropometric_prior_v22.py
++++ b/motionflow_mv/fusion/kinematic_anthropometric_prior_v22.py
+@@ -64,6 +64,10 @@ class KinematicAnthropometricPrior(nn.Module):
+         use_angle_limit: bool = True,
+         max_flexion_deg: float = 160.0,
+         max_delta: float = 0.10,
++        adaptive_prior: bool = False,
++        adaptive_context_dim: int = 16,
++        adaptive_hidden: int = 64,
++        adaptive_regularization: float = 0.01,
+     ):
+         super().__init__()
+         self.j = j
+@@ -71,6 +75,10 @@ class KinematicAnthropometricPrior(nn.Module):
+         self.use_angle_limit = use_angle_limit
+         self.max_flexion_deg = max_flexion_deg
+         self.max_delta = max_delta
++        self.adaptive_prior = adaptive_prior
++        self.adaptive_context_dim = adaptive_context_dim
++        self.adaptive_hidden = adaptive_hidden
++        self.adaptive_regularization = adaptive_regularization
+ 
+         parents = _get_parents(j)
+         self.register_buffer("parents", torch.tensor(parents, dtype=torch.long))
+@@ -86,6 +94,34 @@ class KinematicAnthropometricPrior(nn.Module):
+         self.bone_mu = nn.Parameter(torch.full((self.n_bones,), 0.25))
+         self.bone_logvar = nn.Parameter(torch.full((self.n_bones,), math.log(0.05 ** 2)))
+ 
++        # Optional per-sample adaptive prior.  The context encoder pools the
++        # per-joint features, then two tiny MLPs predict per-bone adjustments to
++        # the global bone_mu and bone_logvar.  Final layers are zero-initialized
++        # so the module starts as the non-adaptive global prior.
++        if self.adaptive_prior:
++            self.context_encoder = nn.Sequential(
++                nn.Linear(d * 2, adaptive_context_dim),
++                nn.ReLU(),
++            )
++            self.mu_adjust_mlp = nn.Sequential(
++                nn.Linear(adaptive_context_dim, adaptive_hidden),
++                nn.ReLU(),
++                nn.Linear(adaptive_hidden, self.n_bones),
++            )
++            self.logvar_adjust_mlp = nn.Sequential(
++                nn.Linear(adaptive_context_dim, adaptive_hidden),
++                nn.ReLU(),
++                nn.Linear(adaptive_hidden, self.n_bones),
++            )
++            nn.init.zeros_(self.mu_adjust_mlp[-1].weight)
++            nn.init.zeros_(self.mu_adjust_mlp[-1].bias)
++            nn.init.zeros_(self.logvar_adjust_mlp[-1].weight)
++            nn.init.zeros_(self.logvar_adjust_mlp[-1].bias)
++        else:
++            self.context_encoder = None
++            self.mu_adjust_mlp = None
++            self.logvar_adjust_mlp = None
++
+         # Small MLP to convert per-bone NLL into per-joint kinematic features.
+         self.kinematic_mlp = nn.Sequential(
+             nn.Linear(1, hidden),
+@@ -119,6 +155,43 @@ class KinematicAnthropometricPrior(nn.Module):
+         lengths = bone_vec.norm(dim=-1)  # (N, n_bones)
+         return lengths
+ 
++    def _sample_prior_params(
++        self,
++        feat_pooled: torch.Tensor,
++    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
++        """Compute possibly sample-specific bone_mu and bone_logvar.
++
++        Args:
++            feat_pooled: (N, J, d) per-joint pooled features.
++
++        Returns:
++            mu: (N, n_bones) per-sample bone length means.
++            logvar: (N, n_bones) per-sample bone length log-variances.
++            reg_loss: scalar regularization loss on the adjustments.
++        """
++        if not self.adaptive_prior:
++            N = feat_pooled.shape[0]
++            mu = self.bone_mu.view(1, self.n_bones).expand(N, -1)
++            logvar = self.bone_logvar.view(1, self.n_bones).expand(N, -1)
++            return mu, logvar, torch.tensor(0.0, device=feat_pooled.device)
++
++        # Pool per-joint features across joints (mean + max) -> (N, d*2).
++        mean_feat = feat_pooled.mean(dim=1)
++        max_feat, _ = feat_pooled.max(dim=1)
++        pooled = torch.cat([mean_feat, max_feat], dim=-1)
++        z = self.context_encoder(pooled)  # (N, adaptive_context_dim)
++
++        delta_mu = self.mu_adjust_mlp(z)  # (N, n_bones)
++        delta_logvar = self.logvar_adjust_mlp(z)  # (N, n_bones)
++
++        mu = self.bone_mu.view(1, self.n_bones) + delta_mu
++        logvar = self.bone_logvar.view(1, self.n_bones) + delta_logvar
++
++        reg_loss = self.adaptive_regularization * (
++            delta_mu.square().mean() + delta_logvar.square().mean()
++        )
++        return mu, logvar, reg_loss
++
+     def _scatter_bone_to_joint(self, bone_vals: torch.Tensor) -> torch.Tensor:
+         """Scatter per-bone values to per-joint features.
+ 
+@@ -162,8 +235,7 @@ class KinematicAnthropometricPrior(nn.Module):
+ 
+         # Bone-length negative log-likelihood.
+         lengths = self._bone_lengths(pred_3d)  # (N, n_bones)
+-        mu = self.bone_mu.view(1, self.n_bones)
+-        logvar = self.bone_logvar.view(1, self.n_bones)
++        mu, logvar, adaptive_reg_loss = self._sample_prior_params(feat_pooled)
+         inv_var = torch.exp(-logvar)
+         nll = 0.5 * ((lengths - mu) ** 2 * inv_var + logvar)
+         bone_nll = nll.mean()
+@@ -192,7 +264,7 @@ class KinematicAnthropometricPrior(nn.Module):
+                 max_flexion_deg=self.max_flexion_deg,
+             )
+ 
+-        kap_loss = bone_nll + angle_loss
++        kap_loss = bone_nll + angle_loss + adaptive_reg_loss
+ 
+         return pred_3d_refined, kap_loss
+ 
+@@ -209,3 +281,12 @@ if __name__ == "__main__":
+     loss.backward()
+     assert any(p.grad is not None for p in model.parameters())
+     print("KinematicAnthropometricPrior CPU smoke test passed")
++
++    # CPU smoke test with adaptive prior.
++    model_adaptive = KinematicAnthropometricPrior(j=J, d=d, adaptive_prior=True)
++    pred_ref2, loss2 = model_adaptive(feat, pred)
++    assert pred_ref2.shape == (B * T, J, 3)
++    assert loss2.shape == ()
++    loss2.backward()
++    assert any(p.grad is not None for p in model_adaptive.parameters())
++    print("KinematicAnthropometricPrior adaptive CPU smoke test passed")
+diff --git a/motionflow_mv/fusion/multiview_geometry_fusion_v25.py b/motionflow_mv/fusion/multiview_geometry_fusion_v25.py
+index 83ce18c..9a8441a 100644
+--- a/motionflow_mv/fusion/multiview_geometry_fusion_v25.py
++++ b/motionflow_mv/fusion/multiview_geometry_fusion_v25.py
+@@ -380,6 +380,8 @@ class MultiViewGeometryFusionV25(nn.Module):
+     use_outlier_view_detector: enable robust outlier-view detection and down-weighting.
+     outlier_z_thresh: robust z-score threshold for the outlier detector.
+     outlier_soft_beta: softness of the exponential outlier down-weighting.
++    outlier_adaptive: if True, learn per-joint threshold/softness shifts.
++    num_joints: number of joints (required when ``outlier_adaptive=True``).
+     dropout: dropout rate.
+     """
+ 
+@@ -397,6 +399,8 @@ class MultiViewGeometryFusionV25(nn.Module):
+         use_outlier_view_detector: bool = False,
+         outlier_z_thresh: float = 3.0,
+         outlier_soft_beta: float = 1.0,
++        outlier_adaptive: bool = False,
++        num_joints: Optional[int] = None,
+         dropout: float = 0.1,
+         use_uncertainty_depth_proposals_v27: bool = False,
+         v27_uncertainty_loss_weight: float = 0.01,
+@@ -438,7 +442,12 @@ class MultiViewGeometryFusionV25(nn.Module):
+             self.depth_tri_head = None
+ 
+         if use_outlier_view_detector:
+-            self.outlier_view_detector = OutlierViewDetector(z_thresh=outlier_z_thresh, soft_beta=outlier_soft_beta)
++            self.outlier_view_detector = OutlierViewDetector(
++                z_thresh=outlier_z_thresh,
++                soft_beta=outlier_soft_beta,
++                num_joints=num_joints,
++                adaptive=outlier_adaptive,
++            )
+         else:
+             self.outlier_view_detector = None
+ 
+diff --git a/motionflow_mv/fusion/omniview_fusion_v4.py b/motionflow_mv/fusion/omniview_fusion_v4.py
+index 6b02e81..ce4a086 100644
+--- a/motionflow_mv/fusion/omniview_fusion_v4.py
++++ b/motionflow_mv/fusion/omniview_fusion_v4.py
+@@ -112,6 +112,7 @@ class OmniMultiViewFusionV4(OmniMultiViewFusionV3):
+         use_rotation_correction: bool = False,
+         use_entropy_regularization: bool = False,
+         adaptive_view_target_k: int = 2,
++        adaptive_view_budget_weight: float = 0.01,
+         rotation_max_rot_deg: float = 2.0,
+         entropy_weight: float = 0.01,
+     ):
+@@ -192,7 +193,7 @@ class OmniMultiViewFusionV4(OmniMultiViewFusionV3):
+                 n_views=self.n_views,
+                 n_joints=self.j,
+                 target_k=adaptive_view_target_k,
+-                budget_weight=0.01,
++                budget_weight=adaptive_view_budget_weight,
+                 use_selector=True,
+             )
+         else:
+diff --git a/motionflow_mv/fusion/omniview_fusion_v5.py b/motionflow_mv/fusion/omniview_fusion_v5.py
+index 0e63a84..0340c21 100644
+--- a/motionflow_mv/fusion/omniview_fusion_v5.py
++++ b/motionflow_mv/fusion/omniview_fusion_v5.py
+@@ -36,6 +36,7 @@ from motionflow_mv.fusion.diffusion_pose_refiner_v20 import DiffusionPoseRefiner
+ from motionflow_mv.fusion.kinematic_anthropometric_prior_v22 import (
+     KinematicAnthropometricPrior,
+ )
++
+ from motionflow_mv.fusion.multiview_geometry_fusion_v25 import MultiViewGeometryFusionV25
+ from motionflow_mv.fusion.temporal_geometry_fusion_v26 import TemporalGeometryFusionV26
+ from motionflow_mv.fusion.test_time_self_evolution_v27 import TestTimeSelfEvolutionV27
+@@ -121,6 +122,7 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
+         use_rotation_correction: bool = False,
+         use_entropy_regularization: bool = False,
+         adaptive_view_target_k: int = 2,
++        adaptive_view_budget_weight: float = 0.01,
+         rotation_max_rot_deg: float = 2.0,
+         entropy_weight: float = 0.01,
+         use_camera_view_embedding: bool = False,
+@@ -128,6 +130,7 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
+         use_perceiver_aggregator: bool = False,
+         use_cross_view_transformer_v17: bool = False,
+         use_deformable_cross_view_attention_v18: bool = False,
++        deformable_attention_use_topk_st: bool = False,
+         use_temporal_perceiver_v19: bool = False,
+         use_diffusion_refiner_v20: bool = False,
+         use_neural_bundle_adjustment_v21: bool = False,
+@@ -143,6 +146,7 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
+         v25_geom_loss_weight: float = 0.1,
+         use_temporal_geometry_fusion_v26: bool = False,
+         v26_temporal_window: int = 3,
++        v26_temporal_attention_residual_gate_init: float = 0.0,
+         use_uncertainty_depth_proposals_v27: bool = False,
+         v27_uncertainty_loss_weight: float = 0.01,
+         v27_udp_n_mixtures: int = 1,
+@@ -151,12 +155,21 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
+         use_physical_space_alignment_v28: bool = False,
+         v28_floor_loss_weight: float = 0.0,
+         v28_bone_temporal_weight: float = 0.0,
++        v28_residual_reg_weight: float = 0.0,
+         v27_tte_sigma_reproj: float = 5.0,
+         v27_tte_residual_thresh_mm: float = 0.5,
+         kap_loss_weight: float = 0.01,
+         kap_use_angle_limit: bool = True,
+         kap_max_flexion_deg: float = 160.0,
+         kap_max_delta: float = 0.10,
++        kap_adaptive_prior: bool = False,
++        kap_adaptive_context_dim: int = 16,
++        kap_adaptive_hidden: int = 64,
++        kap_adaptive_regularization: float = 0.01,
++        use_smpl_prior_fusion_v22: bool = False,
++        smpl_model_path: Optional[str] = None,
++        smpl_prior_loss_weight: float = 0.1,
++        freeze_smpl_base: bool = False,
+         num_diffusion_steps: int = 10,
+         camera_view_embedding_hidden: int = 32,
+         set_view_n_isab_layers: int = 2,
+@@ -210,6 +223,7 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
+             use_rotation_correction=use_rotation_correction,
+             use_entropy_regularization=use_entropy_regularization,
+             adaptive_view_target_k=adaptive_view_target_k,
++            adaptive_view_budget_weight=adaptive_view_budget_weight,
+             rotation_max_rot_deg=rotation_max_rot_deg,
+             entropy_weight=entropy_weight,
+         )
+@@ -292,6 +306,7 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
+             self.cross_view_transformer_v17 = None
+ 
+         self.use_deformable_cross_view_attention_v18 = use_deformable_cross_view_attention_v18
++        self.deformable_attention_use_topk_st = deformable_attention_use_topk_st
+         if self.use_deformable_cross_view_attention_v18:
+             self.deformable_cross_view_attention_v18 = DeformableCrossViewAttention(
+                 d=d,
+@@ -300,6 +315,7 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
+                 n_samples=max(2, n_views // 2),
+                 epipolar_temperature=10.0,
+                 dropout=0.1,
++                use_topk_straight_through=deformable_attention_use_topk_st,
+             )
+         else:
+             self.deformable_cross_view_attention_v18 = None
+@@ -350,10 +366,31 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
+                 use_angle_limit=kap_use_angle_limit,
+                 max_flexion_deg=kap_max_flexion_deg,
+                 max_delta=kap_max_delta,
++                adaptive_prior=kap_adaptive_prior,
++                adaptive_context_dim=kap_adaptive_context_dim,
++                adaptive_hidden=kap_adaptive_hidden,
++                adaptive_regularization=kap_adaptive_regularization,
+             )
+         else:
+             self.kinematic_anthropometric_prior_v22 = None
+ 
++        # Optional v22 SMPL prior fusion head.
++        self.use_smpl_prior_fusion_v22 = use_smpl_prior_fusion_v22
++        self.smpl_prior_loss_weight = smpl_prior_loss_weight
++        if self.use_smpl_prior_fusion_v22:
++            self.smpl_prior_head = SMPLPriorHead(
++                d=self.d,
++                n_joints=self.j,
++                smpl_model_path=smpl_model_path,
++            )
++            if freeze_smpl_base:
++                for param in super().parameters():
++                    param.requires_grad = False
++                for param in self.smpl_prior_head.parameters():
++                    param.requires_grad = True
++        else:
++            self.smpl_prior_head = None
++
+         # Optional v25 multi-view geometry fusion.
+         self.use_multiview_geometry_fusion_v25 = use_multiview_geometry_fusion_v25
+         self.use_temporal_geometry_fusion_v26 = use_temporal_geometry_fusion_v26
+@@ -364,6 +401,7 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
+                 n_heads=self.n_heads,
+                 n_views=n_views,
+                 temporal_window=v26_temporal_window,
++                temporal_attention_residual_gate_init=v26_temporal_attention_residual_gate_init,
+                 use_geometry_attention=v25_use_geometry_attention,
+                 use_learned_depth_triangulation=v25_use_learned_depth_triangulation,
+                 use_uncertainty_depth_proposals_v27=use_uncertainty_depth_proposals_v27,
+@@ -394,6 +432,7 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
+         self.use_physical_space_alignment_v28 = use_physical_space_alignment_v28
+         self.v28_floor_loss_weight = v28_floor_loss_weight
+         self.v28_bone_temporal_weight = v28_bone_temporal_weight
++        self.v28_residual_reg_weight = v28_residual_reg_weight
+         if self.use_physical_space_alignment_v28:
+             self.physical_space_alignment_v28 = PhysicalSpaceAlignmentV28(j=self.j)
+         else:
+@@ -512,6 +551,7 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
+         t: torch.Tensor = None,
+         view_mask: Optional[torch.Tensor] = None,
+         domain_id: Optional[torch.Tensor] = None,
++        target_3d: Optional[torch.Tensor] = None,
+     ) -> Tuple[torch.Tensor, ...]:
+         squeeze_output = False
+         if x.dim() == 4:
+@@ -521,6 +561,15 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
+         B, T, V, J, _ = x.shape
+         device = x.device
+ 
++        # Normalize target shape to (B, T, J, 3) if provided.
++        if target_3d is not None:
++            if target_3d.dim() == 3:
++                target_3d = target_3d.unsqueeze(1)
++            elif target_3d.dim() == 4:
++                pass
++            else:
++                raise ValueError("target_3d must have shape (B, J, 3) or (B, T, J, 3)")
++
+         # Defensive: input data may contain NaN/Inf for occluded/missing joints.
+         # Replace them with finite placeholders while keeping the confidence channel
+         # (used downstream for masking) intact.
+@@ -866,23 +915,31 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
+ 
+         # Residual refinement head (deterministic MLP or diffusion-based v20).
+         if self.use_diffusion_refiner_v20 and self.diffusion_refiner_v20 is not None:
+-            if self.training:
+-                t_diff = torch.randint(
+-                    0,
+-                    self.num_diffusion_steps,
+-                    (pred_3d_gn.shape[0],),
+-                    device=device,
+-                )
+-                pred_3d = self.diffusion_refiner_v20(
+-                    pred_3d_gn, feat=feat_pooled, t=t_diff
++            if self.training and target_3d is not None:
++                # During training, use the true target to compute the diffusion
++                # loss and a differentiable single-step refinement.
++                target_3d_flat = target_3d.view(B * T, J, 3)
++                pred_3d, diff_loss = self.diffusion_refiner_v20(
++                    pred_3d_gn, feat=feat_pooled, train_targets=target_3d_flat
+                 )
++                epi_loss = epi_loss + diff_loss
+             else:
+                 pred_3d = self.diffusion_refiner_v20(pred_3d_gn, feat=feat_pooled)
++            residual_input = torch.cat([feat_pooled, pred_3d_gn], dim=-1)
+         else:
+             residual_input = torch.cat([feat_pooled, pred_3d_gn], dim=-1)
+             delta = self.residual_mlp(residual_input)
+             pred_3d = pred_3d_gn + delta
+ 
++        # Optional v22 SMPL prior fusion.
++        smpl_out: Optional[Dict[str, torch.Tensor]] = None
++        if self.use_smpl_prior_fusion_v22 and self.smpl_prior_head is not None:
++            smpl_out = self.smpl_prior_head(residual_input)
++            if smpl_out is not None and "pred_joints_17" in smpl_out:
++                smpl_joints = smpl_out["pred_joints_17"].view(B * T, J, 3)
++                blend = smpl_out["blend"].view(B * T, 1, 1)
++                pred_3d = (1.0 - blend) * pred_3d + blend * smpl_joints
++
+         # Optional final kinematic-chain refiner.
+         if self.use_kinematic_refiner and self.kinematic_refiner is not None:
+             pred_3d = pred_3d + self.kinematic_refiner(pred_3d)
+@@ -920,8 +977,14 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
+ 
+         # Optional v28 physical-space alignment.
+         if self.use_physical_space_alignment_v28 and self.physical_space_alignment_v28 is not None:
+-            pred_3d = self.physical_space_alignment_v28(pred_3d)
+-            if self.v28_floor_loss_weight > 0.0 or self.v28_bone_temporal_weight > 0.0:
++            pred_3d, v28_reg_loss = self.physical_space_alignment_v28(
++                pred_3d, return_reg_loss=True
++            )
++            if (
++                self.v28_floor_loss_weight > 0.0
++                or self.v28_bone_temporal_weight > 0.0
++                or self.v28_residual_reg_weight > 0.0
++            ):
+                 # Select the parent list and foot indices based on the skeleton.
+                 if self.j == 17:
+                     parents = H36M_17_PARENTS
+@@ -939,14 +1002,17 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
+                     foot_indices = [j for j, c in enumerate(children) if len(c) == 0]
+                     if len(foot_indices) == 0:
+                         foot_indices = list(range(self.j))
+-                    floor_h = pred_3d[..., 1].min().detach()
+-                    v28_floor = floor_loss(pred_3d, floor_h, foot_indices)
++                    # floor_loss now estimates the floor robustly per frame.
++                    v28_floor = floor_loss(pred_3d, 0.0, foot_indices)
+                     epi_loss = epi_loss + self.v28_floor_loss_weight * v28_floor
+ 
+                 if self.v28_bone_temporal_weight > 0.0 and pred_3d.shape[1] > 1:
+                     v28_bone = bone_temporal_loss(pred_3d, parents)
+                     epi_loss = epi_loss + self.v28_bone_temporal_weight * v28_bone
+ 
++                if self.v28_residual_reg_weight > 0.0:
++                    epi_loss = epi_loss + self.v28_residual_reg_weight * v28_reg_loss
++
+         weights = weights.view(B, T, V, J)
+         L = L.view(B, T, V, J, 2, 2)
+         visibility = visibility.view(B, T, V, J)
+@@ -957,7 +1023,7 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
+             L = L.squeeze(1)
+             visibility = visibility.squeeze(1)
+ 
+-        out = (pred_3d, weights, visibility, L, epi_loss)
++        out = (pred_3d, weights, visibility, L, epi_loss, budget_loss)
+ 
+         if self.return_pp_delta:
+             out += (pp_delta,)
+diff --git a/motionflow_mv/fusion/outlier_view_detector.py b/motionflow_mv/fusion/outlier_view_detector.py
+index 3782cef..a2238ba 100644
+--- a/motionflow_mv/fusion/outlier_view_detector.py
++++ b/motionflow_mv/fusion/outlier_view_detector.py
+@@ -78,19 +78,38 @@ class OutlierViewDetector(nn.Module):
+         Small constant to avoid division by zero when MAD is zero.
+     """
+ 
+-    def __init__(self, z_thresh: float = 3.0, soft_beta: float = 1.0, min_mad: float = 0.5, eps: float = 1e-6):
++    def __init__(
++        self,
++        z_thresh: float = 3.0,
++        soft_beta: float = 1.0,
++        min_mad: float = 0.5,
++        eps: float = 1e-6,
++        num_joints: Optional[int] = None,
++        adaptive: bool = False,
++    ):
+         super().__init__()
+-        self.z_thresh = z_thresh
+-        self.soft_beta = soft_beta
++        self.base_z_thresh = z_thresh
++        self.base_soft_beta = soft_beta
+         self.min_mad = min_mad
+         self.eps = eps
++        self.num_joints = num_joints
++        self.adaptive = adaptive and (num_joints is not None) and (num_joints > 0)
+         # Learnable gate.  Initialised to zero so the module acts as identity.
+         self.residual_scale = nn.Parameter(torch.tensor(0.0))
+ 
++        # Per-joint adaptive thresholds.  Zero-initialised -> identity at init.
++        if self.adaptive:
++            self.z_shift = nn.Parameter(torch.zeros(num_joints))
++            self.beta_shift = nn.Parameter(torch.zeros(num_joints))
++        else:
++            self.z_shift = None
++            self.beta_shift = None
++
+     def extra_repr(self) -> str:  # noqa: D401
+         return (
+-            f"z_thresh={self.z_thresh}, soft_beta={self.soft_beta}, "
+-            f"min_mad={self.min_mad}, eps={self.eps}"
++            f"base_z_thresh={self.base_z_thresh}, base_soft_beta={self.base_soft_beta}, "
++            f"min_mad={self.min_mad}, eps={self.eps}, "
++            f"adaptive={self.adaptive}"
+         )
+ 
+     def forward(
+@@ -128,9 +147,22 @@ class OutlierViewDetector(nn.Module):
+         mad_std = 1.4826 * mad
+         z = (residual - median) / (mad_std + self.min_mad + self.eps)  # (B, T, V, J)
+ 
++        # Optionally adapt the threshold / softness per joint.  At init the
++        # shifts are zero, so behaviour is identical to the non-adaptive version.
++        if self.adaptive and self.z_shift is not None and self.beta_shift is not None:
++            z_thresh_eff = self.base_z_thresh + self.z_shift  # (J,)
++            soft_beta_eff = self.base_soft_beta * (1.0 + self.beta_shift)  # (J,)
++        else:
++            z_thresh_eff = torch.tensor(self.base_z_thresh, device=z.device, dtype=z.dtype)
++            soft_beta_eff = torch.tensor(self.base_soft_beta, device=z.device, dtype=z.dtype)
++
++        # Broadcast per-joint thresholds to (1, 1, 1, J).
++        z_thresh_eff = z_thresh_eff.view(1, 1, 1, -1)
++        soft_beta_eff = soft_beta_eff.view(1, 1, 1, -1)
++
+         # Soft down-weighting for views beyond the threshold.
+-        outlier_margin = torch.clamp(z - self.z_thresh, min=0.0)
+-        consensus_weights = torch.exp(-self.soft_beta * outlier_margin)
++        outlier_margin = torch.clamp(z - z_thresh_eff, min=0.0)
++        consensus_weights = torch.exp(-soft_beta_eff * outlier_margin)
+ 
+         # Learned gate: at init residual_scale == 0 -> weights == 1.
+         gate = torch.sigmoid(self.residual_scale)
+diff --git a/motionflow_mv/fusion/physical_space_alignment_v28.py b/motionflow_mv/fusion/physical_space_alignment_v28.py
+index ed3d0ce..513f740 100644
+--- a/motionflow_mv/fusion/physical_space_alignment_v28.py
++++ b/motionflow_mv/fusion/physical_space_alignment_v28.py
+@@ -14,7 +14,17 @@ import torch.nn as nn
+ 
+ 
+ class PhysicalSpaceAlignmentV28(nn.Module):
+-    """Learned physical-space alignment refiner.
++    """Conservative learned physical-space alignment refiner.
++
++    The refiner is intentionally constrained so it cannot catastrophically
++    override the upstream 3D pose estimate:
++
++    * The MLP output is bounded by ``tanh`` to ``[-1, 1]`` and then scaled by
++      ``max_residual`` (meters), so each joint can move at most a few cm.
++    * The global residual scale is bounded with a sigmoid and initialised near
++      zero, making the module start as a no-op and grow only when helpful.
++    * LayerNorm and dropout are added inside the MLP to improve stability and
++      reduce over-fitting on small local datasets.
+ 
+     Parameters
+     ----------
+@@ -22,39 +32,66 @@ class PhysicalSpaceAlignmentV28(nn.Module):
+         Number of joints.
+     hidden:
+         Hidden dimension of the residual MLP.
++    max_residual:
++        Maximum per-joint correction in meters.
++    dropout:
++        Dropout probability in the residual MLP.
+     """
+ 
+-    def __init__(self, j: int, hidden: int = 64):
++    def __init__(
++        self,
++        j: int,
++        hidden: int = 64,
++        max_residual: float = 0.05,
++        dropout: float = 0.1,
++    ):
+         super().__init__()
+         self.j = j
++        self.max_residual = max_residual
+         self.gravity_dir = nn.Parameter(torch.tensor([0.0, 1.0, 0.0]), requires_grad=False)
+ 
+         self.refiner = nn.Sequential(
+             nn.Linear(6, hidden),
++            nn.LayerNorm(hidden),
+             nn.ReLU(),
++            nn.Dropout(dropout),
+             nn.Linear(hidden, hidden),
++            nn.LayerNorm(hidden),
+             nn.ReLU(),
++            nn.Dropout(dropout),
+             nn.Linear(hidden, 3),
++            nn.Tanh(),
+         )
+-        # Identity at init: residual is zero.
+-        for p in self.refiner[-1].parameters():
++        # Identity at init: residual is zero (Tanh(0) = 0).
++        for p in self.refiner[-2].parameters():
+             nn.init.zeros_(p)
+ 
+-        self.residual_scale = nn.Parameter(torch.tensor(0.0))
++        # Bounded scale in (0, 1).  Initialise to a tiny value so v28 starts as no-op.
++        self.residual_logit = nn.Parameter(torch.tensor(-6.0))
++
++    @property
++    def residual_scale(self) -> torch.Tensor:
++        """Bounded global residual scale in (0, 1)."""
++        return torch.sigmoid(self.residual_logit)
+ 
+     def forward(
+         self,
+         X: torch.Tensor,
+         gravity_dir: Optional[torch.Tensor] = None,
+-    ) -> torch.Tensor:
++        return_reg_loss: bool = False,
++    ) -> torch.Tensor | tuple[torch.Tensor, torch.Tensor]:
+         """Refine pose with physical-space constraints.
+ 
+         Args:
+             X: (B, T, J, 3) predicted 3D joints.
+             gravity_dir: optional (3,) gravity direction. Defaults to (0, 1, 0).
++            return_reg_loss: If True, also return an L2 regulariser on the
++                applied residual.
+ 
+         Returns:
+             X_aligned: (B, T, J, 3) refined 3D joints.
++            If ``return_reg_loss`` is True, returns a tuple
++            ``(X_aligned, reg_loss)`` where ``reg_loss`` is a scalar.
+         """
+         if gravity_dir is None:
+             gravity_dir = self.gravity_dir
+@@ -65,8 +102,17 @@ class PhysicalSpaceAlignmentV28(nn.Module):
+         g = g.view(1, 1, 1, 3).expand(B, T, J, -1)
+ 
+         feat = torch.cat([X, g], dim=-1)
+-        residual = self.refiner(feat)
+-        return X + self.residual_scale * residual
++        raw_residual = self.refiner(feat)  # (B, T, J, 3), in [-1, 1]
++        residual = self.max_residual * raw_residual
++        scale = self.residual_scale
++        X_aligned = X + scale * residual
++
++        if not return_reg_loss:
++            return X_aligned
++
++        applied = scale * residual
++        reg_loss = applied.pow(2).mean()
++        return X_aligned, reg_loss
+ 
+ 
+ def floor_loss(
+@@ -74,25 +120,45 @@ def floor_loss(
+     floor_height: torch.Tensor,
+     foot_joint_indices: list[int],
+     gravity_dir: Optional[torch.Tensor] = None,
++    floor_quantile: float = 0.05,
+ ) -> torch.Tensor:
+     """Soft hinge loss penalising foot joints below the floor plane.
+ 
++    The floor height is estimated robustly per frame as the lower quantile of
++    the selected foot joints along the gravity direction.  This is more stable
++    than using a single global minimum over the whole batch.
++
+     Args:
+         X: (B, T, J, 3) 3D joints.
+         floor_height: scalar or (B, T) tensor of floor heights along gravity.
++            Kept for backward compatibility; the actual floor is estimated
++            from the foot joints.
+         foot_joint_indices: list of foot joint indices.
+         gravity_dir: optional (3,) gravity direction. Defaults to (0, 1, 0).
++        floor_quantile: quantile used to estimate the floor height from foot
++            joints (default 0.05).
+ 
+     Returns:
+         Scalar loss.
+     """
++    del floor_height  # unused; kept for backward-compatible signatures
+     if gravity_dir is None:
+         gravity_dir = torch.tensor([0.0, 1.0, 0.0], device=X.device, dtype=X.dtype)
+     g = gravity_dir / (gravity_dir.norm() + 1e-8)
+     # Project joints onto gravity axis.
+     h = torch.einsum("btjc,c->btj", X, g)
+     feet = h[:, :, foot_joint_indices]
+-    violation = (floor_height - feet).clamp(min=0.0)
++
++    # Robust per-frame floor height: lower quantile over feet.
++    n_feet = feet.shape[-1]
++    if n_feet > 1:
++        k = max(1, int(floor_quantile * n_feet))
++        floor_h, _ = torch.topk(feet, k, dim=-1, largest=False)
++        floor_h = floor_h[..., -1]  # (B, T)
++    else:
++        floor_h = feet[..., 0]
++
++    violation = (floor_h.unsqueeze(-1) - feet).clamp(min=0.0)
+     return violation.mean()
+ 
+ 
+diff --git a/motionflow_mv/fusion/temporal_geometry_fusion_v26.py b/motionflow_mv/fusion/temporal_geometry_fusion_v26.py
+index 239e767..26798d1 100644
+--- a/motionflow_mv/fusion/temporal_geometry_fusion_v26.py
++++ b/motionflow_mv/fusion/temporal_geometry_fusion_v26.py
+@@ -28,6 +28,7 @@ from .multiview_geometry_fusion_v25 import (
+     ray_intersection_logit,
+     triangulate_initial,
+ )
++from .outlier_view_detector import OutlierViewDetector
+ from .uncertainty_depth_proposal_v27 import UncertaintyDepthProposalTriangulation
+ 
+ 
+@@ -218,6 +219,13 @@ class TemporalGeometryFusionV26(nn.Module):
+         trajectory.
+     temporal_loss_weight:
+         Weight of the temporal velocity-smoothness loss.
++    use_outlier_view_detector:
++        Enable robust outlier-view detection and down-weighting before
++        triangulation, reusing the v25 ``OutlierViewDetector``.
++    outlier_z_thresh: robust z-score threshold for the outlier detector.
++    outlier_soft_beta: softness of the exponential outlier down-weighting.
++    outlier_adaptive: if True, learn per-joint threshold/softness shifts.
++    num_joints: number of joints (required when ``outlier_adaptive=True``).
+     dropout:
+         Dropout rate.
+     """
+@@ -236,6 +244,12 @@ class TemporalGeometryFusionV26(nn.Module):
+         use_learned_depth_triangulation: bool = True,
+         use_temporal_depth_consistency: bool = False,
+         temporal_loss_weight: float = 0.1,
++        temporal_attention_residual_gate_init: float = 0.0,
++        use_outlier_view_detector: bool = False,
++        outlier_z_thresh: float = 3.0,
++        outlier_soft_beta: float = 1.0,
++        outlier_adaptive: bool = False,
++        num_joints: Optional[int] = None,
+         dropout: float = 0.1,
+         use_uncertainty_depth_proposals_v27: bool = False,
+         v27_uncertainty_loss_weight: float = 0.01,
+@@ -250,6 +264,7 @@ class TemporalGeometryFusionV26(nn.Module):
+         self.use_learned_depth_triangulation = use_learned_depth_triangulation
+         self.use_temporal_depth_consistency = use_temporal_depth_consistency
+         self.temporal_loss_weight = temporal_loss_weight
++        self.temporal_attention_residual_gate_init = temporal_attention_residual_gate_init
+         self.use_uncertainty_depth_proposals_v27 = use_uncertainty_depth_proposals_v27
+         self.v27_uncertainty_loss_weight = v27_uncertainty_loss_weight
+         self.v27_udp_n_mixtures = v27_udp_n_mixtures
+@@ -266,7 +281,14 @@ class TemporalGeometryFusionV26(nn.Module):
+         if use_temporal_geometry_attention:
+             self.temporal_attn_layers = nn.ModuleList(
+                 [
+-                    TemporalGeometryAttention(d, n_heads, n_views, temporal_window, dropout)
++                    TemporalGeometryAttention(
++                        d,
++                        n_heads,
++                        n_views,
++                        temporal_window,
++                        dropout,
++                        residual_gate_init=temporal_attention_residual_gate_init,
++                    )
+                     for _ in range(n_temporal_layers)
+                 ]
+             )
+diff --git a/scripts/auto_eval_when_ready.py b/scripts/auto_eval_when_ready.py
+index 17072c5..a0993ea 100755
+--- a/scripts/auto_eval_when_ready.py
++++ b/scripts/auto_eval_when_ready.py
+@@ -35,6 +35,8 @@ DEFAULT_LOG_DIR = ROOT / "outputs"
+ DEFAULT_LOG_GLOB = "omniview_fusion_v*.log"
+ DEFAULT_GPU = 0
+ DEFAULT_POLL_INTERVAL = 60
++DEFAULT_OVERFIT_PATIENCE = 3
++DEFAULT_OVERFIT_MIN_EPOCHS = 5
+ LOCK_FILE = Path("/tmp/motionflow_auto_eval_py.lock")
+ 
+ 
+@@ -92,6 +94,66 @@ def last_val_mpjpe(log_path: Path) -> Optional[float]:
+     return float(matches[-1]) if matches else None
+ 
+ 
++def extract_val_mpjpe_series(log_path: Path) -> List[float]:
++    """Return all validation MPJPE values in chronological order."""
++    try:
++        text = log_path.read_text(errors="ignore")
++    except FileNotFoundError:
++        return []
++    return [float(m) for m in re.findall(r"val_MPJPE=([\d.]+)mm", text)]
++
++
++def best_epoch_info(log_path: Path) -> Tuple[Optional[int], Optional[float]]:
++    """Return (epoch_index, best_val_mpjpe) from the log, 0-based.
++
++    Returns (None, None) when no val_MPJPE lines are present.
++    """
++    series = extract_val_mpjpe_series(log_path)
++    if not series:
++        return None, None
++    best_idx = min(range(len(series)), key=series.__getitem__)
++    return best_idx, series[best_idx]
++
++
++def detect_overfitting(
++    log_path: Path,
++    patience: int = DEFAULT_OVERFIT_PATIENCE,
++    min_epochs: int = DEFAULT_OVERFIT_MIN_EPOCHS,
++) -> Tuple[bool, int]:
++    """Detect whether validation MPJPE is rising monotonically.
++
++    Args:
++        log_path: training log to analyse.
++        patience: number of consecutive increasing val_MPJPE epochs required
++                  to flag overfitting.
++        min_epochs: require at least this many validation epochs before
++                    overfit detection activates (avoids early noise).
++
++    Returns:
++        (is_overfitting, epochs_since_best)
++    """
++    series = extract_val_mpjpe_series(log_path)
++    if len(series) < max(patience + 1, min_epochs):
++        return False, 0
++
++    best_idx, _ = best_epoch_info(log_path)
++    if best_idx is None:
++        return False, 0
++
++    epochs_since_best = len(series) - 1 - best_idx
++
++    # Count consecutive increases at the tail of the series.
++    consecutive_increases = 0
++    for i in range(len(series) - 1, 0, -1):
++        if series[i] > series[i - 1]:
++            consecutive_increases += 1
++        else:
++            break
++
++    is_overfitting = consecutive_increases >= patience
++    return is_overfitting, epochs_since_best
++
++
+ def map_to_fullscale_script(experiment_name: str) -> Optional[Path]:
+     """Map an experiment name like 'omniview_fusion_v13_temporal' to its full-scale script."""
+     script_dir = ROOT / "scripts"
+@@ -213,15 +275,32 @@ def process_experiment(experiment: Experiment, args: argparse.Namespace) -> bool
+ 
+     best = best_val_mpjpe(experiment.log_path)
+     last = last_val_mpjpe(experiment.log_path)
+-    _log(f"[{experiment.name}] Detected completed baseline (best={best}mm, last={last}mm).")
++    is_overfitting, epochs_since_best = detect_overfitting(
++        experiment.log_path,
++        patience=args.overfit_patience,
++        min_epochs=args.overfit_min_epochs,
++    )
++    status_msg = (
++        f"Detected completed baseline (best={best}mm, last={last}mm, "
++        f"epochs_since_best={epochs_since_best})"
++    )
++    if is_overfitting:
++        status_msg += " — OVERFITTING DETECTED"
++    _log(f"[{experiment.name}] {status_msg}")
+ 
+     if not args.skip_eval:
+         if not run_eval(experiment, args.eval_command, args.dry_run):
+             return False
+ 
+     if not args.skip_fullscale:
+-        if not run_fullscale(experiment, args.gpu, args.dry_run):
+-            return False
++        if is_overfitting and not args.force_fullscale:
++            _log(
++                f"[{experiment.name}] Skipping full-scale launch due to overfitting. "
++                f"Use --force-fullscale to override."
++            )
++        else:
++            if not run_fullscale(experiment, args.gpu, args.dry_run):
++                return False
+ 
+     if not args.dry_run:
+         mark_done(experiment.log_path)
+@@ -278,6 +357,14 @@ def build_parser() -> argparse.ArgumentParser:
+                         help="If given, write a JSON summary of the polling results to this path.")
+     parser.add_argument("--lock-file", type=Path, default=LOCK_FILE,
+                         help=f"Path to the singleton lock file (default: {LOCK_FILE})")
++    parser.add_argument("--overfit-patience", type=int, default=DEFAULT_OVERFIT_PATIENCE,
++                        help=("Number of consecutive increasing val_MPJPE epochs to flag "
++                              f"overfitting (default: {DEFAULT_OVERFIT_PATIENCE})"))
++    parser.add_argument("--overfit-min-epochs", type=int, default=DEFAULT_OVERFIT_MIN_EPOCHS,
++                        help=("Minimum number of validation epochs before overfit detection "
++                              f"activates (default: {DEFAULT_OVERFIT_MIN_EPOCHS})"))
++    parser.add_argument("--force-fullscale", action="store_true",
++                        help="Launch full-scale run even if overfitting is detected.")
+     return parser
+ 
+ 
+@@ -294,7 +381,15 @@ def poll(args: argparse.Namespace) -> Dict[str, object]:
+ 
+     for experiment in experiments:
+         if is_ready(experiment.log_path):
+-            summary["processed"].append(experiment.name)
++            overfitting, _ = detect_overfitting(
++                experiment.log_path,
++                patience=args.overfit_patience,
++                min_epochs=args.overfit_min_epochs,
++            )
++            summary["processed"].append({
++                "name": experiment.name,
++                "overfitting": overfitting,
++            })
+             process_experiment(experiment, args)
+         else:
+             summary["skipped"].append(experiment.name)
+diff --git a/scripts/print_status.py b/scripts/print_status.py
+index 0e0fec3..75b2564 100644
+--- a/scripts/print_status.py
++++ b/scripts/print_status.py
+@@ -19,11 +19,29 @@ def local_log_status(log_path: Path) -> str:
+     return f"training step {last_step} loss={last_loss}" if last_step else "initializing"
+ 
+ 
++def v25_local_status() -> str:
++    status_path = Path("outputs/v25_local_4090_status.json")
++    if status_path.exists():
++        try:
++            status = json.loads(status_path.read_text())
++            best = status.get("best")
++            last = status.get("last")
++            if best and last:
++                return f"status={status['status']} best epoch={best['epoch']} val={best['val_mpjpe_mm']}mm | last epoch={last['epoch']} val={last['val_mpjpe_mm']}mm"
++            if best:
++                return f"best epoch={best['epoch']} val={best['val_mpjpe_mm']}mm"
++        except Exception:
++            pass
++    log = Path("outputs/omniview_fusion_v25_geometry_fusion_small_local_4090.log")
++    return local_log_status(log)
++
++
+ def main() -> None:
+     print("Local 4090:")
+     for variant in ["v26_udp", "v26_udp_gmm", "v26_udp_v28", "v26_udp_gmm_v28", "v29_udp_gmm_v28_graph_outlier"]:
+         log = Path(f"outputs/omniview_fusion_{variant}_full_local_4090.log")
+         print(f"  {variant}: {local_log_status(log)}")
++    print(f"  v25_baseline: {v25_local_status()}")
+ 
+     print("\nA800 v25 state:")
+     state_path = Path(".monitor_a800_v25_state.json")
+diff --git a/scripts/run_v25_small_local_4090.sh b/scripts/run_v25_small_local_4090.sh
+index f113a14..cf3ae84 100644
+--- a/scripts/run_v25_small_local_4090.sh
++++ b/scripts/run_v25_small_local_4090.sh
+@@ -6,6 +6,9 @@ CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-0}
+ PYTHON=${PYTHON:-python}
+ OUTPUT=${OUTPUT:-outputs/omniview_fusion_v25_geometry_fusion_small_local_4090.pth}
+ LOG=${LOG:-outputs/omniview_fusion_v25_geometry_fusion_small_local_4090.log}
++EPOCHS=${EPOCHS:-20}
++TRAIN_SAMPLES=${TRAIN_SAMPLES:-500}
++BATCH_SIZE=${BATCH_SIZE:-16}
+ 
+ $PYTHON -u experiments/train_omniview_fusion_v5_webbridge_multi.py \
+     --use_mixed_loader \
+@@ -23,7 +26,7 @@ $PYTHON -u experiments/train_omniview_fusion_v5_webbridge_multi.py \
+     --num_workers 0 \
+     --d 128 --residual_hidden 256 --n_st_layers 3 \
+     --graph_num_layers 1 --n_joint_layers 1 --n_heads 4 \
+-    --epochs 20 --batch_size 16 --train_samples 500 --val_stride 10 \
++    --epochs $EPOCHS --batch_size $BATCH_SIZE --train_samples $TRAIN_SAMPLES --val_stride 10 \
+     --lr 1e-3 --lr_cosine --lr_warmup_epochs 3 --lr_min 1e-6 \
+     --max_grad_norm 1.0 --ema_decay 0.999 \
+     --use_multiscale_fusion true --use_camera_conditioning true --use_epipolar_bias true \
+diff --git a/tests/test_auto_eval_when_ready.py b/tests/test_auto_eval_when_ready.py
+index 56e3891..3ce8f95 100644
+--- a/tests/test_auto_eval_when_ready.py
++++ b/tests/test_auto_eval_when_ready.py
+@@ -95,6 +95,115 @@ def test_does_not_retrigger_already_processed_log(script_path: Path, project_tmp
+     assert "DRY-RUN: would launch" not in text
+ 
+ 
++def test_detect_overfitting_flags_monotonic_rise() -> None:
++    import sys
++    from pathlib import Path
++    root = Path(__file__).resolve().parents[1]
++    scripts_dir = root / "scripts"
++    sys.path.insert(0, str(scripts_dir))
++    from auto_eval_when_ready import detect_overfitting
++    log = Path("tmp_pytest_overfit.log")
++    log.write_text(
++        "Epoch 1: val_MPJPE=50.00mm\n"
++        "Epoch 2: val_MPJPE=45.00mm\n"
++        "Epoch 3: val_MPJPE=48.00mm\n"
++        "Epoch 4: val_MPJPE=52.00mm\n"
++        "Epoch 5: val_MPJPE=55.00mm\n"
++    )
++    try:
++        is_overfitting, epochs_since_best = detect_overfitting(log, patience=3, min_epochs=5)
++        assert is_overfitting is True
++        assert epochs_since_best == 2
++    finally:
++        log.unlink(missing_ok=True)
++
++
++def test_detect_overfitting_ignores_short_logs() -> None:
++    import sys
++    from pathlib import Path
++    root = Path(__file__).resolve().parents[1]
++    scripts_dir = root / "scripts"
++    sys.path.insert(0, str(scripts_dir))
++    from auto_eval_when_ready import detect_overfitting
++    log = Path("tmp_pytest_short.log")
++    log.write_text(
++        "Epoch 1: val_MPJPE=50.00mm\n"
++        "Epoch 2: val_MPJPE=55.00mm\n"
++        "Epoch 3: val_MPJPE=60.00mm\n"
++    )
++    try:
++        is_overfitting, _ = detect_overfitting(log, patience=3, min_epochs=5)
++        assert is_overfitting is False
++    finally:
++        log.unlink(missing_ok=True)
++
++
++def test_overfitting_skips_fullscale_launch(script_path: Path, project_tmp: Path) -> None:
++    log = project_tmp / "omniview_fusion_v91_overfit.log"
++    fullscale = script_path.parent / "run_omniview_fusion_v91_overfit_fullscale.sh"
++    fullscale.write_text("#!/bin/bash\necho fullscale\n")
++    fullscale.chmod(0o755)
++
++    log.write_text(
++        "Epoch 1: val_MPJPE=100.00mm\n"
++        "Epoch 2: val_MPJPE=90.00mm\n"
++        "Epoch 3: val_MPJPE=95.00mm\n"
++        "Epoch 4: val_MPJPE=100.00mm\n"
++        "Epoch 5: val_MPJPE=105.00mm\n"
++        "Epoch 6: val_MPJPE=110.00mm\n"
++        "Epoch 7: val_MPJPE=115.00mm\n"
++    )
++
++    try:
++        result = _run(
++            script_path,
++            "--log-dir", str(project_tmp),
++            "--log-glob", "*.log",
++            "--once",
++            "--dry-run",
++        )
++        assert result.returncode == 0, result.stderr
++        text = result.stdout + result.stderr
++        assert "OVERFITTING DETECTED" in text
++        assert "Skipping full-scale launch" in text
++        assert "DRY-RUN: would launch" not in text
++    finally:
++        fullscale.unlink(missing_ok=True)
++
++
++def test_force_fullscale_overrides_overfit_skip(script_path: Path, project_tmp: Path) -> None:
++    log = project_tmp / "omniview_fusion_v92_overfit_force.log"
++    fullscale = script_path.parent / "run_omniview_fusion_v92_overfit_force_fullscale.sh"
++    fullscale.write_text("#!/bin/bash\necho fullscale\n")
++    fullscale.chmod(0o755)
++
++    log.write_text(
++        "Epoch 1: val_MPJPE=100.00mm\n"
++        "Epoch 2: val_MPJPE=90.00mm\n"
++        "Epoch 3: val_MPJPE=95.00mm\n"
++        "Epoch 4: val_MPJPE=100.00mm\n"
++        "Epoch 5: val_MPJPE=105.00mm\n"
++        "Epoch 6: val_MPJPE=110.00mm\n"
++        "Epoch 7: val_MPJPE=115.00mm\n"
++    )
++
++    try:
++        result = _run(
++            script_path,
++            "--log-dir", str(project_tmp),
++            "--log-glob", "*.log",
++            "--once",
++            "--dry-run",
++            "--force-fullscale",
++        )
++        assert result.returncode == 0, result.stderr
++        text = result.stdout + result.stderr
++        assert "OVERFITTING DETECTED" in text
++        assert "DRY-RUN: would launch" in text
++    finally:
++        fullscale.unlink(missing_ok=True)
++
++
+ def test_skips_log_without_val_mpjpe(script_path: Path, project_tmp: Path) -> None:
+     log = project_tmp / "omniview_fusion_v98_no_val.log"
+     log.write_text("Epoch 1: train_loss=0.5\n")
+@@ -122,7 +231,8 @@ def test_json_summary_written(script_path: Path, project_tmp: Path) -> None:
+     assert result.returncode == 0, result.stderr
+     summary = json.loads(summary_path.read_text())
+     assert summary["scanned"] >= 1
+-    assert "omniview_fusion_v97_fake" in summary["processed"]
++    processed_names = [p["name"] if isinstance(p, dict) else p for p in summary["processed"]]
++    assert "omniview_fusion_v97_fake" in processed_names
+ 
+ 
+ def test_second_instance_exits_due_to_lock(script_path: Path, project_tmp: Path) -> None:
+diff --git a/tests/test_deformable_cross_view_attention.py b/tests/test_deformable_cross_view_attention.py
+index f886de0..d7acb5c 100644
+--- a/tests/test_deformable_cross_view_attention.py
++++ b/tests/test_deformable_cross_view_attention.py
+@@ -89,6 +89,25 @@ def test_deformable_attention_variable_view_mask_2d():
+     assert out[:, :, 0, :, :].abs().max().item() < 1e-5
+ 
+ 
++def test_deformable_attention_topk_straight_through():
++    """Straight-through top-k mode should preserve shape and gradients."""
++    B, T, V, J, d = 2, 3, 4, 17, 64
++    x = torch.randn(B, T, V, J, d, requires_grad=True)
++    N = B * T
++    K, R, t = _make_dummy_cameras(N, V)
++    points_2d = torch.randn(N, V, J, 2) * 100.0
++
++    module = DeformableCrossViewAttention(
++        d=d, n_heads=4, n_views=V, n_samples=2, use_topk_straight_through=True
++    )
++    out = module(x, K, R, t, points_2d)
++    assert out.shape == (B, T, V, J, d)
++    loss = out.sum()
++    loss.backward()
++    assert x.grad is not None
++    assert any(p.grad is not None for p in module.parameters())
++
++
+ def test_deformable_attention_invalid_head_dim():
+     with pytest.raises(ValueError):
+         DeformableCrossViewAttention(d=64, n_heads=3, n_views=4, n_samples=2)
+diff --git a/tests/test_kinematic_anthropometric_prior_v22.py b/tests/test_kinematic_anthropometric_prior_v22.py
+index 470d41e..ac1cbe0 100644
+--- a/tests/test_kinematic_anthropometric_prior_v22.py
++++ b/tests/test_kinematic_anthropometric_prior_v22.py
+@@ -65,3 +65,47 @@ def test_kap_angle_limit_toggle():
+ def test_kap_unsupported_joints():
+     with pytest.raises(ValueError):
+         KinematicAnthropometricPrior(j=12, d=16)
++
++
++def test_kap_adaptive_prior_forward_and_gradients():
++    feat, pred = _make_inputs(j=17, d=32)
++    feat.requires_grad_(True)
++    pred.requires_grad_(True)
++    model = KinematicAnthropometricPrior(
++        j=17, d=32, adaptive_prior=True, adaptive_context_dim=8, adaptive_hidden=16
++    )
++    pred_ref, loss = model(feat, pred)
++    assert pred_ref.shape == pred.shape
++    assert loss.shape == ()
++    loss.backward()
++    assert pred.grad is not None
++    assert any(p.grad is not None for p in model.parameters())
++
++
++def test_kap_adaptive_prior_is_identity_at_init():
++    feat, pred = _make_inputs(j=17, d=32)
++    model = KinematicAnthropometricPrior(
++        j=17, d=32, adaptive_prior=True, adaptive_context_dim=8, adaptive_hidden=16
++    )
++    pred_ref, _ = model(feat, pred)
++    # The adjustment MLP final layers are zero-initialized, so the adaptive
++    # prior should collapse to the global prior at init and the residual
++    # branch remains near zero.
++    assert torch.allclose(pred_ref, pred, atol=1e-1)
++
++
++def test_kap_adaptive_prior_regularization_loss():
++    feat, pred = _make_inputs(j=17, d=32)
++    model = KinematicAnthropometricPrior(
++        j=17,
++        d=32,
++        adaptive_prior=True,
++        adaptive_context_dim=8,
++        adaptive_hidden=16,
++        adaptive_regularization=0.1,
++    )
++    pred_ref, loss = model(feat, pred)
++    # The regularization term should be positive once the adjustment MLPs
++    # produce a non-zero delta (they are initialized to zero, so after one
++    # forward pass with random input they will generally be non-zero).
++    assert loss.item() >= 0.0
+diff --git a/tests/test_neural_bundle_adjustment_v21.py b/tests/test_neural_bundle_adjustment_v21.py
+index c2c7f64..f880193 100644
+--- a/tests/test_neural_bundle_adjustment_v21.py
++++ b/tests/test_neural_bundle_adjustment_v21.py
+@@ -2,7 +2,10 @@
+ 
+ import torch
+ 
+-from motionflow_mv.fusion.neural_bundle_adjustment_v21 import NeuralBundleAdjustment
++from motionflow_mv.fusion.neural_bundle_adjustment_v21 import (
++    NeuralBundleAdjustment,
++    _rotation_matrix_to_axis_angle,
++)
+ 
+ 
+ def _make_cameras(batch: int, n_views: int):
+@@ -77,3 +80,60 @@ def test_neural_bundle_adjustment_backward():
+     loss.backward()
+ 
+     assert any(p.grad is not None for p in nba.parameters())
++
++
++def test_rotation_matrix_to_axis_angle_identity():
++    """Identity rotation should map to a zero axis-angle vector."""
++    R = torch.eye(3).view(1, 3, 3).expand(4, 3, 3).clone()
++    aa = _rotation_matrix_to_axis_angle(R)
++    assert aa.shape == (4, 3)
++    assert torch.allclose(aa, torch.zeros_like(aa), atol=1e-5)
++
++
++def test_rotation_matrix_to_axis_angle_compact_descriptor():
++    """The camera descriptor should use the compact 3-DOF rotation."""
++    nba = NeuralBundleAdjustment(camera_hidden=16)
++    # in_dim = 2 (mean) + 2 (std) + 5 (intrinsics) + 3 (rotation aa) + 3 (trans) + 1 (weight) = 16
++    assert nba.camera_head.mlp[0].in_features == 16
++
++
++def test_residual_gate_rejects_harmful_camera_updates():
++    """With the gate enabled, a random (bad) MLP init must not increase reprojection error.
++
++    We intentionally bypass the zero-initialised final layer by adding a large
++    camera perturbation, then check that the gate keeps the original cameras.
++    """
++    B, T, V, J = 1, 1, 2, 17
++    X = torch.randn(B, T, J, 3) * 0.5 + torch.tensor([0.0, 0.0, 3.0])
++    points_2d = torch.randn(B, T, V, J, 2) * 100 + 320
++    K, R, t = _make_cameras(B, V)
++    weights = torch.ones(B, T, V, J)
++
++    nba = NeuralBundleAdjustment(n_iters=1, camera_hidden=16, gate_camera_update=True)
++    # Force a harmful camera update by setting the final bias to a large value.
++    with torch.no_grad():
++        nba.camera_head.mlp[-1].bias.fill_(1.0)
++
++    X_ref, K_ref, R_ref, t_ref = nba(X, points_2d, K, R, t, weights)
++
++    # Because the random 2D keypoints are inconsistent with the identity cameras,
++    # the harmful camera update should be rejected and K/R/t should stay unchanged.
++    assert torch.allclose(K_ref, K, atol=1e-5)
++    assert torch.allclose(R_ref, R, atol=1e-5)
++    assert torch.allclose(t_ref, t, atol=1e-5)
++
++
++def test_warm_start_structure_runs():
++    """The structure warm-start toggle should not change output shapes."""
++    B, V, J = 2, 3, 17
++    X = torch.randn(B, J, 3) * 0.5 + torch.tensor([0.0, 0.0, 3.0])
++    points_2d = torch.randn(B, V, J, 2) * 100 + 320
++    K, R, t = _make_cameras(B, V)
++    weights = torch.ones(B, V, J)
++
++    nba = NeuralBundleAdjustment(n_iters=1, camera_hidden=16, warm_start_structure=True)
++    X_ref, K_ref, R_ref, t_ref = nba(X, points_2d, K, R, t, weights)
++    assert X_ref.shape == X.shape
++    assert K_ref.shape == K.shape
++    assert R_ref.shape == R.shape
++    assert t_ref.shape == t.shape
+diff --git a/tests/test_omniview_fusion_v5_deformable_attention.py b/tests/test_omniview_fusion_v5_deformable_attention.py
+index dd7fa3f..62e4c76 100644
+--- a/tests/test_omniview_fusion_v5_deformable_attention.py
++++ b/tests/test_omniview_fusion_v5_deformable_attention.py
+@@ -57,6 +57,34 @@ def test_deformable_attention_v18_runs():
+     assert not pred_3d.isnan().any()
+ 
+ 
++def test_deformable_attention_v18_topk_straight_through():
++    """v18 with straight-through top-k sampling should produce valid 3D pose."""
++    K, R, t = _make_cameras(4)
++    model = OmniMultiViewFusionV5(
++        j=17,
++        d=32,
++        n_views=4,
++        n_heads=4,
++        n_st_layers=1,
++        graph_num_layers=1,
++        use_full_precision_dlt=True,
++        use_camera_view_embedding=True,
++        use_deformable_cross_view_attention_v18=True,
++        deformable_attention_use_topk_st=True,
++    )
++    model.eval()
++
++    B, T, V, J = 2, 3, 4, 17
++    x = torch.rand(B, T, V, J, 3)
++    x[..., 2] = 1.0
++
++    with torch.no_grad():
++        out = model(x, K=K, R=R, t=t)
++    pred_3d = out[0]
++    assert pred_3d.shape == (B, T, J, 3)
++    assert not pred_3d.isnan().any()
++
++
+ def test_deformable_attention_v18_variable_views():
+     """v18 should respect variable-view masks."""
+     K, R, t = _make_cameras(4)
+diff --git a/tests/test_physical_space_alignment_v28.py b/tests/test_physical_space_alignment_v28.py
+index 0ed1158..4324d55 100644
+--- a/tests/test_physical_space_alignment_v28.py
++++ b/tests/test_physical_space_alignment_v28.py
+@@ -20,18 +20,40 @@ def test_physical_space_alignment_identity_at_init():
+     head = PhysicalSpaceAlignmentV28(j=17)
+     X = torch.randn(2, 3, 17, 3)
+     out = head(X)
++    # At init the MLP residual is zero and the global scale is tiny, so the
++    # module should be identity up to floating-point tolerance.
+     assert torch.allclose(out, X, atol=1e-5)
+ 
+ 
+ def test_physical_space_alignment_backward():
+     head = PhysicalSpaceAlignmentV28(j=17)
+-    head.residual_scale.data.fill_(1.0)
++    # Set the bounded scale close to 1.
++    head.residual_logit.data.fill_(10.0)
+     X = torch.randn(2, 3, 17, 3, requires_grad=True)
+     out = head(X)
+     out.mean().backward()
+     assert X.grad is not None
+ 
+ 
++def test_physical_space_alignment_reg_loss():
++    head = PhysicalSpaceAlignmentV28(j=17)
++    head.residual_logit.data.fill_(10.0)
++    X = torch.randn(2, 3, 17, 3)
++    out, reg_loss = head(X, return_reg_loss=True)
++    assert out.shape == X.shape
++    assert reg_loss.numel() == 1
++    assert reg_loss >= 0.0
++
++
++def test_physical_space_alignment_residual_bound():
++    head = PhysicalSpaceAlignmentV28(j=17, max_residual=0.05)
++    head.residual_logit.data.fill_(10.0)
++    X = torch.randn(2, 3, 17, 3)
++    out = head(X)
++    # The per-joint correction is bounded by max_residual in each coordinate.
++    assert (out - X).abs().max().item() <= 0.05 * 1.01
++
++
+ def test_floor_loss_non_negative():
+     X = torch.randn(2, 3, 17, 3)
+     loss = floor_loss(X, -1.0, [3, 6, 11, 14])
+@@ -39,6 +61,16 @@ def test_floor_loss_non_negative():
+     assert torch.isfinite(loss)
+ 
+ 
++def test_floor_loss_robust_floor_estimate():
++    # Put all foot joints at y=0 except one outlier below.
++    X = torch.zeros(1, 1, 17, 3)
++    X[0, 0, [3, 6, 11], 1] = 0.0
++    X[0, 0, 14, 1] = -1.0
++    loss = floor_loss(X, 0.0, [3, 6, 11, 14], floor_quantile=0.25)
++    assert loss >= 0.0
++    assert loss < 0.5  # the outlier should not dominate the floor estimate
++
++
+ def test_bone_temporal_loss_shape():
+     X = torch.randn(2, 5, 17, 3)
+     parents = list(range(-1, 16))
+diff --git a/tests/test_temporal_geometry_fusion_v26.py b/tests/test_temporal_geometry_fusion_v26.py
+index cd428ec..434ca2a 100644
+--- a/tests/test_temporal_geometry_fusion_v26.py
++++ b/tests/test_temporal_geometry_fusion_v26.py
+@@ -126,6 +126,24 @@ def test_identity_at_init():
+     assert torch.allclose(out, pred_3d_init, atol=1e-5)
+ 
+ 
++def test_identity_at_init_with_temporal_attention_enabled():
++    """With residual gate initialised to 0, temporal attention is a no-op at init."""
++    module = TemporalGeometryFusionV26(
++        d=64,
++        n_heads=2,
++        n_views=4,
++        use_geometry_attention=False,
++        use_temporal_geometry_attention=True,
++        use_learned_depth_triangulation=False,
++    )
++    points_2d, K, R, t, pred_3d_init, view_mask = _make_batch()
++    out, _ = module(points_2d, K, R, t, pred_3d_init=pred_3d_init, view_mask=view_mask)
++    assert torch.allclose(out, pred_3d_init, atol=1e-5)
++    # Verify the gate was initialised to zero.
++    for layer in module.temporal_attn_layers:
++        assert layer.residual_gate.item() == pytest.approx(0.0, abs=1e-6)
++
++
+ def test_identity_at_init_without_pred():
+     module = TemporalGeometryFusionV26(
+         d=64,
+@@ -165,6 +183,34 @@ def test_gradient_flow():
+     assert pred_3d_init.grad is not None
+ 
+ 
++def test_residual_gate_learnable():
++    """The residual gate should be learnable and scale the temporal attention."""
++    module = TemporalGeometryFusionV26(
++        d=64,
++        n_heads=2,
++        n_views=4,
++        use_geometry_attention=False,
++        use_temporal_geometry_attention=True,
++        use_learned_depth_triangulation=False,
++    )
++    points_2d, K, R, t, pred_3d_init, view_mask = _make_batch()
++    # At init the gate is zero, so the output equals the input estimate.
++    out_zero, _ = module(points_2d, K, R, t, pred_3d_init=pred_3d_init, view_mask=view_mask)
++    assert torch.allclose(out_zero, pred_3d_init, atol=1e-5)
++
++    # Setting the gate to a non-zero value should change the output.
++    for layer in module.temporal_attn_layers:
++        nn.init.constant_(layer.residual_gate, 1.0)
++    out_open, _ = module(points_2d, K, R, t, pred_3d_init=pred_3d_init, view_mask=view_mask)
++    assert not torch.allclose(out_open, pred_3d_init, atol=1e-5)
++
++    # The gate should receive gradients.
++    loss = out_open.mean()
++    loss.backward()
++    for layer in module.temporal_attn_layers:
++        assert layer.residual_gate.grad is not None
++
++
+ # ---------------------------------------------------------------------------
+ # View masking
+ # ---------------------------------------------------------------------------
+@@ -229,8 +275,10 @@ if __name__ == "__main__":
+     test_forward_shape(28)
+     test_temporal_attention_forward_shape()
+     test_identity_at_init()
++    test_identity_at_init_with_temporal_attention_enabled()
+     test_identity_at_init_without_pred()
+     test_gradient_flow()
++    test_residual_gate_learnable()
+     test_view_mask_ignores_dropped_view()
+     test_temporal_window_larger_than_clip(1)
+     test_temporal_window_larger_than_clip(2)

@@ -1,0 +1,409 @@
+diff --git a/motionflow_mv/fusion/kinematic_anthropometric_prior_v22.py b/motionflow_mv/fusion/kinematic_anthropometric_prior_v22.py
+index 2d49c28..9cf89e9 100644
+--- a/motionflow_mv/fusion/kinematic_anthropometric_prior_v22.py
++++ b/motionflow_mv/fusion/kinematic_anthropometric_prior_v22.py
+@@ -53,6 +53,16 @@ class KinematicAnthropometricPrior(nn.Module):
+         Maximum allowed interior joint angle in degrees.
+     max_delta:
+         Maximum magnitude of the learned per-joint residual correction in meters.
++    adaptive_prior:
++        If True, condition per-bone ``bone_mu`` and ``bone_logvar`` on pooled
++        per-joint features so the prior can adapt to sample-specific scale.
++    adaptive_context_dim:
++        Dimension of the latent context vector used for the adaptive prior.
++    adaptive_hidden:
++        Hidden dimension of the per-bone adjustment MLPs.
++    adaptive_regularization:
++        L2 weight penalizing per-sample adjustments away from zero, keeping the
++        module warm-startable.
+     """
+ 
+     def __init__(
+@@ -64,6 +74,10 @@ class KinematicAnthropometricPrior(nn.Module):
+         use_angle_limit: bool = True,
+         max_flexion_deg: float = 160.0,
+         max_delta: float = 0.10,
++        adaptive_prior: bool = False,
++        adaptive_context_dim: int = 16,
++        adaptive_hidden: int = 64,
++        adaptive_regularization: float = 0.01,
+     ):
+         super().__init__()
+         self.j = j
+@@ -71,6 +85,10 @@ class KinematicAnthropometricPrior(nn.Module):
+         self.use_angle_limit = use_angle_limit
+         self.max_flexion_deg = max_flexion_deg
+         self.max_delta = max_delta
++        self.adaptive_prior = adaptive_prior
++        self.adaptive_context_dim = adaptive_context_dim
++        self.adaptive_hidden = adaptive_hidden
++        self.adaptive_regularization = adaptive_regularization
+ 
+         parents = _get_parents(j)
+         self.register_buffer("parents", torch.tensor(parents, dtype=torch.long))
+diff --git a/motionflow_mv/fusion/neural_bundle_adjustment_v21.py b/motionflow_mv/fusion/neural_bundle_adjustment_v21.py
+index faf3364..9bb1511 100644
+--- a/motionflow_mv/fusion/neural_bundle_adjustment_v21.py
++++ b/motionflow_mv/fusion/neural_bundle_adjustment_v21.py
+@@ -8,6 +8,12 @@ neural camera-correction head driven by per-view reprojection statistics.
+ The design keeps the analytic geometry differentiable (so the layer can be a
+ drop-in refinement block) while making the camera updates learnable, avoiding
+ the instability of full free-form bundle adjustment at initialization.
++
++Safety additions for the v21 diagnosis iteration:
++* Structure is refined *before* the camera head sees the points.
++* The point update is detached from the camera-head gradient path.
++* Camera updates are gated by a residual-improvement test.
++* The camera descriptor uses a compact 3-DOF rotation representation.
+ """
+ 
+ from __future__ import annotations
+@@ -54,6 +60,39 @@ def _so3_exp(axis: torch.Tensor) -> torch.Tensor:
+     return torch.where(norm.squeeze(-1)[..., None, None] < 1e-6, small_R, R)
+ 
+ 
++def _rotation_matrix_to_axis_angle(R: torch.Tensor) -> torch.Tensor:
++    """Convert rotation matrices to axis-angle vectors (stable SO(3) log map).
++
++    Args:
++        R: (..., 3, 3) rotation matrices.
++
++    Returns:
++        aa: (..., 3) axis-angle vectors.  For near-identity matrices the
++            magnitude is close to zero.
++    """
++    # Trace-based angle.
++    trace = R[..., 0, 0] + R[..., 1, 1] + R[..., 2, 2]
++    cos_angle = ((trace - 1.0) / 2.0).clamp(-1.0, 1.0)
++    angle = torch.acos(cos_angle)
++
++    # Axis from the skew-symmetric part of R.
++    axis = torch.stack(
++        [
++            R[..., 2, 1] - R[..., 1, 2],
++            R[..., 0, 2] - R[..., 2, 0],
++            R[..., 1, 0] - R[..., 0, 1],
++        ],
++        dim=-1,
++    )
++
++    # Normalise the axis using 2*sin(angle).  For small angles the axis is
++    # ill-defined, so the resulting axis-angle magnitude naturally goes to 0.
++    sin_angle = torch.sqrt(torch.clamp(1.0 - cos_angle * cos_angle, min=1e-8))
++    axis = axis / (2.0 * sin_angle.unsqueeze(-1)).clamp(min=1e-6)
++
++    return axis * angle.unsqueeze(-1)
++
++
+ def _camera_descriptor(
+     residual: torch.Tensor,
+     K: torch.Tensor,
+@@ -85,13 +124,14 @@ def _camera_descriptor(
+     skew = K[..., 0, 1]
+     intr = torch.stack([fx, fy, cx, cy, skew], dim=-1)
+ 
+-    rot = R.reshape(*R.shape[:3], 9)
++    # Compact 3-DOF rotation descriptor instead of the full 9-DOF matrix.
++    rot_aa = _rotation_matrix_to_axis_angle(R)
+     trans = t
+ 
+     # Also include total per-view weight (proxy for visibility/confidence).
+     weight_sum = weights.sum(dim=-1, keepdim=True)  # (B, T, V, 1)
+ 
+-    return torch.cat([mean_res, std_res, intr, rot, trans, weight_sum], dim=-1)
++    return torch.cat([mean_res, std_res, intr, rot_aa, trans, weight_sum], dim=-1)
+ 
+ 
+ class _CameraCorrectionHead(nn.Module):
+@@ -184,6 +224,16 @@ class NeuralBundleAdjustment(nn.Module):
+         Maximum translation correction per iteration (meters).
+     camera_hidden:
+         Hidden dimension of the per-camera correction MLP.
++    warm_start_structure:
++        If True, run one structure-only Gauss-Newton step before the first
++        camera update.
++    gate_camera_update:
++        If True, accept a neural camera update only when it does not increase
++        the mean reprojection error.  The gate decision is detached so the
++        MLP still receives gradients from accepted updates.
++    camera_update_tol:
++        Tolerance added to the before-error when deciding whether to accept a
++        camera update (pixels^2).
+     """
+ 
+     def __init__(
+@@ -196,13 +246,19 @@ class NeuralBundleAdjustment(nn.Module):
+         max_rotation_deg: float = 2.0,
+         max_translation: float = 0.1,
+         camera_hidden: int = 64,
++        warm_start_structure: bool = True,
++        gate_camera_update: bool = True,
++        camera_update_tol: float = 1.0,
+     ):
+         super().__init__()
+         self.n_iters = n_iters
+         self.damping = damping
+         self.max_point_update = max_point_update
++        self.warm_start_structure = warm_start_structure
++        self.gate_camera_update = gate_camera_update
++        self.camera_update_tol = camera_update_tol
+ 
+-        in_dim = 22  # see _camera_descriptor
++        in_dim = 16  # see _camera_descriptor
+         self.camera_head = _CameraCorrectionHead(
+             in_dim=in_dim,
+             hidden=camera_hidden,
+@@ -212,6 +268,21 @@ class NeuralBundleAdjustment(nn.Module):
+             max_translation=max_translation,
+         )
+ 
++    def _mean_reproj_error(
++        self,
++        X: torch.Tensor,
++        points_2d: torch.Tensor,
++        K: torch.Tensor,
++        R: torch.Tensor,
++        t: torch.Tensor,
++        weights: torch.Tensor,
++    ) -> torch.Tensor:
++        """Scalar mean reprojection error (pixels^2)."""
++        residual, _, valid = _project_and_jacobian(X, points_2d, K, R, t)
++        err = (residual ** 2).sum(dim=-1)  # (B, T, V, J)
++        mask = weights * valid.float()
++        return (err * mask).sum() / mask.sum().clamp(min=1e-6)
++
+     def _update_points(
+         self,
+         X: torch.Tensor,
+@@ -301,10 +372,36 @@ class NeuralBundleAdjustment(nn.Module):
+         if X.dim() == 3:
+             X = X.unsqueeze(1)
+ 
++        # Optional warm-start: refine structure once before any camera is touched.
++        if self.warm_start_structure:
++            X = self._update_points(X, points_2d, K, R, t, weights)
++
+         for _ in range(self.n_iters):
+-            K, R, t = self._update_cameras(X, points_2d, K, R, t, weights)
++            # 1. Refine structure given current cameras.
+             X = self._update_points(X, points_2d, K, R, t, weights)
+ 
++            # 2. Propose neural camera correction.  Detach the point update so
++            # the camera head cannot drive gradients through the analytic solver.
++            err_before = self._mean_reproj_error(X.detach(), points_2d, K, R, t, weights)
++            K_new, R_new, t_new = self._update_cameras(
++                X.detach(), points_2d, K, R, t, weights
++            )
++
++            if self.gate_camera_update:
++                err_after = self._mean_reproj_error(
++                    X.detach(), points_2d, K_new, R_new, t_new, weights
++                )
++                # Accept only if the update does not increase reprojection error.
++                use_new = (err_after < err_before + self.camera_update_tol).float()
++                # Per-view decision: shape (B, T, V) -> broadcast for K/R/t.
++                use_new_k = use_new[..., None, None]
++                use_new_t = use_new[..., None]
++                K = use_new_k * K_new + (1.0 - use_new_k) * K
++                R = use_new_k * R_new + (1.0 - use_new_k) * R
++                t = use_new_t * t_new + (1.0 - use_new_t) * t
++            else:
++                K, R, t = K_new, R_new, t_new
++
+         if squeeze:
+             X = X.squeeze(1)
+             if original_k_dim in (3, 4):
+diff --git a/motionflow_mv/fusion/omniview_fusion_v5.py b/motionflow_mv/fusion/omniview_fusion_v5.py
+index 0e63a84..a0aad1f 100644
+--- a/motionflow_mv/fusion/omniview_fusion_v5.py
++++ b/motionflow_mv/fusion/omniview_fusion_v5.py
+@@ -306,9 +306,11 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
+ 
+         self.use_temporal_perceiver_v19 = use_temporal_perceiver_v19
+         if self.use_temporal_perceiver_v19:
++            # Richer per-frame tokens: triangulated 3D pose + view-pooled ST features.
++            # This gives the perceiver both geometric and appearance/context cues.
+             self.temporal_perceiver_refiner_v19 = TemporalPerceiverRefiner(
+                 j=self.j,
+-                in_dim=3,
++                in_dim=3 + self.d,
+                 d=64,
+                 n_latents=32,
+                 n_layers=2,
+@@ -915,8 +917,14 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
+ 
+         # Optional v19 temporal Perceiver refinement on the final per-frame 3D poses.
+         if self.use_temporal_perceiver_v19 and self.temporal_perceiver_refiner_v19 is not None:
+-            residual_v19 = self.temporal_perceiver_refiner_v19(pred_3d)
+-            pred_3d = pred_3d + residual_v19
++            # Rich per-frame tokens: triangulated 3D pose + view-pooled ST features.
++            # The pooled features provide visibility/appearance context beyond the
++            # bare 3-D coordinates, helping the perceiver correct occluded frames.
++            feat_pooled = feat.view(B, T, V, J, self.d).mean(dim=2)  # (B, T, J, d)
++            perceiver_input = torch.cat([pred_3d, feat_pooled], dim=-1)  # (B, T, J, 3+d)
++            pred_3d = self.temporal_perceiver_refiner_v19(
++                perceiver_input, baseline_3d=pred_3d
++            )
+ 
+         # Optional v28 physical-space alignment.
+         if self.use_physical_space_alignment_v28 and self.physical_space_alignment_v28 is not None:
+diff --git a/motionflow_mv/fusion/outlier_view_detector.py b/motionflow_mv/fusion/outlier_view_detector.py
+index 3782cef..90b5855 100644
+--- a/motionflow_mv/fusion/outlier_view_detector.py
++++ b/motionflow_mv/fusion/outlier_view_detector.py
+@@ -78,19 +78,38 @@ class OutlierViewDetector(nn.Module):
+         Small constant to avoid division by zero when MAD is zero.
+     """
+ 
+-    def __init__(self, z_thresh: float = 3.0, soft_beta: float = 1.0, min_mad: float = 0.5, eps: float = 1e-6):
++    def __init__(
++        self,
++        z_thresh: float = 3.0,
++        soft_beta: float = 1.0,
++        min_mad: float = 0.5,
++        eps: float = 1e-6,
++        num_joints: Optional[int] = None,
++        adaptive: bool = False,
++    ):
+         super().__init__()
+-        self.z_thresh = z_thresh
+-        self.soft_beta = soft_beta
++        self.base_z_thresh = z_thresh
++        self.base_soft_beta = soft_beta
+         self.min_mad = min_mad
+         self.eps = eps
++        self.num_joints = num_joints
++        self.adaptive = adaptive and (num_joints is not None) and (num_joints > 0)
+         # Learnable gate.  Initialised to zero so the module acts as identity.
+         self.residual_scale = nn.Parameter(torch.tensor(0.0))
+ 
++        # Per-joint adaptive thresholds.  Zero-initialised -> identity at init.
++        if self.adaptive:
++            self.z_shift = nn.Parameter(torch.zeros(num_joints))
++            self.beta_shift = nn.Parameter(torch.zeros(num_joints))
++        else:
++            self.z_shift = None
++            self.beta_shift = None
++
+     def extra_repr(self) -> str:  # noqa: D401
+         return (
+-            f"z_thresh={self.z_thresh}, soft_beta={self.soft_beta}, "
+-            f"min_mad={self.min_mad}, eps={self.eps}"
++            f"base_z_thresh={self.base_z_thresh}, base_soft_beta={self.base_soft_beta}, "
++            f"min_mad={self.min_mad}, eps={self.eps}, "
++            f"adaptive={self.adaptive}"
+         )
+ 
+     def forward(
+diff --git a/motionflow_mv/fusion/temporal_geometry_fusion_v26.py b/motionflow_mv/fusion/temporal_geometry_fusion_v26.py
+index 239e767..f750f7c 100644
+--- a/motionflow_mv/fusion/temporal_geometry_fusion_v26.py
++++ b/motionflow_mv/fusion/temporal_geometry_fusion_v26.py
+@@ -52,6 +52,10 @@ class TemporalGeometryAttention(nn.Module):
+         offsets ``[-1, 0, +1]``.
+     dropout:
+         Dropout probability on the output projection.
++    residual_gate_init:
++        Initial value of the learnable residual gate. ``0.0`` makes the temporal
++        attention a no-op at initialization; a small positive value lets it
++        contribute immediately.
+     """
+ 
+     def __init__(
+@@ -61,6 +65,7 @@ class TemporalGeometryAttention(nn.Module):
+         n_views: int,
+         temporal_window: int = 3,
+         dropout: float = 0.1,
++        residual_gate_init: float = 0.0,
+     ):
+         super().__init__()
+         if d % n_heads != 0:
+@@ -89,6 +94,11 @@ class TemporalGeometryAttention(nn.Module):
+         if self.out_proj.bias is not None:
+             nn.init.zeros_(self.out_proj.bias)
+ 
++        # Learnable residual gate. Starting at ``residual_gate_init`` lets the
++        # temporal path contribute gradually; ``0.0`` gives a strict warm-start
++        # from the per-frame v25 behaviour.
++        self.residual_gate = nn.Parameter(torch.tensor(residual_gate_init, dtype=torch.float32))
++
+     def _build_temporal_mask(self, T: int, device: torch.device) -> torch.Tensor:
+         """Return (T, temporal_window) bool mask for in-bound temporal offsets."""
+         t_idx = torch.arange(T, device=device).unsqueeze(1)  # (T, 1)
+@@ -185,7 +195,9 @@ class TemporalGeometryAttention(nn.Module):
+         out = out.permute(0, 2, 3, 1, 4).reshape(N, T, V, d)
+         out = self.out_proj(out)
+         out = out.view(B, J, T, V, d).permute(0, 2, 3, 1, 4)
+-        return self.dropout(out)
++        # Gated residual: the temporal path is scaled by a learnable scalar so it
++        # can be warmed up from zero (or any chosen initial value).
++        return self.residual_gate * self.dropout(out)
+ 
+ 
+ class TemporalGeometryFusionV26(nn.Module):
+@@ -218,6 +230,9 @@ class TemporalGeometryFusionV26(nn.Module):
+         trajectory.
+     temporal_loss_weight:
+         Weight of the temporal velocity-smoothness loss.
++    temporal_attention_residual_gate_init:
++        Initial value of the residual gate on each temporal attention layer.
++        ``0.0`` warm-starts from the per-frame v25 path.
+     dropout:
+         Dropout rate.
+     """
+@@ -237,6 +252,7 @@ class TemporalGeometryFusionV26(nn.Module):
+         use_temporal_depth_consistency: bool = False,
+         temporal_loss_weight: float = 0.1,
+         dropout: float = 0.1,
++        temporal_attention_residual_gate_init: float = 0.0,
+         use_uncertainty_depth_proposals_v27: bool = False,
+         v27_uncertainty_loss_weight: float = 0.01,
+         v27_udp_n_mixtures: int = 1,
+diff --git a/motionflow_mv/fusion/uncertainty_depth_proposal_v27.py b/motionflow_mv/fusion/uncertainty_depth_proposal_v27.py
+index 28e430b..332daae 100644
+--- a/motionflow_mv/fusion/uncertainty_depth_proposal_v27.py
++++ b/motionflow_mv/fusion/uncertainty_depth_proposal_v27.py
+@@ -11,6 +11,7 @@ remains fast.
+ 
+ from __future__ import annotations
+ 
++import math
+ from typing import Optional, Tuple
+ 
+ import torch
+diff --git a/scripts/auto_eval_when_ready.py b/scripts/auto_eval_when_ready.py
+index 17072c5..e4453fc 100755
+--- a/scripts/auto_eval_when_ready.py
++++ b/scripts/auto_eval_when_ready.py
+@@ -35,6 +35,8 @@ DEFAULT_LOG_DIR = ROOT / "outputs"
+ DEFAULT_LOG_GLOB = "omniview_fusion_v*.log"
+ DEFAULT_GPU = 0
+ DEFAULT_POLL_INTERVAL = 60
++DEFAULT_OVERFIT_PATIENCE = 3
++DEFAULT_OVERFIT_MIN_EPOCHS = 5
+ LOCK_FILE = Path("/tmp/motionflow_auto_eval_py.lock")
+ 
+ 
+diff --git a/scripts/run_v25_small_local_4090.sh b/scripts/run_v25_small_local_4090.sh
+index f113a14..cf3ae84 100644
+--- a/scripts/run_v25_small_local_4090.sh
++++ b/scripts/run_v25_small_local_4090.sh
+@@ -6,6 +6,9 @@ CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-0}
+ PYTHON=${PYTHON:-python}
+ OUTPUT=${OUTPUT:-outputs/omniview_fusion_v25_geometry_fusion_small_local_4090.pth}
+ LOG=${LOG:-outputs/omniview_fusion_v25_geometry_fusion_small_local_4090.log}
++EPOCHS=${EPOCHS:-20}
++TRAIN_SAMPLES=${TRAIN_SAMPLES:-500}
++BATCH_SIZE=${BATCH_SIZE:-16}
+ 
+ $PYTHON -u experiments/train_omniview_fusion_v5_webbridge_multi.py \
+     --use_mixed_loader \
+@@ -23,7 +26,7 @@ $PYTHON -u experiments/train_omniview_fusion_v5_webbridge_multi.py \
+     --num_workers 0 \
+     --d 128 --residual_hidden 256 --n_st_layers 3 \
+     --graph_num_layers 1 --n_joint_layers 1 --n_heads 4 \
+-    --epochs 20 --batch_size 16 --train_samples 500 --val_stride 10 \
++    --epochs $EPOCHS --batch_size $BATCH_SIZE --train_samples $TRAIN_SAMPLES --val_stride 10 \
+     --lr 1e-3 --lr_cosine --lr_warmup_epochs 3 --lr_min 1e-6 \
+     --max_grad_norm 1.0 --ema_decay 0.999 \
+     --use_multiscale_fusion true --use_camera_conditioning true --use_epipolar_bias true \

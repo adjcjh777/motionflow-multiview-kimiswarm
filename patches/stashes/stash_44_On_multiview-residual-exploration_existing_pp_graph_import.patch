@@ -1,0 +1,23 @@
+diff --git a/experiments/train_ray_attention_temporal_crossview_residual_principal_point_mpiinf3dhp.py b/experiments/train_ray_attention_temporal_crossview_residual_principal_point_mpiinf3dhp.py
+index c3fb6aa..4a4c1fd 100644
+--- a/experiments/train_ray_attention_temporal_crossview_residual_principal_point_mpiinf3dhp.py
++++ b/experiments/train_ray_attention_temporal_crossview_residual_principal_point_mpiinf3dhp.py
+@@ -35,6 +35,9 @@ from motionflow_mv.fusion.ray_attention_temporal_crossview_factorized_residual_p
+ from motionflow_mv.fusion.ray_attention_temporal_crossview_residual_principal_point_model import (
+     RayAttentionFusionModelTemporalCrossviewResidualPrincipalPoint,
+ )
++from motionflow_mv.fusion.ray_attention_temporal_crossview_residual_principal_point_graph_model import (
++    RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointGraph,
++)
+ from motionflow_mv.losses import reprojection_loss, velocity_loss
+ from motionflow_mv.losses.reprojection_consistency import robust_reprojection_loss
+ from motionflow_mv.losses.view_selection_loss import ViewSelectionLoss
+@@ -210,7 +213,7 @@ def main():
+     parser.add_argument("--val", type=str, required=True, help="Validation .npz file")
+     parser.add_argument("--clip_len", type=int, default=13)
+     parser.add_argument("--d", type=int, default=64)
+-    parser.add_argument("--model_type", type=str, default="temporal", choices=["temporal", "factorized", "dynamic_gate", "graph_skeleton_residual", "epipolar", "epipolar_bias_v2_pp", "splat", "kinematic_chain", "crossview_contrast", "bayesian_tri", "camera_conditioned_pp", "hierarchical_view_temporal_joint_pp"], help="Backbone type: temporal (time+view), factorized (alternating view/temporal), dynamic_gate (anchor + per-view gate), graph_skeleton_residual (skeleton-graph residual refiner), epipolar (epipolar-biased weight head), epipolar_bias_v2_pp (epipolar-biased ST transformer v2), splat (Gaussian-splatting pose regularizer), kinematic_chain (kinematic-chain graph refiner), crossview_contrast (cross-view contrastive pose representation), bayesian_tri (uncertainty-aware triangulation with adaptive Gauss-Newton), camera_conditioned_pp (camera-parameter-conditioned weight + residual heads), or hierarchical_view_temporal_joint_pp (hierarchical view -> temporal -> skeleton-joint attention)")
++    parser.add_argument("--model_type", type=str, default="temporal", choices=["temporal", "factorized", "dynamic_gate", "graph_joint_relation", "graph_skeleton_residual", "epipolar", "epipolar_bias_v2_pp", "splat", "kinematic_chain", "crossview_contrast", "bayesian_tri", "camera_conditioned_pp", "hierarchical_view_temporal_joint_pp"], help="Backbone type: temporal (time+view), factorized (alternating view/temporal), dynamic_gate (anchor + per-view gate), graph_joint_relation (skeleton-graph attention replacing dense joint attention), graph_skeleton_residual (skeleton-graph residual refiner), epipolar (epipolar-biased weight head), epipolar_bias_v2_pp (epipolar-biased ST transformer v2), splat (Gaussian-splatting pose regularizer), kinematic_chain (kinematic-chain graph refiner), crossview_contrast (cross-view contrastive pose representation), bayesian_tri (uncertainty-aware triangulation with adaptive Gauss-Newton), camera_conditioned_pp (camera-parameter-conditioned weight + residual heads), or hierarchical_view_temporal_joint_pp (hierarchical view -> temporal -> skeleton-joint attention)")
+     parser.add_argument("--n_st_layers", type=int, default=2)
+     parser.add_argument("--n_view_layers", type=int, default=2)
+     parser.add_argument("--n_temporal_layers", type=int, default=2)

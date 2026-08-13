@@ -1,0 +1,20 @@
+diff --git a/motionflow_mv/losses/__init__.py b/motionflow_mv/losses/__init__.py
+index 28c48e6..7cbcda5 100644
+--- a/motionflow_mv/losses/__init__.py
++++ b/motionflow_mv/losses/__init__.py
+@@ -7,6 +7,7 @@ from .gaussian_splatting_pose_loss import gaussian_splatting_pose_loss
+ from .masked_view_completion import masked_view_completion_loss
+ from .multiperson_association_loss import MultiPersonAssociationLoss
+ from .reprojection import reprojection_loss
++from .temporal_skeleton_consistency import temporal_skeleton_consistency_loss
+ from .velocity import velocity_loss, velocity_l1_loss
+ from .visibility_supervision_loss import visibility_supervision_loss
+ 
+@@ -17,6 +18,7 @@ __all__ = [
+     "gaussian_splatting_pose_loss",
+     "masked_view_completion_loss",
+     "reprojection_loss",
++    "temporal_skeleton_consistency_loss",
+     "velocity_loss",
+     "velocity_l1_loss",
+     "visibility_supervision_loss",

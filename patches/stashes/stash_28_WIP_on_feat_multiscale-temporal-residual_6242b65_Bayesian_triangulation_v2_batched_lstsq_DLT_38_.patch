@@ -1,0 +1,20 @@
+diff --git a/experiments/train_ray_attention_temporal_crossview_residual_principal_point_mpiinf3dhp.py b/experiments/train_ray_attention_temporal_crossview_residual_principal_point_mpiinf3dhp.py
+index 948a5df..b92f539 100644
+--- a/experiments/train_ray_attention_temporal_crossview_residual_principal_point_mpiinf3dhp.py
++++ b/experiments/train_ray_attention_temporal_crossview_residual_principal_point_mpiinf3dhp.py
+@@ -323,6 +323,15 @@ def main():
+             focal_max_scale=args.focal_max_scale,
+             return_pp_delta=True,
+         ).to(device)
++    elif args.model_type == "fast_epipolar_bias_v2_pp":
++        model = RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointFastEpipolarBiasV2PP(
++            j=j, d=args.d, n_views=n_views, n_st_layers=args.n_st_layers,
++            residual_hidden=args.residual_hidden,
++            principal_point_hidden=args.principal_point_hidden,
++            principal_point_max_offset=args.principal_point_max_offset,
++            focal_max_scale=args.focal_max_scale,
++            return_pp_delta=True,
++        ).to(device)
+     elif args.model_type == "graph_skeleton_residual":
+         model = RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointGraphSkeletonResidual(
+             j=j, d=args.d, n_views=n_views, n_st_layers=args.n_st_layers,

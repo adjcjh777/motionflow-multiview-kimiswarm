@@ -1,200 +1,332 @@
-# MotionFlow-MultiView 接力目标（qwen3.8max）
+# MotionFlow-MultiView 接力手册（qwen3.8max）
 
-> **目标**：修复数据地基，建立非循环评估协议，重建可发表水准的排行榜，锚定 CVPR 2027。  
-> **当前日期**：2026-08-12 ~15:12 UTC（本次刷新）  
-> **仓库**：`D:\WSL_workspace\about_eassys\motionflow-multivie-kimiswarm`  
-> **远程只读资源**：A800-D `/mnt/nvme0n1p1/zhangzy/projects` 与 `motionflow` Docker 容器仅供查看，禁止写入或启动训练。  
-> **远程可写训练仓库**：`/mnt/nvme0n1p1/zhangzy/motionflow-multiview-kimiswarm-iter20`，仅用于在 A800 主机上 `nohup` 启动作业。  
-> **GPU 策略**：A800 仅 GPU 6/7 可用于本项目；GPU 0–5 保留，严禁使用。
+> **目标**：把 H36M 评估协议迁移到非循环的 `h36m_true_gt_v2`，验证 v85 稀疏视角方案，补齐 v86 消融与 v2 leaderboard，向 CVPR 2027 可发表标准推进。  
+> **本次刷新时间**：2026-08-13 ~01:15 UTC  
+> **本地仓库**：`D:/WSL_workspace/about_eassys/motionflow-multivie-kimiswarm`  
+> **A800 训练仓库**：`a800-D:/mnt/nvme0n1p1/zhangzy/motionflow-multiview-kimiswarm-iter20`  
+> **GPU 铁律**：A800 仅 GPU 6/7 可用于本项目；GPU 0–5 严禁使用。
 
 ---
 
-## 1. 核心结论
+## 0. 最新状态（2026-08-13 ~00:41 UTC）
 
-- **v85 训练已完成**：A800 GPU 7 上的 random view dropout 训练已结束；v85 无 fallback 可变视角评估也已在 GPU 6 上完成。
-- **v85 无 fallback 可变视角结果（split-k）：**
+- **v25 true-GT v2 medium 训练已完成。** A800 GPU 6，tmux session `v25_true_gt_v2_medium_a800`。early stopping @ epoch 6，best val MPJPE **31.41 mm**，checkpoint 已保存为 `outputs/ablations/v25_true_gt_v2_medium_a800.pth`。test 评估待做。
+- **v86 no-count-embedding ablation 已在 A800 GPU 6 启动。** tmux session `v86_no_count_embedding`，脚本 `scripts/run_v86_no_count_embedding_medium_a800_gpuX.sh`，使用 v2 数据协议 `configs/splits/h36m_true_gt_v2_standard.yaml`。结果待出。
+- **v85 random-view-dropout 训练已完成。** checkpoint 已创建 symlink `outputs/ablations/v85_random_view_dropout_medium_a800.pth -> ..._final.pth`，best val **31.42 mm**。
+- **v85 DLT-fallback 可变视角评估看守器已启动。** `scripts/launch_v85_dlt_fallback_after_v86.sh` 正在等待 v86 训练完成后，自动在首个可用 GPU（6 或 7）上运行 v85 DLT-fallback 评估。结果待出。
+- **GPU 7 当前被外部项目占用**（约 12 GB 显存）；GPU 6 当前运行 v86。
+- **磁盘 `/mnt/nvme0n1p1` 约 98% 满（~72 GB free）。**
+
+### 当前在飞任务
+
+| 机器 | GPU | 任务 | 日志 / 输出 | 状态 | 说明 |
+|------|-----|------|-------------|------|------|
+| A800-D | 6 | v25 true-GT v2 medium training | `outputs/ablations/v25_true_gt_v2_medium_a800.log` | **DONE** | tmux `v25_true_gt_v2_medium_a800`；early-stop @ epoch 6；best val **31.41 mm**；checkpoint `.pth` 已落盘。 |
+| A800-D | 6 | v86 no-count-embedding ablation | `outputs/ablations/v86_no_count_embedding_medium_a800.log` | **RUNNING** | tmux `v86_no_count_embedding`；v2 协议；结果待出。 |
+| A800-D | 6/7 (post-v86) | v85 DLT-fallback 可变视角评估看守器 | `outputs/launch_v85_dlt_fallback_after_v86.log` | **QUEUED** | 等待 v86 完成后自动启动 v85 DLT-fallback 评估；结果待出。 |
+| A800-D | 7 | 外项目进程 | — | **OCCUPIED** | 约 12 GB；**禁止 kill**，禁止启动新任务。 |
+
+---
+
+## 0. 执行摘要
+
+- **v85 random-view-dropout 训练已完成**。A800 GPU 7 训练结束，best val **31.42 mm**，checkpoint 已落盘。
+- **v85 可变视角 no-fallback 评估已完成**。k=2 与 k=3 仍然灾难性，说明仅靠 random view dropout 无法解决稀疏视角问题：
   - k=2：S9 **2310.27 mm**，S11 **2308.80 mm**
   - k=3：S9 **1119.45 mm**，S11 **1118.18 mm**
   - k=4：S9 **83.52 mm**，S11 **77.07 mm**
-  - **k<4 仍然灾难性**；仅靠 random view dropout 无法解决稀疏视角问题。
-- **GPU 策略违规**：GPU 6/7 上目前存在其他项目进程（LuxTTS、Mega-ASR、`.venv-cu130-a800`），违反本项目仅使用 GPU 6/7 的约定。**不要 kill 这些进程**，但需记录并上报该违规。
-- **v86 状态不确定**：当前进程列表中不可见，需确认其是否完成、崩溃或被覆盖。
-- **A800 磁盘仍紧张**：`/mnt/nvme0n1p1` **99% 满**，约 **58 GB** 空闲。
-- **下一步**：等待/运行 v85 DLT-fallback 可变视角评估、A800 清理、同步 v2 标签、重跑 leaderboard。
+- **v85 DLT-fallback 可变视角评估已终止且未产生输出**。监控显示 PID `2269984` 在约 29 分钟后消失，预期的 JSON/CSV 未生成。redirect log 为空，nohup log 仅显示 `Terminated`，原因不明（可能是外部 kill 或 OOM）。在重新运行前，v25/v81/v82 的 DLT-fallback 基线仍是最新可靠参考：S9 58.18/33.32/116.98 mm，S11 49.35/25.28/110.58 mm。结合 v85 no-fallback 结果，可确认 random view dropout 不能解决 k<4 灾难性失败，DLT-fallback 仍是 k<4 的可靠选择。
+- **v25 true-GT v2 medium 训练已启动**。A800 GPU 6，tmux session: `v25_true_gt_v2_medium_a800`。
+- **v86 no-count-embedding ablation 已由 A800 看守器接管**。看守器 `scripts/launch_v86_after_v25_a800.sh`（PID `2337615`）正在 A800 上等待 v25 完成后自动启动 v86；无需手动 `nohup`。
+- **h36m_true_gt_v2 数据已同步到 A800**。约 **625 MB**，路径 `data/h36m_true_gt_v2/`；对应 manifest `configs/splits/h36m_true_gt_v2_standard.yaml`。
+- **v25/v86 v2 启动脚本已同步到 A800**。见 `scripts/run_v25_true_gt_v2_medium_a800.sh` 与 `scripts/run_v86_no_count_embedding_medium_a800_gpu6.sh`。
+- **A800 磁盘已清理**。从约 99% 降到 **98%**，剩余约 **73 GB**。
+- **GPU 7 被外项目占用**。LuxTTS / Mega-ASR / ComfyUI 占用了 GPU 7，违反项目 GPU 策略；**禁止 kill**，但在此 cleared 之前不得在 GPU 7 启动新任务。
+- **本地 v37 self-critique v2 smoke 正在运行**。RTX 4090，用于快速验证 self-critique 思路。
+- **本地 git 存在 stash 与 token 泄露风险**。当前有 **45 条 stash**，需先审计再操作，避免泄露。
 
 ---
 
-## 2. 正在运行的任务
+## 1. 在飞任务与状态
 
-| 机器 | GPU | 任务 | 日志/输出 | 状态 | 说明 |
-|------|-----|------|-----------|------|------|
-| A800-D | 6/7（queued） | v85 post-training eval suite monitor | `outputs/sota_baselines/monitor_v85_then_run_evals.log` | **RUNNING** | PID `2218949`；训练结束后自动启动 test/no-fallback/DLT-fallback evals。 |
-| A800-D | 7 | v85 random view dropout training | `outputs/ablations/v85_random_view_dropout_medium_a800.log` | **DONE** | PID `2058225`；训练已完成。 |
-| A800-D | 6 | v86 no-count-embedding ablation | `outputs/ablations/v86_no_count_embedding_medium_a800.log` | **UNCERTAIN** | PID `2203020`；当前进程列表不可见，需确认状态。 |
-| A800-D | 6/7 | 其他项目进程 | — | **OCCUPIED** | LuxTTS、Mega-ASR、`.venv-cu130-a800` 占用 GPU 6/7；**禁止 kill**，但不得启动新任务。 |
-| A800-D | — | v25/v81/v82 variable-view DLT-fallback | `outputs/variable_view_fix/variable_view_v{25,81,82}_true_gt_*_a800_dlt_fallback.*` | **COMPLETED** | v25 S9 58.18/33.32/116.98 mm；v81 k=2,3；v82 k=2/3/4 |
-| A800-D | — | MPI RTMPose 检测 + DLT baseline | `outputs/mpi_rtmpose_detected_2d/dlt_baseline_detected_2d.json` | **DONE** | 16/16 `.npz`，DLT baseline 完成 |
-| A800-D | — | AIST++ → H36M 交叉评估 | `outputs/eval_aistpp_only_medium_a800_fast_v2_h36m_test.json` | **DONE** | combined **~93.94 mm** |
-| Local | 0 | — | — | **IDLE** | RTX 4090 空闲，仅用于 smoke（<30 min） |
+| 机器 | GPU | 任务 | 日志 / 输出 | 状态 | 说明 |
+|------|-----|------|-------------|------|------|
+| A800-D | 6 | v25 true-GT v2 medium training | `outputs/ablations/v25_true_gt_v2_medium_a800.log` | **DONE** | tmux session `v25_true_gt_v2_medium_a800`；early-stop @ epoch 6；best val **31.41 mm**；checkpoint `.pth` 已落盘。test 待测。 |
+| A800-D | 6 | v86 no-count-embedding ablation | `outputs/ablations/v86_no_count_embedding_medium_a800.log` | **RUNNING** | tmux session `v86_no_count_embedding`；v2 协议；结果待出。 |
+| A800-D | 6/7 (post-v86) | v85 DLT-fallback 可变视角评估看守器 | `outputs/launch_v85_dlt_fallback_after_v86.log` | **RUNNING (watcher)** | `scripts/launch_v85_dlt_fallback_after_v86.sh` 等待 v86 完成后自动启动 v85 DLT-fallback 评估；v86 完成前不占用 GPU 6/7。 |
+| A800-D | 7 | 外项目进程（LuxTTS / Mega-ASR / ComfyUI） | — | **OCCUPIED** | 约 12 GB；违反 GPU 策略；**禁止 kill**，禁止启动新任务。 |
+| Local | 0 | v37 self-critique v2 smoke | `outputs/v37_self_critique_v2_smoke.log`（路径示例） | **DONE** | RTX 4090；val MPJPE **87.85 mm** @ 2 epochs。 |
+| Local | 0 | v29 hierarchical v2 smoke | `outputs/v29_hierarchical_v2_smoke.log`（路径示例） | **FIXED** | RTX 4090；原配置过重导致 smoke 看起来像 hung，已改用轻量脚本 `scripts/run_v29_hierarchical_true_gt_v2_smoke_local_4090_fixed.sh`；2 epochs val MPJPE **95.20 mm**。 |
+| Local | 0 | v21 neural BA v2 smoke | `outputs/v21_neural_ba_v2_smoke.log`（路径示例） | **FIXED** | RTX 4090；根因是 `motionflow_mv/fusion/neural_bundle_adjustment_v21.py` 中轴角旋转描述子在单位阵处导数发散产生 NaN，已替换为 `R - R^T` 的反对称部分；修复后 2 epochs val MPJPE **79.42 mm**（从初始 93.50 mm 下降）。
 
----
-
-## 3. 本阶段关键产出
+### 已结束但需留意的任务
 
 | 任务 | 状态 | 关键产出 |
 |------|------|----------|
-| v85 random view dropout 训练 | ✅ DONE | GPU 7，PID `2058225`；训练已完成 |
-| v85 no-fallback 可变视角评估 | ✅ DONE | GPU 6；k=2/3/4 均完成，k<4 灾难性 |
-| v85 post-training eval monitor | 🔄 RUNNING | PID `2218949`；将自动启动 test/DLT-fallback evals |
-| v86 no-count-embedding | ❓ UNCERTAIN | 需确认进程/日志状态 |
-| v82/v81/v25 var-view DLT-fallback | ✅ DONE | `outputs/variable_view_fix/variable_view_v{82,81,25}_true_gt_*_a800_dlt_fallback.*` |
-| MPI 16/16 + DLT baseline | ✅ DONE | MPJPE **115.09 mm**，PA-MPJPE **132.68 mm** |
-| AIST++ → H36M cross-eval | ✅ DONE | combined **~93.94 mm** |
-| H36M true-GT v2 审计 | ✅ | DLT **25.67 mm**，RANSAC **26.47 mm** |
-
-完整结果见 `docs/results_true_gt_h36m.md`。
+| v25 true-GT v2 medium training | ✅ DONE | `outputs/ablations/v25_true_gt_v2_medium_a800.{pth,log}`；best val 31.41 mm |
+| v85 random view dropout 训练 | ✅ DONE | `outputs/ablations/v85_random_view_dropout_medium_a800.{pth,log}`；best val 31.42 mm |
+| v85 no-fallback 可变视角评估 | ✅ DONE | k=2/3/4 完成，k<4 灾难性 |
+| v81/v82/v25 var-view DLT-fallback | ✅ DONE | `outputs/variable_view_fix/variable_view_v{81,82,25}_*_dlt_fallback.{json,csv}` |
+| MPI RTMPose 检测 + DLT baseline | ✅ DONE | `outputs/mpi_rtmpose_detected_2d/dlt_baseline_detected_2d.json` |
+| AIST++ → H36M 交叉评估 | ✅ DONE | `outputs/eval_aistpp_only_medium_a800_fast_v2_h36m_test.json` |
+| H36M true-GT v2 审计 | ✅ DONE | DLT 25.67 mm / RANSAC 26.47 mm |
 
 ---
 
-## 4. 当前真 GT 排行榜（H36M S9/S11）
+## 2. 本地 smoke 结果（RTX 4090 快速验证）
 
-| 方法 | Combined (mm) | PA-MPJPE (mm) | 备注 |
-|---|---:|---:|---|
-| Iskakov ICCV 2019 | **23.40** | 23.15 | frozen ref |
-| DLT (conf-weighted) | **25.67** | 25.55 | frozen ref |
-| RANSAC/conf-DLT | **26.47** | 28.98 | reproducible ref |
-| v25 stability | **30.83** | 34.35 | best learned result |
-| v25 mixed H36M+AIST++ | 33.42 | 34.60 | early-stopped @ Epoch 3 |
-| v81 temporal-pose-attention | 37.83 | 37.75 | completed 8 epochs |
-| v82 multi-scale temporal-pose-attention | 39.46 | 39.94 | completed 8 epochs |
-| AIST++-only → H36M | 93.94 | 44.50 | zero-shot cross-domain |
-| v85 (no-fallback, k=4) | 83.52 / 77.07 | — | test-set 完整评估待 DLT-fallback 后补充 |
+| 任务 | 状态 | 关键结果 | 备注 |
+|------|------|----------|------|
+| v37 self-critique v2 smoke | **DONE** | val MPJPE **87.85 mm** @ 2 epochs | 已归档。 |
+| v21 neural BA v2 smoke | **FIXED** | 修复前初始 **93.50 mm**，修复后 **79.42 mm** @ 2 epochs | 根因：`motionflow_mv/fusion/neural_bundle_adjustment_v21.py` 中轴角旋转描述子在单位阵处导数发散产生 NaN；修复：替换为 `R - R^T` 的反对称部分。 |
+| v29 hierarchical v2 smoke | **FIXED** | val MPJPE **95.20 mm** @ 2 epochs | 原配置过重导致看起来像 hung，并非 bug；改用轻量脚本 `scripts/run_v29_hierarchical_true_gt_v2_smoke_local_4090_fixed.sh`。 |
 
-> **注意**：v85 训练已完成，但完整 test-set 评估仍在排队；k=4 no-fallback 结果（S9 83.52 / S11 77.07 mm）弱于 v82，说明 random dropout 损害了全视角性能。
+**说明**：
+- v21 修复涉及文件：`motionflow_mv/fusion/neural_bundle_adjustment_v21.py`。轴角旋转描述子在单位阵 `R = I` 处导数发散，优化第一步即产生 NaN；改用 `R - R^T` 的反对称部分后训练稳定。
+- v29 使用方法：`CUDA_VISIBLE_DEVICES=0 bash scripts/run_v29_hierarchical_true_gt_v2_smoke_local_4090_fixed.sh`。
 
 ---
 
-## 5. 各模块最新状态
+## 3. 已完成的关键里程碑
 
-### P0 稀疏视角 k<4 学习模型失效
-
-- **v85 训练已完成**：random view dropout（dropout prob 0.3，min 2 views）+ active-view-count embedding。训练已结束，但 k<4 仍灾难性。
-- **v85 no-fallback 可变视角评估**：已完成。
-  - k=2：S9 **2310.27 mm**，S11 **2308.80 mm**
-  - k=3：S9 **1119.45 mm**，S11 **1118.18 mm**
-  - k=4：S9 **83.52 mm**，S11 **77.07 mm**
-- **结论**：random view dropout 单独无法解决 k<4 问题，且 k=4 性能下降（对比 v82 S9 47.81 / S11 42.36 mm）。需要更强 count-conditioning 或专用 sparse-view head。
-- **DLT-fallback 基线**：v25/v81/v82 已完成；S9 k=2/3/4 = 58.18/33.32/116.98 mm，S11 = 49.35/25.28/110.58 mm。
-- **下一步**：等待 v85 DLT-fallback 评估，对比 no-fallback 与 fallback 数字。
-
-### P1 MPI-INF-3DHP 真实检测 2D
-
-- **检测**：16/16 `.npz` 已生成。
-- **DLT baseline**：mean MPJPE **115.09 mm**，mean PA-MPJPE **132.68 mm**。
-- **结论**：RTMPose 检测 2D 与 3D mocap 对齐仍差；如需 learned MPI 结果，先校准 camera/joint 映射；否则把 115.09 mm 作为跨域几何基线。
-
-### P2 AIST++-only 零样本跨域
-
-- **结果**：S9 98.17 mm，S11 89.70 mm，combined ~93.94 mm，PA-MPJPE 44.50 mm。
-- **结论**：远高于 60 mm 阈值，**继续暂停 H36M+AIST++ mixed 训练**，集中资源于 v85 后续分析与稀疏视角改进。
+1. **v85 A800 medium 训练完成**（random view dropout + active-view-count embedding）。
+2. **v85 no-fallback 可变视角评估完成**：确认 k<4 仍灾难性，random dropout 本身不足。
+3. **h36m_true_gt_v2 数据同步到 A800**：625 MB，manifest 已就绪。
+4. **v2 启动脚本同步到 A800**：`scripts/run_v25_true_gt_v2_medium_a800.sh` 与 v86 启动脚本。
+5. **A800 磁盘第一轮清理**：腾出约 15 GB，从 99% 降到 98%。
+6. **v81/v82/v25 DLT-fallback 可变视角基线完成**，提供 k=2/3/4 的 fallback 参考数字：
+   - S9：58.18 / 33.32 / 116.98 mm
+   - S11：49.35 / 25.28 / 110.58 mm
+7. **MPI 与 AIST++ 数据基线完成**，作为跨域故事锚点。
+8. **v21 neural BA v2 smoke 修复并跑通**：根因是 `motionflow_mv/fusion/neural_bundle_adjustment_v21.py` 中轴角旋转描述子在单位阵处导数发散产生 NaN，已替换为 `R - R^T` 的反对称部分；2 epochs val MPJPE 从 **93.50 mm** 降到 **79.42 mm**。
+9. **v29 hierarchical v2 smoke 修复并跑通**：原配置过重导致 RTX 4090 上看起来像 hung，并非 bug；改用轻量脚本 `scripts/run_v29_hierarchical_true_gt_v2_smoke_local_4090_fixed.sh` 后 2 epochs val MPJPE **95.20 mm**。
 
 ---
 
-## 6. 建议的接力工作清单
+## 4. 当前阻塞项与注意事项
 
-1. **等待/确认 v85 DLT-fallback 可变视角评估（最高优先级）**
-   - 监控 `outputs/sota_baselines/monitor_v85_then_run_evals.log`（PID `2218949`）。
-   - 若 monitor 因 GPU 占用未触发，确认何时有可用 GPU（需先解决 GPU 违规占用问题）。
-   - 对比 v85 DLT-fallback k=2/3/4 与 v25/v81/v82 的 DLT-fallback 数字。
+### 4.1 GPU 策略违规（最高优先级）
 
-2. **A800 磁盘清理**
-   - `/mnt/nvme0n1p1` 99% 满；先跑 `scripts/cleanup_a800_safe.sh` dry-run。
-   - 在确认 v85/v86 结果已安全备份前，不要删除其 checkpoint/log。
+- **GPU 7 被外项目进程占用**：LuxTTS / Mega-ASR / ComfyUI 占用了 GPU 7。
+- **处理原则**：
+  - **严禁 kill 任何非本项目的进程**。
+  - 在 GPU 7 清空或协调好之前，**不得在 GPU 7 启动任何 MotionFlow 任务**。
+  - 若 GPU 6 在 v85 DLT-fallback 结束后仍被外项目占用，同样不得启动新任务。
+- **可接受动作**：记录进程 PID、占用的 GPU、所属项目，上报给管理员或相关团队协调。
 
-3. **同步 v2 标签并重跑 learned leaderboard**
-   - 待 GPU 6/7 空闲/违规解除后，同步 `data/h36m_true_gt_v2/` 到 A800。
-   - 重跑 v25、v46、v52、v57、v80、v81、v82、v85、v86 的 true-GT v2 协议评估。
-   - 更新 `docs/results_true_gt_h36m.md` 与 `docs/paper_draft_icra_cvpr_2027.md`。
+### 4.2 可用 GPU 极度紧张
+
+- 项目只能用 GPU 6/7。
+- GPU 6 正在跑 v25 true-GT v2 medium 训练；GPU 7 被外项目占用。
+- v85 DLT-fallback 已 kill，v86 排队中；因此 **v85 重跑与 v86 必须在 v25 完成后或 GPU 空闲后才能启动**。
+
+### 4.3 磁盘仍接近满载
+
+- `/mnt/nvme0n1p1` 当前 **98% 满**，剩余约 **73 GB**。
+- 任何新的 medium 训练都会继续吃盘，需要：
+  - 先跑 `scripts/cleanup_a800_safe.sh` dry-run；
+  - 删除已确认废弃的 checkpoint / log（如 v83/v84 失败产物）；
+  - 在删除前，确认 v85/v86/v2 结果已经本地或他处备份。
+
+### 4.4 v86 脚本与 v2 数据的对齐
+
+- 已同步的 v86 启动脚本 `scripts/run_v86_no_count_embedding_medium_a800_gpu6.sh` 当前使用的是 `configs/splits/h36m_true_gt_standard.yaml`。
+- 若目标是跑在 `h36m_true_gt_v2` 上，**启动前务必确认是否已改为 `configs/splits/h36m_true_gt_v2_standard.yaml`**。
+- v25 v2 脚本 `scripts/run_v25_true_gt_v2_medium_a800.sh` 已明确指向 v2 manifest。
+
+### 4.5 本地 git stash 与 token 泄露风险
+
+- 本地仓库当前有 **45 条 stash**。
+- 部分 stash 可能包含临时写死的 API key / token / 数据库连接串。
+- **在 push 或共享任何补丁之前**，先审计 stash：
+  - 列出所有 stash 并检查内容；
+  - 搜索敏感 token 模式（`sk-...`、`ghp_...`、`AKIA...` 等）；
+  - 清理或删除含敏感信息的 stash，切勿直接 push 含 token 的代码。
+
+### 4.6 数据使用禁令
+
+- 继续禁用 `data/h36m_hf/` 和 `data/webbridge/h36m*.npz` 进行模型选择与 leaderboard。
+- 所有新 baseline 必须使用 `data/h36m_true_gt_v2/` + `configs/splits/h36m_true_gt_v2_standard.yaml`。
 
 ---
 
-## 7. 执行约束
+## 5. qwen3.8max 的 Next 3 具体任务
 
-- **A800 / Docker 只读**：可 `ssh a800-D` 查看文件，禁止启动/重启 Docker 或 tmux 训练；在 A800 主机训练仓库使用 `nohup` 启动作业是允许的。
-- **GPU 状态**：GPU 6/7 被其他项目进程（LuxTTS、Mega-ASR、`.venv-cu130-a800`）占用，**禁止 kill**，也禁止在此情况下启动新 MotionFlow 作业。
-- **GPU 0–3 为 VLLM**，GPU 4/5 保留给其他项目，禁止本项目使用。
-- **本地 GPU**：仅用于 smoke/diagnostic（<30 min），当前空闲。
-- **不要同时启动多个本地 GPU 训练进程**。
-- **数据**：不要使用 `data/h36m_hf/` 或 `data/webbridge/h36m*.npz` 进行模型选择。
-- **磁盘**：避免在 A800 上 dump 额外 checkpoint 或抽帧；v85 运行前已 99% 满。
+> **本地 smoke 状态更新**：
+>
+> - **v37 self-critique v2 smoke 已完成**：val MPJPE **87.85 mm**（2 epochs），结果已归档。
+> - **v29 hierarchical v2 smoke 已修复并跑通**：原配置过重导致 RTX 4090 上看起来像 hung，并非 bug；已改用轻量脚本 `scripts/run_v29_hierarchical_true_gt_v2_smoke_local_4090_fixed.sh`，2 epochs val MPJPE **95.20 mm**。使用方法：`CUDA_VISIBLE_DEVICES=0 bash scripts/run_v29_hierarchical_true_gt_v2_smoke_local_4090_fixed.sh`。
+> - **v21 neural BA v2 smoke 已修复并跑通**：根因是 `motionflow_mv/fusion/neural_bundle_adjustment_v21.py` 中轴角旋转描述子在单位阵处导数发散，产生 NaN；修复方式是替换为 `R - R^T` 的反对称部分。修复后 2 epochs val MPJPE 从初始 **93.50 mm** 降到 **79.42 mm**。
+>
+> **v85 DLT-fallback 评估状态说明**：该任务最初以 PID `2269984` 在 A800 启动，但运行约 29 分钟后进程消失，预期的 JSON/CSV 始终未生成。`outputs/variable_view_fix/variable_view_v85_random_view_dropout_medium_a800_dlt_fallback.log` 为空，nohup log 仅显示 `Terminated`（可能是外部 kill 或 OOM）。因此目前没有任何 v85 DLT-fallback 数字；v25/v81/v82 的 DLT-fallback 基线仍是最新参考。该评估需在 GPU 空闲后重跑；重跑前建议检查 eval 脚本是否有输入/输出路径或子进程 hang 的问题。
+>
+> **v86 A800 看守器**：已部署 `scripts/launch_v86_after_v25_a800.sh`（PID `2337615`），它会等待 v25 true-GT v2 medium 训练完成后在首个可用 GPU 上自动启动 v86 no-count-embedding ablation。v86 不再需要手动 `nohup` 启动；本地 v86 A800 启动看守器已停止。
+>
+> **v85 post-v86 看守器**：已部署 `scripts/launch_v85_dlt_fallback_after_v86.sh`（PID `2331379`），它会等待 v86 训练完成后在首个可用 GPU 上自动重跑 v85 DLT-fallback 评估。这样在 v86 结束之前不会占用 GPU 6/7 的宝贵训练时间；看守器运行期间只需监控其日志，无需手动启动。
+>
+> **v21 neural BA camera NaN/Inf 根因确认（已修复）**：失败不是 loader 或 camera 参数问题，而是 `motionflow_mv/fusion/neural_bundle_adjustment_v21.py` 中轴角旋转描述子在单位阵（`R = I`）处导数发散，训练早期即产生 NaN；修复为使用 `R - R^T` 的反对称部分后，本地 RTX 4090 smoke 跑通，2 epochs val MPJPE 从 **93.50 mm** 降到 **79.42 mm**。
 
----
+### 任务 1：为 v25 true-GT v2 medium 运行 test-set 评估
 
-## 8. 完成标准
+- v25 true-GT v2 medium 训练已完成：early-stop @ epoch 6，best val MPJPE **31.41 mm**，checkpoint `outputs/ablations/v25_true_gt_v2_medium_a800.pth`。
+- 在 GPU 6/7 空闲后，运行 test-set 评估（S9/S11），获得 v2 数据协议下的 test MPJPE/PA-MPJPE。
+- 将结果更新到 `docs/results_true_gt_h36m.md` True-GT v2 Leaderboard。
+- v25-v2 test 稳定后，再规划 v46/v52/v57/v80/v81/v82 在 v2 上的重跑。
 
-- [x] GPU 策略更新：A800 仅使用 GPU 6/7；GPU 0–5 禁止用于本项目。
-- [x] MPI 检测 16/16 完成，DLT baseline 115.09 mm / 132.68 mm。
-- [x] AIST++ cross-eval 完成，combined ~93.94 mm。
-- [x] v85 训练完成（PID `2058225`）。
-- [x] v85 no-fallback split-k 评估完成（k=2/3/4）。
-- [ ] v85 DLT-fallback 可变视角评估完成（monitor PID `2218949` 自动触发）。
-- [ ] v86 状态确认（完成/崩溃/被覆盖）。
-- [ ] GPU 6/7 违规占用问题记录/上报，恢复前不启动新作业。
-- [ ] A800 磁盘清理完成，释放 ≥2 GB。
-- [ ] 同步 v2 标签并重跑 learned leaderboard。
-- [ ] 论文 draft 数字与 `docs/results_true_gt_h36m.md` 一致。
+### 任务 2：监控 v86 no-count-embedding ablation 训练
 
----
-
-## 9. 快速入口命令
+- v86 已启动，tmux session `v86_no_count_embedding`，GPU 6，脚本 `scripts/run_v86_no_count_embedding_medium_a800_gpuX.sh`。
+- 监控训练日志：
 
 ```bash
-# 查看 A800 GPU 状态
-ssh a800-D "nvidia-smi"
+ssh a800-D "tail -f /mnt/nvme0n1p1/zhangzy/motionflow-multiview-kimiswarm-iter20/outputs/ablations/v86_no_count_embedding_medium_a800.log"
+```
 
-# 查看 v85 post-training eval suite monitor
-ssh a800-D "tail -f /mnt/nvme0n1p1/zhangzy/motionflow-multiview-kimiswarm-iter20/outputs/sota_baselines/monitor_v85_then_run_evals.log"
+- **确认**：脚本中的 `--mixed_manifest` 指向 `configs/splits/h36m_true_gt_v2_standard.yaml`。
+- v86 目标是验证 active-view-count embedding 对稀疏视角的贡献；与 v85 no-fallback/DLT-fallback 结果对比即可得出结论。
 
-# 查看 v85 训练最终状态
-ssh a800-D "tail -n 50 /mnt/nvme0n1p1/zhangzy/motionflow-multiview-kimiswarm-iter20/outputs/ablations/v85_random_view_dropout_medium_a800.log"
+### 任务 3：等待 v85 post-v86 看守器自动重跑 DLT-fallback 评估，并规划 v2 leaderboard 重跑
 
-# 查看 v85 no-fallback 可变视角评估结果
-ssh a800-D "cat /mnt/nvme0n1p1/zhangzy/motionflow-multiview-kimiswarm-iter20/outputs/variable_view_v85_random_view_dropout_medium_a800.json"
-ssh a800-D "ls -l /mnt/nvme0n1p1/zhangzy/motionflow-multiview-kimiswarm-iter20/outputs/variable_view_v85_random_view_dropout_medium_a800*"
+- **v85 DLT-fallback 将由看守器自动触发**：`scripts/launch_v85_dlt_fallback_after_v86.sh`（PID `2331379`）正在 A800 上运行，等待 v86 训练完成后在首个可用 GPU 启动 v85 DLT-fallback 评估。无需手动 `nohup` 启动。
+- 看守器启动后，监控日志：
 
-# 查看 v86 状态
-ssh a800-D "ls -l /mnt/nvme0n1p1/zhangzy/motionflow-multiview-kimiswarm-iter20/outputs/ablations/v86_no_count_embedding_medium_a800*"
-ssh a800-D "tail -n 20 /mnt/nvme0n1p1/zhangzy/motionflow-multiview-kimiswarm-iter20/outputs/ablations/v86_no_count_embedding_medium_a800.log"
+```bash
+ssh a800-D "tail -f /mnt/nvme0n1p1/zhangzy/motionflow-multiview-kimiswarm-iter20/outputs/variable_view_fix/variable_view_v85_random_view_dropout_medium_a800_dlt_fallback.log"
+```
 
-# 检查 GPU 占用进程/违规情况
-ssh a800-D "ps -ef | grep -E 'LuxTTS|Mega-ASR|venv-cu130-a800' | grep -v grep"
+- 评估结束后，对比 v85 DLT-fallback 与 v25/v81/v82 的 DLT-fallback 数字，判断：
+  - k=2/3 是否比 no-fallback 有质的改善；
+  - k=4 是否有退化；
+  - random view dropout 是否在 fallback 模式下有收益。
+- 在 v25/v86/v85-DLT-fallback 均完成后，按以下顺序重跑 learned leaderboard：
+  - v25、v46、v52、v57、v80、v81、v82 在 v2 数据上重新评估/训练；
+  - v85、v86 在 v2 数据上的结果（v85 若此前是 v1 manifest，需补跑 v2 eval；v86 直接跑 v2）。
+- 更新 `docs/results_true_gt_h36m.md` 和 `docs/paper_draft_icra_cvpr_2027.md`，确保所有数字都来自 `h36m_true_gt_v2`。
 
-# 查看磁盘
+---
+
+## 6. 关键命令速查
+
+### 6.1 查看 v85 DLT-fallback 评估
+
+```bash
+# 实时跟踪日志
+ssh a800-D "tail -f /mnt/nvme0n1p1/zhangzy/motionflow-multiview-kimiswarm-iter20/outputs/variable_view_fix/variable_view_v85_random_view_dropout_medium_a800_dlt_fallback.log"
+
+# 查看结果 JSON
+ssh a800-D "cat /mnt/nvme0n1p1/zhangzy/motionflow-multiview-kimiswarm-iter20/outputs/variable_view_fix/variable_view_v85_random_view_dropout_medium_a800_dlt_fallback.json"
+
+# 检查进程
+ssh a800-D "ps -p 2269984 -o pid,ppid,cmd,%cpu,%mem,etime"
+```
+
+### 6.2 监控 v86 A800 看守器与训练日志
+
+```bash
+ssh a800-D
+# 进入训练仓库
+cd /mnt/nvme0n1p1/zhangzy/motionflow-multiview-kimiswarm-iter20
+
+# 查看 v86 看守器（等待 v25 完成并自动启动 v86）
+ssh a800-D "tail -f /mnt/nvme0n1p1/zhangzy/motionflow-multiview-kimiswarm-iter20/outputs/launch_v86_after_v25_a800.log"
+
+# v86 启动后，查看训练日志
+ssh a800-D "tail -f /mnt/nvme0n1p1/zhangzy/motionflow-multiview-kimiswarm-iter20/outputs/ablations/v86_no_count_embedding_medium_a800.log"
+
+# 检查 v86 看守器进程
+ssh a800-D "ps -p 2337615 -o pid,ppid,cmd,%cpu,%mem,etime"
+
+# 确认 GPU 空闲（项目只使用 GPU 6/7）
+nvidia-smi --query-gpu=index,name,utilization.gpu,memory.used --format=csv
+```
+
+### 6.3 启动 v25 true-GT v2 medium baseline
+
+```bash
+ssh a800-D
+nohup bash scripts/run_v25_true_gt_v2_medium_a800.sh \
+    > outputs/ablations/v25_true_gt_v2_medium_a800.log 2>&1 &
+```
+
+### 6.4 检查 GPU 与外项目进程
+
+```bash
+# GPU 占用
+ssh a800-D "nvidia-smi --query-gpu=index,name,utilization.gpu,memory.used,memory.total --format=csv"
+
+# 外项目进程（LuxTTS / Mega-ASR / ComfyUI / venv）
+ssh a800-D "ps -ef | grep -E 'LuxTTS|Mega-ASR|ComfyUI|venv-cu130-a800' | grep -v grep"
+
+# 查看占用 GPU 7 的具体进程
+ssh a800-D "nvidia-smi -i 7 -q -d PIDS"
+```
+
+### 6.5 磁盘与清理
+
+```bash
+# 磁盘使用情况
 ssh a800-D "df -h /mnt/nvme0n1p1"
 
-# 查看 v82/v25 var-view DLT-fallback
-ssh a800-D "cat /mnt/nvme0n1p1/zhangzy/motionflow-multiview-kimiswarm-iter20/outputs/variable_view_fix/variable_view_v82_true_gt_medium_a800_dlt_fallback.json"
+# 安全清理 dry-run（先不要真删）
+ssh a800-D "bash /mnt/nvme0n1p1/zhangzy/motionflow-multiview-kimiswarm-iter20/scripts/cleanup_a800_safe.sh --dry-run"
+
+# 查看 A800 outputs 目录大小
+ssh a800-D "du -sh /mnt/nvme0n1p1/zhangzy/motionflow-multiview-kimiswarm-iter20/outputs/* | sort -rh | head -20"
+```
+
+### 6.6 本地 git stash / token 审计
+
+```bash
+# 统计 stash 数量
+git stash list | wc -l
+
+# 列出所有 stash
+git stash list
+
+# 搜索常见 token 模式（在本地仓库根目录执行）
+grep -R -E "(sk-[a-zA-Z0-9]{48}|ghp_[a-zA-Z0-9]{36,}|AKIA[A-Z0-9]{16}|gh[ops]_[a-zA-Z0-9]{36,})" \
+    --include="*.py" --include="*.sh" --include="*.yaml" --include="*.json" . 2>/dev/null
+
+# 查看单个 stash 内容（示例）
+git stash show -p stash@{0}
+```
+
+### 6.7 查看已有 leaderboard 与基线结果
+
+```bash
+# v25 / v82 / v85 no-fallback / DLT-fallback 结果
 ssh a800-D "cat /mnt/nvme0n1p1/zhangzy/motionflow-multiview-kimiswarm-iter20/outputs/variable_view_fix/variable_view_v25_true_gt_stability_a800_dlt_fallback.json"
+ssh a800-D "cat /mnt/nvme0n1p1/zhangzy/motionflow-multiview-kimiswarm-iter20/outputs/variable_view_fix/variable_view_v82_true_gt_medium_a800_dlt_fallback.json"
+ssh a800-D "cat /mnt/nvme0n1p1/zhangzy/motionflow-multiview-kimiswarm-iter20/outputs/variable_view_v85_random_view_dropout_medium_a800.json"
 
-# 查看 MPI DLT baseline
+# MPI / AIST++ 基线
 ssh a800-D "cat /mnt/nvme0n1p1/zhangzy/motionflow-multiview-kimiswarm-iter20/outputs/mpi_rtmpose_detected_2d/dlt_baseline_detected_2d.json"
-
-# 查看 AIST++ cross-eval
 ssh a800-D "cat /mnt/nvme0n1p1/zhangzy/motionflow-multiview-kimiswarm-iter20/outputs/eval_aistpp_only_medium_a800_fast_v2_h36m_test.json"
-
-# 本地 GPU 状态
-nvidia-smi
-
-# H36M true-GT 排行榜
-cat docs/results_true_gt_h36m.md
 ```
 
 ---
 
-## 10. 交接注意事项
+## 7. 完成标准 checklist
 
-- **GPU 策略违规**：GPU 6/7 上有 LuxTTS、Mega-ASR、`.venv-cu130-a800` 等其他项目进程。**禁止 kill**，但不得启动新 MotionFlow 作业，直到违规占用清除或明确协调好。
-- **v85 DLT-fallback 评估**：由 PID `2218949` 自动排队触发；需确认 monitor 未被 GPU 占用阻塞。
-- **v86 状态**：当前不可见；接手后先检查 log 与 checkpoint，确认是否完成、崩溃或被覆盖。
-- **磁盘 99% 满**：约 58 GB 空闲；v85 相关结果未安全备份前不要清理其文件。
-- **数据**：继续禁用 `data/h36m_hf/` 与 `data/webbridge/h36m*.npz` 进行模型选择。
+- [ ] v86 no-count-embedding ablation 训练完成并归档结果。
+- [x] v25 true-GT v2 medium baseline 完成训练（best val 31.41 mm @ epoch 6）。
+- [ ] v25 true-GT v2 medium test-set 评估完成并更新 leaderboard。
+- [ ] v85 DLT-fallback 可变视角评估完成并归档结果（看守器自动触发）。
+- [ ] GPU 7 外项目占用问题记录/上报，未 clear 前不强制启动新任务。
+- [ ] A800 磁盘继续清理，确保任何新 medium 训练前 ≥5 GB 安全余量。
+- [ ] 本地 45 条 stash 完成审计，确认无 token 泄露风险。
+- [ ] v2 learned leaderboard（v25/v46/v52/v57/v80/v81/v82/v85/v86）结果更新到 `docs/results_true_gt_h36m.md`。
+- [ ] 论文 draft `docs/paper_draft_icra_cvpr_2027.md` 数字与 v2 leaderboard 一致。
+
+---
+
+## 8. 交接注意事项
+
+- **GPU 7 外项目占用**：不要 kill 进程，先记录并协调；未 clear 前不启动任何新任务。
+- **v85 DLT-fallback 已排队**：原 PID `2269984` 失败；现在由 `scripts/launch_v85_dlt_fallback_after_v86.sh` 看守器自动触发，等待 v86 完成后在首个可用 GPU 运行，无需手动启动。
+- **v25 true-GT v2 medium 已完成**：best val **31.41 mm** @ epoch 6；checkpoint 已落盘；待运行 test-set 评估。
+- **v86 已启动**：tmux session `v86_no_count_embedding`，GPU 6，v2 协议；不要手动重复启动。
+- **v2 数据是新的标准**：所有新 baseline 必须使用 `data/h36m_true_gt_v2/` + `configs/splits/h36m_true_gt_v2_standard.yaml`。
+- **磁盘 98% 满**：启动新的 medium 训练前，先跑 cleanup dry-run 并确认有 ≥5 GB 余量。
+- **git stash 含 token 风险**：审计完成前，不要 push 任何来自 stash 的临时 patch 或配置文件。
+- **不要动 A800 只读资源**：`/mnt/nvme0n1p1/zhangzy/projects` 与 `motionflow` Docker 仅可查看，禁止写入/重启。

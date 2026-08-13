@@ -1,0 +1,46 @@
+diff --git a/experiments/train_ray_attention_temporal_crossview_residual_principal_point_mpiinf3dhp.py b/experiments/train_ray_attention_temporal_crossview_residual_principal_point_mpiinf3dhp.py
+index a0854dd..260e0b8 100644
+--- a/experiments/train_ray_attention_temporal_crossview_residual_principal_point_mpiinf3dhp.py
++++ b/experiments/train_ray_attention_temporal_crossview_residual_principal_point_mpiinf3dhp.py
+@@ -62,9 +62,6 @@ from motionflow_mv.fusion.ray_attention_temporal_crossview_residual_principal_po
+ from motionflow_mv.fusion.ray_attention_temporal_crossview_residual_principal_point_epipolar_bias_v2_model import (
+     RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointEpipolarBiasV2,
+ )
+-from motionflow_mv.fusion.epipolar_bias_v2_lite_pp_model import (
+-    RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointEpipolarBiasV2Lite,
+-)
+ from motionflow_mv.fusion.ray_attention_temporal_crossview_residual_camera_conditioned_model import (
+     RayAttentionFusionModelTemporalCrossviewResidualCameraConditioned,
+ )
+@@ -74,6 +71,9 @@ from motionflow_mv.fusion.ray_attention_hierarchical_view_temporal_joint_residua
+ from motionflow_mv.fusion.ray_attention_temporal_crossview_residual_principal_point_deeper_temporal_model import (
+     RayAttentionFusionModelHierarchicalViewDeeperTemporalResidualPrincipalPoint,
+ )
++from motionflow_mv.fusion.ray_attention_temporal_crossview_residual_principal_point_deeper_temporal_model import (
++    RayAttentionFusionModelHierarchicalViewDeeperTemporalResidualPrincipalPoint,
++)
+ from motionflow_mv.losses.gaussian_splatting_pose_loss import gaussian_splatting_pose_loss
+ 
+ 
+@@ -426,6 +426,21 @@ def main():
+             n_joint_graph_layers=args.n_joint_graph_layers,
+             use_skeleton_graph=True,
+         ).to(device)
++    elif args.model_type == "deeper_temporal_pp":
++        model = RayAttentionFusionModelHierarchicalViewDeeperTemporalResidualPrincipalPoint(
++            j=j, d=args.d, n_views=n_views, n_st_layers=args.n_st_layers,
++            residual_hidden=args.residual_hidden,
++            principal_point_hidden=args.principal_point_hidden,
++            principal_point_max_offset=args.principal_point_max_offset,
++            focal_max_scale=args.focal_max_scale,
++            return_pp_delta=True,
++            return_raw=args.return_raw_3d or args.reproj_raw_weight > 0.0,
++            n_view_groups=args.n_view_groups,
++            n_view_layers=args.n_view_layers,
++            n_temporal_layers=args.n_temporal_layers,
++            n_joint_graph_layers=args.n_joint_graph_layers,
++            use_skeleton_graph=True,
++        ).to(device)
+     else:
+         model = RayAttentionFusionModelTemporalCrossviewResidualPrincipalPoint(
+             j=j, d=args.d, n_views=n_views, n_st_layers=args.n_st_layers,

@@ -1,0 +1,410 @@
+diff --git a/docs/proposals/v48_domain_generalization.md b/docs/proposals/v48_domain_generalization.md
+index 6b9092a..44843aa 100644
+--- a/docs/proposals/v48_domain_generalization.md
++++ b/docs/proposals/v48_domain_generalization.md
+@@ -1,8 +1,8 @@
+ # v48: Domain Generalization and 3DPW Integration
+ 
+-**Status:** Proposal / ready for design review  
++**Status:** Implementation in progress  
+ **Labels:** `experiment`, `P1-next`  
+-**Tracking issue:** #162 (depends on v47-temporal)  
++**Tracking issue:** #164 (depends on v47-temporal #162)  
+ 
+ ## Motivation
+ 
+@@ -181,3 +181,155 @@ v48 supports the claim: *Our model generalizes across camera rigs, frame rates,
+ 3. Add `DomainInvariantSparseViewV48` and DDWL to the v47 trainer.
+ 4. Smoke on RTX 4090 and compare per-domain MPJPE@k with v47.
+ 5. Queue full A800 run starting from the best v47 checkpoint.
++
++---
++
++# User Guide: Enabling v48 Domain Generalization and 3DPW Actual-Mode Evaluation
++
++## Quick Start
++
++1. **Ensure you are on the `v48-domain` branch and that v46-SVG and v47-temporal are already enabled.**
++2. **Run the smoke test locally once the v48 code is wired:**
++   ```bash
++   bash scripts/run_v48_domain_smoke_local_4090.sh
++   ```
++3. **To enable in a custom run, add to your YAML config or CLI:**
++   ```yaml
++   model:
++     use_v48_domain_generalization: true
++     v48_dg_hidden: 64
++     v48_dg_grl_lambda: 0.1
++     v48_dg_use_domain_film: true
++     v48_dg_use_ddwl: true
++     v48_dg_ddwl_temperature: 2.0
++     v48_dg_ddwl_warmup_epochs: 1
++     v48_3dpw_actual_val_paths: null
++     v48_dropout_per_domain:
++       "0": 0.30
++       "1": 0.30
++       "5": 0.15
++   ```
++
++## Enabling in Training
++
++### YAML Configuration
++
++A minimal v48-enabled YAML snippet builds on the v47 smoke config and adds the domain-generalization block:
++
++```yaml
++model:
++  # v46 / v47 base flags are required and unchanged.
++  use_v46_sparse_view_generalization: true
++  use_v47_temporal_aggregation: true
++
++  # v48 domain generalization
++  use_v48_domain_generalization: true
++  v48_dg_hidden: 64
++  v48_dg_grl_lambda: 0.1
++  v48_dg_use_domain_film: true
++  v48_dg_use_ddwl: true
++  v48_dg_ddwl_temperature: 2.0
++  v48_dg_ddwl_warmup_epochs: 1
++
++  # Optional: per-domain view dropout schedule.
++  v48_dropout_per_domain:
++    "0": 0.30   # H36M / MPI-style studio multi-view
++    "1": 0.30   # MPI-INF-3DHP
++    "5": 0.15   # 3DPW in-the-wild (gentler dropout)
++
++  # Optional: list of 3DPW `actual` .npz files for real moving-camera validation.
++  v48_3dpw_actual_val_paths: null
++
++training:
++  # Existing v46/v47 training settings remain unchanged.
++  # Typical warm-start recipe: freeze v25/v45/v46/v47 for 1 epoch,
++  # then unfreeze and continue with the mixed manifest.
++```
++
++### CLI Override
++
++```bash
++python experiments/train_omniview_fusion_v5_webbridge_multi.py \
++  --config configs/benchmark_v48_domain_smoke.yaml \
++  --use_v48_domain_generalization \
++  --v48_dg_hidden 64 \
++  --v48_dg_grl_lambda 0.1 \
++  --v48_dg_use_domain_film \
++  --v48_dg_use_ddwl \
++  --v48_dg_ddwl_temperature 2.0 \
++  --v48_dg_ddwl_warmup_epochs 1
++```
++
++## Running Evaluation
++
++### Per-dataset MPJPE on standard val splits
++
++After training, evaluate the checkpoint on each domain separately:
++
++```bash
++python experiments/eval_variable_views.py \
++  --checkpoint outputs/omniview_fusion_v48_domain_smoke_local_4090.pth \
++  --config configs/benchmark_v48_domain_smoke.yaml \
++  --view_subsets 1,2,3,4,full \
++  --per_domain \
++  --out outputs/v48_domain_eval.json
++```
++
++The output JSON contains `MPJPE@k` per domain plus the cross-domain gap.
++
++### 3DPW `actual`-mode monocular benchmark
++
++To enable the real moving-camera benchmark, point `v48_3dpw_actual_val_paths` at the 3DPW `actual` validation `.npz` files and run:
++
++```bash
++python experiments/eval_variable_views.py \
++  --checkpoint outputs/omniview_fusion_v48_domain_smoke_local_4090.pth \
++  --config configs/benchmark_v48_domain_smoke.yaml \
++  --view_subsets 1 \
++  --eval_3dpw_actual \
++  --out outputs/v48_3dpw_actual_eval.json
++```
++
++`MPJPE@1` on the 3DPW `actual` split is the primary in-the-wild metric.
++
++## Interpreting Results
++
++- **`MPJPE@full` (studio domains)**: Should be within ~1 mm of the v47 baseline at full views.
++- **`MPJPE@1` (3DPW actual)**: Should be finite and lower than a v47 baseline run on the same actual-mode data.
++- **`domain_gap`**: The maximum difference in `MPJPE@full` across the studio domains and 3DPW pseudo. v48 targets a ≥20% reduction versus v47.
++- **`domain_discriminator_acc`**: Should stay near chance (`[0.45, 0.55]`) after convergence, confirming that the adapter is producing domain-invariant features.
++- **`MPJPE@2` / `MPJPE@3` (studio)**: Should remain comparable to v47; the goal is no regression at sparse views while improving cross-domain transfer.
++
++## When to Use v48
++
++Use v48 when:
++
++- You need a single checkpoint that works across both studio multi-view (H36M, MPI-INF-3DHP, AIST++) and in-the-wild monocular (3DPW) data.
++- You have 3DPW data available in either `pseudo` (synthetic 4-view) or `actual` (real moving-camera) mode.
++- You already have a strong v46/v47 checkpoint and want to add domain-invariant refinement without changing the backbone.
++
++Do not use v48 if:
++
++- You only train and evaluate on a single studio domain (v46/v47 is sufficient).
++- 3DPW data is not available and no cross-domain generalization is needed.
++- You cannot afford the extra memory / compute from the gradient-reversal and DDWL losses.
++
++## Common Issues
++
++| Symptom | Cause | Fix |
++|---------|-------|-----|
++| `NaN` during training | `v48_dg_grl_lambda` too high, or DDWL weights exploded. | Lower `v48_dg_grl_lambda` to `0.01`, increase `v48_dg_ddwl_warmup_epochs`, or reduce the learning rate. |
++| 3DPW `actual` eval fails | `v48_3dpw_actual_val_paths` is `null` or points at `pseudo` files. | Check that the paths are real 3DPW `actual` `.npz` files with `V=1` and per-frame camera poses. |
++| No cross-domain improvement | Domain labels are missing or all samples map to the same domain id. | Verify the manifest provides `dataset_id` (0=H36M, 1=MPI, 5=3DPW, ...). |
++| Over-smoothing on 3DPW fast motion | v47 temporal window too wide for in-the-wild framerates. | Set `v47_temporal_window: 7` or use a domain-conditional window once implemented. |
++| v48 flags ignored | `use_v48_domain_generalization` is true but v46/v47 are not enabled. | Ensure both `use_v46_sparse_view_generalization` and `use_v47_temporal_aggregation` are set. |
++
++## See Also
++
++- Issue #164 — v48 tracking
++- Issue #162 — v47-temporal dependency
++- Issue #160 — v46-SVG dependency
++- `docs/swarm_iter25_action_plan.md` — full agent task list
++- `motionflow_mv/fusion/domain_adapter_v48.py` — domain adapter module
++- `motionflow_mv/fusion/temporal_aggregation_v47.py` — v47 base module
++- `motionflow_mv/data/webbridge_mixed_dataset.py` — mixed loader with 3DPW support
+diff --git a/motionflow_mv/data/webbridge_mixed_dataset.py b/motionflow_mv/data/webbridge_mixed_dataset.py
+index ea2141b..80b1739 100644
+--- a/motionflow_mv/data/webbridge_mixed_dataset.py
++++ b/motionflow_mv/data/webbridge_mixed_dataset.py
+@@ -1,7 +1,7 @@
+ """WebBridge mixed-dataset loader with a unified 17-joint canonical skeleton.
+ 
+ The loader consumes canonical ``.npz`` files from any WebBridge source
+-(H36M, MPI-INF-3DHP, AIST++, Shelf, Campus), re-indexes the joint
++(H36M, MPI-INF-3DHP, AIST++, Shelf, Campus, 3DPW), re-indexes the joint
+ skeleton to a common 17-joint layout, pads views to the largest rig
+ (14 views for MPI-INF-3DHP), and yields temporal clips.
+ 
+@@ -14,6 +14,16 @@ Expected canonical ``.npz`` layout::
+     camera_R    (V, 3, 3)
+     camera_t    (V, 3)
+ 
++3DPW ``actual`` mode files may also contain per-frame moving-camera arrays::
++
++    camera_K_frames  (T, 1, 3, 3)
++    camera_R_frames  (T, 1, 3, 3)
++    camera_t_frames  (T, 1, 3)
++
++When these are present, the returned camera tensors have shape
++``(T, MAX_VIEWS, 3, 3)`` / ``(T, MAX_VIEWS, 3)`` instead of the static
++``(MAX_VIEWS, 3, 3)`` / ``(MAX_VIEWS, 3)``.
++
+ Each sample returns ``(x, y, K, R, t, dataset_id)`` where ``x`` has shape
+ ``(T, MAX_VIEWS, 17, 3)`` and ``y`` has shape ``(T, 17, 3)``.
+ """
+@@ -119,6 +129,39 @@ def _pad_cameras(
+     return K_pad, R_pad, t_pad
+ 
+ 
++def _pad_per_frame_cameras(
++    camera_K_frames: np.ndarray,
++    camera_R_frames: np.ndarray,
++    camera_t_frames: np.ndarray,
++    max_views: int = MAX_VIEWS,
++) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
++    """Pad per-frame camera arrays from ``(T, V, ...)`` to ``(T, MAX_VIEWS, ...)``.
++
++    Parameters
++    ----------
++    camera_K_frames: (T, V, 3, 3)
++    camera_R_frames: (T, V, 3, 3)
++    camera_t_frames: (T, V, 3)
++    max_views:
++        Target number of views.
++
++    Returns
++    -------
++    Padded arrays with shape ``(T, max_views, ...)``.
++    """
++    T, src_v = camera_K_frames.shape[:2]
++    if src_v > max_views:
++        raise ValueError(f"{src_v} views exceeds MAX_VIEWS={max_views}")
++
++    K_pad = np.eye(3, dtype=camera_K_frames.dtype)[None, None, ...].repeat(T, axis=0).repeat(max_views, axis=1)
++    R_pad = np.eye(3, dtype=camera_R_frames.dtype)[None, None, ...].repeat(T, axis=0).repeat(max_views, axis=1)
++    t_pad = np.zeros((T, max_views, 3), dtype=camera_t_frames.dtype)
++    K_pad[:, :src_v] = camera_K_frames
++    R_pad[:, :src_v] = camera_R_frames
++    t_pad[:, :src_v] = camera_t_frames
++    return K_pad, R_pad, t_pad
++
++
+ def _reindex_and_pad_views(
+     points_2d: np.ndarray,
+     confidences: np.ndarray,
+@@ -207,6 +250,21 @@ class WebBridgeCanonical17Dataset(Dataset):
+             data["camera_K"], data["camera_R"], data["camera_t"]
+         )
+ 
++        # Detect 3DPW actual mode: per-frame moving cameras are stored in
++        # camera_*_frames arrays. These override the static placeholders.
++        has_per_frame = all(k in data for k in ("camera_K_frames", "camera_R_frames", "camera_t_frames"))
++        if has_per_frame:
++            per_K, per_R, per_t = _pad_per_frame_cameras(
++                data["camera_K_frames"], data["camera_R_frames"], data["camera_t_frames"]
++            )
++            self.camera_K_frames = torch.from_numpy(per_K).float()
++            self.camera_R_frames = torch.from_numpy(per_R).float()
++            self.camera_t_frames = torch.from_numpy(per_t).float()
++        else:
++            self.camera_K_frames = None
++            self.camera_R_frames = None
++            self.camera_t_frames = None
++
+         self.points_2d = torch.from_numpy(points_2d).float()
+         self.confidences = torch.from_numpy(confidences).float()
+         self.joints_3d = torch.from_numpy(joints_3d).float()
+@@ -238,11 +296,22 @@ class WebBridgeCanonical17Dataset(Dataset):
+             dim=-1,
+         )  # (T, V, J, 3)
+         y = self.joints_3d[start:end]  # (T, J, 3)
++
++        # Per-frame cameras for 3DPW actual mode; otherwise static cameras.
++        if self.camera_K_frames is not None:
++            K = self.camera_K_frames[start:end]  # (T, MAX_VIEWS, 3, 3)
++            R = self.camera_R_frames[start:end]
++            t = self.camera_t_frames[start:end]  # (T, MAX_VIEWS, 3)
++        else:
++            K = self.camera_K
++            R = self.camera_R
++            t = self.camera_t
++
+         if self.return_view_mask:
+             view_mask = torch.zeros(MAX_VIEWS, dtype=torch.bool)
+             view_mask[: self.n_views] = True
+-            return x, y, self.camera_K, self.camera_R, self.camera_t, self.dataset_id, view_mask
+-        return x, y, self.camera_K, self.camera_R, self.camera_t, self.dataset_id
++            return x, y, K, R, t, self.dataset_id, view_mask
++        return x, y, K, R, t, self.dataset_id
+ 
+ 
+ class WebBridgeMixedDataset(ConcatDataset):
+diff --git a/motionflow_mv/fusion/omniview_fusion_v5.py b/motionflow_mv/fusion/omniview_fusion_v5.py
+index b8ece07..1f4ad5d 100644
+--- a/motionflow_mv/fusion/omniview_fusion_v5.py
++++ b/motionflow_mv/fusion/omniview_fusion_v5.py
+@@ -15,6 +15,8 @@ New toggles
+   that predicts per-view reliability for variable-view triangulation.
+ * ``use_v47_temporal_aggregation`` – add a lightweight temporal aggregation head
+   on top of the per-frame triangulated poses to fuse evidence across time.
++* ``use_v48_domain_adapter`` – apply a domain-conditional FiLM/conditional-BN
++  adapter to the multi-view feature tokens for cross-dataset generalization.
+ 
+ The model also accepts an explicit ``view_mask`` so that missing views can be
+ masked out in confidences, weights, and triangulation.
+@@ -282,6 +284,11 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
+         v47_temporal_dropout: float = 0.1,
+         v47_temporal_residual_gate_init: float = 0.0,
+         v47_temporal_use_view_count_conditioning: bool = True,
++        # v48 domain adapter (FiLM / conditional BN)
++        use_v48_domain_adapter: bool = False,
++        v48_da_hidden: int = 64,
++        v48_da_num_domains: int = 6,
++        v48_da_dropout: float = 0.1,
+         # v37 self-critique view reliability estimator
+         use_self_critique_view_reliability_v37: bool = False,
+         v37_scvr_hidden: int = 64,
+diff --git a/scripts/run_v48_domain_smoke_local_4090.sh b/scripts/run_v48_domain_smoke_local_4090.sh
+new file mode 100644
+index 0000000..7da40c5
+--- /dev/null
++++ b/scripts/run_v48_domain_smoke_local_4090.sh
+@@ -0,0 +1,91 @@
++#!/usr/bin/env bash
++# Local RTX 4090 smoke test for v48 domain generalization on top of the v46/v47 stack.
++# Run only when the GPU is free (do not overlap with other training).
++set -euo pipefail
++
++python -u experiments/train_omniview_fusion_v5_webbridge_multi.py \
++    --use_mixed_loader \
++    --mixed_manifest configs/splits/webbridge_h36m_mpi_mixed_train_val.yaml \
++    --use_domain_embedding \
++    --use_deformable_cross_view_attention_v18 \
++    --use_multiview_geometry_fusion_v25 \
++    --v25_geom_loss_weight 0.1 \
++    --v25_dropout 0.2 \
++    --v25_use_geometry_attention \
++    --v25_use_learned_depth_triangulation \
++    --v25_use_geometry_bundle_adjustment \
++    --use_v45_adaptive_geometry_fusion \
++    --v45_adaptive_weight_type per_view_joint \
++    --v45_adaptive_weight_hidden 32 \
++    --v45_adaptive_weight_n_layers 1 \
++    --use_v46_sparse_view_generalization \
++    --v46_svg_view_dropout_prob 0.3 \
++    --v46_svg_min_views 2 \
++    --v46_svg_hidden 64 \
++    --v46_svg_use_curriculum \
++    --use_v47_temporal_aggregation \
++    --v47_temporal_d_model 64 \
++    --v47_temporal_n_heads 4 \
++    --v47_temporal_num_layers 2 \
++    --v47_temporal_window 7 \
++    --v47_temporal_dropout 0.1 \
++    --v47_temporal_loss_weight 0.01 \
++    --v47_use_view_count_conditioning \
++    --use_v48_domain_generalization \
++    --v48_dg_hidden 64 \
++    --v48_dg_grl_lambda 0.1 \
++    --v48_dg_use_domain_film \
++    --v48_dg_use_ddwl \
++    --v48_dg_ddwl_temperature 2.0 \
++    --v48_dg_ddwl_warmup_epochs 1 \
++    --num_workers 4 \
++    --d 64 \
++    --residual_hidden 128 \
++    --n_st_layers 2 \
++    --graph_num_layers 1 \
++    --n_joint_layers 1 \
++    --n_heads 4 \
++    --clip_len 9 \
++    --epochs 2 \
++    --batch_size 4 \
++    --train_samples 500 \
++    --val_stride 10 \
++    --lr 1e-3 \
++    --lr_cosine \
++    --lr_warmup_epochs 1 \
++    --lr_min 1e-6 \
++    --max_grad_norm 1.0 \
++    --ema_decay 0.999 \
++    --early_stopping_patience 2 \
++    --early_stopping_min_delta 0.001 \
++    --use_multiscale_fusion true \
++    --use_camera_conditioning true \
++    --use_epipolar_bias true \
++    --use_context_visibility true \
++    --use_skeleton_residual true \
++    --use_rotation_correction true \
++    --use_entropy_regularization true \
++    --attention_entropy_weight 0.01 \
++    --use_camera_view_embedding \
++    --use_set_view_aggregator \
++    --use_variable_view_training \
++    --variable_view_min_views 2 \
++    --variable_view_max_views 8 \
++    --variable_view_max_views_start 4 \
++    --variable_view_curriculum_alpha 2.0 \
++    --variable_view_permute \
++    --pa_loss_weight 0.5 \
++    --monotonic_loss_weight 0.1 \
++    --monotonic_margin 5.0 \
++    --reproj_loss_weight 0.1 \
++    --reproj_warmup_epochs 1 \
++    --aleatoric_reproj_loss_weight 0.1 \
++    --outlier_view_prob 0.3 \
++    --outlier_view_max_views 1 \
++    --outlier_view_offset_std 10.0 \
++    --outlier_view_noise_std 15.0 \
++    --use_hierarchical_multiview_v30 \
++    --v30_n_part_layers 2 \
++    --v30_stochastic_depth_prob 0.1 \
++    --output outputs/v48_domain_smoke_local_4090.pth \
++    >> outputs/v48_domain_smoke_local_4090.log 2>&1

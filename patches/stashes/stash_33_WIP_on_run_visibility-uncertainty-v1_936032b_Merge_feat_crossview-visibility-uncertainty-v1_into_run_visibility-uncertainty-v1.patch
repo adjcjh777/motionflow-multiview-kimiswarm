@@ -1,0 +1,88 @@
+diff --git a/experiments/train_ray_attention_temporal_crossview_residual_principal_point_mpiinf3dhp.py b/experiments/train_ray_attention_temporal_crossview_residual_principal_point_mpiinf3dhp.py
+index 948a5df..3fd3ed4 100644
+--- a/experiments/train_ray_attention_temporal_crossview_residual_principal_point_mpiinf3dhp.py
++++ b/experiments/train_ray_attention_temporal_crossview_residual_principal_point_mpiinf3dhp.py
+@@ -41,6 +41,13 @@ from motionflow_mv.fusion.ray_attention_temporal_crossview_residual_principal_po
+ from motionflow_mv.losses import reprojection_loss, velocity_loss
+ from motionflow_mv.losses.reprojection_consistency import robust_reprojection_loss
+ from motionflow_mv.losses.view_selection_loss import ViewSelectionLoss
++from motionflow_mv.losses.temporal_skeleton_consistency import temporal_skeleton_consistency_loss
++from motionflow_mv.fusion.graph_joint_relation import (
++    H36M_17_PARENTS,
++    H36M_17_SYMMETRY_PAIRS,
++    MPI_INF_3DHP_28_PARENTS,
++    MPI_INF_3DHP_28_SYMMETRY_PAIRS,
++)
+ from motionflow_mv.fusion.ray_attention_temporal_crossview_residual_principal_point_dynamic_gate_model import (
+     RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointDynamicGate,
+ )
+@@ -267,6 +274,8 @@ def main():
+     parser.add_argument("--pp_pretrain_epochs", type=int, default=0, help="Number of initial epochs to train only the principal_point_correction head")
+     parser.add_argument("--splat_loss_weight", type=float, default=0.0, help="Weight for Gaussian-splatting pose regularizer loss (splat model only)")
+     parser.add_argument("--epipolar_loss_weight", type=float, default=0.0, help="Weight for epipolar consistency auxiliary loss (bayesian_tri model only)")
++    parser.add_argument("--skeleton_prior_weight", type=float, default=0.0, help="Weight for the temporal skeleton consistency prior (bone-length temporal variance + symmetry + optional velocity)")
++    parser.add_argument("--skeleton_prior_velocity_weight", type=float, default=0.0, help="Relative weight for the optional velocity/smoothness term within the skeleton prior (default 0 disables it)")
+     args = parser.parse_args()
+ 
+     set_seed(args.seed)
+@@ -289,6 +298,14 @@ def main():
+     sample = np.load(args.train[0])
+     n_views = sample["camera_K"].shape[0]
+     j = sample["points_2d"].shape[2]
++
++    # Select skeleton topology for the temporal skeleton consistency prior.
++    if j == 17:
++        skeleton_parents, skeleton_symmetry = H36M_17_PARENTS, H36M_17_SYMMETRY_PAIRS
++    elif j == 28:
++        skeleton_parents, skeleton_symmetry = MPI_INF_3DHP_28_PARENTS, MPI_INF_3DHP_28_SYMMETRY_PAIRS
++    else:
++        skeleton_parents, skeleton_symmetry = None, None
+     print(f"n_views={n_views}, j={j}, clip_len={args.clip_len}, d={args.d}, model_type={args.model_type}, "
+           f"n_st_layers={args.n_st_layers}, n_view_layers={args.n_view_layers}, n_temporal_layers={args.n_temporal_layers}, "
+           f"residual_hidden={args.residual_hidden}, principal_point_hidden={args.principal_point_hidden}, "
+@@ -585,6 +602,13 @@ def main():
+             if args.model_type in ("bayesian_tri", "bayesian_tri_v2"):
+                 epi_loss = outputs[-1]  # scalar
+                 loss = loss + args.epipolar_loss_weight * epi_loss
++            if args.skeleton_prior_weight > 0.0 and skeleton_parents is not None:
++                skel_loss = temporal_skeleton_consistency_loss(
++                    pred, skeleton_parents, symmetry_pairs=skeleton_symmetry,
++                    bone_variance_weight=1.0, symmetry_weight=1.0,
++                    velocity_weight=args.skeleton_prior_velocity_weight,
++                )
++                loss = loss + args.skeleton_prior_weight * skel_loss
+             loss.backward()
+             optimizer.step()
+             train_loss += loss.item() * xb.size(0)
+diff --git a/motionflow_mv/losses/__init__.py b/motionflow_mv/losses/__init__.py
+index 28c48e6..7cbcda5 100644
+--- a/motionflow_mv/losses/__init__.py
++++ b/motionflow_mv/losses/__init__.py
+@@ -7,6 +7,7 @@ from .gaussian_splatting_pose_loss import gaussian_splatting_pose_loss
+ from .masked_view_completion import masked_view_completion_loss
+ from .multiperson_association_loss import MultiPersonAssociationLoss
+ from .reprojection import reprojection_loss
++from .temporal_skeleton_consistency import temporal_skeleton_consistency_loss
+ from .velocity import velocity_loss, velocity_l1_loss
+ from .visibility_supervision_loss import visibility_supervision_loss
+ 
+@@ -17,6 +18,7 @@ __all__ = [
+     "gaussian_splatting_pose_loss",
+     "masked_view_completion_loss",
+     "reprojection_loss",
++    "temporal_skeleton_consistency_loss",
+     "velocity_loss",
+     "velocity_l1_loss",
+     "visibility_supervision_loss",
+diff --git a/scripts/run_hierarchical_attention_entropy_reg_smoke_wsl.sh b/scripts/run_hierarchical_attention_entropy_reg_smoke_wsl.sh
+index c661504..3ddf545 100644
+--- a/scripts/run_hierarchical_attention_entropy_reg_smoke_wsl.sh
++++ b/scripts/run_hierarchical_attention_entropy_reg_smoke_wsl.sh
+@@ -19,6 +19,7 @@ python -u experiments/train_hierarchical_attention_entropy_reg_mpiinf3dhp.py \
+   --batch_size 2 --train_samples 200 --epochs 2 --val_stride 10 \
+   --attention_entropy_weight 0.01 \
+   --pp_loss_weight 0.1 --cam_aug_pp 3.0 --cam_aug_focal 0.01 \
++  --seed 3407 \
+   --output outputs/hierarchical_attention_entropy_reg_smoke.pth \
+   > outputs/hierarchical_attention_entropy_reg_smoke.log 2>&1
+ 

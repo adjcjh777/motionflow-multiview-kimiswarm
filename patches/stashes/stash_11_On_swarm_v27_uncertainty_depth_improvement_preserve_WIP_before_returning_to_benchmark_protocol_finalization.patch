@@ -1,0 +1,37 @@
+diff --git a/motionflow_mv/fusion/temporal_geometry_fusion_v26.py b/motionflow_mv/fusion/temporal_geometry_fusion_v26.py
+index 239e767..89180e6 100644
+--- a/motionflow_mv/fusion/temporal_geometry_fusion_v26.py
++++ b/motionflow_mv/fusion/temporal_geometry_fusion_v26.py
+@@ -286,6 +286,17 @@ class TemporalGeometryFusionV26(nn.Module):
+         else:
+             self.depth_tri_head = None
+ 
++        self.use_outlier_view_detector = use_outlier_view_detector
++        if use_outlier_view_detector:
++            self.outlier_view_detector = OutlierViewDetector(
++                z_thresh=outlier_z_thresh,
++                soft_beta=outlier_soft_beta,
++                num_joints=num_joints,
++                adaptive=outlier_adaptive,
++            )
++        else:
++            self.outlier_view_detector = None
++
+     def forward(
+         self,
+         points_2d: torch.Tensor,
+@@ -329,6 +340,14 @@ class TemporalGeometryFusionV26(nn.Module):
+             tri_weights = confidence if view_mask is None else confidence * view_mask[:, :, :, None]
+             pred_3d_init = triangulate_initial(pts, K, R, t, weights=tri_weights)
+ 
++        # Optional outlier-view detection and down-weighting.
++        if self.use_outlier_view_detector and self.outlier_view_detector is not None:
++            outlier_weights, _ = self.outlier_view_detector(pred_3d_init, pts, K, R, t, view_mask=view_mask)
++            confidence = confidence * outlier_weights
++            # Re-triangulate with outlier-down-weighted confidence for a cleaner seed.
++            tri_weights = confidence if view_mask is None else confidence * view_mask[:, :, :, None]
++            pred_3d_init = triangulate_initial(pts, K, R, t, weights=tri_weights)
++
+         # World rays.
+         centre, direction = compute_rays(pts, K, R, t)
+ 

@@ -17,6 +17,8 @@ set -euo pipefail
 
 SSH_HOST="a800-D"
 REPO="/mnt/nvme0n1p1/zhangzy/motionflow-multiview-kimiswarm-iter20"
+# The venv lives in the base repo, not the -iter20 worktree.
+PYTHON="/mnt/nvme0n1p1/zhangzy/motionflow-multiview-kimiswarm/.venv/bin/python"
 
 # GPU availability threshold.  A GPU is considered free when no process is
 # running on it and its memory is essentially idle.
@@ -147,7 +149,7 @@ set -euo pipefail
 cd ${REPO}
 mkdir -p outputs/ablations
 
-CUDA_VISIBLE_DEVICES=${FREE_GPU} python3 -u experiments/train_omniview_fusion_v5_webbridge_multi.py \\
+CUDA_VISIBLE_DEVICES=${FREE_GPU} /mnt/nvme0n1p1/zhangzy/motionflow-multiview-kimiswarm/.venv/bin/python -u experiments/train_omniview_fusion_v5_webbridge_multi.py \\
     --use_mixed_loader \\
     --mixed_manifest configs/splits/h36m_true_gt_v2_standard.yaml \\
     --num_domains 1 \\

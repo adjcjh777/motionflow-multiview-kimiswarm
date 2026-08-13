@@ -1,0 +1,13 @@
+diff --git a/motionflow_mv/fusion/neural_bundle_adjustment_v21.py b/motionflow_mv/fusion/neural_bundle_adjustment_v21.py
+index 9bb1511..3eb3a96 100644
+--- a/motionflow_mv/fusion/neural_bundle_adjustment_v21.py
++++ b/motionflow_mv/fusion/neural_bundle_adjustment_v21.py
+@@ -247,7 +247,7 @@ class NeuralBundleAdjustment(nn.Module):
+         max_translation: float = 0.1,
+         camera_hidden: int = 64,
+         warm_start_structure: bool = True,
+-        gate_camera_update: bool = True,
++        gate_camera_update: bool = False,
+         camera_update_tol: float = 1.0,
+     ):
+         super().__init__()

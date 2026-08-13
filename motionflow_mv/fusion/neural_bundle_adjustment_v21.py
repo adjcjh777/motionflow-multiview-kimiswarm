@@ -124,14 +124,23 @@ def _camera_descriptor(
     skew = K[..., 0, 1]
     intr = torch.stack([fx, fy, cx, cy, skew], dim=-1)
 
-    # Compact 3-DOF rotation descriptor instead of the full 9-DOF matrix.
-    rot_aa = _rotation_matrix_to_axis_angle(R)
+    # Use the skew-symmetric part of R as a rotation descriptor.  This is
+    # smooth and well-defined at the identity, avoiding the singularity of the
+    # axis-angle log map (acos/sqrt) whose derivative becomes NaN at identity.
+    rot_vec = torch.stack(
+        [
+            R[..., 2, 1] - R[..., 1, 2],
+            R[..., 0, 2] - R[..., 2, 0],
+            R[..., 1, 0] - R[..., 0, 1],
+        ],
+        dim=-1,
+    )
     trans = t
 
     # Also include total per-view weight (proxy for visibility/confidence).
     weight_sum = weights.sum(dim=-1, keepdim=True)  # (B, T, V, 1)
 
-    return torch.cat([mean_res, std_res, intr, rot_aa, trans, weight_sum], dim=-1)
+    return torch.cat([mean_res, std_res, intr, rot_vec, trans, weight_sum], dim=-1)
 
 
 class _CameraCorrectionHead(nn.Module):

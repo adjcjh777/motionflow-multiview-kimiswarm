@@ -1,0 +1,57 @@
+diff --git a/motionflow_mv/data/webbridge_mixed_dataset.py b/motionflow_mv/data/webbridge_mixed_dataset.py
+index d4caac1..a0cdb6b 100644
+--- a/motionflow_mv/data/webbridge_mixed_dataset.py
++++ b/motionflow_mv/data/webbridge_mixed_dataset.py
+@@ -23,7 +23,7 @@ from typing import Dict, List, Optional, Sequence, Tuple
+ 
+ import numpy as np
+ import torch
+-from torch.utils.data import ConcatDataset, DataLoader, Dataset
++from torch.utils.data import ConcatDataset, DataLoader, Dataset, Sampler
+ 
+ 
+ # Largest WebBridge rig is MPI-INF-3DHP with 14 calibrated views.
+@@ -251,6 +251,43 @@ def webbridge_mixed_collate_fn(
+     return x, y, K, R, t, dataset_ids
+ 
+ 
++class BalancedMixedSampler(Sampler):
++    """Sample equally from each sub-dataset of a ConcatDataset.
++
++    A plain :class:`ConcatDataset` with ``shuffle=True`` samples proportionally
++    to the size of each source, so large datasets dominate every epoch.  This
++    sampler draws ``num_samples`` samples by first picking a sub-dataset uniformly
++    at random and then sampling uniformly inside that sub-dataset, giving each
++    source equal representation regardless of its length.
++
++    Parameters
++    ----------
++    concat_dataset:
++        A :class:`ConcatDataset` (or any object exposing ``datasets`` and
++        ``cumulative_sizes``).
++    num_samples:
++        Number of indices to yield per epoch.  Defaults to the total length of
++        the concatenated dataset.
++    """
++
++    def __init__(self, concat_dataset: ConcatDataset, num_samples: int | None = None):
++        self.datasets = concat_dataset.datasets
++        self.cumulative_sizes = concat_dataset.cumulative_sizes
++        self.num_samples = num_samples if num_samples is not None else sum(len(ds) for ds in self.datasets)
++
++    def __iter__(self):
++        n_datasets = len(self.datasets)
++        offsets = [0] + list(self.cumulative_sizes[:-1])
++        for _ in range(self.num_samples):
++            ds_idx = random.randint(0, n_datasets - 1)
++            ds = self.datasets[ds_idx]
++            sample_idx = random.randint(0, len(ds) - 1)
++            yield sample_idx + offsets[ds_idx]
++
++    def __len__(self):
++        return self.num_samples
++
++
+ def build_webbridge_mixed_dataloaders(
+     train_paths: Sequence[str],
+     train_names: Sequence[str],

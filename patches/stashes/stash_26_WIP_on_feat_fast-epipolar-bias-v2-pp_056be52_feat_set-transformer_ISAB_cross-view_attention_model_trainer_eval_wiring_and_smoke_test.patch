@@ -1,0 +1,29 @@
+diff --git a/experiments/train_ray_attention_temporal_crossview_residual_principal_point_mpiinf3dhp.py b/experiments/train_ray_attention_temporal_crossview_residual_principal_point_mpiinf3dhp.py
+index 04f2a53..6345ae3 100644
+--- a/experiments/train_ray_attention_temporal_crossview_residual_principal_point_mpiinf3dhp.py
++++ b/experiments/train_ray_attention_temporal_crossview_residual_principal_point_mpiinf3dhp.py
+@@ -227,7 +227,7 @@ def main():
+     parser.add_argument("--val", type=str, required=True, help="Validation .npz file")
+     parser.add_argument("--clip_len", type=int, default=13)
+     parser.add_argument("--d", type=int, default=64)
+-    parser.add_argument("--model_type", type=str, default="temporal", choices=["temporal", "factorized", "dynamic_gate", "graph_joint_relation", "graph_skeleton_residual", "epipolar", "epipolar_bias_v2_pp", "epipolar_bias_v2_lite_pp", "splat", "kinematic_chain", "crossview_contrast", "bayesian_tri", "bayesian_tri_v2", "camera_conditioned_pp", "hierarchical_view_temporal_joint_pp", "set_transformer_pp"], help="Backbone type: temporal (time+view), factorized (alternating view/temporal), dynamic_gate (anchor + per-view gate), graph_joint_relation (skeleton-graph attention replacing dense joint attention), graph_skeleton_residual (skeleton-graph residual refiner), epipolar (epipolar-biased weight head), epipolar_bias_v2_pp (epipolar-biased ST transformer v2), epipolar_bias_v2_lite_pp (late-layer epipolar-biased ST transformer v2 lite), splat (Gaussian-splatting pose regularizer), kinematic_chain (kinematic-chain graph refiner), crossview_contrast (cross-view contrastive pose representation), bayesian_tri (uncertainty-aware triangulation with adaptive Gauss-Newton), bayesian_tri_v2 (same as bayesian_tri but with fully batched lstsq DLT), camera_conditioned_pp (camera-parameter-conditioned weight + residual heads), hierarchical_view_temporal_joint_pp (hierarchical view -> temporal -> skeleton-joint attention), or set_transformer_pp (Set Transformer ISAB view pooling)")
++    parser.add_argument("--model_type", type=str, default="temporal", choices=["temporal", "factorized", "dynamic_gate", "graph_joint_relation", "graph_skeleton_residual", "epipolar", "epipolar_bias_v2_pp", "epipolar_bias_v2_lite_pp", "fast_epipolar_bias_v2_pp", "splat", "kinematic_chain", "crossview_contrast", "bayesian_tri", "bayesian_tri_v2", "camera_conditioned_pp", "hierarchical_view_temporal_joint_pp", "set_transformer_pp"], help="Backbone type: temporal (time+view), factorized (alternating view/temporal), dynamic_gate (anchor + per-view gate), graph_joint_relation (skeleton-graph attention replacing dense joint attention), graph_skeleton_residual (skeleton-graph residual refiner), epipolar (epipolar-biased weight head), epipolar_bias_v2_pp (epipolar-biased ST transformer v2), epipolar_bias_v2_lite_pp (late-layer epipolar-biased ST transformer v2 lite), fast_epipolar_bias_v2_pp (compact (B,T,V,V) epipolar-biased ST transformer v2.1), splat (Gaussian-splatting pose regularizer), kinematic_chain (kinematic-chain graph refiner), crossview_contrast (cross-view contrastive pose representation), bayesian_tri (uncertainty-aware triangulation with adaptive Gauss-Newton), bayesian_tri_v2 (same as bayesian_tri but with fully batched lstsq DLT), camera_conditioned_pp (camera-parameter-conditioned weight + residual heads), hierarchical_view_temporal_joint_pp (hierarchical view -> temporal -> skeleton-joint attention), or set_transformer_pp (Set Transformer ISAB view pooling)")
+     parser.add_argument("--n_inducing_points", type=int, default=16, help="Number of inducing points for set_transformer_pp")
+     parser.add_argument("--n_isab_layers", type=int, default=2, help="Number of ISAB+temporal blocks for set_transformer_pp")
+     parser.add_argument("--n_st_layers", type=int, default=2)
+@@ -328,6 +328,15 @@ def main():
+             focal_max_scale=args.focal_max_scale,
+             return_pp_delta=True,
+         ).to(device)
++    elif args.model_type == "fast_epipolar_bias_v2_pp":
++        model = RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointFastEpipolarBiasV2PP(
++            j=j, d=args.d, n_views=n_views, n_st_layers=args.n_st_layers,
++            residual_hidden=args.residual_hidden,
++            principal_point_hidden=args.principal_point_hidden,
++            principal_point_max_offset=args.principal_point_max_offset,
++            focal_max_scale=args.focal_max_scale,
++            return_pp_delta=True,
++        ).to(device)
+     elif args.model_type == "graph_skeleton_residual":
+         model = RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointGraphSkeletonResidual(
+             j=j, d=args.d, n_views=n_views, n_st_layers=args.n_st_layers,

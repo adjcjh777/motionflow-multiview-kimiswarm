@@ -1,0 +1,10 @@
+# Evaluation split for v25 true-GT v2 checkpoint on Shelf/Campus detected data.
+# Evaluates only the validation sequences.
+name: v25 Shelf/Campus Cross-Dataset Eval
+
+val_paths:
+  - data/webbridge/shelf_campus_detected/shelf_seq1_val_detected_m.npz
+  - data/webbridge/shelf_campus_detected/campus_seq1_val_detected_m.npz
+val_names:
+  - shelf
+  - campus

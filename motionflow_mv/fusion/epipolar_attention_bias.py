@@ -51,6 +51,20 @@ def compute_epipolar_distance(
     # that are technically invertible but geometrically degenerate; callers are
     # responsible for masking padded views before calling this function.
     if not (torch.isfinite(K).all() and torch.isfinite(R).all() and torch.isfinite(t).all()):
+        import sys
+        print("[DEBUG compute_epipolar_distance] Non-finite camera values detected.", file=sys.stderr, flush=True)
+        print(f"  K shape={K.shape}, finite={torch.isfinite(K).all().item()}, min={K.min().item()}, max={K.max().item()}, any_nan={torch.isnan(K).any().item()}, any_inf={torch.isinf(K).any().item()}", file=sys.stderr, flush=True)
+        print(f"  R shape={R.shape}, finite={torch.isfinite(R).all().item()}, min={R.min().item()}, max={R.max().item()}, any_nan={torch.isnan(R).any().item()}, any_inf={torch.isinf(R).any().item()}", file=sys.stderr, flush=True)
+        print(f"  t shape={t.shape}, finite={torch.isfinite(t).all().item()}, min={t.min().item()}, max={t.max().item()}, any_nan={torch.isnan(t).any().item()}, any_inf={torch.isinf(t).any().item()}", file=sys.stderr, flush=True)
+        if not torch.isfinite(K).all():
+            bad = (~torch.isfinite(K)).nonzero(as_tuple=True)
+            print(f"  Bad K indices (first 10): {[(b[i].item() for b in bad)] if bad else 'none'} values: {K[bad][:10].tolist()}", file=sys.stderr, flush=True)
+        if not torch.isfinite(R).all():
+            bad = (~torch.isfinite(R)).nonzero(as_tuple=True)
+            print(f"  Bad R indices (first 10): {[(b[i].item() for b in bad)]} values: {R[bad][:10].tolist()}", file=sys.stderr, flush=True)
+        if not torch.isfinite(t).all():
+            bad = (~torch.isfinite(t)).nonzero(as_tuple=True)
+            print(f"  Bad t indices (first 10): {[(b[i].item() for b in bad)]} values: {t[bad][:10].tolist()}", file=sys.stderr, flush=True)
         raise ValueError("Non-finite values in camera parameters (K, R, t).")
     if not (torch.isfinite(points_2d).all()):
         raise ValueError("Non-finite values in 2D points.")

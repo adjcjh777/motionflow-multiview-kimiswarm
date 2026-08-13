@@ -1,0 +1,482 @@
+diff --git a/experiments/train_distilled_student_pp_mpiinf3dhp.py b/experiments/train_distilled_student_pp_mpiinf3dhp.py
+new file mode 100644
+index 0000000..26802cb
+--- /dev/null
++++ b/experiments/train_distilled_student_pp_mpiinf3dhp.py
+@@ -0,0 +1,264 @@
++"""Distil a lightweight real-time student from the Bayesian triangulation teacher."""
++import argparse, random, sys
++from pathlib import Path
++import numpy as np
++import torch
++import torch.nn as nn
++import torch.nn.functional as F
++sys.path.insert(0, str(Path(__file__).parent.parent))
++from motionflow_mv.calibration.perturb import perturb_cameras_with_delta
++from motionflow_mv.fusion.ray_attention_temporal_crossview_residual_principal_point_bayesian_tri_model import RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointBayesianTri
++from motionflow_mv.models.distilled_student_principal_point_model import DistilledStudentPrincipalPointModel
++
++def set_seed(seed):
++    random.seed(seed); np.random.seed(seed); torch.manual_seed(seed)
++    if torch.cuda.is_available(): torch.cuda.manual_seed_all(seed)
++    torch.backends.cudnn.deterministic = True
++    torch.backends.cudnn.benchmark = False
++
++class TemporalClipDataset(torch.utils.data.Dataset):
++    def __init__(self, npz_path, clip_len, stride=1):
++        data = np.load(npz_path)
++        self.points_2d = torch.from_numpy(data["points_2d"]).float()
++        self.confidences = torch.from_numpy(data["confidences"]).float()
++        self.joints_3d = torch.from_numpy(data["joints_3d"]).float()
++        self.K = torch.from_numpy(data["camera_K"]).float()
++        self.R = torch.from_numpy(data["camera_R"]).float()
++        self.t = torch.from_numpy(data["camera_t"]).float()
++        self.clip_len = clip_len
++        self.stride = stride
++        self.total_frames = self.points_2d.shape[0]
++        self.num_clips = max(1, (self.total_frames - self.clip_len) // stride + 1)
++    def __len__(self): return self.num_clips
++    def __getitem__(self, idx):
++        start = idx * self.stride
++        end = start + self.clip_len
++        x = torch.cat([self.points_2d[start:end], self.confidences[start:end].unsqueeze(-1)], dim=-1)
++        return x, self.joints_3d[start:end], self.K, self.R, self.t
++
++class RandomClipDataset(torch.utils.data.Dataset):
++    def __init__(self, npz_path, clip_len, n_samples=2000):
++        data = np.load(npz_path)
++        self.points_2d = torch.from_numpy(data["points_2d"]).float()
++        self.confidences = torch.from_numpy(data["confidences"]).float()
++        self.joints_3d = torch.from_numpy(data["joints_3d"]).float()
++        self.K = torch.from_numpy(data["camera_K"]).float()
++        self.R = torch.from_numpy(data["camera_R"]).float()
++        self.t = torch.from_numpy(data["camera_t"]).float()
++        self.clip_len = clip_len
++        self.n_samples = n_samples
++        self.total_frames = self.points_2d.shape[0]
++    def __len__(self): return self.n_samples
++    def __getitem__(self, idx):
++        start = random.randint(0, max(0, self.total_frames - self.clip_len))
++        end = start + self.clip_len
++        x = torch.cat([self.points_2d[start:end], self.confidences[start:end].unsqueeze(-1)], dim=-1)
++        return x, self.joints_3d[start:end], self.K, self.R, self.t
++
++def collate_fn(batch):
++    x = torch.stack([b[0] for b in batch], dim=0)
++    y = torch.stack([b[1] for b in batch], dim=0)
++    K = torch.stack([b[2] for b in batch], dim=0)
++    R = torch.stack([b[3] for b in batch], dim=0)
++    t = torch.stack([b[4] for b in batch], dim=0)
++    return x, y, K, R, t
++
++def augment_clip(x, noise_std=0.5, dropout_rate=0.1, outlier_rate=0.02, outlier_scale=100.0):
++    if noise_std > 0:
++        x[..., :2] = x[..., :2] + torch.randn_like(x[..., :2]) * noise_std
++    if dropout_rate > 0:
++        mask = (torch.rand(x.shape[0], x.shape[1], x.shape[2], x.shape[3], device=x.device) > dropout_rate).float()
++        x[..., 2] = x[..., 2] * mask
++    if outlier_rate > 0:
++        outlier_mask = torch.rand(x.shape[0], x.shape[1], x.shape[2], x.shape[3], device=x.device) < outlier_rate
++        outlier = (torch.rand(x.shape[0], x.shape[1], x.shape[2], x.shape[3], 2, device=x.device) - 0.5) * 2 * outlier_scale
++        x[..., :2] = torch.where(outlier_mask[..., None], outlier, x[..., :2])
++    return x
++
++def evaluate(model, loader, device):
++    model.eval()
++    total_err, total_count = 0.0, 0
++    with torch.no_grad():
++        for xb, yb, K, R, t in loader:
++            xb, yb = xb.to(device), yb.to(device)
++            K, R, t = K.to(device), R.to(device), t.to(device)
++            pred, *_ = model(xb, K=K, R=R, t=t)
++            err = (pred - yb).norm(dim=-1).mean()
++            total_err += err.item() * xb.size(0)
++            total_count += xb.size(0)
++    return total_err / total_count
++
++def main():
++    parser = argparse.ArgumentParser(description="Distil a lightweight real-time student from the Bayesian triangulation teacher")
++    parser.add_argument("--train", type=str, nargs="+", required=True)
++    parser.add_argument("--val", type=str, required=True)
++    parser.add_argument("--teacher", type=str, default="outputs/bayesian_tri_pp_full_mpiinf3dhp.pth")
++    parser.add_argument("--clip_len", type=int, default=13)
++    parser.add_argument("--d", type=int, default=32)
++    parser.add_argument("--n_st_layers", type=int, default=1)
++    parser.add_argument("--residual_hidden", type=int, default=64)
++    parser.add_argument("--distill_alpha", type=float, default=0.5)
++    parser.add_argument("--weight_align_beta", type=float, default=0.1)
++    parser.add_argument("--epochs", type=int, default=30)
++    parser.add_argument("--lr", type=float, default=1e-3)
++    parser.add_argument("--batch_size", type=int, default=8)
++    parser.add_argument("--train_samples", type=int, default=4000)
++    parser.add_argument("--val_stride", type=int, default=1)
++    parser.add_argument("--pp_loss_weight", type=float, default=0.2)
++    parser.add_argument("--cam_aug_pp", type=float, default=5.0)
++    parser.add_argument("--cam_aug_focal", type=float, default=0.01)
++    parser.add_argument("--cam_aug_schedule", type=str, default="intrinsics_curriculum", choices=["flat", "extrinsics_curriculum", "intrinsics_curriculum"])
++    parser.add_argument("--cam_aug_intrinsics_ramp_epochs", type=int, default=5)
++    parser.add_argument("--pp_pretrain_epochs", type=int, default=3)
++    parser.add_argument("--seed", type=int, default=42)
++    parser.add_argument("--output", type=str, default="outputs/distilled_student_pp_mpiinf3dhp.pth")
++    args = parser.parse_args()
++
++    set_seed(args.seed)
++    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
++    print(f"Device: {device}")
++
++    train_datasets = [RandomClipDataset(tp, args.clip_len, n_samples=args.train_samples) for tp in args.train]
++    train_dataset = torch.utils.data.ConcatDataset(train_datasets)
++    val_dataset = TemporalClipDataset(args.val, args.clip_len, stride=args.val_stride)
++
++    train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, collate_fn=collate_fn, num_workers=0)
++    val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=args.batch_size, shuffle=False, collate_fn=collate_fn, num_workers=0)
++
++    sample = np.load(args.train[0])
++    n_views = sample["camera_K"].shape[0]
++    j = sample["points_2d"].shape[2]
++    print(f"n_views={n_views}, j={j}, clip_len={args.clip_len}, d={args.d}, "
++          f"n_st_layers={args.n_st_layers}, residual_hidden={args.residual_hidden}, "
++          f"distill_alpha={args.distill_alpha}, weight_align_beta={args.weight_align_beta}")
++
++    teacher = RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointBayesianTri(
++        j=j, d=64, n_views=n_views, n_st_layers=2, residual_hidden=128,
++        principal_point_hidden=64, return_pp_delta=True, return_covariance=False,
++    ).to(device)
++    state = torch.load(args.teacher, map_location=device, weights_only=True)
++    missing, unexpected = teacher.load_state_dict(state, strict=False)
++    if missing:
++        print(f"Warning: missing keys when loading teacher: {missing[:5]}")
++    if unexpected:
++        print(f"Warning: unexpected keys when loading teacher: {unexpected[:5]}")
++    teacher.eval()
++    for p in teacher.parameters():
++        p.requires_grad = False
++    print(f"Teacher loaded from {args.teacher} ({sum(p.numel() for p in teacher.parameters()):,} params)")
++
++    student = DistilledStudentPrincipalPointModel(
++        j=j, d=args.d, n_views=n_views, n_st_layers=args.n_st_layers,
++        residual_hidden=args.residual_hidden, principal_point_hidden=64,
++        return_pp_delta=True,
++    ).to(device)
++    print(f"Student params: {sum(p.numel() for p in student.parameters()):,}")
++
++    optimizer = torch.optim.Adam(student.parameters(), lr=args.lr)
++    criterion = nn.MSELoss()
++
++    best_val = float("inf")
++    output_path = Path(args.output)
++    output_path.parent.mkdir(exist_ok=True, parents=True)
++
++    if args.pp_pretrain_epochs > 0:
++        print(f"Pre-training student PP correction head for {args.pp_pretrain_epochs} epochs...")
++        for p in student.parameters():
++            p.requires_grad = False
++        for p in student.principal_point_correction.parameters():
++            p.requires_grad = True
++        pretrain_optimizer = torch.optim.Adam(student.principal_point_correction.parameters(), lr=args.lr)
++        for pe in range(1, args.pp_pretrain_epochs + 1):
++            student.train()
++            train_loss = 0.0
++            for xb, yb, K, R, t in train_loader:
++                xb, yb = xb.to(device), yb.to(device)
++                K, R, t = K.to(device), R.to(device), t.to(device)
++                xb = augment_clip(xb)
++                K, R, t, true_pp_delta, true_focal_scale = perturb_cameras_with_delta(
++                    K, R, t, rot_std=0.0, trans_std=0.0, focal_std=0.0, pp_std=args.cam_aug_pp,
++                )
++                pretrain_optimizer.zero_grad()
++                outputs = student(xb, K=K, R=R, t=t)
++                pred_pp_delta = outputs[2]
++                B, T = yb.shape[:2]
++                true_pp_delta = true_pp_delta.to(device).unsqueeze(1).expand(B, T, -1, -1).reshape(B * T, -1, 2)
++                loss = criterion(pred_pp_delta, -true_pp_delta)
++                loss.backward()
++                pretrain_optimizer.step()
++                train_loss += loss.item() * xb.size(0)
++            train_loss /= len(train_loader.dataset)
++            print(f"  PP pretrain epoch {pe}: loss={train_loss:.6f}")
++        for p in student.parameters():
++            p.requires_grad = True
++        print("Unfreezing full student for end-to-end distillation.")
++
++    for epoch in range(1, args.epochs + 1):
++        student.train()
++        train_loss = 0.0
++        if args.cam_aug_schedule == "intrinsics_curriculum":
++            ramp = min(1.0, epoch / max(1, args.cam_aug_intrinsics_ramp_epochs))
++            schedule_focal = args.cam_aug_focal * ramp
++            schedule_pp = args.cam_aug_pp * ramp
++        else:
++            schedule_focal = args.cam_aug_focal
++            schedule_pp = args.cam_aug_pp
++
++        for xb, yb, K, R, t in train_loader:
++            xb, yb = xb.to(device), yb.to(device)
++            K, R, t = K.to(device), R.to(device), t.to(device)
++            xb = augment_clip(xb)
++            K, R, t, true_pp_delta, true_focal_scale = perturb_cameras_with_delta(
++                K, R, t, rot_std=0.5, trans_std=0.005, focal_std=schedule_focal, pp_std=schedule_pp,
++            )
++
++            with torch.no_grad():
++                t_out = teacher(xb, K=K, R=R, t=t)
++                teacher_pred = t_out[0]
++                teacher_weights = t_out[1]
++
++            s_out = student(xb, K=K, R=R, t=t)
++            student_pred = s_out[0]
++            student_weights = s_out[1]
++
++            loss = criterion(student_pred, yb)
++
++            if args.distill_alpha > 0.0:
++                distill_loss = criterion(student_pred, teacher_pred)
++                loss = (1.0 - args.distill_alpha) * loss + args.distill_alpha * distill_loss
++
++            if args.weight_align_beta > 0.0:
++                s_w = student_weights.reshape(-1, n_views)
++                t_w = teacher_weights.reshape(-1, n_views)
++                mask = (s_w.sum(dim=-1, keepdim=True) > 0) & (t_w.sum(dim=-1, keepdim=True) > 0)
++                if mask.any():
++                    s_w = s_w[mask.squeeze(-1)]
++                    t_w = t_w[mask.squeeze(-1)]
++                    cos_sim = F.cosine_similarity(s_w, t_w, dim=-1).mean()
++                    loss = loss + args.weight_align_beta * (1.0 - cos_sim)
++
++            if args.pp_loss_weight > 0.0:
++                pred_pp_delta = s_out[2]
++                B, T = yb.shape[:2]
++                true_pp_delta = true_pp_delta.to(device).unsqueeze(1).expand(B, T, -1, -1).reshape(B * T, -1, 2)
++                loss = loss + args.pp_loss_weight * criterion(pred_pp_delta, -true_pp_delta)
++
++            optimizer.zero_grad()
++            loss.backward()
++            optimizer.step()
++            train_loss += loss.item() * xb.size(0)
++
++        train_loss /= len(train_loader.dataset)
++        val_err = evaluate(student, val_loader, device)
++        if val_err < best_val:
++            best_val = val_err
++            torch.save(student.state_dict(), output_path)
++            print(f"Epoch {epoch}: train_loss={train_loss:.6f}, val_MPJPE={val_err*1000:.2f}mm (saved)")
++        else:
++            print(f"Epoch {epoch}: train_loss={train_loss:.6f}, val_MPJPE={val_err*1000:.2f}mm")
++
++    print(f"Best val MPJPE: {best_val*1000:.2f}mm -> {output_path}")
++
++
++if __name__ == "__main__":
++    main()
+diff --git a/experiments/train_ray_attention_temporal_crossview_residual_principal_point_mpiinf3dhp.py b/experiments/train_ray_attention_temporal_crossview_residual_principal_point_mpiinf3dhp.py
+index c3fb6aa..34a6ba4 100644
+--- a/experiments/train_ray_attention_temporal_crossview_residual_principal_point_mpiinf3dhp.py
++++ b/experiments/train_ray_attention_temporal_crossview_residual_principal_point_mpiinf3dhp.py
+@@ -309,6 +309,15 @@ def main():
+             focal_max_scale=args.focal_max_scale,
+             return_pp_delta=True,
+         ).to(device)
++    elif args.model_type == "epipolar_bias_v2_lite_pp":
++        model = RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointEpipolarBiasV2Lite(
++            j=j, d=args.d, n_views=n_views, n_st_layers=args.n_st_layers,
++            residual_hidden=args.residual_hidden,
++            principal_point_hidden=args.principal_point_hidden,
++            principal_point_max_offset=args.principal_point_max_offset,
++            focal_max_scale=args.focal_max_scale,
++            return_pp_delta=True,
++        ).to(device)
+     elif args.model_type == "graph_skeleton_residual":
+         model = RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointGraphSkeletonResidual(
+             j=j, d=args.d, n_views=n_views, n_st_layers=args.n_st_layers,
+diff --git a/motionflow_mv/losses/gaussian_splatting_pose_loss.py b/motionflow_mv/losses/gaussian_splatting_pose_loss.py
+index 057871c..3e456c0 100644
+--- a/motionflow_mv/losses/gaussian_splatting_pose_loss.py
++++ b/motionflow_mv/losses/gaussian_splatting_pose_loss.py
+@@ -43,6 +43,7 @@ def gaussian_splatting_pose_loss(
+     confidences: torch.Tensor = None,
+     eps: float = 1e-4,
+     trace_weight: float = 1e-4,
++    log_std_view: torch.Tensor = None,
+ ) -> torch.Tensor:
+     """Negative log-likelihood of 2-D observations under projected 3-D Gaussians.
+ 
+@@ -66,6 +67,10 @@ def gaussian_splatting_pose_loss(
+         Small constant for numerical stability.
+     trace_weight:
+         Weight for the covariance-trace regularizer.
++    log_std_view: (B, T, V, J, 3), optional
++        Residual log standard deviations per view/joint.  If provided, the
++        per-view std is ``exp(log_std + log_std_view)``, allowing the model to
++        adapt the projected covariance per camera.
+ 
+     Returns
+     -------
+@@ -113,12 +118,20 @@ def gaussian_splatting_pose_loss(
+     # Chain rule with rotation.
+     J = J_uv @ R_exp  # (B, T, V, J, 2, 3)
+ 
+-    # 3-D covariance from predicted log std.
+-    std = log_std.exp().clamp(min=0.01, max=10.0)  # (B, T, J, 3)
+-    Sigma_3d = torch.diag_embed(std ** 2)  # (B, T, J, 3, 3)
++    # 3-D covariance from predicted log std (and optional per-view residual).
++    if log_std_view is not None:
++        log_std_total = log_std.unsqueeze(2) + log_std_view  # (B, T, V, J, 3)
++        std = log_std_total.exp().clamp(min=0.01, max=10.0)  # (B, T, V, J, 3)
++        Sigma_3d = torch.diag_embed(std ** 2)  # (B, T, V, J, 3, 3)
++    else:
++        std = log_std.exp().clamp(min=0.01, max=10.0)  # (B, T, J, 3)
++        Sigma_3d = torch.diag_embed(std ** 2)  # (B, T, J, 3, 3)
+ 
+     # Project to 2-D.
+-    Sigma_2d = J @ Sigma_3d.unsqueeze(2) @ J.transpose(-2, -1)
++    if log_std_view is not None:
++        Sigma_2d = J @ Sigma_3d @ J.transpose(-2, -1)
++    else:
++        Sigma_2d = J @ Sigma_3d.unsqueeze(2) @ J.transpose(-2, -1)
+     Sigma_2d = Sigma_2d + eps * torch.eye(2, device=Sigma_2d.device, dtype=Sigma_2d.dtype).view(
+         1, 1, 1, 1, 2, 2
+     )
+diff --git a/motionflow_mv/models/distilled_student_principal_point_model.py b/motionflow_mv/models/distilled_student_principal_point_model.py
+new file mode 100644
+index 0000000..587fc05
+--- /dev/null
++++ b/motionflow_mv/models/distilled_student_principal_point_model.py
+@@ -0,0 +1,43 @@
++"""Lightweight knowledge-distillation student for real-time pose fusion."""
++
++from ..fusion.ray_attention_temporal_crossview_residual_principal_point_model import (
++    RayAttentionFusionModelTemporalCrossviewResidualPrincipalPoint,
++)
++
++
++class DistilledStudentPrincipalPointModel(RayAttentionFusionModelTemporalCrossviewResidualPrincipalPoint):
++    """Lightweight student for real-time multi-view pose fusion."""
++
++    def __init__(
++        self,
++        j: int = 17,
++        d: int = 32,
++        n_views: int = 4,
++        n_heads: int = 4,
++        n_joint_layers: int = 1,
++        n_st_layers: int = 1,
++        max_temporal_len: int = 256,
++        residual_hidden: int = 64,
++        principal_point_hidden: int = 64,
++        principal_point_max_offset: float = 20.0,
++        focal_max_scale: float = 0.0,
++        return_pp_delta: bool = False,
++        return_visibility: bool = False,
++        return_raw: bool = False,
++    ):
++        super().__init__(
++            j=j,
++            d=d,
++            n_views=n_views,
++            n_heads=n_heads,
++            n_joint_layers=n_joint_layers,
++            n_st_layers=n_st_layers,
++            max_temporal_len=max_temporal_len,
++            residual_hidden=residual_hidden,
++            principal_point_hidden=principal_point_hidden,
++            principal_point_max_offset=principal_point_max_offset,
++            focal_max_scale=focal_max_scale,
++            return_pp_delta=return_pp_delta,
++            return_visibility=return_visibility,
++            return_raw=return_raw,
++        )
+diff --git a/scripts/run_distilled_student_pp_smoke_wsl.sh b/scripts/run_distilled_student_pp_smoke_wsl.sh
+new file mode 100644
+index 0000000..247b6fe
+--- /dev/null
++++ b/scripts/run_distilled_student_pp_smoke_wsl.sh
+@@ -0,0 +1,24 @@
++#!/usr/bin/env bash
++# CPU smoke test for the knowledge-distilled lightweight student.
++set -euo pipefail
++cd "$(dirname "$0")/.."
++
++VENV=${MF_VENV:-$(pwd)/.venv}
++. "$VENV/bin/activate"
++export PYTHONUNBUFFERED=1
++
++export CUDA_VISIBLE_DEVICES=""
++
++python -u experiments/train_distilled_student_pp_mpiinf3dhp.py \
++  --train data/webbridge/mpi_inf_3dhp/s_01_seq_01_v14_multiview_m_smoke.npz \
++  --val data/webbridge/mpi_inf_3dhp/s_02_seq_01_v14_multiview_m_smoke.npz \
++  --teacher outputs/bayesian_tri_pp_full_mpiinf3dhp.pth \
++  --clip_len 13 --d 32 --n_st_layers 1 --residual_hidden 64 \
++  --distill_alpha 0.5 --weight_align_beta 0.1 \
++  --batch_size 2 --train_samples 50 --epochs 1 --val_stride 20 \
++  --pp_loss_weight 0.1 --cam_aug_pp 3.0 --cam_aug_focal 0.01 \
++  --pp_pretrain_epochs 0 \
++  --output outputs/distilled_student_pp_smoke.pth \
++  > outputs/distilled_student_pp_smoke.log 2>&1
++
++echo "Smoke test passed: outputs/distilled_student_pp_smoke.log"
+diff --git a/tests/test_distilled_student_pp.py b/tests/test_distilled_student_pp.py
+new file mode 100644
+index 0000000..8f91c5d
+--- /dev/null
++++ b/tests/test_distilled_student_pp.py
+@@ -0,0 +1,59 @@
++"""Smoke tests for the distilled lightweight student model."""
++
++import sys
++from pathlib import Path
++
++import torch
++
++sys.path.insert(0, str(Path(__file__).parent.parent))
++
++from motionflow_mv.models.distilled_student_principal_point_model import DistilledStudentPrincipalPointModel
++
++
++def _make_cameras(V: int = 4):
++    K = torch.eye(3).unsqueeze(0).repeat(V, 1, 1).float()
++    K[:, 0, 0] = 800.0
++    K[:, 1, 1] = 800.0
++    K[:, 0, 2] = 320.0
++    K[:, 1, 2] = 240.0
++    R = torch.eye(3).unsqueeze(0).repeat(V, 1, 1).float()
++    t = torch.zeros(V, 3).float()
++    return K, R, t
++
++
++def test_distilled_student_forward_backward():
++    B, T, V, J = 2, 13, 4, 17
++    x = torch.randn(B, T, V, J, 3)
++    x[..., 2] = torch.sigmoid(x[..., 2])
++    K, R, t = _make_cameras(V)
++    model = DistilledStudentPrincipalPointModel(
++        j=J, d=32, n_views=V, n_st_layers=1, residual_hidden=64, return_pp_delta=True
++    )
++    pred, weights, pp_delta = model(x, K=K, R=R, t=t)
++    assert pred.shape == (B, T, J, 3)
++    assert weights.shape == (B, T, V, J)
++    assert pp_delta.shape == (B * T, V, 2)
++
++    loss = pred.mean() + weights.mean() * 1e-3
++    loss.backward()
++    assert any(p.grad is not None for p in model.parameters() if p.requires_grad)
++
++
++def test_distilled_student_single_frame():
++    V, J = 4, 17
++    x = torch.randn(1, V, J, 3)
++    x[..., 2] = torch.sigmoid(x[..., 2])
++    K, R, t = _make_cameras(V)
++    model = DistilledStudentPrincipalPointModel(
++        j=J, d=32, n_views=V, n_st_layers=1, residual_hidden=64
++    )
++    pred, weights = model(x, K=K, R=R, t=t)
++    assert pred.shape == (1, J, 3)
++    assert weights.shape == (1, V, J)
++
++
++def test_distilled_student_param_count():
++    student = DistilledStudentPrincipalPointModel(
++        j=17, d=32, n_views=4, n_st_layers=1, residual_hidden=64, return_pp_delta=True
++    )
++    assert sum(p.numel() for p in student.parameters()) < 500_000

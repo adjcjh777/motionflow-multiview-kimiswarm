@@ -28,7 +28,9 @@ CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-7}
 export CUDA_VISIBLE_DEVICES
 
 # Use the project venv Python by default; allow override.
-PYTHON=${PYTHON:-/mnt/nvme0n1p1/zhangzy/motionflow-multiview-kimiswarm-iter20/.venv/bin/python}
+# The venv lives in the base repo (motionflow-multiview-kimiswarm), not the
+# -iter20 worktree, because the worktree shares the same environment.
+PYTHON=${PYTHON:-/mnt/nvme0n1p1/zhangzy/motionflow-multiview-kimiswarm/.venv/bin/python}
 
 mkdir -p outputs/ablations
 

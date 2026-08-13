@@ -48,10 +48,11 @@ a800_ssh() {
     ssh -o ConnectTimeout=10 -o BatchMode=yes "${A800_HOST}" "$1"
 }
 
-# Return the first GPU index (6 or 7) whose utilization is below the threshold
-# and whose memory usage is below FREE_MEMORY_MB.  Empty string if none free.
+# Return the first GPU index (6 or 7) whose utilization is below the threshold,
+# whose memory usage is below FREE_MEMORY_MB, and which has no compute
+# processes.  Empty string if none free.
 find_free_gpu() {
-    local gpu util mem
+    local gpu util mem proc_count
     for gpu in "${ALLOWED_GPUS[@]}"; do
         read -r util mem <<< "$(a800_ssh "nvidia-smi --id=${gpu} --query-gpu=utilization.gpu,memory.used --format=csv,noheader,nounits 2>/dev/null" | tr -d ' ' | tr ',' ' ')"
 
@@ -61,10 +62,15 @@ find_free_gpu() {
         util="${util:-100}"
         mem="${mem:-999999}"
 
+        # Also verify no compute processes are running on this GPU.
+        proc_count="$(a800_ssh "nvidia-smi --id=${gpu} --query-compute-apps=pid --format=csv,noheader 2>/dev/null | wc -l")"
+        proc_count="${proc_count// /}"
+
         if [[ -n "${util}" && "${util}" =~ ^[0-9]+$ ]] \
            && [[ -n "${mem}" && "${mem}" =~ ^[0-9]+$ ]] \
            && [[ "${util}" -lt "${UTIL_THRESHOLD}" ]] \
-           && [[ "${mem}" -lt "${FREE_MEMORY_MB}" ]]; then
+           && [[ "${mem}" -lt "${FREE_MEMORY_MB}" ]] \
+           && [[ "${proc_count}" -eq 0 ]]; then
             echo "${gpu}"
             return 0
         fi

@@ -1,0 +1,1152 @@
+diff --git a/experiments/eval_full_metrics.py b/experiments/eval_full_metrics.py
+index 08d3c88..0fe9462 100644
+--- a/experiments/eval_full_metrics.py
++++ b/experiments/eval_full_metrics.py
+@@ -75,6 +75,9 @@ from motionflow_mv.fusion.ray_attention_temporal_crossview_residual_principal_po
+ from motionflow_mv.fusion.ray_attention_temporal_crossview_residual_principal_point_epipolar_bias_v2_model import (
+     RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointEpipolarBiasV2,
+ )
++from motionflow_mv.fusion.ray_attention_temporal_crossview_residual_principal_point_epipolar_bias_v2_lite_model import (
++    RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointEpipolarBiasV2Lite,
++)
+ from motionflow_mv.fusion.ray_attention_temporal_crossview_residual_camera_conditioned_model import (
+     RayAttentionFusionModelTemporalCrossviewResidualCameraConditioned,
+ )
+@@ -84,6 +87,9 @@ from motionflow_mv.fusion.ray_attention_hierarchical_view_temporal_joint_residua
+ from motionflow_mv.models.crossview_residual_visibility_v2 import (
+     CrossviewResidualVisibilityV2,
+ )
++from motionflow_mv.models.crossview_residual_visibility_uncertainty_v1 import (
++    CrossviewResidualVisibilityUncertaintyV1,
++)
+ 
+ 
+ MODEL_CLASSES = {
+@@ -96,6 +102,7 @@ MODEL_CLASSES = {
+     "crossview_residual_pp": RayAttentionFusionModelTemporalCrossviewResidualPrincipalPoint,
+     "crossview_residual_pp_visibility": RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointVisibility,
+     "crossview_residual_pp_visibility_v2": CrossviewResidualVisibilityV2,
++    "crossview_residual_pp_visibility_uncertainty_v1": CrossviewResidualVisibilityUncertaintyV1,
+     "factorized_pp": RayAttentionFusionModelTemporalCrossviewFactorizedResidualPrincipalPoint,
+     "dynamic_gate_pp": RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointDynamicGate,
+     "graph_skeleton_residual_pp": RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointGraphSkeletonResidual,
+@@ -104,6 +111,7 @@ MODEL_CLASSES = {
+     "kinematic_chain_pp": RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointKinematicChain,
+     "bayesian_tri_pp": RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointBayesianTri,
+     "epipolar_bias_v2_pp": RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointEpipolarBiasV2,
++    "epipolar_bias_v2_lite_pp": RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointEpipolarBiasV2Lite,
+     "camera_conditioned_pp": RayAttentionFusionModelTemporalCrossviewResidualCameraConditioned,
+     "hierarchical_view_temporal_joint_pp": RayAttentionFusionModelHierarchicalViewTemporalJointResidualPrincipalPoint,
+ }
+@@ -155,7 +163,7 @@ def build_model(args, n_views, j):
+         "d": args.d,
+         "n_views": n_views,
+     }
+-    if args.model in {"crossview_residual", "crossview_residual_pp", "crossview_residual_pp_visibility", "dynamic_gate_pp", "graph_skeleton_residual_pp", "epipolar_pp", "splat_pp", "kinematic_chain_pp", "bayesian_tri_pp", "epipolar_bias_v2_pp", "camera_conditioned_pp", "hierarchical_view_temporal_joint_pp"}:
++    if args.model in {"crossview_residual", "crossview_residual_pp", "crossview_residual_pp_visibility", "crossview_residual_pp_visibility_uncertainty_v1", "epipolar_bias_v2_lite_pp", "dynamic_gate_pp", "graph_skeleton_residual_pp", "epipolar_pp", "splat_pp", "kinematic_chain_pp", "bayesian_tri_pp", "epipolar_bias_v2_pp", "camera_conditioned_pp", "hierarchical_view_temporal_joint_pp"}:
+         kwargs["n_st_layers"] = args.n_st_layers
+         kwargs["residual_hidden"] = args.residual_hidden
+     elif args.model == "factorized_pp":
+@@ -190,6 +198,9 @@ def build_model(args, n_views, j):
+     if args.model == "crossview_residual_pp_visibility_v2":
+         kwargs["principal_point_hidden"] = 64
+         kwargs["principal_point_max_offset"] = 20.0
++    if args.model == "crossview_residual_pp_visibility_uncertainty_v1":
++        kwargs["principal_point_hidden"] = 64
++        kwargs["principal_point_max_offset"] = 20.0
+     return cls(**kwargs)
+ 
+ 
+diff --git a/experiments/eval_robustness_matrix_pp_mpiinf3dhp.py b/experiments/eval_robustness_matrix_pp_mpiinf3dhp.py
+index 880c4ff..0ef34a4 100644
+--- a/experiments/eval_robustness_matrix_pp_mpiinf3dhp.py
++++ b/experiments/eval_robustness_matrix_pp_mpiinf3dhp.py
+@@ -1,15 +1,30 @@
+-"""Unified 6-axis robustness matrix for the principal-point baseline.
++"""Unified 6-axis robustness matrix for the registered model family.
+ 
+ Covers: rotation, translation, focal length, principal point, radial distortion,
+ and occlusion (view/joint dropout).
+ 
++The matrix now works with any model in ``MODEL_CLASSES`` from
++``experiments/eval_full_metrics.py``.  The legacy principal-point baseline is
++still the default.
++
+ Usage
+ -----
++    # PP baseline (legacy default)
+     python experiments/eval_robustness_matrix_pp_mpiinf3dhp.py \
++        --model crossview_residual_pp \
+         --checkpoint outputs/ray_attention_temporal_crossview_residual_principal_point_full_ppw005_20ep.pth \
+         --dataset data/webbridge/mpi_inf_3dhp/s_02_seq_01_v14_multiview_m.npz \
+         --out_json outputs/robustness_matrix_pp_full.json \
+         --out_md docs/tables/icra2027/robustness_matrix.md
++
++    # Hierarchical attention variant
++    python experiments/eval_robustness_matrix_pp_mpiinf3dhp.py \
++        --model hierarchical_view_temporal_joint_pp \
++        --checkpoint outputs/hierarchical_attention_pp_full_mpiinf3dhp.pth \
++        --dataset data/webbridge/mpi_inf_3dhp/s_02_seq_01_v14_multiview_m.npz \
++        --n_view_groups 2 --n_view_layers 2 --n_temporal_layers 2 --n_joint_graph_layers 1 \
++        --out_json outputs/robustness_matrix_hierarchical.json \
++        --out_md docs/tables/icra2027/robustness_matrix_hierarchical.md
+ """
+ 
+ import argparse
+@@ -22,10 +37,10 @@ import torch
+ 
+ sys.path.insert(0, str(Path(__file__).parent.parent))
+ 
++from eval_full_metrics import build_model, MODEL_CLASSES
+ from motionflow_mv.calibration.perturb import perturb_radial_distortion
+ from motionflow_mv.data.occlusion_aug import random_occlude_views, random_occlude_joints
+ from motionflow_mv.eval.metrics import compute_all_metrics
+-from motionflow_mv.fusion.ray_attention_temporal_crossview_residual_principal_point_model import RayAttentionFusionModelTemporalCrossviewResidualPrincipalPoint
+ 
+ 
+ class TemporalClipDataset(torch.utils.data.Dataset):
+@@ -132,7 +147,8 @@ def evaluate_condition(model, loader, cfg, device):
+             if cfg.get("occlude_joints", 0.0) > 0.0:
+                 xb = random_occlude_joints(xb, rate=cfg["occlude_joints"], per_view=True, per_sample=False)
+ 
+-            pred, *_ = model(xb, K=K, R=R, t=t)
++            out = model(xb, K=K, R=R, t=t)
++            pred = out[0] if isinstance(out, tuple) else out
+             preds.append(pred.cpu().numpy())
+             gts.append(yb.cpu().numpy())
+     preds = np.concatenate(preds, axis=0).reshape(-1, preds[0].shape[-2], 3) * 1000.0
+@@ -141,7 +157,8 @@ def evaluate_condition(model, loader, cfg, device):
+ 
+ 
+ def main():
+-    parser = argparse.ArgumentParser(description="Unified 6-axis robustness matrix for PP baseline")
++    parser = argparse.ArgumentParser(description="Unified 6-axis robustness matrix for the registered model family")
++    parser.add_argument("--model", type=str, choices=list(MODEL_CLASSES), default="crossview_residual_pp")
+     parser.add_argument("--checkpoint", type=str, required=True)
+     parser.add_argument("--dataset", type=str, required=True)
+     parser.add_argument("--out_json", type=str, default="outputs/robustness_matrix_pp_full.json")
+@@ -149,7 +166,15 @@ def main():
+     parser.add_argument("--clip_len", type=int, default=13)
+     parser.add_argument("--d", type=int, default=64)
+     parser.add_argument("--n_st_layers", type=int, default=2)
++    parser.add_argument("--n_temporal_layers", type=int, default=2)
++    parser.add_argument("--n_view_layers", type=int, default=2)
++    parser.add_argument("--n_view_groups", type=int, default=2)
++    parser.add_argument("--n_joint_graph_layers", type=int, default=1)
+     parser.add_argument("--residual_hidden", type=int, default=128)
++    parser.add_argument("--graph_layers", type=int, default=3)
++    parser.add_argument("--k", type=int, default=4)
++    parser.add_argument("--target_k", type=int, default=4)
++    parser.add_argument("--min_views", type=int, default=2)
+     parser.add_argument("--principal_point_hidden", type=int, default=64)
+     parser.add_argument("--principal_point_max_offset", type=float, default=20.0)
+     parser.add_argument("--focal_max_scale", type=float, default=0.0)
+@@ -163,17 +188,30 @@ def main():
+     n_views = data["camera_K"].shape[0]
+     j = data["points_2d"].shape[2]
+ 
+-    model = RayAttentionFusionModelTemporalCrossviewResidualPrincipalPoint(
+-        j=j,
+-        d=args.d,
+-        n_views=n_views,
+-        n_st_layers=args.n_st_layers,
+-        residual_hidden=args.residual_hidden,
+-        principal_point_hidden=args.principal_point_hidden,
+-        principal_point_max_offset=args.principal_point_max_offset,
+-        focal_max_scale=args.focal_max_scale,
+-    ).to(device)
+-    model.load_state_dict(torch.load(args.checkpoint, map_location="cpu", weights_only=True))
++    if args.model == "crossview_residual_pp":
++        # Preserve principal-point specific overrides for the legacy default.
++        from motionflow_mv.fusion.ray_attention_temporal_crossview_residual_principal_point_model import (
++            RayAttentionFusionModelTemporalCrossviewResidualPrincipalPoint,
++        )
++
++        model = RayAttentionFusionModelTemporalCrossviewResidualPrincipalPoint(
++            j=j,
++            d=args.d,
++            n_views=n_views,
++            n_st_layers=args.n_st_layers,
++            residual_hidden=args.residual_hidden,
++            principal_point_hidden=args.principal_point_hidden,
++            principal_point_max_offset=args.principal_point_max_offset,
++            focal_max_scale=args.focal_max_scale,
++        ).to(device)
++    else:
++        model = build_model(args, n_views, j).to(device)
++    state = torch.load(args.checkpoint, map_location="cpu", weights_only=True)
++    missing, unexpected = model.load_state_dict(state, strict=False)
++    if missing:
++        print(f"Warning: missing keys in checkpoint: {missing[:5]}")
++    if unexpected:
++        print(f"Warning: unexpected keys in checkpoint (ignored): {unexpected[:5]}")
+     model.eval()
+ 
+     dataset = TemporalClipDataset(args.dataset, args.clip_len, stride=args.val_stride)
+diff --git a/experiments/pretrain_ray_attention_ssl.py b/experiments/pretrain_ray_attention_ssl.py
+index 31df96d..88ddd41 100644
+--- a/experiments/pretrain_ray_attention_ssl.py
++++ b/experiments/pretrain_ray_attention_ssl.py
+@@ -4,6 +4,10 @@ The model is trained without any 3D ground truth.  Random views/time steps are m
+ out in the input; the loss is the reprojection error on both visible and masked slots,
+ plus temporal smoothness and bone-length consistency regularizers.
+ 
++Optionally adds a cross-view contrastive objective (``--lambda_contrast > 0``) that
++encourages per-joint representations to be view-invariant, which can improve the
++transferability of the pretrained weights to the downstream supervised task.
++
+ Usage
+ -----
+     python experiments/pretrain_ray_attention_ssl.py \
+@@ -11,7 +15,8 @@ Usage
+                 data/webbridge/h36m/s_05_acts_02_06_multiview.npz \
+         --val data/webbridge/h36m/s_09_acts_02_06_multiview.npz \
+         --clip_len 13 --d 64 --residual_hidden 128 --n_st_layers 2 --epochs 50 \
+-        --mask_ratio 0.25 --output outputs/ray_attention_ssl_h36m.pth
++        --mask_ratio 0.25 --lambda_contrast 0.1 \
++        --output outputs/ray_attention_ssl_h36m.pth
+ """
+ 
+ import argparse
+@@ -30,6 +35,9 @@ from motionflow_mv.data.ssl_dataset import make_ssl_dataloaders
+ from motionflow_mv.fusion.ray_attention_temporal_crossview_residual_principal_point_model import (
+     RayAttentionFusionModelTemporalCrossviewResidualPrincipalPoint,
+ )
++from motionflow_mv.fusion.ray_attention_temporal_crossview_residual_principal_point_ssl_view_contrast_model import (
++    RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointSSLViewContrast,
++)
+ from motionflow_mv.losses import reprojection_loss
+ from train_utils import temporal_bone_length_consistency_loss
+ 
+@@ -121,7 +129,8 @@ def evaluate(model, loader, device, lambda_mask, lambda_smooth, lambda_bone, par
+         xb = xb.to(device)
+         K, R, t = K.to(device), R.to(device), t.to(device)
+         xb_masked, masked = mask_views(xb.clone(), ratio=0.0, mode="view")
+-        pred, _ = model(xb_masked, K=K, R=R, t=t)
++        outputs = model(xb_masked, K=K, R=R, t=t)
++        pred = outputs[0]
+         points_2d = xb[..., :2]
+         conf = xb[..., 2]
+         loss_vis = reprojection_loss(pred, points_2d, K, R, t, confidences=conf, mask=~masked)
+@@ -158,6 +167,12 @@ def main():
+     parser.add_argument("--lambda_mask", type=float, default=1.0)
+     parser.add_argument("--lambda_smooth", type=float, default=0.1)
+     parser.add_argument("--lambda_bone", type=float, default=0.1)
++    parser.add_argument("--lambda_contrast", type=float, default=0.0,
++                        help="Weight for the cross-view contrastive loss during SSL pretraining")
++    parser.add_argument("--contrastive_dim", type=int, default=64,
++                        help="Projection dimension for the cross-view contrastive head")
++    parser.add_argument("--contrastive_temperature", type=float, default=0.07,
++                        help="Temperature for the cross-view contrastive loss")
+     parser.add_argument("--noise_std", type=float, default=0.5)
+     parser.add_argument("--dropout_rate", type=float, default=0.05)
+     parser.add_argument("--outlier_rate", type=float, default=0.01)
+@@ -178,17 +193,34 @@ def main():
+     j = sample["points_2d"].shape[2]
+     print(f"n_views={n_views}, j={j}, clip_len={args.clip_len}")
+ 
+-    model = RayAttentionFusionModelTemporalCrossviewResidualPrincipalPoint(
+-        j=j,
+-        d=args.d,
+-        n_views=n_views,
+-        n_st_layers=args.n_st_layers,
+-        residual_hidden=args.residual_hidden,
+-        principal_point_hidden=args.principal_point_hidden,
+-        principal_point_max_offset=args.principal_point_max_offset,
+-        focal_max_scale=args.focal_max_scale,
+-        return_pp_delta=False,
+-    ).to(device)
++    if args.lambda_contrast > 0.0:
++        print(f"Using SSL view-contrastive model (lambda_contrast={args.lambda_contrast})")
++        model = RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointSSLViewContrast(
++            j=j,
++            d=args.d,
++            n_views=n_views,
++            n_st_layers=args.n_st_layers,
++            residual_hidden=args.residual_hidden,
++            principal_point_hidden=args.principal_point_hidden,
++            principal_point_max_offset=args.principal_point_max_offset,
++            focal_max_scale=args.focal_max_scale,
++            return_pp_delta=False,
++            contrastive_dim=args.contrastive_dim,
++            contrastive_temperature=args.contrastive_temperature,
++            contrastive_loss_weight=1.0,
++        ).to(device)
++    else:
++        model = RayAttentionFusionModelTemporalCrossviewResidualPrincipalPoint(
++            j=j,
++            d=args.d,
++            n_views=n_views,
++            n_st_layers=args.n_st_layers,
++            residual_hidden=args.residual_hidden,
++            principal_point_hidden=args.principal_point_hidden,
++            principal_point_max_offset=args.principal_point_max_offset,
++            focal_max_scale=args.focal_max_scale,
++            return_pp_delta=False,
++        ).to(device)
+     print(f"Model params: {sum(p.numel() for p in model.parameters())}")
+ 
+     optimizer = optim.Adam(model.parameters(), lr=args.lr)
+@@ -214,7 +246,11 @@ def main():
+                               outlier_rate=args.outlier_rate)
+             xb_masked, masked = mask_views(xb, ratio=args.mask_ratio, mode=args.mask_mode)
+ 
+-            pred, _ = model(xb_masked, K=K, R=R, t=t)
++            if args.lambda_contrast > 0.0:
++                pred, weights, c_loss = model(xb_masked, K=K, R=R, t=t)
++            else:
++                pred, _ = model(xb_masked, K=K, R=R, t=t)
++                c_loss = None
+             points_2d = xb[..., :2]
+             conf = xb[..., 2]
+ 
+@@ -222,6 +258,9 @@ def main():
+             loss_mask = reprojection_loss(pred, points_2d, K, R, t, confidences=conf, mask=masked)
+             loss = args.lambda_vis * loss_vis + args.lambda_mask * loss_mask
+ 
++            if c_loss is not None:
++                loss = loss + args.lambda_contrast * c_loss
++
+             if args.lambda_smooth > 0:
+                 loss = loss + args.lambda_smooth * temporal_smoothness_loss(pred)
+ 
+diff --git a/experiments/train_ray_attention_temporal_crossview_residual_principal_point_mpiinf3dhp.py b/experiments/train_ray_attention_temporal_crossview_residual_principal_point_mpiinf3dhp.py
+index c3fb6aa..1bf6e78 100644
+--- a/experiments/train_ray_attention_temporal_crossview_residual_principal_point_mpiinf3dhp.py
++++ b/experiments/train_ray_attention_temporal_crossview_residual_principal_point_mpiinf3dhp.py
+@@ -29,13 +29,26 @@ import torch.optim as optim
+ sys.path.insert(0, str(Path(__file__).parent.parent))
+ 
+ from motionflow_mv.calibration.perturb import perturb_cameras_with_delta
++from motionflow_mv.models.data_augmentation_multiview_wrapper import (
++    MultiViewDataAugmentationWrapper,
++)
++from motionflow_mv.fusion.graph_joint_relation import (
++    H36M_17_PARENTS,
++    MPI_INF_3DHP_28_PARENTS,
++)
+ from motionflow_mv.fusion.ray_attention_temporal_crossview_factorized_residual_principal_point_model import (
+     RayAttentionFusionModelTemporalCrossviewFactorizedResidualPrincipalPoint,
+ )
+ from motionflow_mv.fusion.ray_attention_temporal_crossview_residual_principal_point_model import (
+     RayAttentionFusionModelTemporalCrossviewResidualPrincipalPoint,
+ )
+-from motionflow_mv.losses import reprojection_loss, velocity_loss
++from motionflow_mv.fusion.ray_attention_temporal_crossview_residual_principal_point_adaptive_scale_pyramid_model import (
++    RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointAdaptiveScalePyramid,
++)
++from motionflow_mv.fusion.ray_attention_temporal_crossview_residual_principal_point_graph_model import (
++    RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointGraph,
++)
++from motionflow_mv.losses import kinematic_chain_loss, reprojection_loss, velocity_loss
+ from motionflow_mv.losses.reprojection_consistency import robust_reprojection_loss
+ from motionflow_mv.losses.view_selection_loss import ViewSelectionLoss
+ from motionflow_mv.fusion.ray_attention_temporal_crossview_residual_principal_point_dynamic_gate_model import (
+@@ -59,15 +72,31 @@ from motionflow_mv.fusion.ray_attention_temporal_crossview_residual_principal_po
+ from motionflow_mv.fusion.ray_attention_temporal_crossview_residual_principal_point_bayesian_tri_model import (
+     RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointBayesianTri,
+ )
++from motionflow_mv.fusion.bayesian_tri_v2_model import (
++    RayAttentionFusionModelBayesianTriV2,
++)
+ from motionflow_mv.fusion.ray_attention_temporal_crossview_residual_principal_point_epipolar_bias_v2_model import (
+     RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointEpipolarBiasV2,
+ )
++from motionflow_mv.fusion.ray_attention_temporal_crossview_residual_principal_point_epipolar_bias_v2_lite_model import (
++    RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointEpipolarBiasV2Lite,
++)
+ from motionflow_mv.fusion.ray_attention_temporal_crossview_residual_camera_conditioned_model import (
+     RayAttentionFusionModelTemporalCrossviewResidualCameraConditioned,
+ )
+ from motionflow_mv.fusion.ray_attention_hierarchical_view_temporal_joint_residual_principal_point_model import (
+     RayAttentionFusionModelHierarchicalViewTemporalJointResidualPrincipalPoint,
+ )
++from motionflow_mv.fusion.ray_attention_temporal_crossview_residual_principal_point_deeper_temporal_model import (
++    RayAttentionFusionModelHierarchicalViewDeeperTemporalResidualPrincipalPoint,
++)
++from motionflow_mv.fusion.ray_attention_hierarchical_attention_entropy_reg_model import (
++    RayAttentionFusionModelHierarchicalAttentionEntropyReg,
++)
++from motionflow_mv.fusion.ray_attention_temporal_crossview_residual_principal_point_physics_model import (
++    RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointPhysics,
++)
++from motionflow_mv.losses.physics_informed_dynamics import PhysicsInformedSkeletonDynamicsLoss
+ from motionflow_mv.losses.gaussian_splatting_pose_loss import gaussian_splatting_pose_loss
+ 
+ 
+@@ -210,7 +239,7 @@ def main():
+     parser.add_argument("--val", type=str, required=True, help="Validation .npz file")
+     parser.add_argument("--clip_len", type=int, default=13)
+     parser.add_argument("--d", type=int, default=64)
+-    parser.add_argument("--model_type", type=str, default="temporal", choices=["temporal", "factorized", "dynamic_gate", "graph_skeleton_residual", "epipolar", "epipolar_bias_v2_pp", "splat", "kinematic_chain", "crossview_contrast", "bayesian_tri", "camera_conditioned_pp", "hierarchical_view_temporal_joint_pp"], help="Backbone type: temporal (time+view), factorized (alternating view/temporal), dynamic_gate (anchor + per-view gate), graph_skeleton_residual (skeleton-graph residual refiner), epipolar (epipolar-biased weight head), epipolar_bias_v2_pp (epipolar-biased ST transformer v2), splat (Gaussian-splatting pose regularizer), kinematic_chain (kinematic-chain graph refiner), crossview_contrast (cross-view contrastive pose representation), bayesian_tri (uncertainty-aware triangulation with adaptive Gauss-Newton), camera_conditioned_pp (camera-parameter-conditioned weight + residual heads), or hierarchical_view_temporal_joint_pp (hierarchical view -> temporal -> skeleton-joint attention)")
++    parser.add_argument("--model_type", type=str, default="temporal", choices=["temporal", "factorized", "dynamic_gate", "graph_joint_relation", "graph_skeleton_residual", "epipolar", "epipolar_bias_v2_pp", "epipolar_bias_v2_lite_pp", "splat", "kinematic_chain", "crossview_contrast", "bayesian_tri", "bayesian_tri_v2", "camera_conditioned_pp", "hierarchical_view_temporal_joint_pp", "hierarchical_attention_entropy_reg", "adaptive_scale_pyramid", "deeper_temporal_pp", "physics"], help="Backbone type: temporal (time+view), factorized (alternating view/temporal), dynamic_gate (anchor + per-view gate), graph_joint_relation (skeleton-graph attention replacing dense joint attention), graph_skeleton_residual (skeleton-graph residual refiner), epipolar (epipolar-biased weight head), epipolar_bias_v2_pp (epipolar-biased ST transformer v2), epipolar_bias_v2_lite_pp (late-layer epipolar-biased ST transformer v2 lite), splat (Gaussian-splatting pose regularizer), kinematic_chain (kinematic-chain graph refiner), crossview_contrast (cross-view contrastive pose representation), bayesian_tri (uncertainty-aware triangulation with adaptive Gauss-Newton), bayesian_tri_v2 (same as bayesian_tri but with fully batched lstsq DLT), camera_conditioned_pp (camera-parameter-conditioned weight + residual heads), hierarchical_view_temporal_joint_pp (hierarchical view -> temporal -> skeleton-joint attention), hierarchical_attention_entropy_reg (same + attention-entropy regularisation), adaptive_scale_pyramid (anchor + scale-gated cross-view spatial pyramid), deeper_temporal_pp (hierarchical view -> deeper residual-gated temporal -> skeleton-joint attention), or physics (anchor + temporal skeleton dynamics refiner + physics-informed prior)")
+     parser.add_argument("--n_st_layers", type=int, default=2)
+     parser.add_argument("--n_view_layers", type=int, default=2)
+     parser.add_argument("--n_temporal_layers", type=int, default=2)
+@@ -252,7 +281,25 @@ def main():
+     parser.add_argument("--output", type=str, default="outputs/ray_attention_temporal_crossview_residual_principal_point_mpiinf3dhp.pth")
+     parser.add_argument("--pp_pretrain_epochs", type=int, default=0, help="Number of initial epochs to train only the principal_point_correction head")
+     parser.add_argument("--splat_loss_weight", type=float, default=0.0, help="Weight for Gaussian-splatting pose regularizer loss (splat model only)")
++    parser.add_argument("--kc_loss_weight", type=float, default=0.0, help="Weight for kinematic-chain bone-direction/length consistency auxiliary loss")
++    parser.add_argument("--kc_bone_weight", type=float, default=1.0, help="Bone term weight inside kinematic_chain_loss")
++    parser.add_argument("--kc_symmetry_weight", type=float, default=0.0, help="Symmetry term weight inside kinematic_chain_loss (default 0 to avoid limb collapse)")
+     parser.add_argument("--epipolar_loss_weight", type=float, default=0.0, help="Weight for epipolar consistency auxiliary loss (bayesian_tri model only)")
++    parser.add_argument("--use_adaptive_gn", type=lambda s: s.lower() in {"1", "true"}, default=True, help="Enable adaptive Gauss-Newton refinement for bayesian_tri model (1/true or 0/false)")
++    parser.add_argument("--anisotropic_covariance", type=lambda s: s.lower() in {"1", "true"}, default=True, help="Use anisotropic 2-D covariance for bayesian_tri model (1/true or 0/false)")
++    parser.add_argument("--attention_entropy_weight", type=float, default=0.01, help="Weight for the per-view attention entropy regularisation (hierarchical_attention_entropy_reg model only)")
++    parser.add_argument("--physics_loss_weight", type=float, default=0.0, help="Weight for the physics-informed skeleton dynamics prior (physics model only)")
++    parser.add_argument("--physics_loss_bone_weight", type=float, default=1.0, help="Bone-length temporal variance term weight inside the physics prior")
++    parser.add_argument("--physics_loss_jerk_weight", type=float, default=0.1, help="Jerk smoothness term weight inside the physics prior")
++    parser.add_argument("--physics_loss_contact_weight", type=float, default=0.5, help="Ground-contact term weight inside the physics prior (disabled if 0)")
++    parser.add_argument("--physics_loss_com_weight", type=float, default=0.2, help="Center-of-mass stability term weight inside the physics prior")
++    parser.add_argument("--use_multiview_sync_aug", action="store_true", help="Wrap the model with view-synchronised temporal jitter augmentation")
++    parser.add_argument("--mv_aug_subclip_len", type=int, default=5, help="Temporal sub-clip length for the multi-view sync augmentation")
++    parser.add_argument("--mv_aug_translation_std", type=float, default=2.0, help="Per-view 2D translation std (pixels)")
++    parser.add_argument("--mv_aug_rotation_std", type=float, default=1.0, help="Per-view in-plane rotation std (degrees)")
++    parser.add_argument("--mv_aug_scale_std", type=float, default=0.02, help="Per-view log-scale jitter std")
++    parser.add_argument("--mv_aug_noise_std", type=float, default=0.5, help="Independent per-joint noise std (pixels)")
++    parser.add_argument("--mv_aug_view_dropout_rate", type=float, default=0.0, help="View dropout rate for the multi-view sync augmentation")
+     args = parser.parse_args()
+ 
+     set_seed(args.seed)
+@@ -275,6 +322,12 @@ def main():
+     sample = np.load(args.train[0])
+     n_views = sample["camera_K"].shape[0]
+     j = sample["points_2d"].shape[2]
++    if j == 17:
++        kc_parents = H36M_17_PARENTS
++    elif j == 28:
++        kc_parents = MPI_INF_3DHP_28_PARENTS
++    else:
++        kc_parents = None
+     print(f"n_views={n_views}, j={j}, clip_len={args.clip_len}, d={args.d}, model_type={args.model_type}, "
+           f"n_st_layers={args.n_st_layers}, n_view_layers={args.n_view_layers}, n_temporal_layers={args.n_temporal_layers}, "
+           f"residual_hidden={args.residual_hidden}, principal_point_hidden={args.principal_point_hidden}, "
+@@ -309,6 +362,24 @@ def main():
+             focal_max_scale=args.focal_max_scale,
+             return_pp_delta=True,
+         ).to(device)
++    elif args.model_type == "epipolar_bias_v2_lite_pp":
++        model = RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointEpipolarBiasV2Lite(
++            j=j, d=args.d, n_views=n_views, n_st_layers=args.n_st_layers,
++            residual_hidden=args.residual_hidden,
++            principal_point_hidden=args.principal_point_hidden,
++            principal_point_max_offset=args.principal_point_max_offset,
++            focal_max_scale=args.focal_max_scale,
++            return_pp_delta=True,
++        ).to(device)
++    elif args.model_type == "graph_joint_relation":
++        model = RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointGraph(
++            j=j, d=args.d, n_views=n_views, n_st_layers=args.n_st_layers,
++            residual_hidden=args.residual_hidden,
++            principal_point_hidden=args.principal_point_hidden,
++            principal_point_max_offset=args.principal_point_max_offset,
++            focal_max_scale=args.focal_max_scale,
++            return_pp_delta=True,
++        ).to(device)
+     elif args.model_type == "graph_skeleton_residual":
+         model = RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointGraphSkeletonResidual(
+             j=j, d=args.d, n_views=n_views, n_st_layers=args.n_st_layers,
+@@ -327,6 +398,18 @@ def main():
+             focal_max_scale=args.focal_max_scale,
+             return_pp_delta=True,
+             return_covariance=False,
++            use_adaptive_gn=args.use_adaptive_gn,
++            anisotropic_covariance=args.anisotropic_covariance,
++        ).to(device)
++    elif args.model_type == "bayesian_tri_v2":
++        model = RayAttentionFusionModelBayesianTriV2(
++            j=j, d=args.d, n_views=n_views, n_st_layers=args.n_st_layers,
++            residual_hidden=args.residual_hidden,
++            principal_point_hidden=args.principal_point_hidden,
++            principal_point_max_offset=args.principal_point_max_offset,
++            focal_max_scale=args.focal_max_scale,
++            return_pp_delta=True,
++            return_covariance=False,
+         ).to(device)
+     elif args.model_type == "crossview_contrast":
+         model = RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointCrossViewContrast(
+@@ -356,6 +439,17 @@ def main():
+             return_pp_delta=args.pp_loss_weight > 0.0 or args.focal_max_scale > 0.0,
+             return_covariance=args.splat_loss_weight > 0.0,
+         ).to(device)
++    elif args.model_type == "splatv2":
++        model = RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointSplatV2(
++            j=j, d=args.d, n_views=n_views, n_st_layers=args.n_st_layers,
++            residual_hidden=args.residual_hidden,
++            principal_point_hidden=args.principal_point_hidden,
++            principal_point_max_offset=args.principal_point_max_offset,
++            focal_max_scale=args.focal_max_scale,
++            return_pp_delta=True,
++            return_covariance=args.splat_loss_weight > 0.0,
++            return_view_covariance=args.splat_loss_weight > 0.0,
++        ).to(device)
+     elif args.model_type == "factorized":
+         model = RayAttentionFusionModelTemporalCrossviewFactorizedResidualPrincipalPoint(
+             j=j, d=args.d, n_views=n_views,
+@@ -392,6 +486,57 @@ def main():
+             n_joint_graph_layers=args.n_joint_graph_layers,
+             use_skeleton_graph=True,
+         ).to(device)
++    elif args.model_type == "deeper_temporal_pp":
++        model = RayAttentionFusionModelHierarchicalViewDeeperTemporalResidualPrincipalPoint(
++            j=j, d=args.d, n_views=n_views, n_st_layers=args.n_st_layers,
++            residual_hidden=args.residual_hidden,
++            principal_point_hidden=args.principal_point_hidden,
++            principal_point_max_offset=args.principal_point_max_offset,
++            focal_max_scale=args.focal_max_scale,
++            return_pp_delta=True,
++            return_raw=args.return_raw_3d or args.reproj_raw_weight > 0.0,
++            n_view_groups=args.n_view_groups,
++            n_view_layers=args.n_view_layers,
++            n_temporal_layers=args.n_temporal_layers,
++            n_joint_graph_layers=args.n_joint_graph_layers,
++            use_skeleton_graph=True,
++        ).to(device)
++    elif args.model_type == "hierarchical_attention_entropy_reg":
++        model = RayAttentionFusionModelHierarchicalAttentionEntropyReg(
++            j=j, d=args.d, n_views=n_views, n_st_layers=args.n_st_layers,
++            residual_hidden=args.residual_hidden,
++            principal_point_hidden=args.principal_point_hidden,
++            principal_point_max_offset=args.principal_point_max_offset,
++            focal_max_scale=args.focal_max_scale,
++            return_pp_delta=True,
++            return_raw=args.return_raw_3d or args.reproj_raw_weight > 0.0,
++            n_view_groups=args.n_view_groups,
++            n_view_layers=args.n_view_layers,
++            n_temporal_layers=args.n_temporal_layers,
++            n_joint_graph_layers=args.n_joint_graph_layers,
++            use_skeleton_graph=True,
++            attention_entropy_weight=args.attention_entropy_weight,
++        ).to(device)
++    elif args.model_type == "adaptive_scale_pyramid":
++        model = RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointAdaptiveScalePyramid(
++            j=j, d=args.d, n_views=n_views, n_st_layers=args.n_st_layers,
++            residual_hidden=args.residual_hidden,
++            principal_point_hidden=args.principal_point_hidden,
++            principal_point_max_offset=args.principal_point_max_offset,
++            focal_max_scale=args.focal_max_scale,
++            return_pp_delta=True,
++            return_raw=args.return_raw_3d or args.reproj_raw_weight > 0.0,
++        ).to(device)
++    elif args.model_type == "physics":
++        model = RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointPhysics(
++            j=j, d=args.d, n_views=n_views, n_st_layers=args.n_st_layers,
++            residual_hidden=args.residual_hidden,
++            principal_point_hidden=args.principal_point_hidden,
++            principal_point_max_offset=args.principal_point_max_offset,
++            focal_max_scale=args.focal_max_scale,
++            return_pp_delta=args.pp_loss_weight > 0.0 or args.focal_max_scale > 0.0,
++            return_raw=args.return_raw_3d or args.reproj_raw_weight > 0.0,
++        ).to(device)
+     else:
+         model = RayAttentionFusionModelTemporalCrossviewResidualPrincipalPoint(
+             j=j, d=args.d, n_views=n_views, n_st_layers=args.n_st_layers,
+@@ -408,6 +553,20 @@ def main():
+             sparsity_weight=args.gate_sparsity_weight,
+             entropy_weight=args.gate_entropy_weight,
+         )
++    physics_loss_fn = None
++    if args.model_type == "physics" and args.physics_loss_weight > 0.0:
++        parents = H36M_17_PARENTS if j == 17 else MPI_INF_3DHP_28_PARENTS
++        foot_indices = [3, 6, 10, 13] if j == 17 else [21, 22, 26, 27]
++        physics_loss_fn = PhysicsInformedSkeletonDynamicsLoss(
++            parents=parents,
++            foot_indices=foot_indices if args.physics_loss_contact_weight > 0.0 else [],
++            weights={
++                "bone": args.physics_loss_bone_weight,
++                "jerk": args.physics_loss_jerk_weight,
++                "contact": args.physics_loss_contact_weight,
++                "com": args.physics_loss_com_weight,
++            },
++        ).to(device)
+     if args.warm_start is not None:
+         state = torch.load(args.warm_start, map_location="cpu", weights_only=True)
+         missing, unexpected = model.load_state_dict(state, strict=False)
+@@ -416,6 +575,20 @@ def main():
+         if unexpected:
+             print(f"Warning: unexpected keys when warm-starting (ignored): {unexpected[:5]}")
+         print(f"Warm-started from {args.warm_start}")
++    if args.use_multiview_sync_aug:
++        model = MultiViewDataAugmentationWrapper(
++            model,
++            aug_config={
++                "subclip_len": args.mv_aug_subclip_len,
++                "translation_std": args.mv_aug_translation_std,
++                "rotation_std_deg": args.mv_aug_rotation_std,
++                "scale_std": args.mv_aug_scale_std,
++                "noise_std": args.mv_aug_noise_std,
++                "view_dropout_rate": args.mv_aug_view_dropout_rate,
++                "min_views": args.min_views,
++            },
++        )
++        print(f"Wrapped model with MultiViewDataAugmentationWrapper")
+     print(f"Model params: {sum(p.numel() for p in model.parameters())}")
+ 
+     optimizer = optim.Adam(model.parameters(), lr=args.lr)
+@@ -430,11 +603,12 @@ def main():
+     # and forces the PP head to actually learn the inverse perturbation.
+     if args.pp_pretrain_epochs > 0:
+         print(f"Pre-training PP correction head for {args.pp_pretrain_epochs} epochs...")
++        base_model_for_pp = model.base_model if isinstance(model, MultiViewDataAugmentationWrapper) else model
+         for p in model.parameters():
+             p.requires_grad = False
+-        for p in model.principal_point_correction.parameters():
++        for p in base_model_for_pp.principal_point_correction.parameters():
+             p.requires_grad = True
+-        pretrain_optimizer = optim.Adam(model.principal_point_correction.parameters(), lr=args.lr)
++        pretrain_optimizer = optim.Adam(base_model_for_pp.principal_point_correction.parameters(), lr=args.lr)
+         for pe in range(1, args.pp_pretrain_epochs + 1):
+             model.train()
+             train_loss = 0.0
+@@ -508,6 +682,14 @@ def main():
+                 outputs = model(xb, K=K, R=R, t=t)
+             pred = outputs[0]
+             loss = criterion(pred, yb)
++            if args.kc_loss_weight > 0.0 and kc_parents is not None:
++                kc_aux = kinematic_chain_loss(
++                    pred, yb, kc_parents,
++                    symmetry_pairs=None,
++                    bone_weight=args.kc_bone_weight,
++                    symmetry_weight=args.kc_symmetry_weight,
++                )
++                loss = loss + args.kc_loss_weight * kc_aux
+             if args.model_type == "crossview_contrast":
+                 loss = loss + outputs[-1]
+             if args.pp_loss_weight > 0.0:
+@@ -551,16 +733,29 @@ def main():
+             if args.velocity_loss_weight > 0.0:
+                 loss = loss + args.velocity_loss_weight * velocity_loss(pred, yb)
+             if args.splat_loss_weight > 0.0:
+-                log_std = outputs[-1]  # (B, T, J, 3)
+                 points_2d = xb[..., :2]
+                 conf = xb[..., 2]
+-                loss_splat = gaussian_splatting_pose_loss(
+-                    pred, points_2d, K, R, t, log_std, confidences=conf,
+-                )
++                if args.model_type == "splatv2":
++                    log_std_view = outputs[-1]  # (B, T, V, J, 3)
++                    log_std = outputs[-2]  # (B, T, J, 3)
++                    loss_splat = gaussian_splatting_pose_loss(
++                        pred, points_2d, K, R, t, log_std,
++                        confidences=conf, log_std_view=log_std_view,
++                    )
++                else:
++                    log_std = outputs[-1]  # (B, T, J, 3)
++                    loss_splat = gaussian_splatting_pose_loss(
++                        pred, points_2d, K, R, t, log_std, confidences=conf,
++                    )
+                 loss = loss + args.splat_loss_weight * loss_splat
+-            if args.model_type == "bayesian_tri":
++            if args.model_type in ("bayesian_tri", "bayesian_tri_v2"):
+                 epi_loss = outputs[-1]  # scalar
+                 loss = loss + args.epipolar_loss_weight * epi_loss
++            if args.model_type == "hierarchical_attention_entropy_reg":
++                entropy_loss = outputs[-1]  # scalar
++                loss = loss + entropy_loss
++            if physics_loss_fn is not None:
++                loss = loss + args.physics_loss_weight * physics_loss_fn(pred)
+             loss.backward()
+             optimizer.step()
+             train_loss += loss.item() * xb.size(0)
+diff --git a/motionflow_mv/data/__init__.py b/motionflow_mv/data/__init__.py
+index 498f392..e764572 100644
+--- a/motionflow_mv/data/__init__.py
++++ b/motionflow_mv/data/__init__.py
+@@ -12,6 +12,12 @@ from .webbridge_mixed_dataset import (
+     build_webbridge_mixed_dataloaders,
+     webbridge_mixed_collate_fn,
+ )
++from .skeleton_maps import (
++    CANONICAL_17_JOINTS,
++    DATASET_IDS,
++    SKELETON_MAPS,
++    get_skeleton_map,
++)
+ 
+ __all__ = [
+     "VoxelPoseShelfLoader",
+@@ -24,4 +30,8 @@ __all__ = [
+     "WebBridgeMixedDataset",
+     "build_webbridge_mixed_dataloaders",
+     "webbridge_mixed_collate_fn",
++    "CANONICAL_17_JOINTS",
++    "DATASET_IDS",
++    "SKELETON_MAPS",
++    "get_skeleton_map",
+ ]
+diff --git a/motionflow_mv/fusion/__init__.py b/motionflow_mv/fusion/__init__.py
+index 2d7167a..7a1367e 100644
+--- a/motionflow_mv/fusion/__init__.py
++++ b/motionflow_mv/fusion/__init__.py
+@@ -22,6 +22,10 @@ from .ray_attention_temporal_crossview_residual_principal_point_adaptive_window_
+     RayAttentionTemporalCrossviewResidualPrincipalPointAdaptiveWindowPyramidFusionModule,
+     register_ray_attention_temporal_crossview_residual_principal_point_adaptive_window_pyramid_fusion_module,
+ )
++from .ray_attention_temporal_crossview_residual_camera_conditioned_module import (
++    RayAttentionTemporalCrossviewResidualCameraConditionedFusionModule,
++    register_ray_attention_temporal_crossview_residual_camera_conditioned_fusion_module,
++)
+ # Optional iter15 ablation: learnable camera-centric coordinate transform.
+ # from .ray_attention_temporal_crossview_residual_principal_point_camera_centric_module import (
+ #     RayAttentionTemporalCrossviewResidualPrincipalPointCameraCentricFusionModule,
+@@ -38,6 +42,7 @@ register_ray_attention_temporal_residual_fusion_module()
+ register_ray_attention_temporal_crossview_residual_principal_point_fusion_module()
+ register_ray_attention_temporal_crossview_residual_principal_point_spatial_pyramid_fusion_module()
+ register_ray_attention_temporal_crossview_residual_principal_point_adaptive_window_pyramid_fusion_module()
++register_ray_attention_temporal_crossview_residual_camera_conditioned_fusion_module()
+ # register_ray_attention_temporal_crossview_residual_principal_point_camera_centric_fusion_module()
+ 
+ __all__ = [
+diff --git a/motionflow_mv/fusion/cross_view_spatial_pyramid.py b/motionflow_mv/fusion/cross_view_spatial_pyramid.py
+index 2ad4e63..bd69b00 100644
+--- a/motionflow_mv/fusion/cross_view_spatial_pyramid.py
++++ b/motionflow_mv/fusion/cross_view_spatial_pyramid.py
+@@ -144,6 +144,120 @@ class CrossViewSpatialPyramid(nn.Module):
+         return x_out
+ 
+ 
++class AdaptiveScaleCrossViewSpatialPyramid(nn.Module):
++    """Multi-scale cross-view spatial pyramid with learnable scale gating.
++
++    Compared with ``CrossViewSpatialPyramid``, which concatenates all scale
++    branches and projects them back to ``d`` channels, this variant learns a
++    per-joint soft attention over scales.  The gate is conditioned on the
++    average per-joint context across views, so the model can emphasize fine-
++    resolution branches for precise end-effector joints and coarse-resolution
++    branches for noisy/occluded torso joints.
++
++    Parameters
++    ----------
++    d:
++        Feature dimension.
++    n_views:
++        Number of camera views.
++    scales:
++        Downsample factors for the joint axis.  Default ``(1, 2, 4)``.
++    n_heads:
++        Number of attention heads in each cross-view block.  Default 1.
++    gate_hidden:
++        Hidden dimension of the scale-selection MLP.  Default ``d // 2``.
++    """
++
++    def __init__(
++        self,
++        d: int,
++        n_views: int,
++        scales: Sequence[int] = (1, 2, 4),
++        n_heads: int = 1,
++        gate_hidden: int | None = None,
++    ):
++        super().__init__()
++        self.d = d
++        self.n_views = n_views
++        self.scales = tuple(scales)
++
++        if any(s < 1 for s in self.scales):
++            raise ValueError("All scale factors must be >= 1")
++
++        self.branches = nn.ModuleList(
++            [_CrossViewBlock(d, n_views, n_heads=n_heads) for _ in self.scales]
++        )
++
++        gate_hidden = gate_hidden or max(1, d // 2)
++        self.scale_gate = nn.Sequential(
++            nn.Linear(d, gate_hidden),
++            nn.ReLU(),
++            nn.Linear(gate_hidden, len(self.scales)),
++        )
++        self.norm = nn.LayerNorm(d)
++
++    def _downsample_branch(self, x: torch.Tensor, scale: int, branch: nn.Module) -> torch.Tensor:
++        """Apply cross-view attention at ``J // scale`` resolution and upsample.
++
++        Input / output shape: ``(N, V, J, d)``.
++        """
++        N, V, J, d = x.shape
++        if scale == 1:
++            x_s = x.permute(0, 2, 1, 3).reshape(N * J, V, d)
++            x_s = branch(x_s)
++            x_s = x_s.view(N, J, V, d).permute(0, 2, 1, 3)
++            return x_s
++
++        target_j = max(1, J // scale)
++        x_perm = x.permute(0, 1, 3, 2).reshape(N * V, d, J)
++        x_pooled = F.adaptive_avg_pool1d(x_perm, target_j)
++        x_pooled = x_pooled.view(N, V, d, target_j).permute(0, 3, 1, 2)
++        x_pooled = x_pooled.reshape(N * target_j, V, d)
++        x_attended = branch(x_pooled)
++        x_attended = x_attended.view(N, target_j, V, d).permute(0, 2, 3, 1)
++        x_attended = x_attended.reshape(N * V, d, target_j)
++        x_upsampled = F.interpolate(
++            x_attended, size=J, mode="linear", align_corners=False
++        )
++        x_s = x_upsampled.view(N, V, d, J).permute(0, 1, 3, 2)
++        return x_s
++
++    def forward(self, x: torch.Tensor) -> torch.Tensor:
++        """Forward pass.
++
++        Parameters
++        ----------
++        x:
++            Tensor of shape ``(N, V, J, d)``.
++
++        Returns
++        -------
++        Tensor of shape ``(N, V, J, d)``.
++        """
++        if x.dim() != 4:
++            raise ValueError(f"Expected 4-D input (N,V,J,d), got {x.shape}")
++
++        N, V, J, d = x.shape
++        x_in = x
++
++        scale_features = []
++        for scale, branch in zip(self.scales, self.branches):
++            scale_features.append(self._downsample_branch(x, scale, branch))
++
++        # Stack to (N, V, J, S, d).
++        stack = torch.stack(scale_features, dim=3)
++
++        # Per-joint scale attention, shared across views.
++        context = x_in.mean(dim=1)  # (N, J, d)
++        scale_logits = self.scale_gate(context)  # (N, J, S)
++        scale_weights = F.softmax(scale_logits, dim=-1)  # (N, J, S)
++        scale_weights = scale_weights.view(N, 1, J, len(self.scales), 1)
++
++        x_out = (stack * scale_weights).sum(dim=3)  # (N, V, J, d)
++        x_out = self.norm(x_out + x_in)
++        return x_out
++
++
+ class CrossViewSpatialPyramidModel(nn.Module):
+     """Tiny wrapper model used only for smoke tests.
+ 
+diff --git a/motionflow_mv/fusion/ray_attention_temporal_crossview_residual_principal_point_bayesian_tri_model.py b/motionflow_mv/fusion/ray_attention_temporal_crossview_residual_principal_point_bayesian_tri_model.py
+index b53770b..059d6ef 100644
+--- a/motionflow_mv/fusion/ray_attention_temporal_crossview_residual_principal_point_bayesian_tri_model.py
++++ b/motionflow_mv/fusion/ray_attention_temporal_crossview_residual_principal_point_bayesian_tri_model.py
+@@ -121,6 +121,13 @@ class RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointBayesianTri(
+     epipolar_loss_weight:
+         Weight for the optional epipolar consistency term (forward returns it
+         as the last element so the trainer can add it to the total loss).
++    use_adaptive_gn:
++        If False, skip the adaptive Gauss-Newton refinement and use the raw
++        weighted-DLT estimate directly (useful for ablations).
++    anisotropic_covariance:
++        If False, predict a single scalar per (view, joint) and use an
++        isotropic 2-D covariance instead of a full 2x2 Cholesky factor
++        (useful for ablations).
+     See ``RayAttentionFusionModelTemporalCrossviewResidualPrincipalPoint`` for
+     the remaining arguments.
+     """
+@@ -145,6 +152,8 @@ class RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointBayesianTri(
+         min_gn_damping: float = 1e-6,
+         max_gn_damping: float = 1e-2,
+         epipolar_loss_weight: float = 0.05,
++        use_adaptive_gn: bool = True,
++        anisotropic_covariance: bool = True,
+     ):
+         super().__init__(
+             j=j,
+@@ -165,14 +174,19 @@ class RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointBayesianTri(
+         self.min_gn_damping = min_gn_damping
+         self.max_gn_damping = max_gn_damping
+         self.epipolar_loss_weight = epipolar_loss_weight
++        self.use_adaptive_gn = use_adaptive_gn
++        self.anisotropic_covariance = anisotropic_covariance
+ 
+         # Cholesky covariance head: outputs l_xx, l_xy, l_yy for a 2x2
+         # lower-triangular matrix.  Diagonal entries are softplus-ed to keep
+         # the resulting covariance positive definite.
++        # When anisotropic_covariance=False the head outputs a single scalar l
++        # that is reused for both diagonal entries, giving isotropic 2-D covariances.
++        cov_out_dim = 3 if self.anisotropic_covariance else 1
+         self.covariance_head = nn.Sequential(
+             nn.Linear(d, covariance_hidden),
+             nn.ReLU(),
+-            nn.Linear(covariance_hidden, 3),
++            nn.Linear(covariance_hidden, cov_out_dim),
+         )
+ 
+         # Per-joint adaptive GN damping predictor.
+@@ -187,14 +201,21 @@ class RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointBayesianTri(
+         """Build 2x2 covariance matrices from the raw head output.
+ 
+         Args:
+-            params: (..., 3) with raw [l_xx, l_xy, l_yy].
++            params: (..., 3) with raw [l_xx, l_xy, l_yy] when anisotropic,
++                    or (..., 1) with raw [l] when isotropic.
+ 
+         Returns:
+             L: (..., 2, 2) lower-triangular Cholesky factor.
+         """
+-        l_xx = torch.nn.functional.softplus(params[..., 0]) + 1e-4
+-        l_xy = params[..., 1]
+-        l_yy = torch.nn.functional.softplus(params[..., 2]) + 1e-4
++        if self.anisotropic_covariance:
++            l_xx = torch.nn.functional.softplus(params[..., 0]) + 1e-4
++            l_xy = params[..., 1]
++            l_yy = torch.nn.functional.softplus(params[..., 2]) + 1e-4
++        else:
++            l = torch.nn.functional.softplus(params[..., 0]) + 1e-4
++            l_xx = l
++            l_xy = torch.zeros_like(l)
++            l_yy = l
+ 
+         L = torch.zeros(*params.shape[:-1], 2, 2, device=params.device, dtype=params.dtype)
+         L[..., 0, 0] = l_xx
+@@ -306,22 +327,25 @@ class RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointBayesianTri(
+         pred_3d_raw = _triangulate_weighted_dlt(points_2d, weights, P)  # (B*T, J, 3)
+ 
+         # Adaptive Gauss-Newton refinement.
+-        feat_pooled = feat.mean(dim=1)  # (B*T, J, d)
+-        damping = self.damping_head(feat_pooled).squeeze(-1)  # (B*T, J)
+-        damping = self.min_gn_damping + (
+-            self.max_gn_damping - self.min_gn_damping
+-        ) * damping
+-
+-        pred_3d_gn = _adaptive_gauss_newton(
+-            points_2d,
+-            weights,
+-            K_corrected,
+-            R,
+-            t,
+-            pred_3d_raw,
+-            damping,
+-            num_iters=self.gn_iters,
+-        )
++        if self.use_adaptive_gn:
++            feat_pooled = feat.mean(dim=1)  # (B*T, J, d)
++            damping = self.damping_head(feat_pooled).squeeze(-1)  # (B*T, J)
++            damping = self.min_gn_damping + (
++                self.max_gn_damping - self.min_gn_damping
++            ) * damping
++
++            pred_3d_gn = _adaptive_gauss_newton(
++                points_2d,
++                weights,
++                K_corrected,
++                R,
++                t,
++                pred_3d_raw,
++                damping,
++                num_iters=self.gn_iters,
++            )
++        else:
++            pred_3d_gn = pred_3d_raw
+ 
+         # Residual refinement head.
+         residual_input = torch.cat([feat_pooled, pred_3d_gn], dim=-1)  # (B*T, J, d+3)
+@@ -396,3 +420,17 @@ if __name__ == "__main__":
+     loss.backward()
+     assert any(p.grad is not None for p in model.parameters())
+     print("Bayesian triangulation model smoke test passed")
++
++    # Ablation flags sanity check.
++    for iso, adaptive_gn in [(False, True), (True, False), (False, False)]:
++        model_abl = RayAttentionFusionModelTemporalCrossviewResidualPrincipalPointBayesianTri(
++            j=J, d=64, n_views=V, gn_iters=2, epipolar_loss_weight=0.05,
++            anisotropic_covariance=iso, use_adaptive_gn=adaptive_gn,
++        )
++        pred_abl, _, _, epi_abl = model_abl(x.detach().clone(), cameras=cameras)
++        assert pred_abl.shape == (B, T, J, 3)
++        assert epi_abl.shape == ()
++        print(
++            f"  ablation sanity passed: anisotropic_covariance={iso}, "
++            f"use_adaptive_gn={adaptive_gn}"
++        )
+diff --git a/motionflow_mv/fusion/triangulation.py b/motionflow_mv/fusion/triangulation.py
+index 7b53f99..d3dcc9f 100644
+--- a/motionflow_mv/fusion/triangulation.py
++++ b/motionflow_mv/fusion/triangulation.py
+@@ -101,3 +101,55 @@ def triangulate_confidence_weighted(points_2d: np.ndarray, proj_matrices: np.nda
+         (3,) triangulated point.
+     """
+     return triangulate_dlt(points_2d, proj_matrices, weights=confidences)
++
++
++def triangulate_dlt_batched_lstsq(
++    points_2d: torch.Tensor,
++    proj_matrices: torch.Tensor,
++    weights: torch.Tensor | None = None,
++) -> torch.Tensor:
++    """Fully batched weighted DLT triangulation using ``torch.linalg.lstsq``.
++
++    Solves all (batch, joint) pairs in a single batched least-squares call,
++    avoiding the per-joint Python loop used in ``triangulate_dlt_torch``.
++
++    Args:
++        points_2d: (N, V, J, 2) tensor of 2D keypoints.
++        proj_matrices: (N, V, 3, 4) or (V, 3, 4) projection matrices.
++        weights: optional (N, V, J) non-negative weights.
++
++    Returns:
++        X: (N, J, 3) triangulated 3D points.
++    """
++    if points_2d.dim() != 4:
++        raise ValueError(f"points_2d must be 4-D (N, V, J, 2), got shape {points_2d.shape}")
++
++    N, V, J, _ = points_2d.shape
++    if proj_matrices.dim() == 3:
++        proj_matrices = proj_matrices.unsqueeze(0).expand(N, -1, -1, -1)
++
++    if weights is None:
++        weights = torch.ones(N, V, J, device=points_2d.device, dtype=points_2d.dtype)
++    else:
++        weights = weights.reshape(N, V, J)
++
++    A_rows = []
++    for v in range(V):
++        P = proj_matrices[:, v, :, :]  # (N, 3, 4)
++        x = points_2d[:, v, :, 0]  # (N, J)
++        y = points_2d[:, v, :, 1]  # (N, J)
++        row_x = x[..., None] * P[:, 2:3, :] - P[:, 0:1, :]  # (N, J, 4)
++        row_y = y[..., None] * P[:, 2:3, :] - P[:, 1:2, :]
++        A_view = torch.stack([row_x, row_y], dim=2)  # (N, J, 2, 4)
++
++        w = weights[:, v, :].unsqueeze(-1).unsqueeze(-1)  # (N, J, 1, 1)
++        A_view = A_view * torch.sqrt(w + 1e-6)
++        A_rows.append(A_view)
++
++    A = torch.cat(A_rows, dim=2)  # (N, J, 2V, 4)
++    A3 = A[..., :3]  # (N, J, 2V, 3)
++    b = -A[..., 3:]  # (N, J, 2V, 1)
++
++    # Batched least-squares over (N, J) independent 3x3 systems.
++    X, *_ = torch.linalg.lstsq(A3, b)
++    return X.squeeze(-1)  # (N, J, 3)
+diff --git a/motionflow_mv/losses/__init__.py b/motionflow_mv/losses/__init__.py
+index 28c48e6..ff0ddd1 100644
+--- a/motionflow_mv/losses/__init__.py
++++ b/motionflow_mv/losses/__init__.py
+@@ -2,10 +2,13 @@
+ 
+ from .bone_length import bone_length_loss
+ from .canonical_skeleton_loss import canonical_skeleton_loss
++from .cross_dataset_consistency import CrossDatasetConsistencyLoss
+ from .focal_calibration_loss import focal_calibration_loss
+ from .gaussian_splatting_pose_loss import gaussian_splatting_pose_loss
++from .kinematic_chain import kinematic_chain_loss
+ from .masked_view_completion import masked_view_completion_loss
+ from .multiperson_association_loss import MultiPersonAssociationLoss
++from .physics_informed_dynamics import PhysicsInformedSkeletonDynamicsLoss
+ from .reprojection import reprojection_loss
+ from .velocity import velocity_loss, velocity_l1_loss
+ from .visibility_supervision_loss import visibility_supervision_loss
+@@ -13,9 +16,12 @@ from .visibility_supervision_loss import visibility_supervision_loss
+ __all__ = [
+     "bone_length_loss",
+     "canonical_skeleton_loss",
++    "CrossDatasetConsistencyLoss",
+     "focal_calibration_loss",
+     "gaussian_splatting_pose_loss",
++    "kinematic_chain_loss",
+     "masked_view_completion_loss",
++    "PhysicsInformedSkeletonDynamicsLoss",
+     "reprojection_loss",
+     "velocity_loss",
+     "velocity_l1_loss",
+diff --git a/motionflow_mv/losses/gaussian_splatting_pose_loss.py b/motionflow_mv/losses/gaussian_splatting_pose_loss.py
+index 057871c..3e456c0 100644
+--- a/motionflow_mv/losses/gaussian_splatting_pose_loss.py
++++ b/motionflow_mv/losses/gaussian_splatting_pose_loss.py
+@@ -43,6 +43,7 @@ def gaussian_splatting_pose_loss(
+     confidences: torch.Tensor = None,
+     eps: float = 1e-4,
+     trace_weight: float = 1e-4,
++    log_std_view: torch.Tensor = None,
+ ) -> torch.Tensor:
+     """Negative log-likelihood of 2-D observations under projected 3-D Gaussians.
+ 
+@@ -66,6 +67,10 @@ def gaussian_splatting_pose_loss(
+         Small constant for numerical stability.
+     trace_weight:
+         Weight for the covariance-trace regularizer.
++    log_std_view: (B, T, V, J, 3), optional
++        Residual log standard deviations per view/joint.  If provided, the
++        per-view std is ``exp(log_std + log_std_view)``, allowing the model to
++        adapt the projected covariance per camera.
+ 
+     Returns
+     -------
+@@ -113,12 +118,20 @@ def gaussian_splatting_pose_loss(
+     # Chain rule with rotation.
+     J = J_uv @ R_exp  # (B, T, V, J, 2, 3)
+ 
+-    # 3-D covariance from predicted log std.
+-    std = log_std.exp().clamp(min=0.01, max=10.0)  # (B, T, J, 3)
+-    Sigma_3d = torch.diag_embed(std ** 2)  # (B, T, J, 3, 3)
++    # 3-D covariance from predicted log std (and optional per-view residual).
++    if log_std_view is not None:
++        log_std_total = log_std.unsqueeze(2) + log_std_view  # (B, T, V, J, 3)
++        std = log_std_total.exp().clamp(min=0.01, max=10.0)  # (B, T, V, J, 3)
++        Sigma_3d = torch.diag_embed(std ** 2)  # (B, T, V, J, 3, 3)
++    else:
++        std = log_std.exp().clamp(min=0.01, max=10.0)  # (B, T, J, 3)
++        Sigma_3d = torch.diag_embed(std ** 2)  # (B, T, J, 3, 3)
+ 
+     # Project to 2-D.
+-    Sigma_2d = J @ Sigma_3d.unsqueeze(2) @ J.transpose(-2, -1)
++    if log_std_view is not None:
++        Sigma_2d = J @ Sigma_3d @ J.transpose(-2, -1)
++    else:
++        Sigma_2d = J @ Sigma_3d.unsqueeze(2) @ J.transpose(-2, -1)
+     Sigma_2d = Sigma_2d + eps * torch.eye(2, device=Sigma_2d.device, dtype=Sigma_2d.dtype).view(
+         1, 1, 1, 1, 2, 2
+     )
+diff --git a/motionflow_mv/models/__init__.py b/motionflow_mv/models/__init__.py
+index 1500e37..ff47ef2 100644
+--- a/motionflow_mv/models/__init__.py
++++ b/motionflow_mv/models/__init__.py
+@@ -3,6 +3,11 @@
+ from .crossview_residual_uncertainty import CrossviewResidualUncertaintyModel
+ from .domain_adaptation_wrapper import DomainAdaptationWrapper
+ 
++try:
++    from .shelf_campus_domain_adaptation import ShelfCampusDomainAdaptationWrapper
++except ImportError:  # pragma: no cover
++    ShelfCampusDomainAdaptationWrapper = None  # type: ignore
++
+ try:
+     from .spatiotemporal_principal_point_model import SpatiotemporalPrincipalPointModel
+ except ImportError:  # pragma: no cover
+@@ -13,6 +18,13 @@ try:
+ except ImportError:  # pragma: no cover
+     CrossviewResidualVisibilityV2 = None  # type: ignore
+ 
++try:
++    from .crossview_residual_visibility_uncertainty_v1 import (
++        CrossviewResidualVisibilityUncertaintyV1,
++    )
++except ImportError:  # pragma: no cover
++    CrossviewResidualVisibilityUncertaintyV1 = None  # type: ignore
++
+ try:
+     from .spatial_feature_pyramid import SpatialFeaturePyramid, SpatialFeaturePyramidModel
+ except ImportError:  # pragma: no cover
+@@ -36,14 +48,23 @@ except ImportError:  # pragma: no cover
+     MPI_INF_3DHP_28_PARENTS = None  # type: ignore
+     MPI_INF_3DHP_28_SYMMETRY_PAIRS = None  # type: ignore
+ 
++try:
++    from .data_augmentation_multiview_wrapper import MultiViewDataAugmentationWrapper
++except ImportError:  # pragma: no cover
++    MultiViewDataAugmentationWrapper = None  # type: ignore
++
+ __all__ = [
+     "CrossviewResidualUncertaintyModel",
+     "CrossviewResidualVisibilityV2",
++    "CrossviewResidualVisibilityUncertaintyV1",
++    "DistilledStudentPrincipalPointModel",
+     "DomainAdaptationWrapper",
++    "ShelfCampusDomainAdaptationWrapper",
+     "GraphJointRelation",
+     "build_edge_index",
+     "H36M_17_PARENTS",
+     "H36M_17_SYMMETRY_PAIRS",
+     "MPI_INF_3DHP_28_PARENTS",
+     "MPI_INF_3DHP_28_SYMMETRY_PAIRS",
++    "MultiViewDataAugmentationWrapper",
+ ]

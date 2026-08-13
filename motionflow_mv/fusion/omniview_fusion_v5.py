@@ -1732,6 +1732,16 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
         view_mask_flat = self._prepare_view_mask(view_mask, B, T, V, device)
 
         x_flat = x.reshape(B * T, V, J, 3)
+        def _check_finite(tensor, name):
+            if not torch.isfinite(tensor).all():
+                import sys
+                print(f"[DEBUG v5] {name} NON-FINITE shape={tensor.shape} any_nan={torch.isnan(tensor).any().item()} any_inf={torch.isinf(tensor).any().item()}", file=sys.stderr, flush=True)
+                bad = (~torch.isfinite(tensor)).nonzero(as_tuple=True)
+                print(f"  first bad idx: {[(b[0].item() if b.numel() else None) for b in bad]} value={tensor[bad][0].item() if bad[0].numel() else 'n/a'}", file=sys.stderr, flush=True)
+            return torch.isfinite(tensor).all().item()
+        _check_finite(K, "K_input")
+        _check_finite(R, "R_input")
+        _check_finite(t, "t_input")
         points_2d = x_flat[..., :2]
         confidences = x_flat[..., 2]
 
@@ -1747,12 +1757,14 @@ class OmniMultiViewFusionV5(OmniMultiViewFusionV4):
         K_corrected = correction_outputs[0]
         pp_delta = correction_outputs[1]
         focal_scale = correction_outputs[2] if self.correct_focal else None
+        _check_finite(K_corrected, "K_corrected_after_pp")
 
         # Optional rotation correction on extrinsics.
         if self.use_rotation_correction and self.rotation_correction_head is not None:
             feat_rot = self._extract_frame_features(x_flat, K_corrected, R, t)
             feat_rot_pooled = feat_rot.mean(dim=2)  # (B*T, V, d)
             R, _ = self.rotation_correction_head(feat_rot_pooled, R)
+            _check_finite(R, "R_after_rot_corr")
 
         # Per-frame v3 features (uses corrected intrinsics and possibly corrected R).
         feat = self._extract_frame_features(x_flat, K_corrected, R, t)
