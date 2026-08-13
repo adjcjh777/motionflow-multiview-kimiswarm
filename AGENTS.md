@@ -632,8 +632,9 @@ ssh a800-D "df -h /mnt/nvme0n1p1"
 2. **Run `scripts/cleanup_a800_safe.sh` dry-run before launching any new medium training.**
    - Disk is 98% full; cleanup recovers little, but run dry-run first.
 
-3. **Launch the v81/v82/v46/v52/v57 true-GT v2 medium re-runs once GPU 6/7 is free and disk space is verified.**
-   - Use `nohup bash scripts/launch_vXX_true_gt_v2_medium_a800.sh` to queue each run.
+3. **v81 true-GT v2 medium training is queued.**
+   - Watcher `scripts/launch_v81_after_v85_dlt_fallback.sh` will automatically launch `scripts/run_v81_true_gt_v2_medium_a800.sh` on the first free GPU 6/7 after the v85 DLT-fallback eval finishes.
+   - After v81 completes, queue v82/v46/v52/v57 similarly.
 
 ### Quick verification commands
 
