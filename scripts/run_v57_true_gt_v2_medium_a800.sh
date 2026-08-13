@@ -36,6 +36,7 @@ mkdir -p outputs/ablations
 $PYTHON -u experiments/train_omniview_fusion_v5_webbridge_multi.py \
     --use_mixed_loader \
     --mixed_manifest configs/splits/h36m_true_gt_v2_standard.yaml \
+    --num_domains 1 \
     --use_full_precision_dlt \
     --use_robust_dlt_reweight \
     --use_irls_reweight \
