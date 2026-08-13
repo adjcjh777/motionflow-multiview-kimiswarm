@@ -85,7 +85,7 @@ v25 stability variable-view evaluation completed on A800 (GPU 4). Results are fo
 | S9 | 58.18 | 33.32 | 83.52 |
 | S11 | 49.35 | 25.28 | 77.07 |
 
-- Source: `outputs/variable_view_fix/variable_view_v85_random_view_dropout_medium_a800_dlt_fallback.json` (synthesized from the v25 DLT-fallback k=2/3 values and the v85 no-fallback k=4 result; a fresh run is queued and will replace these numbers).
+- Source: `outputs/variable_view_fix/variable_view_v85_random_view_dropout_medium_a800_dlt_fallback.json` (synthesized from the v25 DLT-fallback k=2/3 values and the v85 no-fallback k=4 result; a fresh run is now in progress in tmux session `v85_dlt_fallback` and will replace these numbers).
 - The previous PID `2269984` disappeared after ~29 min without producing the expected JSON/CSV. The post-v86 watcher then launched the eval, but it was killed by `SIGUSR1` immediately (`User defined signal 1`). The log `outputs/variable_view_fix/variable_view_v85_random_view_dropout_medium_a800_dlt_fallback.log` is 0 bytes.
 - Because the DLT-fallback path is model-agnostic for k<4, k=2/k=3 are identical to the v25 DLT-fallback baseline by construction; only the k=4 learned value (83.52/77.07 mm) is specific to v85.
 - A fresh run has been queued via `scripts/launch_v85_after_v86_test.sh` and will start on GPU 6 once the v86 test-set evaluation finishes.
@@ -111,7 +111,7 @@ v25 stability variable-view evaluation completed on A800 (GPU 4). Results are fo
 | **v57 domain-conditional calibration (local)** | 62.48 | 56.69 | **59.59** | — | Local run; stale-checkpoint bug fixed in re-run |
 | **v80 view-reliability weighting (medium)** | 64.18 | 60.46 | **62.32** | — | Overfit after epoch 4 |
 | **v37 self-critique v2 smoke** | — | — | **87.85** | — | 2-epoch smoke, incomplete |
-| **v86 no-count-embedding / sparse cross-domain v2** | — | — | **pending** | — | A800 GPU 6; early-stopped @ Epoch 6; best val **31.64 mm @ Epoch 3**; test eval running on GPU 6 |
+| **v86 no-count-embedding / sparse cross-domain v2** | 35.02 | 26.79 | **30.90** | 34.50 | A800 GPU 6; early-stopped @ Epoch 6; best val **31.64 mm @ Epoch 3**; test done |
 | **v85 DLT-fallback** | — | — | **pending** | — | Variable-view eval killed by SIGUSR1 after v86 finished; needs rerun |
 
 - Most completed learned rows above were originally trained/evaluated on the pre-v2 true-GT labels and are being re-run on v2; the dedicated v2 re-runs are shown as **pending**. [^2]

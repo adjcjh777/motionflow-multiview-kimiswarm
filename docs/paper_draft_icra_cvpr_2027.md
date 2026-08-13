@@ -209,7 +209,7 @@ Table 2 summarises the current true-GT v2 H36M leaderboard. Cells marked **TODO*
 | **v25 true-GT v2 medium (A800)** | **34.71** | **26.66** | **30.69** | **34.39** | test done; best val **31.41 mm** @ Epoch 6; true-GT v2 protocol |
 | v25 stability (v1) | 34.87 | 26.80 | **30.83** | 33.59 | stride 1, A800 |
 | **v85 random-view dropout (A800)** | **34.60** | **26.86** | **30.73** | **34.53** | test done; best val **31.42 mm**; no-fallback k=4 variable view 83.52 / 77.07 mm (Section 5.4) |
-| v86 no-count-embedding (A800) | TODO | TODO | TODO | TODO | training done; best val **31.64 mm** @ Epoch 3; standard test eval pending |
+| v86 no-count-embedding (A800) | **35.02** | **26.79** | **30.90** | **34.50** | **test** result (stride 1); best val **31.64 mm** @ Epoch 3; ablates active-view-count embedding against v85 |
 | v81 temporal-pose-attention | 42.19 | 33.46 | **37.83** | 37.75 | stride 13 |
 | v82 multi-scale temporal-pose-attention | 42.07 | 36.84 | **39.46** | 39.94 | stride 13 |
 | v46-SVG | 55.03 | 49.88 | **52.46** | 40.20 | select-view geometry |
@@ -217,7 +217,7 @@ Table 2 summarises the current true-GT v2 H36M leaderboard. Cells marked **TODO*
 | v52-UWT | 58.15 | 49.87 | **54.01** | 42.22 | uncertainty-weighted triangulation |
 | v57-DC-PSC | 61.09 | 53.11 | **57.10** | 37.30 | dual-camera pose calibration |
 
-v25 true-GT v2 medium and v85 random-view dropout reach nearly identical full-view performance (test MPJPE **30.69 mm** vs. **30.73 mm**; val **31.41 mm** vs. **31.42 mm**), indicating that random whole-view dropout during training does not degrade full-view performance on the v2 protocol. v86, which removes the active-view-count embedding, reports a best val of **31.64 mm** and is on track to match the other two. Sparse-view MPJPE@k curves (Section 5.4) will determine whether the count embedding justifies its overhead.
+v25 true-GT v2 medium, v85 random-view dropout, and v86 no-count-embedding all reach nearly identical full-view performance (test MPJPE **30.69 mm**, **30.73 mm**, and **30.90 mm**; val **31.41 mm**, **31.42 mm**, and **31.64 mm**), indicating that random whole-view dropout during training does not degrade full-view performance on the v2 protocol and that the active-view-count embedding is unnecessary for the full 4-view task. Sparse-view MPJPE@k curves (Section 5.4) will determine whether the count embedding justifies its overhead.
 
 **Table 3.** Sparse-view MPJPE@k (mm) on H36M true-GT v2 (S9/S11 macro mean). DLT-fallback rows use geometric triangulation for $k<4$; no-fallback rows use the learned model at all $k$.
 
