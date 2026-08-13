@@ -6,6 +6,14 @@
 
 GPUS: '0'
 
+# Disable expensive debug image/heatmap dumps to avoid disk bloat and slowdowns.
+DEBUG:
+  DEBUG: false
+  SAVE_BATCH_IMAGES_GT: false
+  SAVE_BATCH_IMAGES_PRED: false
+  SAVE_HEATMAPS_GT: false
+  SAVE_HEATMAPS_PRED: false
+
 CUDNN:
   BENCHMARK: true
   DETERMINISTIC: false

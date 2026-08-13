@@ -27,7 +27,7 @@ REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 # -----------------------------------------------------------------------------
 # Configuration
 # -----------------------------------------------------------------------------
-PREP_CONFIG="${REPO_ROOT}/configs/sota_baselines/voxelpose_h36m_true_gt_v2_prep.yaml"
+CONVERT_CONFIG="${REPO_ROOT}/scripts/sota_baselines/voxelpose_h36m_config_v2.yaml"
 RUN_CONFIG="${REPO_ROOT}/configs/sota_baselines/voxelpose_h36m_true_gt_v2.yaml"
 
 VOXELPOSE_DIR="${REPO_ROOT}/models/voxelpose-pytorch"
@@ -50,7 +50,7 @@ exec 2>&1
 
 echo "[$(date -Iseconds)] VoxelPose H36M true-GT v2 A800 run starting"
 echo "repo root: ${REPO_ROOT}"
-echo "prep config: ${PREP_CONFIG}"
+echo "convert config: ${CONVERT_CONFIG}"
 echo "run config:  ${RUN_CONFIG}"
 echo "result JSON: ${RESULT_JSON}"
 
@@ -90,7 +90,7 @@ fi
 echo "[2/5] Converting to VoxelPose input format..."
 "${CONDA_EXE}" run -n "${VENV_NAME}" python \
     "${REPO_ROOT}/scripts/sota_baselines/convert_to_voxelpose_format.py" \
-    --config "${PREP_CONFIG}"
+    --config "${CONVERT_CONFIG}"
 
 # -----------------------------------------------------------------------------
 # 3. Ensure upstream VoxelPose is present and apply the H36M adapter overlay
@@ -163,7 +163,7 @@ echo "Running final validation on model_best.pth.tar..."
 "${CONDA_EXE}" run -n "${VENV_NAME}" python \
     "${VOXELPOSE_DIR}/run/validate_3d.py" --cfg "${RUN_CONFIG}" 2>&1 | tee -a "${LOG_FILE}"
 
-MODEL_BEST="${VOXELPOSE_DIR}/output/h36m_true_gt_v2_a800/h36m_true_gt_v2/multi_person_posenet/voxelpose_h36m_true_gt_v2/model_best.pth.tar"
+MODEL_BEST="${VOXELPOSE_DIR}/output/h36m_true_gt_v2_a800/h36m_true_gt_v2/multi_person_posenet_50/voxelpose_h36m_true_gt_v2/model_best.pth.tar"
 
 echo "Extracting MPJPE from ${LOG_FILE} and writing result JSON..."
 "${CONDA_EXE}" run -n "${VENV_NAME}" python \

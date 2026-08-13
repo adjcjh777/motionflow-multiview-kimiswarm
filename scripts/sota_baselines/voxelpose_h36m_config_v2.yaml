@@ -1,0 +1,68 @@
+# VoxelPose H36M true-GT v2 baseline configuration.
+#
+# This YAML is read by scripts/sota_baselines/convert_to_voxelpose_format.py
+# and describes how to prepare and run VoxelPose on the corrected H36M true-GT
+# v2 protocol (S1,5,6,7,8 -> S9/S11).
+#
+# Upstream repository: Microsoft VoxelPose (verified cloneable). The A800
+# launcher in scripts/run_voxelpose_true_gt_v2_a800.sh clones it into
+# models/voxelpose-pytorch and applies the H36M adapter overlay.
+
+name: voxelpose_h36m_true_gt_v2
+
+# External repository settings.
+# Official Microsoft PyTorch implementation of VoxelPose (ICCV 2021).
+repo:
+  url: "https://github.com/microsoft/voxelpose-pytorch.git"
+  ref: main
+  # A800 launcher and environment setup clone into models/voxelpose-pytorch.
+  dir: models/voxelpose-pytorch
+
+# Common baseline pickle produced by common_export_h36m_true_gt.py (v2 split).
+input_pkl: tmp/sota_baselines/h36m_true_gt_v2_baseline_format.pkl
+
+# Where VoxelPose-specific converted data lives.
+data_dir: tmp/sota_baselines/voxelpose_data_v2
+
+# Training / evaluation parameters.
+# These are method-specific and mirror the VoxelPose defaults where possible.
+training:
+  # Backbone: resnet50 or resnet152 (VoxelPose default is resnet50).
+  backbone: resnet50
+  # Batch size that fits the local RTX 4090.
+  batch_size: 8
+  epochs: 10
+  lr: 1.0e-3
+  lr_decay: 0.9
+  lr_decay_epoch: 1
+  # Number of cameras for H36M.
+  num_cameras: 4
+  # Voxel grid parameters used by VoxelPose (mm convention).
+  voxel_size: 20.0
+  cube_size: [2000.0, 2000.0, 6000.0]
+  # Joint count for H36M true-GT.
+  num_joints: 17
+
+# Paths for outputs.
+output:
+  checkpoint_dir: tmp/sota_baselines/VoxelPose/output/h36m_true_gt_v2
+  log: outputs/sota_baselines/voxelpose_h36m_true_gt_v2.log
+  metrics_json: outputs/sota_baselines/voxelpose_h36m_true_gt_v2_metrics.json
+
+# Evaluation protocol.
+eval:
+  protocol: h36m_standard
+  subjects_test: [9, 11]
+  actions: all
+
+# VoxelPose-specific data expectations. The converter writes a compatibility
+# pickle, but a full run also needs:
+#   - Actual H36M RGB frames (or placeholders) because VoxelPose's dataset
+#     class reads images.
+#   - 2D heatmaps/detections compatible with the upstream repo.
+#   - A dataset adapter inside tmp/sota_baselines/VoxelPose/lib/datasets that
+#     loads the files written to data_dir above.
+upstream_requirements:
+  needs_images: true
+  needs_2d_detector: true
+  dataset_adapter_status: provided
